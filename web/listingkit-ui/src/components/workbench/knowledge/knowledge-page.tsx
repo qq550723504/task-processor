@@ -46,7 +46,7 @@ function errorMessage(error:unknown) {
 const stateLabels:Record<string,string>={ADMITTED:"等待保存",OBJECT_STORED:"等待处理",PROCESSING:"处理中",AVAILABLE:"可用",PARTIAL:"部分提取",FAILED:"处理失败"};
 const reasons:Record<string,string>={UPLOAD_INCOMPLETE:"上传未完成，请重试原上传。",OBJECT_INTEGRITY_FAILURE:"文件校验失败，请重新上传。",CORRUPT_OR_UNSUPPORTED_DOCUMENT:"文件损坏或无法解析，请重新上传。",DOCUMENT_TYPE_MISMATCH:"文件内容与格式不符。",NO_EXTRACTABLE_TEXT:"未提取到正文；扫描件不支持 OCR。",PARSER_RETRIES_EXHAUSTED:"解析服务多次失败，请重新上传。",PARSER_UNAVAILABLE:"解析服务暂时不可用。",TEXT_TRUNCATED:"正文超过 2 MiB，已保留前部分。",INCOMPLETE_EXTRACTION:"部分内容未能完整提取，请检查预览。"};
 function date(value:string){return new Date(value).toLocaleString("zh-CN",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});}
-type Intent={path:string;init:RequestInit;key:string};
+type Intent={path:string;init:RequestInit;key:string;unconfirmed?:boolean};
 function KnowledgeContent({scope,baseId}:{scope:KnowledgeScope;baseId?:string}) {
  const client=useQueryClient(),context=useWorkbenchContext();
  // The verified current-organization roles include configured admin overrides.
@@ -71,7 +71,7 @@ function KnowledgeContent({scope,baseId}:{scope:KnowledgeScope;baseId?:string}) 
  setIntent(null);setMessage("操作已保存。");setEditing(false);setName("");setFile(null);setSourceName("");setReplacement(null);setPreview(null);
  if(result.knowledgeBase && baseId)client.setQueryData([...key,"base",baseId],result.knowledgeBase);
  await client.invalidateQueries({queryKey:key});
- },onError:error=>{const unknown=error instanceof KnowledgeError && (error.code==="OUTCOME_UNKNOWN" || error.status>=500);setMessage(errorMessage(unknown?new KnowledgeError("OUTCOME_UNKNOWN"):error));if(!unknown)setIntent(null);void client.invalidateQueries({queryKey:key});}});
+ },onError:(error,command)=>{const deniedRetry=command.unconfirmed && error instanceof KnowledgeError && [401,403,429].includes(error.status);const unknown=deniedRetry || error instanceof KnowledgeError && (error.code==="OUTCOME_UNKNOWN" || error.status>=500);setMessage(deniedRetry?errorMessage(error)+" 原请求结果仍未确认，请恢复访问后重试同一次操作。":errorMessage(unknown?new KnowledgeError("OUTCOME_UNKNOWN"):error));setIntent(unknown?{...command,unconfirmed:true}:null);void client.invalidateQueries({queryKey:key});}});
  const registerSwitchGuard=context.registerOrganizationSwitchGuard;
  useEffect(()=>registerSwitchGuard(()=>!mutation.isPending && !intent),[registerSwitchGuard,mutation.isPending,intent]);
  const busy=mutation.isPending || !!intent;

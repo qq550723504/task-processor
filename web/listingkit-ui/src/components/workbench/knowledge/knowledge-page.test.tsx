@@ -81,14 +81,16 @@ it("reuses the original command after admission succeeded but the HTTP response 
 it("retains the original unknown intent when refreshed authority becomes read-only",async()=>{
  const keys:string[]=[];let contextReads=0;
  vi.stubGlobal("fetch",vi.fn(async(url:string,init?:RequestInit)=>{
- if(url==="/api/workbench/context")return Response.json(contextReads++===0?context:{...context,organizations:[{...context.organizations[0],roles:["listingkit_operator"]},context.organizations[1]]});
- if(init?.method==="POST"){keys.push(new Headers(init.headers).get("Idempotency-Key")!);return Response.json({code:"KNOWLEDGE_UNAVAILABLE"},{status:503});}
+ if(url==="/api/workbench/context")return Response.json(contextReads++===1?{...context,organizations:[{...context.organizations[0],roles:["listingkit_operator"]},context.organizations[1]]}:context);
+ if(init?.method==="POST"){keys.push(new Headers(init.headers).get("Idempotency-Key")!);return keys.length===1?Response.json({code:"KNOWLEDGE_UNAVAILABLE"},{status:503}):keys.length===2?Response.json({code:"PERMISSION_DENIED"},{status:403}):Response.json({knowledgeBase:base},{status:201});}
  return Response.json({items:[],pagination:{page:1,pageSize:20,total:0}});
  }));const unmount=mount(undefined,true);await screen.findByText("当前企业还没有知识库");
  await userEvent.click(screen.getByRole("button",{name:"创建知识库"}));await userEvent.type(screen.getByLabelText("知识库名称"),"品牌指南");await userEvent.click(screen.getByRole("button",{name:"保存"}));await screen.findByRole("button",{name:"重试同一次操作"});
  await userEvent.click(screen.getByRole("button",{name:"更新企业授权"}));await waitFor(()=>expect(screen.queryByRole("button",{name:"创建知识库"})).not.toBeInTheDocument());
  await userEvent.selectOptions(screen.getByLabelText("当前企业"),"org-b");await waitFor(()=>expect(screen.getByLabelText("当前企业")).toHaveValue("org-a"));
- await userEvent.click(screen.getByRole("button",{name:"重试同一次操作"}));await waitFor(()=>expect(keys).toHaveLength(2));expect(keys[1]).toBe(keys[0]);unmount();
+ await userEvent.click(screen.getByRole("button",{name:"重试同一次操作"}));await waitFor(()=>expect(keys).toHaveLength(2));expect(keys[1]).toBe(keys[0]);await screen.findByRole("button",{name:"重试同一次操作"});
+ await userEvent.click(screen.getByRole("button",{name:"更新企业授权"}));await waitFor(()=>expect(screen.getByRole("button",{name:"创建知识库"})).toBeDisabled());
+ await userEvent.click(screen.getByRole("button",{name:"重试同一次操作"}));await screen.findByText("操作已保存。");expect(keys).toHaveLength(3);expect(keys[2]).toBe(keys[0]);unmount();
 });
 it("uploads a legal long filename with a separately bounded source display name",async()=>{
  let sent:FormData|undefined;
