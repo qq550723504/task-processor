@@ -16,6 +16,8 @@ import (
 )
 
 type Dependencies struct {
+	OpenStoreCenter                           func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenStoreQuota                            func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenProductAgent                          func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	IdentityPreflight                         func(context.Context, IdentityConfig) error
 	OpenSourceAccount                         func(context.Context, DatabaseConfig) (*gorm.DB, error)
@@ -41,6 +43,7 @@ type Dependencies struct {
 // ApplicationFeatures keeps separately owned, opt-in current modules together
 // only at the serving composition boundary.
 type ApplicationFeatures struct {
+	StoreCenterDB, StoreQuotaDB                          *gorm.DB
 	ProductAgentDB, ProductReviewDB, ProductAgentAssetDB *gorm.DB
 	ProductAgent                                         *ProductAgentConfig
 	CommercialOwnerDB                                    *gorm.DB
@@ -97,6 +100,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	if cfg.ProductAcquisitionDatabase != nil && dependencies.OpenProductAcquisition == nil {
 		return errors.New("current product acquisition lifecycle unavailable")
+	}
+	if cfg.StoreCenter != nil && cfg.StoreCenter.Enabled && (dependencies.OpenStoreCenter == nil || dependencies.OpenStoreQuota == nil || dependencies.NewApplicationWithFeatures == nil) {
+		return errors.New("store center runtime lifecycle unavailable")
 	}
 	if cfg.ProductAgent != nil && cfg.ProductAgent.Enabled && (dependencies.OpenProductAgent == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("product agent lifecycle unavailable")
@@ -267,6 +273,36 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			return fmt.Errorf("membership startup canceled: %w", err)
 		}
 	}
+
+	var storeDB, storeQuotaDB *gorm.DB
+	if cfg.StoreCenter != nil && cfg.StoreCenter.Enabled {
+		for _, target := range []struct {
+			config DatabaseConfig
+			open   func(context.Context, DatabaseConfig) (*gorm.DB, error)
+			dest   **gorm.DB
+		}{
+			{cfg.StoreCenter.Database, dependencies.OpenStoreCenter, &storeDB},
+			{cfg.StoreCenter.QuotaDatabase, dependencies.OpenStoreQuota, &storeQuotaDB},
+		} {
+			pool, openErr := target.open(startupContext, target.config)
+			if openErr != nil {
+				return fmt.Errorf("open store center database: %w", openErr)
+			}
+			if pool == nil {
+				return errors.New("store center database unavailable")
+			}
+			for _, existing := range []*gorm.DB{sourceAccountDB, commercialDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, imageDB, referralDB, membershipDB, storeDB} {
+				if pool == existing {
+					return errors.New("store center requires independently owned pools")
+				}
+			}
+			*target.dest = pool
+			defer func(db *gorm.DB) { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(db)) }(pool)
+			if err := startupContext.Err(); err != nil {
+				return err
+			}
+		}
+	}
 	if dependencies.Listen == nil {
 		return errors.New("current application serving lifecycle unavailable")
 	}
@@ -275,7 +311,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, commercialDB, ApplicationFeatures{MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, commercialDB, ApplicationFeatures{StoreCenterDB: storeDB, StoreQuotaDB: storeQuotaDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, commercialDB, membershipDB, core, cfg.Membership, logger)
 	} else if productDB != nil {

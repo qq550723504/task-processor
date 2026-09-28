@@ -40,7 +40,7 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 				return DeleteStoreResult{}, dependencyError(completeErr)
 			}
 			version := deallocated.StoreVersion + 1
-			if err := s.recordDeletePhase(ctx, recovery, deallocated.AllocationID, AuditActionDeleteComplete, StoreStatusDeleting, "", version); err != nil {
+			if err := s.recordDeletePhase(ctx, recovery, deallocated.AllocationID, AuditActionDeleteComplete, RecordStatusDeleting, "", version); err != nil {
 				return DeleteStoreResult{}, dependencyError(err)
 			}
 			return DeleteStoreResult{StoreID: recovery.StoreID, Version: version, Replayed: true}, nil
@@ -55,7 +55,7 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 			return DeleteStoreResult{}, dependencyError(auditErr)
 		}
 		version := deallocated.StoreVersion + 1
-		if err := s.recordDeletePhase(ctx, normalized, deallocated.AllocationID, AuditActionDeleteComplete, StoreStatusDeleting, "", version); err != nil {
+		if err := s.recordDeletePhase(ctx, normalized, deallocated.AllocationID, AuditActionDeleteComplete, RecordStatusDeleting, "", version); err != nil {
 			return DeleteStoreResult{}, dependencyError(err)
 		}
 		return DeleteStoreResult{StoreID: normalized.StoreID, Version: version, Replayed: true}, nil
@@ -64,7 +64,7 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 		return DeleteStoreResult{}, dependencyError(getErr)
 	}
 	replayed := false
-	if store.LifecycleStatus() == StoreStatusDeleting {
+	if store.RecordStatus() == RecordStatusDeleting {
 		persistedOperationKey := store.DeleteOperationKey()
 		if _, err := canonicalUUID(persistedOperationKey); err != nil {
 			return DeleteStoreResult{}, dependencyError(err)
@@ -81,15 +81,15 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 			replayed = true
 		}
 	}
-	resumingSameOperation := store.LifecycleStatus() == StoreStatusDeleting && (store.Version() == normalized.ExpectedVersion || store.Version() == normalized.ExpectedVersion+1)
+	resumingSameOperation := store.RecordStatus() == RecordStatusDeleting && (store.Version() == normalized.ExpectedVersion || store.Version() == normalized.ExpectedVersion+1)
 	if store.Version() != normalized.ExpectedVersion && !resumingSameOperation {
 		return DeleteStoreResult{}, ErrVersionConflict
 	}
-	if store.LifecycleStatus() == StoreStatusProvisioning {
+	if store.RecordStatus() == RecordStatusProvisioning {
 		return DeleteStoreResult{}, ErrInvalidTransition
 	}
-	previous := LifecycleStatus("")
-	if store.LifecycleStatus() == StoreStatusDeleting {
+	previous := RecordStatus("")
+	if store.RecordStatus() == RecordStatusDeleting {
 		started, auditErr := s.audit.Get(ctx, normalized.OrganizationID, normalized.OperationKey, AuditActionDeleteStarted)
 		if auditErr != nil || validateDeleteAudit(started, normalized, AuditActionDeleteStarted) != nil || started.AllocationID != store.QuotaAllocationID() {
 			return DeleteStoreResult{}, dependencyError(auditErr)
@@ -98,7 +98,7 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 		previous = started.PreviousState
 		replayed = true
 	} else {
-		previous = store.LifecycleStatus()
+		previous = store.RecordStatus()
 		if started, auditErr := s.audit.Get(ctx, normalized.OrganizationID, normalized.OperationKey, AuditActionDeleteStarted); auditErr == nil {
 			if validateDeleteAudit(started, normalized, AuditActionDeleteStarted) != nil || started.AllocationID != store.QuotaAllocationID() {
 				return DeleteStoreResult{}, dependencyError(ErrAuditIdentityMismatch)
@@ -108,7 +108,7 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 			replayed = true
 		} else if !errors.Is(auditErr, ErrNotFound) {
 			return DeleteStoreResult{}, dependencyError(auditErr)
-		} else if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionDeleteStarted, previous, StoreStatusDeleting, store.Version()); err != nil {
+		} else if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionDeleteStarted, previous, RecordStatusDeleting, store.Version()); err != nil {
 			return DeleteStoreResult{}, dependencyError(err)
 		}
 		if err := store.BeginDelete(normalized.OperationKey, normalized.ActorSubject, s.monotonicNow(store.UpdatedAt())); err != nil {
@@ -116,17 +116,17 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 		}
 		if err := s.repository.Save(ctx, normalized.OrganizationID, store, normalized.ExpectedVersion); err != nil {
 			resolved, readErr := s.repository.Get(ctx, normalized.OrganizationID, normalized.StoreID)
-			if readErr == nil && matchesStoreScope(resolved, normalized.OrganizationID, normalized.StoreID) && resolved.LifecycleStatus() == StoreStatusDeleting && resolved.DeleteOperationKey() != normalized.OperationKey {
+			if readErr == nil && matchesStoreScope(resolved, normalized.OrganizationID, normalized.StoreID) && resolved.RecordStatus() == RecordStatusDeleting && resolved.DeleteOperationKey() != normalized.OperationKey {
 				return DeleteStoreResult{}, ErrInvalidTransition
 			}
-			if readErr != nil || !matchesStoreScope(resolved, normalized.OrganizationID, normalized.StoreID) || resolved.Version() != normalized.ExpectedVersion+1 || resolved.LifecycleStatus() != StoreStatusDeleting || resolved.DeleteOperationKey() != normalized.OperationKey {
+			if readErr != nil || !matchesStoreScope(resolved, normalized.OrganizationID, normalized.StoreID) || resolved.Version() != normalized.ExpectedVersion+1 || resolved.RecordStatus() != RecordStatusDeleting || resolved.DeleteOperationKey() != normalized.OperationKey {
 				return DeleteStoreResult{}, dependencyError(err)
 			}
 			store = resolved
 			replayed = true
 		}
 	}
-	if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionStoreMarkedDeleting, previous, StoreStatusDeleting, store.Version()); err != nil {
+	if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionStoreMarkedDeleting, previous, RecordStatusDeleting, store.Version()); err != nil {
 		return DeleteStoreResult{}, dependencyError(err)
 	}
 	transition := listingsubscription.StoreQuotaTransitionInput{OrganizationID: normalized.OrganizationID, AllocationID: store.QuotaAllocationID(), StoreID: store.ID(), RequestKey: store.CreateIdempotencyKey(), ActorSubject: normalized.ActorSubject}
@@ -137,7 +137,7 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 	if err := validateTransitionAllocation(deallocated.Allocation, transition, listingsubscription.StoreQuotaReleased); err != nil {
 		return DeleteStoreResult{}, dependencyError(err)
 	}
-	if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionQuotaDeallocated, StoreStatusDeleting, StoreStatusDeleting, store.Version()); err != nil {
+	if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionQuotaDeallocated, RecordStatusDeleting, RecordStatusDeleting, store.Version()); err != nil {
 		return DeleteStoreResult{}, dependencyError(err)
 	}
 	if err := s.repository.SoftDelete(ctx, normalized.OrganizationID, store.ID(), store.Version()); err != nil {
@@ -147,7 +147,7 @@ func (s *Service) Delete(ctx context.Context, request DeleteStoreRequest) (Delet
 		}
 	}
 	version := store.Version() + 1
-	if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionDeleteComplete, StoreStatusDeleting, "", version); err != nil {
+	if err := s.recordDeletePhase(ctx, normalized, store.QuotaAllocationID(), AuditActionDeleteComplete, RecordStatusDeleting, "", version); err != nil {
 		return DeleteStoreResult{}, dependencyError(err)
 	}
 	return DeleteStoreResult{StoreID: store.ID(), Version: version, Replayed: replayed}, nil
@@ -163,13 +163,13 @@ func validateDeleteAudit(event *AuditEvent, request DeleteStoreRequest, action A
 	valid := false
 	switch action {
 	case AuditActionDeleteStarted:
-		valid = event.Outcome == AuditOutcomeUnknown && (event.PreviousState == StoreStatusActive || event.PreviousState == StoreStatusDisabled) && event.NewState == StoreStatusDeleting && exactSafeFields(event.SafeFieldNames, "lifecycle_status") && (event.StoreVersion == request.ExpectedVersion || event.StoreVersion == request.ExpectedVersion-1)
+		valid = event.Outcome == AuditOutcomeUnknown && (event.PreviousState == RecordStatusActive || event.PreviousState == RecordStatusDisabled) && event.NewState == RecordStatusDeleting && exactSafeFields(event.SafeFieldNames, "record_status") && (event.StoreVersion == request.ExpectedVersion || event.StoreVersion == request.ExpectedVersion-1)
 	case AuditActionStoreMarkedDeleting:
-		valid = event.Outcome == AuditOutcomeSucceeded && (event.PreviousState == StoreStatusActive || event.PreviousState == StoreStatusDisabled) && event.NewState == StoreStatusDeleting && exactSafeFields(event.SafeFieldNames, "lifecycle_status") && (event.StoreVersion == request.ExpectedVersion || event.StoreVersion == request.ExpectedVersion+1)
+		valid = event.Outcome == AuditOutcomeSucceeded && (event.PreviousState == RecordStatusActive || event.PreviousState == RecordStatusDisabled) && event.NewState == RecordStatusDeleting && exactSafeFields(event.SafeFieldNames, "record_status") && (event.StoreVersion == request.ExpectedVersion || event.StoreVersion == request.ExpectedVersion+1)
 	case AuditActionQuotaDeallocated:
-		valid = event.Outcome == AuditOutcomeSucceeded && event.PreviousState == StoreStatusDeleting && event.NewState == StoreStatusDeleting && exactSafeFields(event.SafeFieldNames, "quota_allocation_id") && (event.StoreVersion == request.ExpectedVersion || event.StoreVersion == request.ExpectedVersion+1)
+		valid = event.Outcome == AuditOutcomeSucceeded && event.PreviousState == RecordStatusDeleting && event.NewState == RecordStatusDeleting && exactSafeFields(event.SafeFieldNames, "quota_allocation_id") && (event.StoreVersion == request.ExpectedVersion || event.StoreVersion == request.ExpectedVersion+1)
 	case AuditActionDeleteComplete:
-		valid = event.Outcome == AuditOutcomeSucceeded && event.PreviousState == StoreStatusDeleting && event.NewState == "" && exactSafeFields(event.SafeFieldNames, "lifecycle_status") && (event.StoreVersion == request.ExpectedVersion+1 || event.StoreVersion == request.ExpectedVersion+2)
+		valid = event.Outcome == AuditOutcomeSucceeded && event.PreviousState == RecordStatusDeleting && event.NewState == "" && exactSafeFields(event.SafeFieldNames, "record_status") && (event.StoreVersion == request.ExpectedVersion+1 || event.StoreVersion == request.ExpectedVersion+2)
 	}
 	if !valid {
 		return ErrAuditIdentityMismatch
@@ -177,9 +177,9 @@ func validateDeleteAudit(event *AuditEvent, request DeleteStoreRequest, action A
 	return nil
 }
 
-func (s *Service) recordDeletePhase(ctx context.Context, request DeleteStoreRequest, allocationID string, action AuditAction, previous, next LifecycleStatus, version int64) error {
+func (s *Service) recordDeletePhase(ctx context.Context, request DeleteStoreRequest, allocationID string, action AuditAction, previous, next RecordStatus, version int64) error {
 	outcome := AuditOutcomeSucceeded
-	fields := []string{"lifecycle_status"}
+	fields := []string{"record_status"}
 	if action == AuditActionDeleteStarted {
 		outcome = AuditOutcomeUnknown
 	}

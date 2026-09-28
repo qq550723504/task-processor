@@ -70,7 +70,7 @@ const storePayload = {
   platform: "shein",
   region: "SG",
   externalStoreId: "",
-  lifecycleStatus: "active",
+  recordStatus: "active", serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null,
   connectionStatus: "disconnected",
   version: 2,
   createdAt: "2026-08-30T01:02:03Z",

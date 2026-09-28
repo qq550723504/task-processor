@@ -56,6 +56,12 @@ func execute() error {
 	}
 	return currentapplication.Run(ctx, cfg, logger, currentapplication.Dependencies{
 		IdentityPreflight: currentapplication.VerifyIdentityProvider,
+		OpenStoreCenter: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
+		OpenStoreQuota: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
 		OpenSourceAccount: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
@@ -107,6 +113,9 @@ func execute() error {
 			}
 			if features.CommercialOwnerDB != nil {
 				options = append(options, httpapi.WithCommercialOwnerDatabase(features.CommercialOwnerDB))
+			}
+			if features.StoreCenterDB != nil || features.StoreQuotaDB != nil {
+				options = append(options, httpapi.WithStoreCenter(features.StoreCenterDB, features.StoreQuotaDB))
 			}
 			if features.MoneyOwnerDB != nil {
 				options = append(options, httpapi.WithMoneyOwnerDatabase(features.MoneyOwnerDB))

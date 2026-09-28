@@ -16,7 +16,7 @@ type StoreListQuery struct {
 	Page     int
 	PageSize int
 	Platform Platform
-	Status   StoreStatus
+	Status   RecordStatus
 }
 
 type StorePage struct {

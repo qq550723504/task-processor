@@ -37,7 +37,7 @@ func TestStoreCreateInitializesPersistedAggregateState(t *testing.T) {
 	assertEqual(t, "ExternalStoreID", store.ExternalStoreID(), "external-42")
 	assertEqual(t, "ConnectionRef", store.ConnectionRef(), "")
 	assertEqual(t, "QuotaAllocationID", store.QuotaAllocationID(), testAllocationID)
-	assertEqual(t, "LifecycleStatus", store.LifecycleStatus(), storecenter.StoreStatusProvisioning)
+	assertEqual(t, "RecordStatus", store.RecordStatus(), storecenter.RecordStatusProvisioning)
 	assertEqual(t, "Version", store.Version(), int64(1))
 	assertEqual(t, "CreatedBy", store.CreatedBy(), "subject_Exact-Value")
 	assertEqual(t, "UpdatedBy", store.UpdatedBy(), "subject_Exact-Value")
@@ -144,21 +144,21 @@ func TestStoreCreateRejectsInvalidInput(t *testing.T) {
 func TestLifecycleTransitionsEnforceEdgesAndVersions(t *testing.T) {
 	tests := []struct {
 		name        string
-		start       storecenter.StoreStatus
-		target      storecenter.StoreStatus
+		start       storecenter.RecordStatus
+		target      storecenter.RecordStatus
 		wantErr     error
-		wantStatus  storecenter.StoreStatus
+		wantStatus  storecenter.RecordStatus
 		wantVersion int64
 	}{
-		{"provisioning activates", storecenter.StoreStatusProvisioning, storecenter.StoreStatusActive, nil, storecenter.StoreStatusActive, 2},
-		{"active disables", storecenter.StoreStatusActive, storecenter.StoreStatusDisabled, nil, storecenter.StoreStatusDisabled, 3},
-		{"disabled activates", storecenter.StoreStatusDisabled, storecenter.StoreStatusActive, nil, storecenter.StoreStatusActive, 4},
-		{"active cannot bypass begin delete", storecenter.StoreStatusActive, storecenter.StoreStatusDeleting, storecenter.ErrInvalidTransition, storecenter.StoreStatusActive, 2},
-		{"disabled cannot bypass begin delete", storecenter.StoreStatusDisabled, storecenter.StoreStatusDeleting, storecenter.ErrInvalidTransition, storecenter.StoreStatusDisabled, 3},
-		{"provisioning cannot disable", storecenter.StoreStatusProvisioning, storecenter.StoreStatusDisabled, storecenter.ErrInvalidTransition, storecenter.StoreStatusProvisioning, 1},
-		{"provisioning cannot delete", storecenter.StoreStatusProvisioning, storecenter.StoreStatusDeleting, storecenter.ErrInvalidTransition, storecenter.StoreStatusProvisioning, 1},
-		{"active cannot activate", storecenter.StoreStatusActive, storecenter.StoreStatusActive, storecenter.ErrInvalidTransition, storecenter.StoreStatusActive, 2},
-		{"deleting cannot activate", storecenter.StoreStatusDeleting, storecenter.StoreStatusActive, storecenter.ErrInvalidTransition, storecenter.StoreStatusDeleting, 3},
+		{"provisioning activates", storecenter.RecordStatusProvisioning, storecenter.RecordStatusActive, nil, storecenter.RecordStatusActive, 2},
+		{"active disables", storecenter.RecordStatusActive, storecenter.RecordStatusDisabled, nil, storecenter.RecordStatusDisabled, 3},
+		{"disabled activates", storecenter.RecordStatusDisabled, storecenter.RecordStatusActive, nil, storecenter.RecordStatusActive, 4},
+		{"active cannot bypass begin delete", storecenter.RecordStatusActive, storecenter.RecordStatusDeleting, storecenter.ErrInvalidTransition, storecenter.RecordStatusActive, 2},
+		{"disabled cannot bypass begin delete", storecenter.RecordStatusDisabled, storecenter.RecordStatusDeleting, storecenter.ErrInvalidTransition, storecenter.RecordStatusDisabled, 3},
+		{"provisioning cannot disable", storecenter.RecordStatusProvisioning, storecenter.RecordStatusDisabled, storecenter.ErrInvalidTransition, storecenter.RecordStatusProvisioning, 1},
+		{"provisioning cannot delete", storecenter.RecordStatusProvisioning, storecenter.RecordStatusDeleting, storecenter.ErrInvalidTransition, storecenter.RecordStatusProvisioning, 1},
+		{"active cannot activate", storecenter.RecordStatusActive, storecenter.RecordStatusActive, storecenter.ErrInvalidTransition, storecenter.RecordStatusActive, 2},
+		{"deleting cannot activate", storecenter.RecordStatusDeleting, storecenter.RecordStatusActive, storecenter.ErrInvalidTransition, storecenter.RecordStatusDeleting, 3},
 	}
 
 	for _, tt := range tests {
@@ -170,7 +170,7 @@ func TestLifecycleTransitionsEnforceEdgesAndVersions(t *testing.T) {
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("TransitionTo(%q) error = %v, want errors.Is(_, %v)", tt.target, err, tt.wantErr)
 			}
-			assertEqual(t, "LifecycleStatus", store.LifecycleStatus(), tt.wantStatus)
+			assertEqual(t, "RecordStatus", store.RecordStatus(), tt.wantStatus)
 			assertEqual(t, "Version", store.Version(), tt.wantVersion)
 			if tt.wantErr == nil {
 				assertEqual(t, "UpdatedBy", store.UpdatedBy(), "subject_Update")
@@ -216,7 +216,7 @@ func TestStoreRehydrateRejectsInvalidPersistedState(t *testing.T) {
 		{"updated before created", func(s *storecenter.StoreSnapshot) { s.UpdatedAt = testCreatedAt.Add(-time.Second) }},
 		{"deleted active store", func(s *storecenter.StoreSnapshot) {
 			now := testUpdatedAt
-			s.LifecycleStatus = storecenter.StoreStatusActive
+			s.RecordStatus = storecenter.RecordStatusActive
 			s.DeletedAt = &now
 		}},
 	}
@@ -236,29 +236,32 @@ func TestStoreRehydrateRejectsInvalidPersistedState(t *testing.T) {
 func TestStoreRehydrateEnforcesLifecycleMinimumVersions(t *testing.T) {
 	tests := []struct {
 		name    string
-		status  storecenter.LifecycleStatus
+		status  storecenter.RecordStatus
 		version int64
 		wantErr bool
 	}{
-		{"provisioning starts at one", storecenter.StoreStatusProvisioning, 1, false},
-		{"provisioning permits later edits", storecenter.StoreStatusProvisioning, 8, false},
-		{"active rejects creation version", storecenter.StoreStatusActive, 1, true},
-		{"active permits first transition", storecenter.StoreStatusActive, 2, false},
-		{"active permits later edits", storecenter.StoreStatusActive, 8, false},
-		{"disabled rejects version two", storecenter.StoreStatusDisabled, 2, true},
-		{"disabled permits first disable", storecenter.StoreStatusDisabled, 3, false},
-		{"disabled permits later edits", storecenter.StoreStatusDisabled, 9, false},
-		{"deleting rejects version two", storecenter.StoreStatusDeleting, 2, true},
-		{"deleting permits direct active delete", storecenter.StoreStatusDeleting, 3, false},
-		{"deleting permits later edits", storecenter.StoreStatusDeleting, 10, false},
+		{"provisioning starts at one", storecenter.RecordStatusProvisioning, 1, false},
+		{"provisioning permits later edits", storecenter.RecordStatusProvisioning, 8, false},
+		{"active rejects creation version", storecenter.RecordStatusActive, 1, true},
+		{"active permits first transition", storecenter.RecordStatusActive, 2, false},
+		{"active permits later edits", storecenter.RecordStatusActive, 8, false},
+		{"disabled rejects version two", storecenter.RecordStatusDisabled, 2, true},
+		{"disabled permits first disable", storecenter.RecordStatusDisabled, 3, false},
+		{"disabled permits later edits", storecenter.RecordStatusDisabled, 9, false},
+		{"deleting rejects version two", storecenter.RecordStatusDeleting, 2, true},
+		{"deleting permits direct active delete", storecenter.RecordStatusDeleting, 3, false},
+		{"deleting permits later edits", storecenter.RecordStatusDeleting, 10, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			snapshot := newTestStore(t).Snapshot()
-			snapshot.LifecycleStatus = tt.status
+			snapshot.RecordStatus = tt.status
+			if tt.status == storecenter.RecordStatusActive || tt.status == storecenter.RecordStatusDisabled {
+				snapshot.ServiceStatus = storecenter.ServiceStatusPendingActivation
+			}
 			snapshot.Version = tt.version
-			if tt.status == storecenter.StoreStatusDeleting {
+			if tt.status == storecenter.RecordStatusDeleting {
 				snapshot.DeleteOperationKey = uuid.NewString()
 			}
 
@@ -276,7 +279,7 @@ func TestLifecycleTransitionPreservesImmutableIdentity(t *testing.T) {
 	store := newTestStore(t)
 	wantID, wantOrganizationID, wantPlatform := store.ID(), store.OrganizationID(), store.Platform()
 
-	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject_Update", testUpdatedAt); err != nil {
+	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject_Update", testUpdatedAt); err != nil {
 		t.Fatalf("TransitionTo(active) error = %v", err)
 	}
 
@@ -350,7 +353,7 @@ func newTestStore(t *testing.T) *storecenter.Store {
 
 func TestStoreEditBasicOwnsNormalizedMutableFields(t *testing.T) {
 	store := newTestStore(t)
-	if err := store.TransitionTo(storecenter.StoreStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
+	if err := store.TransitionTo(storecenter.RecordStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	before := store.Snapshot()
@@ -376,7 +379,7 @@ func TestStoreEditBasicRejectsTransitionalStates(t *testing.T) {
 	if _, err := store.EditBasic("Name", "SG", "editor", store.UpdatedAt()); !errors.Is(err, storecenter.ErrInvalidTransition) {
 		t.Fatalf("provisioning EditBasic() error = %v", err)
 	}
-	if err := store.TransitionTo(storecenter.StoreStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
+	if err := store.TransitionTo(storecenter.RecordStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.BeginDelete(uuid.NewString(), "deleter", store.UpdatedAt().Add(time.Second)); err != nil {
@@ -389,7 +392,7 @@ func TestStoreEditBasicRejectsTransitionalStates(t *testing.T) {
 
 func TestStoreBeginDeleteBindsCanonicalKeyOnce(t *testing.T) {
 	store := newTestStore(t)
-	if err := store.TransitionTo(storecenter.StoreStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
+	if err := store.TransitionTo(storecenter.RecordStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	key := uuid.NewString()
@@ -397,7 +400,7 @@ func TestStoreBeginDeleteBindsCanonicalKeyOnce(t *testing.T) {
 	if err := store.BeginDelete(key, "deleter", store.UpdatedAt().Add(time.Second)); err != nil {
 		t.Fatalf("BeginDelete() error = %v", err)
 	}
-	if store.LifecycleStatus() != storecenter.StoreStatusDeleting || store.DeleteOperationKey() != key || store.Version() != beforeVersion+1 {
+	if store.RecordStatus() != storecenter.RecordStatusDeleting || store.DeleteOperationKey() != key || store.Version() != beforeVersion+1 {
 		t.Fatalf("BeginDelete() snapshot = %+v", store.Snapshot())
 	}
 	if err := store.BeginDelete(key, "other-actor", store.UpdatedAt()); err != nil || store.Version() != beforeVersion+1 {
@@ -415,11 +418,11 @@ func TestStoreDeleteKeyRehydrationInvariant(t *testing.T) {
 		t.Fatal("active Store with delete key rehydrated")
 	}
 	deleting := newTestStore(t)
-	if err := deleting.TransitionTo(storecenter.StoreStatusActive, "creator", deleting.UpdatedAt().Add(time.Second)); err != nil {
+	if err := deleting.TransitionTo(storecenter.RecordStatusActive, "creator", deleting.UpdatedAt().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	deletingSnapshot := deleting.Snapshot()
-	deletingSnapshot.LifecycleStatus = storecenter.StoreStatusDeleting
+	deletingSnapshot.RecordStatus = storecenter.RecordStatusDeleting
 	deletingSnapshot.Version++
 	deletingSnapshot.UpdatedAt = deletingSnapshot.UpdatedAt.Add(time.Second)
 	if _, err := storecenter.RehydrateStore(deletingSnapshot); err == nil {
@@ -427,12 +430,15 @@ func TestStoreDeleteKeyRehydrationInvariant(t *testing.T) {
 	}
 }
 
-func newStoreAtStatus(t *testing.T, status storecenter.StoreStatus) *storecenter.Store {
+func newStoreAtStatus(t *testing.T, status storecenter.RecordStatus) *storecenter.Store {
 	t.Helper()
 	snapshot := newTestStore(t).Snapshot()
-	snapshot.LifecycleStatus = status
+	snapshot.RecordStatus = status
+	if status == storecenter.RecordStatusActive || status == storecenter.RecordStatusDisabled {
+		snapshot.ServiceStatus = storecenter.ServiceStatusPendingActivation
+	}
 	snapshot.Version = minimumVersionForStatus(status)
-	if status == storecenter.StoreStatusDeleting {
+	if status == storecenter.RecordStatusDeleting {
 		snapshot.DeleteOperationKey = uuid.NewString()
 	}
 	store, err := storecenter.RehydrateStore(snapshot)
@@ -442,13 +448,13 @@ func newStoreAtStatus(t *testing.T, status storecenter.StoreStatus) *storecenter
 	return store
 }
 
-func minimumVersionForStatus(status storecenter.LifecycleStatus) int64 {
+func minimumVersionForStatus(status storecenter.RecordStatus) int64 {
 	switch status {
-	case storecenter.StoreStatusProvisioning:
+	case storecenter.RecordStatusProvisioning:
 		return 1
-	case storecenter.StoreStatusActive:
+	case storecenter.RecordStatusActive:
 		return 2
-	case storecenter.StoreStatusDisabled, storecenter.StoreStatusDeleting:
+	case storecenter.RecordStatusDisabled, storecenter.RecordStatusDeleting:
 		return 3
 	default:
 		return 1

@@ -27,7 +27,7 @@ type ListStoresRequest struct {
 	Page           int
 	PageSize       int
 	Platform       string
-	Status         LifecycleStatus
+	Status         RecordStatus
 }
 
 type GetStoreRequest struct {

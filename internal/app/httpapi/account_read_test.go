@@ -29,6 +29,7 @@ import (
 type accountFixture struct {
 	server       *httptest.Server
 	provider     *httptest.Server
+	role         atomic.Value
 	revoked      atomic.Bool
 	unavailable  atomic.Bool
 	clock        atomic.Int64
@@ -44,6 +45,7 @@ func newAccountFixture(t *testing.T) *accountFixture {
 func newAccountFixtureWithIssuerPath(t *testing.T, issuerPath string) *accountFixture {
 	t.Helper()
 	f := &accountFixture{}
+	f.role.Store("listingkit_viewer")
 	f.clock.Store(time.Now().Unix())
 	f.provider = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -106,7 +108,7 @@ func newAccountFixtureWithIssuerPath(t *testing.T, issuerPath string) *accountFi
 			rows := []any{}
 			if !f.revoked.Load() && token != "no-org" {
 				for _, org := range []string{"B", "C"} {
-					rows = append(rows, map[string]any{"id": "grant-" + org, "project": map[string]string{"id": "project"}, "organization": map[string]string{"id": org, "name": "Enterprise " + org}, "user": map[string]string{"id": subject}, "state": "STATE_ACTIVE", "roles": []any{map[string]string{"key": "listingkit_viewer"}}})
+					rows = append(rows, map[string]any{"id": "grant-" + org, "project": map[string]string{"id": "project"}, "organization": map[string]string{"id": org, "name": "Enterprise " + org}, "user": map[string]string{"id": subject}, "state": "STATE_ACTIVE", "roles": []any{map[string]string{"key": f.role.Load().(string)}}})
 				}
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"pagination": map[string]string{"totalResult": fmt.Sprint(len(rows))}, "authorizations": rows})

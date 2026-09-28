@@ -47,8 +47,8 @@ func TestServiceCreateActivatesOneReservedStore(t *testing.T) {
 	if result.Store.ID() != storeID || result.Store.QuotaAllocationID() != allocationID {
 		t.Fatalf("Create() IDs = store %q allocation %q, want allocated IDs", result.Store.ID(), result.Store.QuotaAllocationID())
 	}
-	if result.Store.LifecycleStatus() != storecenter.StoreStatusActive || result.Store.Version() != 2 {
-		t.Fatalf("Create() durable lifecycle/version = %s/%d, want active/2", result.Store.LifecycleStatus(), result.Store.Version())
+	if result.Store.RecordStatus() != storecenter.RecordStatusActive || result.Store.Version() != 2 {
+		t.Fatalf("Create() durable lifecycle/version = %s/%d, want active/2", result.Store.RecordStatus(), result.Store.Version())
 	}
 	if result.Store.Name() != "My Shop" || result.Store.Platform() != storecenter.PlatformShein || result.Store.Region() != "SG" {
 		t.Fatalf("Create() normalized Store = %+v, want normalized fields", result.Store.Snapshot())
@@ -60,7 +60,7 @@ func TestServiceCreateActivatesOneReservedStore(t *testing.T) {
 		t.Fatalf("audit actions = %v, want safe durable phases", got)
 	}
 	createdEvent := audit.eventFor(organizationID, requestKey, storecenter.AuditActionStoreCreated)
-	if createdEvent.PreviousState != "" || createdEvent.NewState != storecenter.StoreStatusProvisioning {
+	if createdEvent.PreviousState != "" || createdEvent.NewState != storecenter.RecordStatusProvisioning {
 		t.Fatalf("store_created state = %q -> %q, want empty -> provisioning", createdEvent.PreviousState, createdEvent.NewState)
 	}
 }
@@ -200,7 +200,7 @@ func TestServiceResumeCreateAfterCommitFailureReusesDurableCreateKey(t *testing.
 		t.Fatalf("first Create() error = %v, want dependency unavailable", err)
 	}
 	created, err := repository.Get(context.Background(), request.OrganizationID, ledger.allocation.StoreID)
-	if err != nil || created.LifecycleStatus() != storecenter.StoreStatusProvisioning {
+	if err != nil || created.RecordStatus() != storecenter.RecordStatusProvisioning {
 		t.Fatalf("commit failure Store = %v/%v, want provisioning durable Store", created, err)
 	}
 	ledger.commitErr = nil
@@ -213,8 +213,8 @@ func TestServiceResumeCreateAfterCommitFailureReusesDurableCreateKey(t *testing.
 	if err != nil {
 		t.Fatalf("replay Create() error = %v", err)
 	}
-	if result.Store.LifecycleStatus() != storecenter.StoreStatusActive || repository.createCalls != 2 || ledger.releaseCalls != 0 {
-		t.Fatalf("replay lifecycle/create/release = %s/%d/%d, want active/2/0", result.Store.LifecycleStatus(), repository.createCalls, ledger.releaseCalls)
+	if result.Store.RecordStatus() != storecenter.RecordStatusActive || repository.createCalls != 2 || ledger.releaseCalls != 0 {
+		t.Fatalf("replay lifecycle/create/release = %s/%d/%d, want active/2/0", result.Store.RecordStatus(), repository.createCalls, ledger.releaseCalls)
 	}
 }
 
@@ -234,8 +234,8 @@ func TestServiceCreateAmbiguousCreateFoundNeverReleases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	if result.Store.LifecycleStatus() != storecenter.StoreStatusActive || ledger.releaseCalls != 0 {
-		t.Fatalf("ambiguous Create() lifecycle/release = %s/%d, want active/0", result.Store.LifecycleStatus(), ledger.releaseCalls)
+	if result.Store.RecordStatus() != storecenter.RecordStatusActive || ledger.releaseCalls != 0 {
+		t.Fatalf("ambiguous Create() lifecycle/release = %s/%d, want active/0", result.Store.RecordStatus(), ledger.releaseCalls)
 	}
 }
 
@@ -259,7 +259,7 @@ func TestServiceCreateFinalAuditFailureResumesWithoutReactivation(t *testing.T) 
 	if err != nil {
 		t.Fatalf("replay Create() error = %v", err)
 	}
-	if !result.Replayed || result.Store.LifecycleStatus() != storecenter.StoreStatusActive || repository.saveCalls != 1 {
+	if !result.Replayed || result.Store.RecordStatus() != storecenter.RecordStatusActive || repository.saveCalls != 1 {
 		t.Fatalf("replay = %+v saves=%d, want active replay without reactivation", result, repository.saveCalls)
 	}
 }
@@ -278,7 +278,7 @@ func TestServiceResumeCreateActiveRepairsMissingTerminalAudit(t *testing.T) {
 		t.Fatalf("initial Create() error = %v, want dependency unavailable", err)
 	}
 	store := repository.stores[request.OrganizationID+"/"+ledger.allocation.StoreID]
-	if store == nil || store.LifecycleStatus() != storecenter.StoreStatusActive {
+	if store == nil || store.RecordStatus() != storecenter.RecordStatusActive {
 		t.Fatalf("durable Store = %#v, want active Store", store)
 	}
 
@@ -291,7 +291,7 @@ func TestServiceResumeCreateActiveRepairsMissingTerminalAudit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResumeCreate() error = %v", err)
 	}
-	if !result.Replayed || result.Store.LifecycleStatus() != storecenter.StoreStatusActive || repository.saveCalls != 1 {
+	if !result.Replayed || result.Store.RecordStatus() != storecenter.RecordStatusActive || repository.saveCalls != 1 {
 		t.Fatalf("ResumeCreate() = %+v saves=%d, want active replay without reactivation", result, repository.saveCalls)
 	}
 	if _, err := audit.Get(context.Background(), request.OrganizationID, request.IdempotencyKey, storecenter.AuditActionStoreCreationCommitted); err != nil {
@@ -338,7 +338,7 @@ func TestServiceCreateAuditFailuresPauseAtTheirDurableBoundary(t *testing.T) {
 			if err != nil {
 				t.Fatalf("replay Create(): %v", err)
 			}
-			if result.Store.LifecycleStatus() != storecenter.StoreStatusActive || ledger.releaseCalls != 0 {
+			if result.Store.RecordStatus() != storecenter.RecordStatusActive || ledger.releaseCalls != 0 {
 				t.Fatalf("replay = %+v release=%d, want active/no compensation", result, ledger.releaseCalls)
 			}
 		})
@@ -391,7 +391,7 @@ func TestServiceCreateKeepsReservationWhenTerminalFailureAuditFails(t *testing.T
 	if err != nil {
 		t.Fatalf("retry Create() error = %v, want recovery to continue", err)
 	}
-	if result.Store == nil || result.Store.LifecycleStatus() != storecenter.StoreStatusActive || ledger.commitCalls != 1 {
+	if result.Store == nil || result.Store.RecordStatus() != storecenter.RecordStatusActive || ledger.commitCalls != 1 {
 		t.Fatalf("retry result = %+v, commit calls = %d, want active/one commit", result, ledger.commitCalls)
 	}
 }
@@ -486,8 +486,8 @@ func TestServiceCreateAmbiguousActivationSaveIsResolvedByScopedRead(t *testing.T
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	if result.Store.LifecycleStatus() != storecenter.StoreStatusActive || ledger.releaseCalls != 0 {
-		t.Fatalf("Create() lifecycle/release = %s/%d, want active/0", result.Store.LifecycleStatus(), ledger.releaseCalls)
+	if result.Store.RecordStatus() != storecenter.RecordStatusActive || ledger.releaseCalls != 0 {
+		t.Fatalf("Create() lifecycle/release = %s/%d, want active/0", result.Store.RecordStatus(), ledger.releaseCalls)
 	}
 }
 
@@ -567,7 +567,7 @@ func TestServiceCreateReplayReturnsLaterDisabledStoreWithoutReactivation(t *test
 		t.Fatalf("initial Create(): %v", err)
 	}
 	disabled := cloneStore(created.Store)
-	if err := disabled.TransitionTo(storecenter.StoreStatusDisabled, request.ActorSubject, disabled.UpdatedAt().Add(time.Second)); err != nil {
+	if err := disabled.TransitionTo(storecenter.RecordStatusDisabled, request.ActorSubject, disabled.UpdatedAt().Add(time.Second)); err != nil {
 		t.Fatalf("TransitionTo(disabled): %v", err)
 	}
 	if err := repository.Save(context.Background(), request.OrganizationID, disabled, created.Store.Version()); err != nil {
@@ -578,7 +578,7 @@ func TestServiceCreateReplayReturnsLaterDisabledStoreWithoutReactivation(t *test
 	if err != nil {
 		t.Fatalf("replay Create(): %v", err)
 	}
-	if !replayed.Replayed || replayed.Store.LifecycleStatus() != storecenter.StoreStatusDisabled || repository.saveCalls != savesBeforeReplay {
+	if !replayed.Replayed || replayed.Store.RecordStatus() != storecenter.RecordStatusDisabled || repository.saveCalls != savesBeforeReplay {
 		t.Fatalf("replay = %+v saves=%d, want disabled durable replay without activation", replayed, repository.saveCalls)
 	}
 }
@@ -930,8 +930,8 @@ func TestServiceCreateCommitFailureAuditWriteAheadRecoversOnReplay(t *testing.T)
 	if err != nil {
 		t.Fatalf("replay Create(): %v", err)
 	}
-	if result.Store.LifecycleStatus() != storecenter.StoreStatusActive || ledger.commitCalls != 2 {
-		t.Fatalf("replay Store/commits = %s/%d, want active/2", result.Store.LifecycleStatus(), ledger.commitCalls)
+	if result.Store.RecordStatus() != storecenter.RecordStatusActive || ledger.commitCalls != 2 {
+		t.Fatalf("replay Store/commits = %s/%d, want active/2", result.Store.RecordStatus(), ledger.commitCalls)
 	}
 }
 
@@ -948,7 +948,7 @@ func TestServiceListGetProjectScopedStoresAndAuthoritativeQuota(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := service.List(context.Background(), storecenter.ListStoresRequest{OrganizationID: "org-a", Page: 2, PageSize: 2, Platform: "shein", Status: storecenter.StoreStatusActive})
+	result, err := service.List(context.Background(), storecenter.ListStoresRequest{OrganizationID: "org-a", Page: 2, PageSize: 2, Platform: "shein", Status: storecenter.RecordStatusActive})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -1064,7 +1064,7 @@ func TestServiceUpdateRepairRequiresValidAuthoritativeIntent(t *testing.T) {
 				audit.events["org-a/"+operationKey+"/"+string(storecenter.AuditActionStoreUpdateStarted)] = storecenter.AuditEvent{
 					OrganizationID: "org-a", StoreID: original.ID(), AllocationID: original.QuotaAllocationID(), RequestKey: operationKey,
 					Action: storecenter.AuditActionStoreUpdateStarted, Outcome: storecenter.AuditOutcomeUnknown, ActorSubject: "editor",
-					SafeFieldNames: []string{"quota_allocation_id"}, PreviousState: storecenter.StoreStatusActive, NewState: storecenter.StoreStatusActive,
+					SafeFieldNames: []string{"quota_allocation_id"}, PreviousState: storecenter.RecordStatusActive, NewState: storecenter.RecordStatusActive,
 					FailureCode: storecenter.AuditFailureNone, StoreVersion: original.Version(),
 				}
 			}
@@ -1090,11 +1090,11 @@ func TestServiceDisableEnableDoNotTouchQuota(t *testing.T) {
 		t.Fatal(err)
 	}
 	disabled, err := service.Disable(context.Background(), storecenter.StoreLifecycleRequest{OrganizationID: "org-a", ActorSubject: "operator", StoreID: store.ID(), ExpectedVersion: store.Version()})
-	if err != nil || disabled.Store.Store.LifecycleStatus() != storecenter.StoreStatusDisabled {
+	if err != nil || disabled.Store.Store.RecordStatus() != storecenter.RecordStatusDisabled {
 		t.Fatalf("Disable() = %#v, %v", disabled, err)
 	}
 	enabled, err := service.Enable(context.Background(), storecenter.StoreLifecycleRequest{OrganizationID: "org-a", ActorSubject: "operator", StoreID: store.ID(), ExpectedVersion: disabled.Store.Store.Version()})
-	if err != nil || enabled.Store.Store.LifecycleStatus() != storecenter.StoreStatusActive {
+	if err != nil || enabled.Store.Store.RecordStatus() != storecenter.RecordStatusActive {
 		t.Fatalf("Enable() = %#v, %v", enabled, err)
 	}
 	if ledger.reserveCalls+ledger.commitCalls+ledger.releaseCalls+ledger.deallocateCalls != 0 {
@@ -1102,46 +1102,20 @@ func TestServiceDisableEnableDoNotTouchQuota(t *testing.T) {
 	}
 }
 
-func TestServiceEnablePreservesServiceResumeRequired(t *testing.T) {
-	repository := newStoreRepositoryFake()
-	store := activeServiceStore(t, "org-a", "00000000-0000-4000-8000-000000000506", "00000000-0000-4000-8000-000000000606", "00000000-0000-4000-8000-000000000706", "Store")
-	if err := store.TransitionTo(storecenter.StoreStatusDisabled, "operator", store.UpdatedAt().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	repository.stores["org-a/"+store.ID()] = cloneStore(store)
-	repository.saveErr = storecenter.ErrServiceResumeRequired
-	service, err := storecenter.NewService(repository, &quotaLedgerFake{}, newAuditRepositoryFake(), &serviceConnectionProvider{}, time.Now)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = service.Enable(context.Background(), storecenter.StoreLifecycleRequest{OrganizationID: "org-a", ActorSubject: "operator", StoreID: store.ID(), ExpectedVersion: store.Version()})
-	if !errors.Is(err, storecenter.ErrServiceResumeRequired) {
-		t.Fatalf("Enable() error = %v, want ErrServiceResumeRequired", err)
-	}
-	if repository.saveCalls != 1 {
-		t.Fatalf("Enable() Save calls = %d, want 1", repository.saveCalls)
-	}
-	current, err := repository.Get(context.Background(), "org-a", store.ID())
-	if err != nil || current.LifecycleStatus() != storecenter.StoreStatusDisabled || current.Version() != store.Version() {
-		t.Fatalf("Store after rejected Enable() = %#v, %v", current, err)
-	}
-}
-
 func TestServiceLifecycleRejectsIllegalStatesAndStaleVersions(t *testing.T) {
 	tests := []struct {
 		name            string
-		status          storecenter.LifecycleStatus
+		status          storecenter.RecordStatus
 		action          string
 		expectedVersion func(*storecenter.Store) int64
 		want            error
 	}{
-		{"disable provisioning", storecenter.StoreStatusProvisioning, "disable", func(store *storecenter.Store) int64 { return store.Version() }, storecenter.ErrInvalidTransition},
-		{"disable disabled", storecenter.StoreStatusDisabled, "disable", func(store *storecenter.Store) int64 { return store.Version() }, storecenter.ErrInvalidTransition},
-		{"enable active", storecenter.StoreStatusActive, "enable", func(store *storecenter.Store) int64 { return store.Version() }, storecenter.ErrInvalidTransition},
-		{"enable deleting", storecenter.StoreStatusDeleting, "enable", func(store *storecenter.Store) int64 { return store.Version() }, storecenter.ErrInvalidTransition},
-		{"stale disable", storecenter.StoreStatusActive, "disable", func(store *storecenter.Store) int64 { return store.Version() - 1 }, storecenter.ErrVersionConflict},
-		{"stale enable", storecenter.StoreStatusDisabled, "enable", func(store *storecenter.Store) int64 { return store.Version() - 1 }, storecenter.ErrVersionConflict},
+		{"disable provisioning", storecenter.RecordStatusProvisioning, "disable", func(store *storecenter.Store) int64 { return store.Version() }, storecenter.ErrInvalidTransition},
+		{"disable disabled", storecenter.RecordStatusDisabled, "disable", func(store *storecenter.Store) int64 { return store.Version() }, storecenter.ErrInvalidTransition},
+		{"enable active", storecenter.RecordStatusActive, "enable", func(store *storecenter.Store) int64 { return store.Version() }, storecenter.ErrInvalidTransition},
+		{"enable deleting", storecenter.RecordStatusDeleting, "enable", func(store *storecenter.Store) int64 { return store.Version() }, storecenter.ErrInvalidTransition},
+		{"stale disable", storecenter.RecordStatusActive, "disable", func(store *storecenter.Store) int64 { return store.Version() - 1 }, storecenter.ErrVersionConflict},
+		{"stale enable", storecenter.RecordStatusDisabled, "enable", func(store *storecenter.Store) int64 { return store.Version() - 1 }, storecenter.ErrVersionConflict},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1149,17 +1123,17 @@ func TestServiceLifecycleRejectsIllegalStatesAndStaleVersions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if test.status != storecenter.StoreStatusProvisioning {
-				if err := store.TransitionTo(storecenter.StoreStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
+			if test.status != storecenter.RecordStatusProvisioning {
+				if err := store.TransitionTo(storecenter.RecordStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if test.status == storecenter.StoreStatusDisabled {
-				if err := store.TransitionTo(storecenter.StoreStatusDisabled, "operator", store.UpdatedAt().Add(time.Second)); err != nil {
+			if test.status == storecenter.RecordStatusDisabled {
+				if err := store.TransitionTo(storecenter.RecordStatusDisabled, "operator", store.UpdatedAt().Add(time.Second)); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if test.status == storecenter.StoreStatusDeleting {
+			if test.status == storecenter.RecordStatusDeleting {
 				if err := store.BeginDelete(uuid.NewString(), "operator", store.UpdatedAt().Add(time.Second)); err != nil {
 					t.Fatal(err)
 				}
@@ -1218,9 +1192,9 @@ func TestServiceDeleteUsesDurableStartedActorBeforeConcurrentSave(t *testing.T) 
 		Action:         storecenter.AuditActionDeleteStarted,
 		Outcome:        storecenter.AuditOutcomeUnknown,
 		ActorSubject:   "actor-a",
-		SafeFieldNames: []string{"lifecycle_status"},
-		PreviousState:  storecenter.StoreStatusActive,
-		NewState:       storecenter.StoreStatusDeleting,
+		SafeFieldNames: []string{"record_status"},
+		PreviousState:  storecenter.RecordStatusActive,
+		NewState:       storecenter.RecordStatusDeleting,
 		FailureCode:    storecenter.AuditFailureNone,
 		StoreVersion:   store.Version(),
 		OccurredAt:     time.Now().UTC(),
@@ -1267,19 +1241,19 @@ func TestServiceDeleteAuditsWriteAheadIntentAndTruthfulDurablePhases(t *testing.
 		t.Fatal(err)
 	}
 	started := audit.eventFor("org-a", request.OperationKey, storecenter.AuditActionDeleteStarted)
-	if started.Outcome != storecenter.AuditOutcomeUnknown || started.FailureCode != storecenter.AuditFailureNone || started.PreviousState != storecenter.StoreStatusActive || started.NewState != storecenter.StoreStatusDeleting || started.StoreVersion != store.Version() || !sameStrings(started.SafeFieldNames, []string{"lifecycle_status"}) {
+	if started.Outcome != storecenter.AuditOutcomeUnknown || started.FailureCode != storecenter.AuditFailureNone || started.PreviousState != storecenter.RecordStatusActive || started.NewState != storecenter.RecordStatusDeleting || started.StoreVersion != store.Version() || !sameStrings(started.SafeFieldNames, []string{"record_status"}) {
 		t.Fatalf("delete_started = %+v, want truthful write-ahead intent", started)
 	}
 	marked := audit.eventFor("org-a", request.OperationKey, storecenter.AuditActionStoreMarkedDeleting)
-	if marked.Outcome != storecenter.AuditOutcomeSucceeded || marked.PreviousState != storecenter.StoreStatusActive || marked.NewState != storecenter.StoreStatusDeleting || marked.StoreVersion != store.Version()+1 || !sameStrings(marked.SafeFieldNames, []string{"lifecycle_status"}) {
+	if marked.Outcome != storecenter.AuditOutcomeSucceeded || marked.PreviousState != storecenter.RecordStatusActive || marked.NewState != storecenter.RecordStatusDeleting || marked.StoreVersion != store.Version()+1 || !sameStrings(marked.SafeFieldNames, []string{"record_status"}) {
 		t.Fatalf("store_marked_deleting = %+v, want durable lifecycle success", marked)
 	}
 	deallocated := audit.eventFor("org-a", request.OperationKey, storecenter.AuditActionQuotaDeallocated)
-	if deallocated.Outcome != storecenter.AuditOutcomeSucceeded || deallocated.PreviousState != storecenter.StoreStatusDeleting || deallocated.NewState != storecenter.StoreStatusDeleting || deallocated.StoreVersion != store.Version()+1 || !sameStrings(deallocated.SafeFieldNames, []string{"quota_allocation_id"}) {
+	if deallocated.Outcome != storecenter.AuditOutcomeSucceeded || deallocated.PreviousState != storecenter.RecordStatusDeleting || deallocated.NewState != storecenter.RecordStatusDeleting || deallocated.StoreVersion != store.Version()+1 || !sameStrings(deallocated.SafeFieldNames, []string{"quota_allocation_id"}) {
 		t.Fatalf("quota_deallocated = %+v, want durable quota success", deallocated)
 	}
 	completed := audit.eventFor("org-a", request.OperationKey, storecenter.AuditActionDeleteComplete)
-	if completed.Outcome != storecenter.AuditOutcomeSucceeded || completed.PreviousState != storecenter.StoreStatusDeleting || completed.NewState != "" || completed.StoreVersion != store.Version()+2 || !sameStrings(completed.SafeFieldNames, []string{"lifecycle_status"}) {
+	if completed.Outcome != storecenter.AuditOutcomeSucceeded || completed.PreviousState != storecenter.RecordStatusDeleting || completed.NewState != "" || completed.StoreVersion != store.Version()+2 || !sameStrings(completed.SafeFieldNames, []string{"record_status"}) {
 		t.Fatalf("delete_complete = %+v, want durable deletion success", completed)
 	}
 }
@@ -1300,7 +1274,7 @@ func TestServiceDeleteStartedAuditFailureCannotMoveStoreAndRetryConverges(t *tes
 		t.Fatalf("first Delete() = %v, want dependency error", err)
 	}
 	current, err := repository.Get(context.Background(), "org-a", store.ID())
-	if err != nil || current.LifecycleStatus() != storecenter.StoreStatusActive || current.Version() != store.Version() || repository.saveCalls != 0 || ledger.deallocateCalls != 0 {
+	if err != nil || current.RecordStatus() != storecenter.RecordStatusActive || current.Version() != store.Version() || repository.saveCalls != 0 || ledger.deallocateCalls != 0 {
 		t.Fatalf("failed intent mutated state = %+v/%v saves=%d dealloc=%d", current, err, repository.saveCalls, ledger.deallocateCalls)
 	}
 	if _, err := service.Delete(context.Background(), request); err != nil {
@@ -1404,11 +1378,11 @@ func TestServiceDeleteRejectsActionSpecificCorruptRecoveryAudits(t *testing.T) {
 	}{
 		{"wrong outcome", storecenter.AuditActionQuotaDeallocated, func(event *storecenter.AuditEvent) { event.Outcome = storecenter.AuditOutcomeUnknown }},
 		{"wrong failure", storecenter.AuditActionQuotaDeallocated, func(event *storecenter.AuditEvent) { event.FailureCode = storecenter.AuditFailureDependencyUnavailable }},
-		{"wrong quota state", storecenter.AuditActionQuotaDeallocated, func(event *storecenter.AuditEvent) { event.PreviousState = storecenter.StoreStatusActive }},
-		{"wrong quota fields", storecenter.AuditActionQuotaDeallocated, func(event *storecenter.AuditEvent) { event.SafeFieldNames = []string{"lifecycle_status"} }},
+		{"wrong quota state", storecenter.AuditActionQuotaDeallocated, func(event *storecenter.AuditEvent) { event.PreviousState = storecenter.RecordStatusActive }},
+		{"wrong quota fields", storecenter.AuditActionQuotaDeallocated, func(event *storecenter.AuditEvent) { event.SafeFieldNames = []string{"record_status"} }},
 		{"implausible quota version", storecenter.AuditActionQuotaDeallocated, func(event *storecenter.AuditEvent) { event.StoreVersion = 9 }},
 		{"wrong complete outcome", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.Outcome = storecenter.AuditOutcomeUnknown }},
-		{"wrong complete state", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.NewState = storecenter.StoreStatusDeleting }},
+		{"wrong complete state", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.NewState = storecenter.RecordStatusDeleting }},
 		{"wrong complete fields", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.SafeFieldNames = []string{"quota_allocation_id"} }},
 		{"implausible complete version", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.StoreVersion = 9 }},
 		{"wrong action identity", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.Action = storecenter.AuditActionQuotaDeallocated }},
@@ -1515,7 +1489,7 @@ func TestServiceDeleteDeallocationFailureLeavesOwnedDeletingStoreAndSameKeyResum
 		t.Fatalf("first Delete() = %v", err)
 	}
 	deleting, err := repository.Get(context.Background(), "org-a", store.ID())
-	if err != nil || deleting.LifecycleStatus() != storecenter.StoreStatusDeleting || deleting.DeleteOperationKey() != key {
+	if err != nil || deleting.RecordStatus() != storecenter.RecordStatusDeleting || deleting.DeleteOperationKey() != key {
 		t.Fatalf("durable deleting = %#v, %v", deleting, err)
 	}
 	wrong := first
@@ -1575,7 +1549,7 @@ func TestServiceDeleteRecoversReleasedQuotaAfterDeallocationAuditFailureWithNewK
 		t.Fatalf("first Delete() = %v", err)
 	}
 	deleting, err := repository.Get(context.Background(), "org-a", store.ID())
-	if err != nil || deleting.LifecycleStatus() != storecenter.StoreStatusDeleting || ledger.allocation.Status != listingsubscription.StoreQuotaReleased {
+	if err != nil || deleting.RecordStatus() != storecenter.RecordStatusDeleting || ledger.allocation.Status != listingsubscription.StoreQuotaReleased {
 		t.Fatalf("durable state after audit failure = %#v/%v quota=%s", deleting, err, ledger.allocation.Status)
 	}
 	resumed := first
@@ -1701,7 +1675,7 @@ func TestServiceDeleteRejectsMismatchedDeallocationResult(t *testing.T) {
 		t.Fatalf("mismatched deallocation Delete() = %v soft-deletes=%d", err, repository.softDeleteCalls)
 	}
 	current, getErr := repository.Get(context.Background(), "org-a", store.ID())
-	if getErr != nil || current.LifecycleStatus() != storecenter.StoreStatusDeleting {
+	if getErr != nil || current.RecordStatus() != storecenter.RecordStatusDeleting {
 		t.Fatalf("mismatched deallocation durable store = %#v, %v", current, getErr)
 	}
 }
@@ -1805,8 +1779,9 @@ func TestServiceDeleteWithDurableLedgersRemovesStoreAndLowersCommittedQuotaOnce(
 		t.Fatal(err)
 	}
 	pristine := store.Snapshot()
-	pristine.LifecycleStatus, pristine.Version, pristine.UpdatedAt = storecenter.StoreStatusProvisioning, 1, pristine.CreatedAt
+	pristine.RecordStatus, pristine.Version, pristine.UpdatedAt = storecenter.RecordStatusProvisioning, 1, pristine.CreatedAt
 	pristine.UpdatedBy, pristine.ConnectionRef = pristine.CreatedBy, ""
+	pristine.ServiceStatus = ""
 	candidate, err := storecenter.RehydrateStore(pristine)
 	if err != nil {
 		t.Fatal(err)
@@ -2093,7 +2068,7 @@ func TestServiceDoesNotRepairUnpersistedLifecycleAfterLaterProfileMutations(t *t
 		t.Fatalf("replayed Disable() = %v, want version conflict", err)
 	}
 	current, err := repository.Get(context.Background(), "org-a", store.ID())
-	if err != nil || current.LifecycleStatus() != storecenter.StoreStatusActive || current.Version() != store.Version()+2 {
+	if err != nil || current.RecordStatus() != storecenter.RecordStatusActive || current.Version() != store.Version()+2 {
 		t.Fatalf("store after rejected lifecycle repair = %#v, %v", current, err)
 	}
 }
@@ -2120,7 +2095,7 @@ func TestServiceDoesNotRepairLifecycleAuditAfterLaterMutationWithoutDurableResul
 		t.Fatalf("replayed Disable() = %v, want version conflict", err)
 	}
 	current, err := repository.Get(context.Background(), "org-a", store.ID())
-	if err != nil || current.LifecycleStatus() != storecenter.StoreStatusActive || current.Version() != store.Version()+2 {
+	if err != nil || current.RecordStatus() != storecenter.RecordStatusActive || current.Version() != store.Version()+2 {
 		t.Fatalf("store after rejected lifecycle repair = %#v, %v", current, err)
 	}
 }
@@ -2164,7 +2139,7 @@ func TestServiceUpdatePreservesRedactedAlreadyExistsFromGormSave(t *testing.T) {
 		if _, _, createErr = repository.CreateOrReplay(context.Background(), "org-a", store); createErr != nil {
 			t.Fatal(createErr)
 		}
-		if createErr = store.TransitionTo(storecenter.StoreStatusActive, "creator", store.UpdatedAt().Add(time.Second)); createErr != nil {
+		if createErr = store.TransitionTo(storecenter.RecordStatusActive, "creator", store.UpdatedAt().Add(time.Second)); createErr != nil {
 			t.Fatal(createErr)
 		}
 		if createErr = repository.Save(context.Background(), "org-a", store, 1); createErr != nil {
@@ -2387,7 +2362,7 @@ func activeServiceStore(t *testing.T, organizationID, id, key, allocationID, nam
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.TransitionTo(storecenter.StoreStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
+	if err := store.TransitionTo(storecenter.RecordStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	snapshot := store.Snapshot()
@@ -2556,7 +2531,7 @@ func (f *storeRepositoryFake) SoftDelete(_ context.Context, organizationID, stor
 	if store.Version() != expectedVersion {
 		return storecenter.ErrVersionConflict
 	}
-	if store.LifecycleStatus() != storecenter.StoreStatusDeleting {
+	if store.RecordStatus() != storecenter.RecordStatusDeleting {
 		return storecenter.ErrInvalidTransition
 	}
 	if f.softDeleteErr != nil {

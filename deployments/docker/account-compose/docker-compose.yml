@@ -12,6 +12,9 @@ services:
   bootstrap:
     build: { context: ../../.., dockerfile: deployments/docker/Dockerfile.account-compose, target: bootstrap }
     volumes:
+      - store-owner-secret:/store-owner-secret
+      - store-runtime-secret:/store-runtime-secret
+      - store-quota-secret:/store-quota-secret
       - bootstrap-state:/state
       - business-db-admin-secret:/business-db-admin-secret
       - image-db-owner-secret:/image-db-owner-secret
@@ -58,6 +61,9 @@ services:
       - business-db-admin-secret:/private:ro
       - business-db:/var/lib/postgresql/data
       - ./business-db-init.sh:/docker-entrypoint-initdb.d/10-business-databases.sh:ro
+      - store-owner-secret:/secrets/store-owner:ro
+      - store-runtime-secret:/secrets/store-runtime:ro
+      - store-quota-secret:/secrets/store-quota:ro
       - source-db-owner-secret:/secrets/source-owner:ro
       - source-runtime-secret:/secrets/source-runtime:ro
       - commercial-db-owner-secret:/secrets/commercial-owner:ro
@@ -170,6 +176,9 @@ services:
       ACCOUNT_ISOLATED_TRIAL_CATALOG: "${ACCOUNT_ISOLATED_TRIAL_CATALOG:-}"
     volumes:
       - schema-state:/schema-state
+      - store-owner-secret:/secrets/store-owner:ro
+      - store-runtime-secret:/secrets/store-runtime:ro
+      - store-quota-secret:/secrets/store-quota:ro
       - source-db-owner-secret:/secrets/source-owner:ro
       - source-runtime-secret:/secrets/source-runtime:ro
       - commercial-db-owner-secret:/secrets/commercial-owner:ro
@@ -277,3 +286,7 @@ volumes:
   image-worker-secret: { name: "${COMPOSE_PROJECT_NAME}-image-worker-secret" }
   acquisition-db-owner-secret: { name: "${COMPOSE_PROJECT_NAME}-acquisition-db-owner-secret" }
   acquisition-runtime-secret: { name: "${COMPOSE_PROJECT_NAME}-acquisition-runtime-secret" }
+
+  store-owner-secret: { name: "${COMPOSE_PROJECT_NAME}-store-owner-secret" }
+  store-runtime-secret: { name: "${COMPOSE_PROJECT_NAME}-store-runtime-secret" }
+  store-quota-secret: { name: "${COMPOSE_PROJECT_NAME}-store-quota-secret" }

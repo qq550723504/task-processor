@@ -109,10 +109,10 @@ func TestModuleRegistersExactScopedStoreRoutes(t *testing.T) {
 		method, path, permission string
 		access                   httproute.OrganizationAccessPolicy
 	}{
-		{http.MethodGet, "/api/v1/workbench/stores", authz.PermissionWorkbenchStoreRead, httproute.OrganizationAccessPolicyCachedRead},
+		{http.MethodGet, "/api/v1/workbench/stores", authz.PermissionWorkbenchStoreRead, httproute.OrganizationAccessPolicyLiveWrite},
 		{http.MethodPost, "/api/v1/workbench/stores", authz.PermissionWorkbenchStoreCreate, httproute.OrganizationAccessPolicyLiveWrite},
 		{http.MethodPost, "/api/v1/workbench/stores/:store_id/resume", authz.PermissionWorkbenchStoreCreate, httproute.OrganizationAccessPolicyLiveWrite},
-		{http.MethodGet, "/api/v1/workbench/stores/:store_id", authz.PermissionWorkbenchStoreRead, httproute.OrganizationAccessPolicyCachedRead},
+		{http.MethodGet, "/api/v1/workbench/stores/:store_id", authz.PermissionWorkbenchStoreRead, httproute.OrganizationAccessPolicyLiveWrite},
 		{http.MethodPut, "/api/v1/workbench/stores/:store_id", authz.PermissionWorkbenchStoreUpdate, httproute.OrganizationAccessPolicyLiveWrite},
 		{http.MethodPost, "/api/v1/workbench/stores/:store_id/disable", authz.PermissionWorkbenchStoreLifecycle, httproute.OrganizationAccessPolicyLiveWrite},
 		{http.MethodPost, "/api/v1/workbench/stores/:store_id/enable", authz.PermissionWorkbenchStoreLifecycle, httproute.OrganizationAccessPolicyLiveWrite},
@@ -124,7 +124,7 @@ func TestModuleRegistersExactScopedStoreRoutes(t *testing.T) {
 		require.Equal(t, expected.path, route.Path)
 		require.Equal(t, "store-center", route.Module)
 		require.Equal(t, expected.permission, route.Permission)
-		require.Equal(t, httproute.AuthPolicyVerifiedIdentity, route.AuthPolicy)
+		require.Equal(t, httproute.AuthPolicyCurrentIdentity, route.AuthPolicy)
 		require.Equal(t, expected.access, route.OrganizationAccessPolicy)
 		require.Nil(t, route.OrganizationTargetResolver)
 		require.NotNil(t, route.Handler)
@@ -190,7 +190,7 @@ func TestHandlerDerivesEveryServiceRequestOnlyFromEffectiveOrganizationIdentity(
 		require.Less(t, response.Code, 300, "%s %s: %s", tt.method, tt.path, response.Body.String())
 	}
 	require.Equal(t, "org-effective", service.listRequest.OrganizationID)
-	require.Equal(t, storecenter.ListStoresRequest{OrganizationID: "org-effective", Page: 2, PageSize: 5, Platform: "shein", Status: storecenter.StoreStatusActive}, service.listRequest)
+	require.Equal(t, storecenter.ListStoresRequest{OrganizationID: "org-effective", Page: 2, PageSize: 5, Platform: "shein", Status: storecenter.RecordStatusActive}, service.listRequest)
 	require.Equal(t, "org-effective", service.createRequest.OrganizationID)
 	require.Equal(t, storecenter.ResumeCreateStoreRequest{OrganizationID: "org-effective", ActorSubject: "user-1", StoreID: testStoreID, ExpectedVersion: 1}, service.resumeRequest)
 	require.Equal(t, "user-1", service.createRequest.ActorSubject)
@@ -368,7 +368,7 @@ func TestHandlerReturnsExactSuccessDTOsAndReplayStatuses(t *testing.T) {
 	handler := mustHandler(t, service)
 	router := mountedRouter(t, handler)
 	identity := validIdentity()
-	wantStore := `{"id":"11111111-1111-4111-8111-111111111111","name":"Store","platform":"shein","region":"SG","externalStoreId":"external-1","lifecycleStatus":"active","connectionStatus":"connected","version":2,"createdAt":"2026-08-30T01:02:03Z","updatedAt":"2026-08-30T02:03:04Z"}`
+	wantStore := `{"id":"11111111-1111-4111-8111-111111111111","name":"Store","platform":"shein","region":"SG","externalStoreId":"external-1","recordStatus":"active","serviceStatus":"pending_activation","serviceStartedAt":null,"serviceExpiresAt":null,"connectionStatus":"connected","version":2,"createdAt":"2026-08-30T01:02:03Z","updatedAt":"2026-08-30T02:03:04Z"}`
 	tests := []struct {
 		name, method, path, body string
 		headers                  map[string][]string
@@ -396,7 +396,7 @@ func TestHandlerSerializesStoreTimestampsAsUTC(t *testing.T) {
 	location := time.FixedZone("acceptance-local", 8*60*60)
 	store, err := storecenter.RehydrateStore(storecenter.StoreSnapshot{
 		ID: testStoreID, OrganizationID: "org-effective", Name: "Store", Platform: storecenter.PlatformShein, Region: "SG", ExternalStoreID: "external-1",
-		LifecycleStatus: storecenter.StoreStatusActive, ConnectionRef: "connection-private", QuotaAllocationID: testAllocationID, Version: 2,
+		RecordStatus: storecenter.RecordStatusActive, ServiceStatus: storecenter.ServiceStatusPendingActivation, ConnectionRef: "connection-private", QuotaAllocationID: testAllocationID, Version: 2,
 		CreatedBy: "creator-private", UpdatedBy: "updater-private", CreatedAt: time.Date(2026, 8, 30, 9, 2, 3, 0, location), UpdatedAt: time.Date(2026, 8, 30, 10, 3, 4, 0, location), CreateIdempotencyKey: testCreateKey,
 	})
 	require.NoError(t, err)
@@ -621,7 +621,7 @@ func projectionFor(t *testing.T, organizationID, storeID string) storecenter.Sto
 	t.Helper()
 	store, err := storecenter.RehydrateStore(storecenter.StoreSnapshot{
 		ID: storeID, OrganizationID: organizationID, Name: "Store", Platform: storecenter.PlatformShein, Region: "SG", ExternalStoreID: "external-1",
-		LifecycleStatus: storecenter.StoreStatusActive, ConnectionRef: "connection-private", QuotaAllocationID: testAllocationID, Version: 2,
+		RecordStatus: storecenter.RecordStatusActive, ServiceStatus: storecenter.ServiceStatusPendingActivation, ConnectionRef: "connection-private", QuotaAllocationID: testAllocationID, Version: 2,
 		CreatedBy: "creator-private", UpdatedBy: "updater-private", CreatedAt: time.Date(2026, 8, 30, 1, 2, 3, 0, time.UTC), UpdatedAt: time.Date(2026, 8, 30, 2, 3, 4, 0, time.UTC), CreateIdempotencyKey: testCreateKey,
 	})
 	require.NoError(t, err)
@@ -695,7 +695,7 @@ func TestStoreResponseTypesHaveOnlyExactSafeJSONFields(t *testing.T) {
 		value any
 		keys  []string
 	}{
-		{StoreResponse{}, []string{"id", "name", "platform", "region", "externalStoreId", "lifecycleStatus", "connectionStatus", "version", "createdAt", "updatedAt"}},
+		{StoreResponse{}, []string{"id", "name", "platform", "region", "externalStoreId", "recordStatus", "serviceStatus", "serviceStartedAt", "serviceExpiresAt", "connectionStatus", "version", "createdAt", "updatedAt"}},
 		{DeleteStoreResponse{}, []string{"id", "deleted", "version"}},
 		{QuotaResponse{}, []string{"used", "reserved", "limit", "allowed", "reason"}},
 		{PaginationResponse{}, []string{"page", "pageSize", "total"}},

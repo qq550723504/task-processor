@@ -37,7 +37,7 @@ const STORE = {
   platform: "shein" as const,
   region: "CN",
   externalStoreId: "",
-  lifecycleStatus: "active" as const,
+  recordStatus: "active" as const, serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null,
   connectionStatus: "disconnected" as const,
   version: 1,
   createdAt: "2026-08-31T00:00:00Z",
@@ -164,7 +164,7 @@ describe("StoreListPage", () => {
   });
 
   it("keeps disabled Stores in the directory and explains that they still consume quota", () => {
-    storesQuery.value = listData({ data: { ...listData().data, items: [{ ...STORE, lifecycleStatus: "disabled" as const }] } });
+    storesQuery.value = listData({ data: { ...listData().data, items: [{ ...STORE, recordStatus: "disabled" as const, serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null }] } });
     render(<StoreListPage />);
     expect(screen.getByText("企业 A 店铺")).toBeInTheDocument();
     expect(screen.getByText(/已停用店铺仍占用店铺额度/)).toBeInTheDocument();
@@ -175,7 +175,7 @@ describe("StoreListPage", () => {
     storesQuery.value = listData();
     const user = userEvent.setup();
     const { rerender } = render(<StoreListPage />);
-    expect(screen.getByRole("status")).toHaveTextContent("界面不提供恢复");
+    expect(screen.getByRole("status")).toHaveTextContent("当前不提供恢复入口");
     await user.selectOptions(screen.getByRole("combobox", { name: "平台" }), "shein");
     expect(navigation.push).toHaveBeenLastCalledWith("/workbench/stores?page=1&pageSize=20&platform=shein");
     navigation.search = "notice=store-deleted&notice=store-deleted";
@@ -183,7 +183,7 @@ describe("StoreListPage", () => {
     expect(screen.queryByRole("status", { name: /恢复/ })).not.toBeInTheDocument();
     navigation.search = "notice=other";
     rerender(<StoreListPage />);
-    expect(screen.queryByText(/界面不提供恢复/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/当前不提供恢复入口/)).not.toBeInTheDocument();
   });
 
   it("resets platform filters to page one and preserves filters across pagination boundaries", async () => {

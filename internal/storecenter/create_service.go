@@ -65,7 +65,7 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 		return CreateStoreResult{}, dependencyError(err)
 	}
 
-	if err := s.record(ctx, allocation, request, AuditActionQuotaReserved, AuditOutcomeSucceeded, nil, "", StoreStatusProvisioning, AuditFailureNone); err != nil {
+	if err := s.record(ctx, allocation, request, AuditActionQuotaReserved, AuditOutcomeSucceeded, nil, "", RecordStatusProvisioning, AuditFailureNone); err != nil {
 		if terminalErr := s.record(ctx, allocation, request, AuditActionStoreCreateFailed, AuditOutcomeFailed, nil, "", "", AuditFailureDependencyUnavailable); terminalErr != nil {
 			return CreateStoreResult{}, dependencyError(terminalErr)
 		}
@@ -140,23 +140,23 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 		store = verified
 		replayed = replayed || verifiedReplay
 	}
-	if store.LifecycleStatus() == StoreStatusDeleting {
+	if store.RecordStatus() == RecordStatusDeleting {
 		return CreateStoreResult{}, dependencyError(errors.New("deleting store cannot be replayed"))
 	}
 
-	if err := s.record(ctx, allocation, request, AuditActionStoreCreated, AuditOutcomeSucceeded, store, "", StoreStatusProvisioning, AuditFailureNone); err != nil {
+	if err := s.record(ctx, allocation, request, AuditActionStoreCreated, AuditOutcomeSucceeded, store, "", RecordStatusProvisioning, AuditFailureNone); err != nil {
 		return CreateStoreResult{}, dependencyError(err)
 	}
 	if allocation.Status == listingsubscription.StoreQuotaReserved {
 		// This truthful write-ahead event means a crash after it but before a
 		// terminal quota outcome is conservatively resumed through idempotent
 		// Commit rather than inventing a failed outcome.
-		if err := s.record(ctx, allocation, request, AuditActionQuotaCommitStarted, AuditOutcomeUnknown, store, StoreStatusProvisioning, StoreStatusProvisioning, AuditFailureNone); err != nil {
+		if err := s.record(ctx, allocation, request, AuditActionQuotaCommitStarted, AuditOutcomeUnknown, store, RecordStatusProvisioning, RecordStatusProvisioning, AuditFailureNone); err != nil {
 			return CreateStoreResult{}, dependencyError(err)
 		}
 		committed, commitErr := s.quota.Commit(ctx, transition)
 		if commitErr != nil {
-			_ = s.record(ctx, allocation, request, AuditActionQuotaCommitFailed, AuditOutcomeFailed, store, StoreStatusProvisioning, StoreStatusProvisioning, AuditFailureDependencyUnavailable)
+			_ = s.record(ctx, allocation, request, AuditActionQuotaCommitFailed, AuditOutcomeFailed, store, RecordStatusProvisioning, RecordStatusProvisioning, AuditFailureDependencyUnavailable)
 			return CreateStoreResult{}, dependencyError(commitErr)
 		}
 		allocation = committed.Allocation
@@ -167,14 +167,14 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 		return CreateStoreResult{}, dependencyError(errors.New("quota allocation cannot be committed"))
 	}
 
-	if store.LifecycleStatus() == StoreStatusProvisioning {
+	if store.RecordStatus() == RecordStatusProvisioning {
 		expectedVersion := store.Version()
-		if err := store.TransitionTo(StoreStatusActive, request.ActorSubject, s.monotonicNow(store.UpdatedAt())); err != nil {
+		if err := store.TransitionTo(RecordStatusActive, request.ActorSubject, s.monotonicNow(store.UpdatedAt())); err != nil {
 			return CreateStoreResult{}, dependencyError(err)
 		}
 		if err := s.repository.Save(ctx, request.OrganizationID, store, expectedVersion); err != nil {
 			resolved, readErr := s.repository.Get(ctx, request.OrganizationID, allocation.StoreID)
-			if readErr != nil || resolved.LifecycleStatus() != StoreStatusActive || verifyStoreAllocation(resolved, request, allocation) != nil {
+			if readErr != nil || resolved.RecordStatus() != RecordStatusActive || verifyStoreAllocation(resolved, request, allocation) != nil {
 				return CreateStoreResult{}, dependencyError(err)
 			}
 			store = resolved
@@ -182,7 +182,7 @@ func (s *Service) Create(ctx context.Context, request CreateStoreRequest) (Creat
 	} else {
 		replayed = true
 	}
-	if err := s.record(ctx, allocation, request, AuditActionStoreCreationCommitted, AuditOutcomeSucceeded, store, StoreStatusProvisioning, StoreStatusActive, AuditFailureNone); err != nil {
+	if err := s.record(ctx, allocation, request, AuditActionStoreCreationCommitted, AuditOutcomeSucceeded, store, RecordStatusProvisioning, RecordStatusActive, AuditFailureNone); err != nil {
 		return CreateStoreResult{}, dependencyError(err)
 	}
 	return CreateStoreResult{Store: store, Replayed: replayed}, nil
@@ -203,7 +203,7 @@ func (s *Service) ResumeCreate(ctx context.Context, request ResumeCreateStoreReq
 	if store.Version() != normalized.ExpectedVersion {
 		return CreateStoreResult{}, ErrVersionConflict
 	}
-	if store.LifecycleStatus() == StoreStatusActive {
+	if store.RecordStatus() == RecordStatusActive {
 		return s.Create(ctx, CreateStoreRequest{
 			OrganizationID:  normalized.OrganizationID,
 			ActorSubject:    normalized.ActorSubject,
@@ -214,7 +214,7 @@ func (s *Service) ResumeCreate(ctx context.Context, request ResumeCreateStoreReq
 			ExternalStoreID: store.ExternalStoreID(),
 		})
 	}
-	if store.LifecycleStatus() != StoreStatusProvisioning {
+	if store.RecordStatus() != RecordStatusProvisioning {
 		return CreateStoreResult{}, ErrInvalidTransition
 	}
 	return s.Create(ctx, CreateStoreRequest{
@@ -378,12 +378,12 @@ func (s *Service) stopReservationLeaseAndRefresh(ctx context.Context, lease *res
 	return refreshed, nil
 }
 
-func (s *Service) record(ctx context.Context, allocation listingsubscription.StoreQuotaAllocation, request CreateStoreRequest, action AuditAction, outcome AuditOutcome, store *Store, previous, next LifecycleStatus, failure AuditFailureCode) error {
+func (s *Service) record(ctx context.Context, allocation listingsubscription.StoreQuotaAllocation, request CreateStoreRequest, action AuditAction, outcome AuditOutcome, store *Store, previous, next RecordStatus, failure AuditFailureCode) error {
 	storeID := allocation.StoreID
 	if store != nil {
 		storeID = store.ID()
 	}
-	_, _, err := s.audit.Record(ctx, newAuditEvent(request.OrganizationID, storeID, allocation.AllocationID, request.IdempotencyKey, action, outcome, request.ActorSubject, []string{"lifecycle_status", "quota_allocation_id"}, previous, next, failure, s.utcNow()))
+	_, _, err := s.audit.Record(ctx, newAuditEvent(request.OrganizationID, storeID, allocation.AllocationID, request.IdempotencyKey, action, outcome, request.ActorSubject, []string{"record_status", "quota_allocation_id"}, previous, next, failure, s.utcNow()))
 	return err
 }
 

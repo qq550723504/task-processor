@@ -6,7 +6,7 @@ set -eu
 commercial_database=${ACCOUNT_COMMERCIAL_DATABASE:-commercial}
 case "$commercial_database" in
   ''|[!a-z]*|*[!a-z0-9_]*) echo 'invalid commercial database name' >&2; exit 1 ;;
-  postgres|template0|template1|source_accounts|referrals|membership|product_acquisition|image_agent)
+  postgres|template0|template1|source_accounts|referrals|membership|product_acquisition|image_agent|store_center)
     echo 'commercial database must have its own name' >&2; exit 1 ;;
 esac
 test "${#commercial_database}" -le 63
@@ -40,6 +40,9 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 SQL
 }
 
+create_role store_center_owner /secrets/store-owner/store-owner-password
+create_role store_center_runtime /secrets/store-runtime/store-runtime-password
+create_role store_quota_runtime /secrets/store-quota/store-quota-password
 create_role source_account_owner /secrets/source-owner/source-db-password
 create_role commercial_schema_owner /secrets/commercial-owner/commercial-db-password
 create_role referral_owner /secrets/referral-owner/referral-db-password
@@ -56,6 +59,7 @@ create_role source_acquisition_runtime /secrets/acquisition-runtime/acquisition-
 create_role image_agent_runtime /secrets/image-runtime/image-runtime-password
 create_role image_agent_worker_runtime /secrets/image-worker/image-worker-password
 
+create_database store_center store_center_owner
 create_database source_accounts source_account_owner
 create_database "$commercial_database" commercial_schema_owner
 create_database referrals referral_owner

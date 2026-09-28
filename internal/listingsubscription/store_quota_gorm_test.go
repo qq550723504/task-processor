@@ -443,10 +443,10 @@ func TestStoreQuotaReleaseRejectsReservationChangedAfterReconciliationSnapshot(t
 	}
 }
 
-func TestStoreQuotaSummaryUsesPlanFallbackAndKeepsReplayAfterExpiry(t *testing.T) {
+func TestStoreQuotaSummaryUsesFrozenEntitlementAndKeepsReplayAfterExpiry(t *testing.T) {
 	db := openStoreQuotaTestDB(t)
 	repo := NewGormRepository(db)
-	seedStoreQuotaSubscription(t, repo, "org-plan", PlanProfessional, 0)
+	seedStoreQuotaSubscription(t, repo, "org-plan", PlanProfessional, 5)
 	now := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
 	ledger := newGormStoreQuotaLedger(repo, func() time.Time { return now })
 	input := StoreQuotaReserveInput{OrganizationID: "org-plan", RequestKey: uuid.NewString(), ActorSubject: "actor-1"}
@@ -456,7 +456,7 @@ func TestStoreQuotaSummaryUsesPlanFallbackAndKeepsReplayAfterExpiry(t *testing.T
 	}
 	summary, err := ledger.Summary(context.Background(), "org-plan")
 	if err != nil || summary.Limit == nil || *summary.Limit != 5 || !summary.Allowed {
-		t.Fatalf("plan-fallback summary = %#v, %v; want limit 5", summary, err)
+		t.Fatalf("frozen-entitlement summary = %#v, %v; want limit 5", summary, err)
 	}
 	expires := now.Add(-time.Second)
 	if _, err := repo.UpsertEntitlement(context.Background(), &Entitlement{TenantID: "org-plan", ModuleCode: ModuleStoreManagement, Status: StatusActive, ExpiresAt: &expires}); err != nil {
@@ -738,3 +738,18 @@ func openConcurrentStoreQuotaTestDB(t *testing.T) *gorm.DB {
 }
 
 func storeQuotaTimePointer(value time.Time) *time.Time { return &value }
+
+func TestStoreQuotaDoesNotInventMissingFrozenStoreCountFromPlan(t *testing.T) {
+	db := openStoreQuotaTestDB(t)
+	repo := NewGormRepository(db)
+	seedStoreQuotaSubscription(t, repo, "org-missing-limit", PlanProfessional, 0)
+	ledger := NewGormStoreQuotaLedger(repo)
+	_, err := ledger.Reserve(context.Background(), StoreQuotaReserveInput{OrganizationID: "org-missing-limit", RequestKey: uuid.NewString(), ActorSubject: "actor"})
+	if !errors.Is(err, ErrSubscriptionRequired) {
+		t.Fatalf("missing frozen store_count = %v, want subscription required", err)
+	}
+	summary, err := ledger.Summary(context.Background(), "org-missing-limit")
+	if err != nil || summary.Allowed || summary.Limit != nil || summary.Committed != 0 || summary.Reserved != 0 {
+		t.Fatalf("rejected quota facts = %+v, %v", summary, err)
+	}
+}

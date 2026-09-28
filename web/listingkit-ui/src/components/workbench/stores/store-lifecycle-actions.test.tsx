@@ -33,7 +33,7 @@ const STORE = {
   platform: "shein" as const,
   region: "CN",
   externalStoreId: "",
-  lifecycleStatus: "active" as const,
+  recordStatus: "active" as const, serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null,
   connectionStatus: "disconnected" as const,
   version: 4,
   createdAt: "2026-08-31T00:00:00Z",
@@ -84,9 +84,9 @@ describe("StoreLifecycleActions", () => {
     const { rerender } = render(<StoreLifecycleActions onStoreUpdated={onStoreUpdated} store={STORE} />);
     await user.click(screen.getByRole("button", { name: "停用店铺" }));
     expect(disable.mutate).toHaveBeenCalledWith({ id: STORE.id, version: 4 }, expect.any(Object));
-    disable.mutate.mock.calls[0]?.[1].onSuccess({ ...STORE, lifecycleStatus: "disabled", version: 5 });
-    expect(onStoreUpdated).toHaveBeenCalledWith(expect.objectContaining({ lifecycleStatus: "disabled", version: 5 }));
-    rerender(<StoreLifecycleActions store={{ ...STORE, lifecycleStatus: "disabled", version: 5 }} />);
+    disable.mutate.mock.calls[0]?.[1].onSuccess({ ...STORE, recordStatus: "disabled", serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null, version: 5 });
+    expect(onStoreUpdated).toHaveBeenCalledWith(expect.objectContaining({ recordStatus: "disabled", serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null, version: 5 }));
+    rerender(<StoreLifecycleActions store={{ ...STORE, recordStatus: "disabled", serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null, version: 5 }} />);
     expect(screen.getByRole("button", { name: "重新启用店铺" })).toBeInTheDocument();
   });
 
@@ -118,9 +118,9 @@ describe("StoreLifecycleActions", () => {
     render(<StrictMode><StoreLifecycleActions onStoreUpdated={onStoreUpdated} store={STORE} /></StrictMode>);
 
     await user.click(screen.getByRole("button", { name: "停用店铺" }));
-    disable.mutate.mock.calls[0]?.[1].onSuccess({ ...STORE, lifecycleStatus: "disabled", version: 5 });
+    disable.mutate.mock.calls[0]?.[1].onSuccess({ ...STORE, recordStatus: "disabled", serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null, version: 5 });
 
-    await waitFor(() => expect(onStoreUpdated).toHaveBeenCalledWith(expect.objectContaining({ lifecycleStatus: "disabled", version: 5 })));
+    await waitFor(() => expect(onStoreUpdated).toHaveBeenCalledWith(expect.objectContaining({ recordStatus: "disabled", serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null, version: 5 })));
   });
 
   it("requires the exact visible Organization and Store phrase and clears it on cancel", async () => {
@@ -200,18 +200,18 @@ describe("StoreLifecycleActions", () => {
   });
 
   it("locks a deleting Store and only offers an eligible existing delete retry", () => {
-    const { rerender } = render(<StoreLifecycleActions store={{ ...STORE, lifecycleStatus: "deleting" }} />);
+    const { rerender } = render(<StoreLifecycleActions store={{ ...STORE, recordStatus: "deleting", serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null }} />);
     expect(screen.getByText(/删除正在进行中/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /停用|重新启用|删除店铺/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "恢复删除" })).toBeInTheDocument();
     remove.canRetryLast = true;
-    rerender(<StoreLifecycleActions store={{ ...STORE, lifecycleStatus: "deleting" }} />);
+    rerender(<StoreLifecycleActions store={{ ...STORE, recordStatus: "deleting", serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null }} />);
     expect(screen.getByRole("button", { name: "重试删除" })).toBeInTheDocument();
   });
 
   it("resumes a deleting Store with a new key after reload", async () => {
     const user = userEvent.setup();
-    render(<StoreLifecycleActions store={{ ...STORE, lifecycleStatus: "deleting" }} />);
+    render(<StoreLifecycleActions store={{ ...STORE, recordStatus: "deleting", serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null }} />);
     await user.click(screen.getByRole("button", { name: "恢复删除" }));
     expect(remove.resume).toHaveBeenCalledWith({ id: STORE.id, version: STORE.version });
     expect(remove.retryLast).not.toHaveBeenCalled();
@@ -219,7 +219,7 @@ describe("StoreLifecycleActions", () => {
 
   it("resumes a provisioning Store through the durable create operation", async () => {
     const user = userEvent.setup();
-    render(<StoreLifecycleActions store={{ ...STORE, lifecycleStatus: "provisioning" }} />);
+    render(<StoreLifecycleActions store={{ ...STORE, recordStatus: "provisioning", serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null }} />);
     await user.click(screen.getByRole("button", { name: "恢复创建" }));
     expect(resumeCreate.mutate).toHaveBeenCalledWith(
       { id: STORE.id, version: STORE.version },
@@ -230,14 +230,14 @@ describe("StoreLifecycleActions", () => {
   it("never exposes an eligible deleting retry after the current role loses delete permission", () => {
     remove.canRetryLast = true;
     context.roles = ["listingkit_operator"];
-    render(<StoreLifecycleActions store={{ ...STORE, lifecycleStatus: "deleting" }} />);
+    render(<StoreLifecycleActions store={{ ...STORE, recordStatus: "deleting", serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null }} />);
     expect(screen.getByText(/删除正在进行中/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "重试删除" })).not.toBeInTheDocument();
   });
 
   it("refreshes a version conflict before allowing another action", async () => {
     const user = userEvent.setup();
-    const onRefreshStore = vi.fn().mockResolvedValue({ ...STORE, version: 5, lifecycleStatus: "active" });
+    const onRefreshStore = vi.fn().mockResolvedValue({ ...STORE, version: 5, recordStatus: "active", serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null });
     const onStoreUpdated = vi.fn();
     render(<StoreLifecycleActions onRefreshStore={onRefreshStore} onStoreUpdated={onStoreUpdated} store={STORE} />);
     await user.click(screen.getByRole("button", { name: "停用店铺" }));
@@ -264,7 +264,7 @@ describe("StoreLifecycleActions", () => {
 
   it("refreshes a terminal network delete and locks to deleting while retrying only the captured key", async () => {
     const user = userEvent.setup(); remove.canRetryLast = true;
-    const deleting = { ...STORE, lifecycleStatus: "deleting" as const, version: 5 };
+    const deleting = { ...STORE, recordStatus: "deleting" as const, serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null, version: 5 };
     const onRefreshStore = vi.fn().mockResolvedValue(deleting);
     const onStoreUpdated = vi.fn();
     const view = render(<StoreLifecycleActions onRefreshStore={onRefreshStore} onStoreUpdated={onStoreUpdated} store={STORE} />);

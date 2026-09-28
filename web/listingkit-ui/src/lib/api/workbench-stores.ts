@@ -1,3 +1,4 @@
+import { hasValidStoreServiceFacts } from "@/lib/validation/workbench-store";
 import { z } from "zod";
 
 import {
@@ -55,12 +56,15 @@ const workbenchStoreSchema = z
     platform: z.literal("shein"),
     region: normalizedPublicString(1, 64),
     externalStoreId: normalizedPublicString(0, 128),
-    lifecycleStatus: z.enum([
+    recordStatus: z.enum([
       "provisioning",
       "active",
       "disabled",
       "deleting",
     ]),
+    serviceStatus: z.enum(["pending_activation", "active", "expired", "suspended"]).nullable(),
+    serviceStartedAt: utcRFC3339Schema.nullable(),
+    serviceExpiresAt: utcRFC3339Schema.nullable(),
     connectionStatus: z.enum([
       "disconnected",
       "connected",
@@ -71,7 +75,7 @@ const workbenchStoreSchema = z
     createdAt: utcRFC3339Schema,
     updatedAt: utcRFC3339Schema,
   })
-  .strict();
+  .strict().refine(hasValidStoreServiceFacts, "Inconsistent record/service facts");
 
 const workbenchStoreListSchema = z
   .object({
@@ -182,7 +186,6 @@ export type WorkbenchStoreErrorCode =
   | "STORE_ALREADY_EXISTS"
   | "STORE_VERSION_CONFLICT"
   | "STORE_INVALID_STATE"
-  | "STORE_SERVICE_RESUME_REQUIRED"
   | "STORE_SERVICE_STATE_CORRUPT"
   | "STORE_CONNECTION_UNAVAILABLE"
   | "STORE_CONNECTION_NOT_CONNECTED"

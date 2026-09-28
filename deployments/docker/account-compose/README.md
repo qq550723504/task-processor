@@ -3,6 +3,53 @@
 Optional ZITADEL/Tencent SMS delivery configuration and the remaining local
 provider connection prerequisite are documented in [SMS.md](SMS.md).
 
+## Store Center (#552)
+
+The current Console entry is `/workbench/stores`. Select a current organization
+before opening the list. Viewers can read the list and detail; operators can
+create, edit, disable and enable records; administrators can also delete.
+Creation requires the organization's existing active Store Management entitlement
+with a frozen positive `store_count`. No trial quota is inferred or seeded by
+Store Center. When it is absent, the page explains the unavailable capacity.
+
+The list and detail show record status, connection status, and saved service
+status/period separately. New stores are pending activation with no paid period.
+Disabling/enabling a record preserves existing paid service facts. Platform
+connection and service activation/renewal/reactivation are not opened in this
+batch; their BFF and current-application routes are absent. Deletion releases the
+existing Store quota once, creates no resource refund, and has no restore entry.
+Lost creation/deletion responses reuse their original request identity; refresh
+reads saved state. An interrupted creation can use its existing Resume action.
+
+Follow the [normal fresh installation steps](#start) below using a new project
+name and unique ports. Bootstrap creates a separate `store_center` database,
+`store_center_owner`, `store_center_runtime` and `store_quota_runtime`. Schema-init
+uses the existing Goose installer via `store-center-schema-init`; serving pools
+perform no DDL. Existing older projects must use their original checkout or a
+new empty project; this feature does not migrate, reset or clean their data.
+
+For a separately provisioned fresh installation, the private application JSON
+must explicitly set `storeCenter.enabled: true`, `storeCenter.database` using
+`store_center_runtime` and `storeCenter.quotaDatabase` using `store_quota_runtime`.
+The quota host/port/database must exactly match the explicit
+`commercialOwnerDatabase`; the Store database must be distinct from all current
+owners. Each pool has at most eight connections. Install the empty Store schema
+with `go run ./cmd/store-center-schema-init -config <absolute-private-store-owner-json>
+-quota-config <absolute-private-commercial-owner-json>` before starting
+`go run ./cmd/current-application -config <absolute-private-application-json>`.
+Schema-owner JSON uses the existing explicit loopback database fields and at
+most two connections. The canonical commercial owner must already have installed
+its quota and entitlement tables. The initializer grants narrowly scoped rights;
+it does not create plans or entitlements. Disabled configuration opens no Store
+pools and registers no Store routes.
+
+Store records and append-only audit survive stop/restart in the existing business
+DB volume; quota remains in the canonical commercial database. Preserve that
+volume and private role secrets together. Startup rejects missing/weakened state
+constraints, uniqueness boundaries, or roles with extra business/DDL rights.
+Development API/PostgreSQL and UI checks are not user acceptance; actual browser
+trial and deployment require the corresponding authorization.
+
 ## Enterprise wallet top-up (optional, #481)
 
 The normal entry is `/workbench/plans/top-up`. A current organization administrator
@@ -296,7 +343,7 @@ upgrade/migration command for retained multi-instance projects. Their containers
 volumes and original checkout remain in place; operate them with that checkout.
 The new bootstrap refuses their old state instead of rewriting connections.
 
-All six application databases persist in `${COMPOSE_PROJECT_NAME}-business-db`;
+All seven application databases persist in `${COMPOSE_PROJECT_NAME}-business-db`;
 ZITADEL persists in `${COMPOSE_PROJECT_NAME}-identity-db`. Stop/restart commands
 below retain both plus all project-specific credentials. The application
 databases now share PostgreSQL restart, resource, WAL and physical backup/recovery

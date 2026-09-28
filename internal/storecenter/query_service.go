@@ -107,7 +107,7 @@ func normalizeListStoresRequest(request ListStoresRequest) (ListStoresRequest, S
 			return ListStoresRequest{}, StoreListQuery{}, errors.New("invalid store list platform")
 		}
 	}
-	if request.Status != "" && !validLifecycleStatus(request.Status) {
+	if request.Status != "" && !validRecordStatus(request.Status) {
 		return ListStoresRequest{}, StoreListQuery{}, errors.New("invalid store list status")
 	}
 	request.OrganizationID = organizationID

@@ -77,7 +77,10 @@ type StoreResponse struct {
 	Platform         string                       `json:"platform"`
 	Region           string                       `json:"region"`
 	ExternalStoreID  string                       `json:"externalStoreId"`
-	LifecycleStatus  storecenter.LifecycleStatus  `json:"lifecycleStatus"`
+	RecordStatus     storecenter.RecordStatus     `json:"recordStatus"`
+	ServiceStatus    *storecenter.ServiceStatus   `json:"serviceStatus"`
+	ServiceStartedAt *time.Time                   `json:"serviceStartedAt"`
+	ServiceExpiresAt *time.Time                   `json:"serviceExpiresAt"`
 	ConnectionStatus storecenter.ConnectionStatus `json:"connectionStatus"`
 	Version          int64                        `json:"version"`
 	CreatedAt        time.Time                    `json:"createdAt"`
@@ -508,9 +511,9 @@ func parseListRequest(rawQuery string) (storecenter.ListStoresRequest, string, e
 		request.Platform = value[0]
 	}
 	if value, ok := query["status"]; ok {
-		status := storecenter.LifecycleStatus(value[0])
+		status := storecenter.RecordStatus(value[0])
 		switch status {
-		case storecenter.StoreStatusProvisioning, storecenter.StoreStatusActive, storecenter.StoreStatusDisabled, storecenter.StoreStatusDeleting:
+		case storecenter.RecordStatusProvisioning, storecenter.RecordStatusActive, storecenter.RecordStatusDisabled, storecenter.RecordStatusDeleting:
 			request.Status = status
 		default:
 			return storecenter.ListStoresRequest{}, "status", errors.New("invalid status")
@@ -827,7 +830,12 @@ func storeResponse(store *storecenter.Store, connection storecenter.ConnectionSt
 	default:
 		return StoreResponse{}, storecenter.ErrDependencyUnavailable
 	}
-	return StoreResponse{ID: store.ID(), Name: store.Name(), Platform: string(store.Platform()), Region: store.Region(), ExternalStoreID: store.ExternalStoreID(), LifecycleStatus: store.LifecycleStatus(), ConnectionStatus: connection, Version: store.Version(), CreatedAt: store.CreatedAt().UTC(), UpdatedAt: store.UpdatedAt().UTC()}, nil
+	var serviceStatus *storecenter.ServiceStatus
+	if store.ServiceStatus() != "" {
+		status := store.ServiceStatus()
+		serviceStatus = &status
+	}
+	return StoreResponse{ServiceStatus: serviceStatus, ServiceStartedAt: utcTimePointer(store.ServiceStartedAt()), ServiceExpiresAt: utcTimePointer(store.ServiceExpiresAt()), ID: store.ID(), Name: store.Name(), Platform: string(store.Platform()), Region: store.Region(), ExternalStoreID: store.ExternalStoreID(), RecordStatus: store.RecordStatus(), ConnectionStatus: connection, Version: store.Version(), CreatedAt: store.CreatedAt().UTC(), UpdatedAt: store.UpdatedAt().UTC()}, nil
 }
 
 func isNilInterface(value any) bool {

@@ -10,16 +10,16 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestConnectionStatusBlankReferenceIsDisconnectedWithoutProviderCall(t *testing.T) {
-	provider := &connectionStatusProviderStub{status: ConnectionStatusConnected}
+func TestConnectionStatusBlankReferenceStillRequiresProvider(t *testing.T) {
+	provider := &connectionStatusProviderStub{status: ConnectionStatusUnavailable}
 	got := resolveConnectionStatus(context.Background(), provider, ConnectionStatusInput{
 		OrganizationID: "org-a", StoreID: uuid.NewString(), Platform: PlatformShein,
 	}, time.Second)
-	if got != ConnectionStatusDisconnected {
-		t.Fatalf("resolveConnectionStatus() = %q, want disconnected", got)
+	if got != ConnectionStatusUnavailable {
+		t.Fatalf("resolveConnectionStatus() = %q, want unavailable", got)
 	}
-	if provider.calls != 0 {
-		t.Fatalf("provider calls = %d, want 0", provider.calls)
+	if provider.calls != 1 {
+		t.Fatalf("provider calls = %d, want 1", provider.calls)
 	}
 }
 
