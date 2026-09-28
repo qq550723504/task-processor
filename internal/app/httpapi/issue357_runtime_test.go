@@ -187,8 +187,18 @@ func TestIssue357Seed(t *testing.T) {
 		}
 	}
 	require.NotContains(t, c.ReaderPassword, "'")
-	require.NoError(t, db.Exec("CREATE ROLE commercial_runtime LOGIN PASSWORD '"+c.ReaderPassword+"'").Error)
-	require.NoError(t, db.Exec("GRANT USAGE ON SCHEMA public TO commercial_runtime").Error)
+	// Both commercial roles are provisioned, each with the boundary its own mode is
+	// verified against. Selecting one role by mode is not enough on its own: the
+	// role the unused mode points at still has to exist, or that launch aborts
+	// before READY.
+	//
+	//  - commercial_reader  : the legacy/default composition, read-only.
+	//  - commercial_runtime : what the current composition verifies - SELECT on the
+	//    commercial tables plus INSERT/UPDATE on the usage and audit writers.
+	for _, role := range []string{"commercial_reader", "commercial_runtime"} {
+		require.NoError(t, db.Exec("CREATE ROLE "+role+" LOGIN PASSWORD '"+c.ReaderPassword+"'").Error)
+		require.NoError(t, db.Exec("GRANT USAGE ON SCHEMA public TO "+role).Error)
+	}
 	if c.RuntimeMode == "current-application" {
 		// The commercial boundary grew beyond the four read-only tables the
 		// runbook used to describe: the current code also records usage events,
@@ -196,11 +206,15 @@ func TestIssue357Seed(t *testing.T) {
 		// Grant exactly what listingsubscription verifies, no more.
 		require.NoError(t, db.Exec("GRANT SELECT ON TABLE public.saas_tenant_subscriptions, public.saas_plans, public.saas_tenant_entitlements, public.saas_usage_buckets, public.saas_usage_events, public.saas_usage_event_outbox, public.saas_subscription_audit_logs TO commercial_runtime").Error)
 		require.NoError(t, db.Exec("GRANT INSERT, UPDATE ON TABLE public.saas_usage_buckets, public.saas_usage_events, public.saas_usage_event_outbox, public.saas_subscription_audit_logs TO commercial_runtime").Error)
+		require.NoError(t, db.Exec("ALTER ROLE commercial_runtime SET default_transaction_read_only=off").Error)
+		require.NoError(t, db.Exec("ALTER ROLE commercial_runtime SET statement_timeout='10s'").Error)
 	} else {
-		require.NoError(t, db.Exec("GRANT SELECT ON ALL TABLES IN SCHEMA public TO commercial_runtime").Error)
+		require.NoError(t, db.Exec("GRANT SELECT ON ALL TABLES IN SCHEMA public TO commercial_runtime, commercial_reader").Error)
+		for _, role := range []string{"commercial_reader", "commercial_runtime"} {
+			require.NoError(t, db.Exec("ALTER ROLE "+role+" SET default_transaction_read_only=on").Error)
+			require.NoError(t, db.Exec("ALTER ROLE "+role+" SET statement_timeout='10s'").Error)
+		}
 	}
-	require.NoError(t, db.Exec("ALTER ROLE commercial_runtime SET default_transaction_read_only=on").Error)
-	require.NoError(t, db.Exec("ALTER ROLE commercial_runtime SET statement_timeout='10s'").Error)
 	snapshot := issue357Snapshot(t, db)
 	issue357Write(t, filepath.Join(dir, "baseline.json"), map[string]any{"digest": snapshot, "setupWrites": true})
 	t.Log("synthetic setup complete; baseline captured")

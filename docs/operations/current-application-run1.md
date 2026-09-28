@@ -61,8 +61,11 @@ the existing database through two roles:
 
 - `source_account_runtime`: `CONNECT`, schema `USAGE`, resource
   `SELECT/INSERT/UPDATE`, and operation `SELECT/INSERT`.
-- `commercial_runtime`: read-only session and `SELECT` only on the four tables
-  used by the commercial overview.
+- `commercial_runtime`: the boundary `listingsubscription` verifies — `SELECT` on the
+  commercial tables plus `INSERT`/`UPDATE` on the usage and audit writers. It is
+  **not** a read-only role; provisioning it read-only is rejected at startup.
+- `commercial_reader`: the legacy/default composition's read-only role, retained
+  so that a launch without `--current-application` has the role it names.
 
 The bootstrap token, database owner credentials and Login V2 service credentials
 stay in run-private control files and are not present in the serving manifest.
