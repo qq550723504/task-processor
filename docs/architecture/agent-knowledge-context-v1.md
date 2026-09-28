@@ -465,18 +465,57 @@ Requirements:
 
 The first Product Agent slice does **not** use model-directed Knowledge retrieval.
 
-Before `runtime.Start`:
+Before `runtime.Start`, the Product Agent application already has a stable request identity
+from the verified caller, exact Product binding and HTTP `Idempotency-Key`. V1 uses that
+pre-Start identity; it does **not** depend on AgentRunID.
 
 ```text
-explicit KnowledgeSelection
-  -> fresh Organization + knowledge authorization
-  -> active KnowledgeBase/Source admission
-  -> resolve only currently content-readable AVAILABLE/PARTIAL revisions
-  -> bounded materialization
-  -> persist immutable KnowledgeContextBundle
-  -> return ContextSnapshotRef{id,digest}
-  -> bind that ref into the Agent request fingerprint
+verified Scope (Organization + Actor)
++ exact Agent Binding (context/product/version/publication/platform)
++ Agent request key (Idempotency-Key)
++ explicit KnowledgeSelection
++ materialization policy version
+        ↓
+KnowledgeMaterializationIdentity + complete fingerprint
+        ↓
+fresh Knowledge authorization + active-state admission
+        ↓
+resolve only currently content-readable AVAILABLE/PARTIAL revisions
+        ↓
+create/adopt immutable KnowledgeContextBundle
+        ↓
+ContextSnapshotRef{id,digest}
+        ↓
+construct complete agent.Request including ContextSnapshotRef
+        ↓
+runtime.Start
 ```
+
+The materialization identity's uniqueness scope is the same stable pre-Start Agent request
+tuple:
+
+```text
+Organization
++ Actor
++ Binding.ContextKind
++ Binding.ContextID
++ Agent request key
+```
+
+Its stored fingerprint additionally binds the complete Agent Binding, selected Knowledge
+inputs and materialization policy version. Therefore:
+
+- first start can materialize before an AgentRun exists;
+- same request retry adopts the same bundle/ref;
+- same key with changed Product/platform binding or Knowledge selection conflicts;
+- a crash after bundle commit but before Agent Store claim can safely retry and adopt the
+  same bundle;
+- Agent Runtime remains the sole AgentRun/checkpoint owner and keeps its current single
+  `Store.Claim` protocol.
+
+After the bundle ref exists, `runtime.Start` independently performs its existing fresh
+Agent authorization and hashes/claims the complete `agent.Request`. No Knowledge row is
+an Agent execution lease or authorization source.
 
 This resolves the current-runtime ordering constraint: the Eino graph calls the model
 before any model-selected Commerce Tool. The first model call can only happen after the
@@ -626,11 +665,14 @@ Candidate V1:
 
 ```text
 exact acquisition/Catalog binding
+  + verified Scope
+  + Agent request key
   + explicit KnowledgeSelection
+  -> pre-Start KnowledgeMaterializationIdentity
   -> fresh Knowledge authorization
-  -> immutable bounded KnowledgeContextBundle
-  -> ContextSnapshotRef bound into Agent Request fingerprint
-  -> existing Agent runtime
+  -> create/adopt immutable bounded KnowledgeContextBundle
+  -> ContextSnapshotRef bound into complete Agent Request
+  -> existing Agent runtime Start/Claim
   -> governed model loads exact bundle
   -> model may return citation IDs from that bundle
   -> validator verifies citation IDs + existing Product/source candidate evidence
@@ -1054,6 +1096,8 @@ Required integrity:
 - revision content digest is immutable after admission;
 - one Source may have many Revisions but only one current/latest pointer;
 - ContextBundle is immutable after materialization;
+- ContextBundle has one unique pre-Start MaterializationIdentity and immutable
+  MaterializationFingerprint;
 - ContextBundle entries bind exact Source + Revision + citation ID;
 - mutable records use explicit version/CAS for user-visible writes;
 - source/base disable cannot mutate existing historical bundle entries.
@@ -1275,15 +1319,40 @@ Organization
 
 A committed bundle is immutable.
 
-For Product Agent V1, context materialization uses an idempotency identity derived from the
-already-admitted Agent run identity plus the materialization policy version. Repeating the
-same Agent Start request therefore resolves/adopts the same ContextBundle before the Agent
-request fingerprint is compared; it must not allocate a fresh bundle ID that would turn an
-otherwise identical retry into a binding conflict.
+For Product Agent V1, context materialization uses the **pre-Start stable request identity**
+defined in §7.2; it never derives identity from AgentRunID or an already-claimed Agent row.
+
+Conceptually:
+
+```text
+MaterializationIdentity {
+  OrganizationID
+  ActorID
+  ContextKind
+  ContextID
+  AgentRequestKey
+}
+
+MaterializationFingerprint = SHA256(
+  full Agent Binding
+  + selected KnowledgeBase/Source identities
+  + exact selection semantics
+  + materialization policy version
+)
+```
+
+The Knowledge repository atomically enforces uniqueness on the MaterializationIdentity and
+fingerprint equality, analogous to—but independent from—the Agent Store's run claim.
+
+Repeating the same Agent Start request resolves/adopts the same ContextBundle before
+`runtime.Start`. It must not allocate a fresh bundle ID that would turn an otherwise
+identical Agent retry into a binding conflict.
 
 Lost response with the same materialization identity returns the existing bundle/ref.
-Changed selected revisions or policy under the same admitted Agent request conflicts rather
-than silently rematerializing latest Knowledge.
+Same identity + changed full binding, selected Knowledge or policy conflicts rather than
+silently rematerializing latest Knowledge. A bundle committed before an AgentRun is claimed
+may remain as an unused durable context object; it is not execution evidence and cannot
+authorize model dispatch.
 
 Immutability preserves historical provenance; it does not bypass later active-state or
 authorization checks.
@@ -1493,8 +1562,13 @@ Architecture acceptance requires implementation evidence plans for these risks.
 
 ### 20.3 Context binding / Agent
 
-- repeated same Agent Start idempotency identity adopts the same ContextBundle/ref;
-- same Agent key + changed selected revision/policy conflicts rather than creating a second bundle;
+- fresh Agent Start can materialize a bundle before any AgentRun row exists;
+- crash after bundle commit but before Agent Store Claim: retry adopts the same bundle and can
+  still acquire the one AgentRun;
+- repeated same pre-Start tuple + same full fingerprint adopts the same ContextBundle/ref;
+- same pre-Start tuple + changed Product/platform binding, selected Knowledge or policy
+  conflicts rather than creating a second bundle;
+- materialized-but-unclaimed bundle cannot authorize or imply an AgentRun/model dispatch;
 - first model Quote cannot occur before a valid ContextSnapshotRef is committed/bound;
 - same Knowledge source update creates a new Revision while an existing run remains on its
   original bundle;
