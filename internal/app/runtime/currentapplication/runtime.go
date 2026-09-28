@@ -13,37 +13,38 @@ import (
 
 	coreconfig "task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
+	"task-processor/internal/storecenter"
 )
 
 type Dependencies struct {
-	OpenStoreCenter                           func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenStoreQuota                            func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenProductAgent                          func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	IdentityPreflight                         func(context.Context, IdentityConfig) error
-	OpenSourceAccount                         func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenCommercial                            func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenCommercialOwner                       func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenMoneyOwner                            func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenProductAcquisition                    func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenImageAgent                            func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	DialImageAgentWorkflow                    func(context.Context, string, string) (imageagent.WorkflowClient, func() error, error)
-	OpenReferrals                             func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenMembership                            func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	NewApplicationWithFeatures                func(context.Context, *gorm.DB, *gorm.DB, ApplicationFeatures, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
-	NewApplicationWithAcquisition             func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
-	NewReferralsApplication                   func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
-	NewApplicationWithAcquisitionAndReferrals func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
-	NewApplicationWithMembership              func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *coreconfig.Config, *MembershipConfig, *logrus.Logger) (*http.Server, error)
-	NewApplication                            func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
-	Listen                                    func(string, string) (net.Listener, error)
-	CloseDatabase                             func(*gorm.DB) error
-	ShutdownTimeout                           time.Duration
+	OpenStoreCenter              func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenStoreQuota               func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenProductAgent             func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	IdentityPreflight            func(context.Context, IdentityConfig) error
+	OpenSourceAccount            func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenCommercial               func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenCommercialOwner          func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenMoneyOwner               func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenProductAcquisition       func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenImageAgent               func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	DialImageAgentWorkflow       func(context.Context, string, string) (imageagent.WorkflowClient, func() error, error)
+	OpenReferrals                func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenMembership               func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	NewApplicationWithFeatures   func(context.Context, *gorm.DB, *gorm.DB, ApplicationFeatures, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	NewReferralsApplication      func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	NewApplicationWithMembership func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *coreconfig.Config, *MembershipConfig, *logrus.Logger) (*http.Server, error)
+	NewApplication               func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	Listen                       func(string, string) (net.Listener, error)
+	CloseDatabase                func(*gorm.DB) error
+	ShutdownTimeout              time.Duration
 }
 
 // ApplicationFeatures keeps separately owned, opt-in current modules together
 // only at the serving composition boundary.
 type ApplicationFeatures struct {
 	StoreCenterDB, StoreQuotaDB                          *gorm.DB
+	OfficialStoreProvider                                storecenter.OfficialConnectionProvider
+	OfficialStoreProtection                              storecenter.OfficialCredentialProtection
 	ProductAgentDB, ProductReviewDB, ProductAgentAssetDB *gorm.DB
 	ProductAgent                                         *ProductAgentConfig
 	CommercialOwnerDB                                    *gorm.DB
@@ -79,6 +80,15 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		return err
 	}
 	core := cfg.CoreConfig()
+	var officialProvider storecenter.OfficialConnectionProvider
+	var officialProtection storecenter.OfficialCredentialProtection
+	if cfg.StoreCenter != nil && cfg.StoreCenter.Enabled {
+		var err error
+		officialProvider, officialProtection, err = cfg.StoreCenter.OfficialConnection.prepare(ctx)
+		if err != nil {
+			return err
+		}
+	}
 	startupContext, cancelStartup := context.WithTimeout(ctx, 15*time.Second)
 	defer cancelStartup()
 	if cfg.Referrals.Enabled {
@@ -131,12 +141,6 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		}
 		if cfg.Membership != nil && dependencies.NewApplicationWithMembership == nil {
 			return errors.New("membership runtime dependencies unavailable")
-		}
-		if cfg.ProductAcquisitionDatabase != nil && cfg.Referrals.Enabled && dependencies.NewApplicationWithAcquisitionAndReferrals == nil {
-			return errors.New("current application combined lifecycle unavailable")
-		}
-		if cfg.ProductAcquisitionDatabase != nil && !cfg.Referrals.Enabled && dependencies.NewApplicationWithAcquisition == nil {
-			return errors.New("current product acquisition lifecycle unavailable")
 		}
 		if cfg.Referrals.Enabled && cfg.ProductAcquisitionDatabase == nil && dependencies.NewReferralsApplication == nil {
 			return errors.New("current application referrals lifecycle unavailable")
@@ -311,15 +315,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, commercialDB, ApplicationFeatures{StoreCenterDB: storeDB, StoreQuotaDB: storeQuotaDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, commercialDB, ApplicationFeatures{OfficialStoreProvider: officialProvider, OfficialStoreProtection: officialProtection, StoreCenterDB: storeDB, StoreQuotaDB: storeQuotaDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, commercialDB, membershipDB, core, cfg.Membership, logger)
-	} else if productDB != nil {
-		if referralDB != nil {
-			server, err = dependencies.NewApplicationWithAcquisitionAndReferrals(startupContext, sourceAccountDB, commercialDB, productDB, referralDB, core, logger)
-		} else {
-			server, err = dependencies.NewApplicationWithAcquisition(startupContext, sourceAccountDB, commercialDB, productDB, core, logger)
-		}
 	} else if referralDB != nil {
 		server, err = dependencies.NewReferralsApplication(startupContext, sourceAccountDB, commercialDB, referralDB, core, logger)
 	} else {

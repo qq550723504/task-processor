@@ -5,9 +5,10 @@ import "errors"
 // StoreCenterConfig uses a dedicated record database and a narrow quota role
 // on the explicit canonical commercial owner database.
 type StoreCenterConfig struct {
-	Enabled       bool           `json:"enabled"`
-	Database      DatabaseConfig `json:"database"`
-	QuotaDatabase DatabaseConfig `json:"quotaDatabase"`
+	Enabled            bool                           `json:"enabled"`
+	Database           DatabaseConfig                 `json:"database"`
+	QuotaDatabase      DatabaseConfig                 `json:"quotaDatabase"`
+	OfficialConnection *OfficialStoreConnectionConfig `json:"officialConnection,omitempty"`
 }
 
 func (c *Config) validateStoreCenter() error {
@@ -15,6 +16,9 @@ func (c *Config) validateStoreCenter() error {
 		return nil
 	}
 	s := c.StoreCenter
+	if err := s.OfficialConnection.validate(); err != nil {
+		return err
+	}
 	if err := s.Database.validate("storeCenter.database"); err != nil {
 		return err
 	}

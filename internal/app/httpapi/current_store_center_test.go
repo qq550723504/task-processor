@@ -13,14 +13,18 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
+	"task-processor/internal/ledger/orgresource"
+	"task-processor/internal/storecenter"
 	storehttp "task-processor/internal/storecenter/httpapi"
 )
 
 func currentStoreTestRoutes(t *testing.T) []httproute.Descriptor {
 	t.Helper()
-	reg := kernelmodule.NewRegistry()
-	require.NoError(t, storehttp.NewModule(&storehttp.Handler{}).Register(reg))
-	return reg.Routes()
+	var result []httproute.Descriptor
+	for _, r := range currentStoreCenterRoutes {
+		result = append(result, httproute.Descriptor{Method: r.method, Path: r.path, Module: storehttp.ModuleName, Permission: r.permission, AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, Handler: func(*gin.Context) {}})
+	}
+	return result
 }
 
 func TestCurrentStoreRouteAdmissionRejectsDrift(t *testing.T) {
@@ -68,11 +72,15 @@ func TestCurrentStoreOptionalAssembly(t *testing.T) {
 				},
 				buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
 				buildCommercial:    func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
-				buildStoreCenter: func(_ context.Context, r, q *gorm.DB, _ *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+				buildResourceCharges: func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (*orgresource.ConsumerChargeService, error) {
+					return orgresource.NewConsumerChargeService(currentStoreChargeFixture{}, map[orgresource.ResourceConsumer]orgresource.ConsumerChargeOwner{orgresource.ConsumerStoreService: currentStoreChargeFixture{}})
+				},
+				buildStoreCenter: func(_ context.Context, r, q *gorm.DB, _ *authz.ListingKitAuthorizer, charges orgresource.ConsumerChargePort, _ storecenter.OfficialConnectionProvider, _ storecenter.OfficialCredentialProtection) (kernelmodule.Module, error) {
 					calls++
 					require.Same(t, records, r)
 					require.Same(t, quota, q)
-					return storehttp.NewModule(&storehttp.Handler{}), nil
+					require.NotNil(t, charges)
+					return currentStoreRouteFixture{routes: currentStoreTestRoutes(t)}, nil
 				},
 			}
 			options := []CurrentApplicationOption{WithCommercialOwnerDatabase(owner)}
@@ -109,4 +117,34 @@ func TestCurrentStoreOptionalAssembly(t *testing.T) {
 			}
 		})
 	}
+}
+
+type currentStoreRouteFixture struct{ routes []httproute.Descriptor }
+
+func (currentStoreRouteFixture) Name() string                { return storehttp.ModuleName }
+func (currentStoreRouteFixture) Enabled(*config.Config) bool { return true }
+func (m currentStoreRouteFixture) Register(reg *kernelmodule.Registry) error {
+	reg.AddRoutes(m.routes...)
+	return nil
+}
+
+type currentStoreChargeFixture struct{}
+
+func (currentStoreChargeFixture) Reserve(context.Context, orgresource.ConsumerChargeIntent) (orgresource.ConsumerChargeReceipt, error) {
+	return orgresource.ConsumerChargeReceipt{}, orgresource.ErrInvalidInput
+}
+func (currentStoreChargeFixture) Read(context.Context, orgresource.ConsumerChargeIdentity) (orgresource.ConsumerChargeReceipt, error) {
+	return orgresource.ConsumerChargeReceipt{}, orgresource.ErrInvalidInput
+}
+func (currentStoreChargeFixture) Settle(context.Context, orgresource.ConsumerChargeReceipt, orgresource.ConsumerChargeProof) (orgresource.ConsumerChargeReceipt, error) {
+	return orgresource.ConsumerChargeReceipt{}, orgresource.ErrInvalidInput
+}
+func (currentStoreChargeFixture) ClaimDue(context.Context, []orgresource.ResourceConsumer) ([]orgresource.ConsumerChargeIdentity, error) {
+	return nil, nil
+}
+func (currentStoreChargeFixture) ReadChargeIntent(context.Context, orgresource.ConsumerChargeIdentity) (orgresource.ConsumerChargeIntent, error) {
+	return orgresource.ConsumerChargeIntent{}, orgresource.ErrInvalidInput
+}
+func (currentStoreChargeFixture) ReadChargeProof(context.Context, orgresource.ConsumerChargeReceipt) (orgresource.ConsumerChargeProof, error) {
+	return orgresource.ConsumerChargeProof{}, orgresource.ErrInvalidInput
 }

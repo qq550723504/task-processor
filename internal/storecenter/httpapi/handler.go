@@ -50,8 +50,24 @@ type ServiceLifecycleService interface {
 }
 
 type Handler struct {
-	service          StoreService
-	serviceLifecycle ServiceLifecycleService
+	service             StoreService
+	serviceLifecycle    ServiceLifecycleService
+	officialConnections OfficialConnectionService
+}
+
+type OfficialConnectionService interface {
+	Begin(context.Context, storecenter.OfficialConnectionCommand) (storecenter.OfficialConnectionBegin, error)
+	Complete(context.Context, storecenter.CompleteOfficialConnection) (storecenter.OfficialConnectionView, error)
+	Read(context.Context, string, string) (storecenter.OfficialConnectionView, error)
+	Disconnect(context.Context, storecenter.OfficialConnectionCommand) (storecenter.OfficialConnectionView, error)
+}
+
+func (h *Handler) SetOfficialConnections(service OfficialConnectionService) error {
+	if isNilInterface(service) || h.officialConnections != nil {
+		return errors.New("official Store connection service unavailable or already supplied")
+	}
+	h.officialConnections = service
+	return nil
 }
 
 func NewHandler(service StoreService) (*Handler, error) {

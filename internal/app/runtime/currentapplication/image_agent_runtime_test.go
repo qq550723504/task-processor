@@ -40,6 +40,7 @@ func TestCurrentImageAgentRequiresExplicitOwnedRuntimeAndNeverFallsBack(t *testi
 	require.Equal(t, "https://images.example.test", core.ImageAgent.ArtifactStore.PublicBase)
 	require.Equal(t, coreconfig.ImageAgentGenerationConfig{}, core.ImageAgent.Generation, "no default price opens generation")
 	cfg.ImageAgent.Generation = coreconfig.ImageAgentGenerationConfig{PriceVersion: "price-2026-09", PointsPerImage: 12}
+	cfg.CommercialOwnerDatabase = nil
 	require.Error(t, cfg.validate(), "price without the explicit resource owner must not open generation")
 	cfg.CommercialOwnerDatabase = &DatabaseConfig{Host: "127.0.0.1", Port: 5434, User: "commercial_owner_runtime", Password: "fixture-password", Database: "commercial_owner", MaxConnections: 4}
 	require.NoError(t, cfg.validate())
@@ -48,12 +49,10 @@ func TestCurrentImageAgentRequiresExplicitOwnedRuntimeAndNeverFallsBack(t *testi
 		cfg.ImageAgent.Generation = price
 		require.Error(t, cfg.validate())
 	}
-	// Restore the original pool-less fixture below: this test's Run lifecycle
-	// does not construct the additional resource owner pool.
+	// Acquisition always uses the canonical resource owner, even without AI.
 	cfg.ImageAgent.Generation = coreconfig.ImageAgentGenerationConfig{}
-	cfg.CommercialOwnerDatabase = nil
 
-	source, commercial, product, imageDB := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
+	source, commercial, product, imageDB, owner := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
 	var closed []*gorm.DB
 	var workflowClosed bool
 	stop := errors.New("stop before listener")
@@ -61,6 +60,7 @@ func TestCurrentImageAgentRequiresExplicitOwnedRuntimeAndNeverFallsBack(t *testi
 		IdentityPreflight:      func(context.Context, IdentityConfig) error { return nil },
 		OpenSourceAccount:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
 		OpenCommercial:         func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
+		OpenCommercialOwner:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return owner, nil },
 		OpenProductAcquisition: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return product, nil },
 		OpenImageAgent: func(_ context.Context, got DatabaseConfig) (*gorm.DB, error) {
 			require.Equal(t, cfg.ImageAgent.Database, got)
@@ -77,12 +77,13 @@ func TestCurrentImageAgentRequiresExplicitOwnedRuntimeAndNeverFallsBack(t *testi
 			require.Same(t, product, features.ProductAcquisitionDB)
 			require.Same(t, imageDB, features.ImageAgentDB)
 			require.NotNil(t, features.ImageAgentWorkflow)
+			require.Same(t, owner, features.CommercialOwnerDB)
 			return nil, stop
 		},
 		CloseDatabase: func(db *gorm.DB) error { closed = append(closed, db); return nil },
 	})
 	require.ErrorIs(t, err, stop)
-	require.Equal(t, []*gorm.DB{imageDB, product, commercial, source}, closed)
+	require.Equal(t, []*gorm.DB{imageDB, product, owner, commercial, source}, closed)
 	require.True(t, workflowClosed)
 }
 

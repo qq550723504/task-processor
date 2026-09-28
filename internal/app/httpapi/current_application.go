@@ -24,6 +24,7 @@ import (
 	"task-processor/internal/integration/zitadelregistration"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/ledger/orgresource"
+	"task-processor/internal/storecenter"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
 )
 
@@ -84,7 +85,8 @@ var currentCommercialBillingApplicationRoutes = []currentApplicationRoute{
 }
 
 type currentApplicationFactories struct {
-	buildStoreCenter                func(context.Context, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildStoreCenter                func(context.Context, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, storecenter.OfficialConnectionProvider, storecenter.OfficialCredentialProtection) (kernelmodule.Module, error)
+	buildResourceCharges            func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (*orgresource.ConsumerChargeService, error)
 	buildCommercialResources        func(context.Context, *gorm.DB) (kernelmodule.Module, error)
 	buildWorkbench                  workbenchContextModuleBuilder
 	buildSourceAccount              func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
@@ -107,6 +109,9 @@ type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
 	storeCenters                int
 	storeCenterDB, storeQuotaDB *gorm.DB
+	officialStoreProvider       storecenter.OfficialConnectionProvider
+	officialStoreProtection     storecenter.OfficialCredentialProtection
+	officialStoreConfigs        int
 	runtimeContext              context.Context
 	commercialOwnerDB           *gorm.DB
 	moneyOwnerDB                *gorm.DB
@@ -282,14 +287,32 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		return nil, errors.New("membership requires an independent receipt pool")
 	}
 	var consumerCharges *orgresource.ConsumerChargeService
+	authorizer, err := authz.NewListingKitAuthorizer(cfg.ListingKit.PlatformAdminUsers, cfg.ListingKit.PlatformAdminRoles)
+	if err != nil {
+		return nil, fmt.Errorf("build current application authorizer: %w", err)
+	}
+	if supplied.officialStoreConfigs > 1 || (supplied.officialStoreConfigs > 0 && supplied.storeCenters == 0) || (supplied.officialStoreProvider == nil) != (supplied.officialStoreProtection == nil) {
+		return nil, errors.New("official Store configuration must accompany its owner and protection")
+	}
+	if supplied.productAcquisitionDB != nil || supplied.storeCenters > 0 {
+		if supplied.commercialOwnerDB == nil {
+			return nil, errors.New("resource consumers require their resource owner pool")
+		}
+		builder := factories.buildResourceCharges
+		if builder == nil {
+			builder = buildCurrentResourceCharges
+		}
+		consumerCharges, err = builder(ctx, supplied.productAcquisitionDB, supplied.storeCenterDB, supplied.commercialOwnerDB, authorizer)
+		if err != nil {
+			return nil, err
+		}
+		if consumerCharges == nil {
+			return nil, errors.New("resource consumer service unavailable")
+		}
+	}
 	if supplied.productAcquisitionDB != nil {
 		if supplied.commercialOwnerDB == nil {
 			return nil, errors.New("product acquisition requires its resource owner pool")
-		}
-		var err error
-		consumerCharges, err = buildProductResourceCharges(ctx, supplied.productAcquisitionDB, supplied.commercialOwnerDB)
-		if err != nil {
-			return nil, err
 		}
 		if factories.buildAcquisition != nil {
 			return nil, errors.New("product acquisition factory and pool cannot both be supplied")
@@ -342,10 +365,6 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 			return buildMembershipModule(startup, cfg, membershipDeps, authorizer, dependencies)
 		}
 	}
-	authorizer, err := authz.NewListingKitAuthorizer(cfg.ListingKit.PlatformAdminUsers, cfg.ListingKit.PlatformAdminRoles)
-	if err != nil {
-		return nil, fmt.Errorf("build current application authorizer: %w", err)
-	}
 	workbench, err := factories.buildWorkbench(cfg, logger)
 	if err != nil {
 		return nil, err
@@ -364,7 +383,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	}
 	modules := []kernelmodule.Module{workbench.module, commercial, sourceAccount}
 	if supplied.storeCenters > 0 {
-		stores, err := factories.buildStoreCenter(ctx, supplied.storeCenterDB, supplied.storeQuotaDB, authorizer)
+		stores, err := factories.buildStoreCenter(ctx, supplied.storeCenterDB, supplied.storeQuotaDB, authorizer, consumerCharges, supplied.officialStoreProvider, supplied.officialStoreProtection)
 		if err != nil {
 			return nil, fmt.Errorf("build current store center: %w", err)
 		}
