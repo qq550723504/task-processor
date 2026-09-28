@@ -12,6 +12,9 @@ import { baseSchema,basesSchema,sourcesSchema,previewSchema,resultSchema,knowled
 import "./knowledge.css";
 
 const root="/workbench/ai/knowledge";
+// Reserve 4 KiB for bounded source name, escaped filename, MIME and multipart
+// boundaries. The server retains the 10 MiB whole-request contract.
+const maxUploadFileBytes=10*1024*1024-4096;
 const description="知识库归当前企业所有，默认不会自动用于 AI。支持 TXT、Markdown、可提取正文的 PDF 和 DOCX，不支持扫描件 OCR。";
 export function KnowledgePage({baseId}:{baseId?:string}) {
  const context=useWorkbenchContext();
@@ -78,8 +81,8 @@ function KnowledgeContent({scope,baseId}:{scope:KnowledgeScope;baseId?:string}) 
  };
  const selectedCount=sources.data?.items.filter(s=>s.state==="ACTIVE").length??0;
  const upload=()=>{
- if(!file || !baseId || file.size===0 || file.size>=10*1024*1024)return;
- const body=new FormData();body.set("name",replacement?.name??sourceName);body.set("file",file);
+ if(!file || !baseId || file.size===0 || file.size>maxUploadFileBytes)return;
+ const body=new FormData();body.set("name",(replacement?.name??sourceName).trim());body.set("file",file);
  run(replacement?"knowledge-sources/"+replacement.id+"/revisions":"knowledge-bases/"+baseId+"/sources","POST",body,replacement?.version);
  };
  const active=base.data?.state==="ACTIVE";
@@ -102,7 +105,7 @@ function KnowledgeContent({scope,baseId}:{scope:KnowledgeScope;baseId?:string}) 
  {active?<Card className="knowledge-sources"><div className="knowledge-panel-header"><div><h2>资料与处理状态</h2><p className="console-description">有效资料 {selectedCount}/4 · 只预览当前可读版本</p></div>{canManage?<div className="knowledge-actions"><Button variant="outline" disabled={busy} onClick={()=>{if(window.confirm("停用知识库后将无法读取资料正文，且无法恢复。是否继续？"))run("knowledge-bases/"+baseId+"/disable","POST",undefined,base.data!.version);}}>停用知识库</Button><Button disabled={busy || selectedCount>=4 || sources.isPending || !!sources.error} onClick={()=>{setReplacement(null);setFile(null);setEditing(false);document.getElementById("knowledge-upload")?.focus();}}>上传资料</Button></div>:null}</div>
  {canManage?<div className="knowledge-upload"><label htmlFor="knowledge-upload">{replacement?"替换："+replacement.name:"上传新资料"}</label><input id="knowledge-upload" type="file" accept=".txt,.md,.markdown,.pdf,.docx" disabled={busy || (!replacement && selectedCount>=4)} onChange={e=>{const selected=e.target.files?.[0]??null;setFile(selected);if(!replacement)setSourceName([...selected?.name??""].slice(0,120).join(""));}} />
  {!replacement?<><label htmlFor="knowledge-source-name">资料名称</label><Input id="knowledge-source-name" disabled={busy} value={sourceName} onChange={e=>setSourceName(e.target.value)} placeholder="最多 120 个字符" /></>:null}
- <span className="console-description">文件与请求总大小不超过 10 MiB，每次一份资料。</span><div className="knowledge-actions"><Button disabled={busy || !file || file.size===0 || file.size>=10*1024*1024 || !replacement && (!sourceName.trim() || [...sourceName.trim()].length>120)} onClick={upload}>{replacement?"提交新版本":"上传并处理"}</Button>{replacement?<Button variant="outline" disabled={busy} onClick={()=>{setReplacement(null);setFile(null);}}>取消替换</Button>:null}</div></div>:null}
+ <span className="console-description">文件与请求总大小不超过 10 MiB，每次一份资料。</span>{file && file.size>maxUploadFileBytes?<p className="knowledge-reason" role="alert">文件接近大小上限，请缩小一点后上传。</p>:null}<div className="knowledge-actions"><Button disabled={busy || !file || file.size===0 || file.size>maxUploadFileBytes || !replacement && (!sourceName.trim() || [...sourceName.trim()].length>120)} onClick={upload}>{replacement?"提交新版本":"上传并处理"}</Button>{replacement?<Button variant="outline" disabled={busy} onClick={()=>{setReplacement(null);setFile(null);}}>取消替换</Button>:null}</div></div>:null}
  {sources.isPending?<ConsoleState kind="loading" title="正在读取资料" />:sources.error?<ConsoleState kind="error" title={errorMessage(sources.error)}><Button onClick={()=>void sources.refetch()}>重新读取</Button></ConsoleState>:sources.data?.items.length===0?<ConsoleState kind="empty" title="尚未上传资料" />:null}
  <div className="knowledge-source-list">{sources.data?.items.map(source=>{
  const latest=source.latestRevision,readable=source.currentReadableRevision,isActive=source.state==="ACTIVE",processing=latest && ["ADMITTED","OBJECT_STORED","PROCESSING"].includes(latest.state);

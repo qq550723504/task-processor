@@ -99,6 +99,17 @@ it("uploads a legal long filename with a separately bounded source display name"
  }));
  const unmount=mount(baseId);await screen.findByText("尚未上传资料");
  const filename="a".repeat(121)+".txt";await userEvent.upload(screen.getByLabelText("上传新资料"),new File(["hello"],filename,{type:"text/plain"}));
+ await userEvent.type(screen.getByLabelText("资料名称"),"{Home} {End} ");
  await userEvent.click(screen.getByRole("button",{name:"上传并处理"}));await waitFor(()=>expect(sent).toBeDefined());
  expect((sent!.get("file") as File).name).toBe(filename);expect([...(sent!.get("name") as string)].length).toBeLessThanOrEqual(120);unmount();
+});
+it("keeps a near-limit file from exceeding the whole multipart request budget",async()=>{
+ const requests:RequestInit[]=[];const fetch=vi.fn(async(url:string,init?:RequestInit)=>{
+ requests.push(init??{});
+ if(url==="/api/workbench/context")return Response.json(context);
+ if(url.endsWith("/sources"))return Response.json({items:[]});return Response.json(base);
+ });vi.stubGlobal("fetch",fetch);const unmount=mount(baseId);await screen.findByText("尚未上传资料");
+ await userEvent.upload(screen.getByLabelText("上传新资料"),new File([new Uint8Array(10*1024*1024-1)],"near-limit.txt",{type:"text/plain"}));
+ expect(screen.getByRole("button",{name:"上传并处理"})).toBeDisabled();expect(screen.getByText("文件接近大小上限，请缩小一点后上传。")).toBeVisible();
+ expect(requests.every(init=>init.method!=="POST")).toBe(true);unmount();
 });
