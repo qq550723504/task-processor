@@ -645,3 +645,80 @@ func TestThrottleConcurrentExpiredTimersDoNotDispatchTogether(t *testing.T) {
 	require.GreaterOrEqual(t, later.Sub(earlier), interval-2*time.Millisecond,
 		"two waiters whose timers both elapsed must not start together")
 }
+
+// A caller cancelled while the timer fired but the waiter was blocked taking the
+// lock must not be handed a slot: Acquire would go on to start a browser for it.
+func TestThrottleCancellationDuringTheDispatchLockIsNotCommitted(t *testing.T) {
+	interval := 40 * time.Millisecond
+	th := newTestThrottle(interval, 0, 0)
+	require.NoError(t, th.Wait(context.Background()))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- th.Wait(ctx) }()
+
+	// Let it commit its reservation and reach its timer, then hold the lock so
+	// the dispatch cannot complete. That is the window between the timer firing
+	// and the dispatch being committed.
+	require.Eventually(t, func() bool {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return th.owner > 1
+	}, time.Second, 5*time.Millisecond)
+
+	th.mu.Lock()
+	time.Sleep(interval * 3) // the timer fires while the lock is held
+	cancel()                 // and the caller goes away in that window
+	th.mu.Unlock()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled,
+			"a cancellation during the dispatch lock must not commit a slot")
+	case <-time.After(2 * time.Second):
+		t.Fatal("the waiter never returned")
+	}
+
+	// And the slot it had reserved was handed back rather than consumed.
+	require.Eventually(t, func() bool {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return !th.next.After(time.Now().Add(interval / 4))
+	}, time.Second, 5*time.Millisecond, "the cancelled caller's slot must be released")
+}
+
+// The immediate path must revalidate the generation too: while queued
+// reservations expire under scheduler delay, a new caller can take an idle slot
+// before an older waiter re-anchors the floor, and both then start inside
+// MinInterval.
+func TestThrottleImmediatePathRevalidatesGeneration(t *testing.T) {
+	interval := 40 * time.Millisecond
+	th := newTestThrottle(interval, 0, 0)
+	require.NoError(t, th.Wait(context.Background()))
+
+	// An older waiter queues.
+	old := make(chan time.Time, 1)
+	go func() { _ = th.Wait(context.Background()); old <- time.Now() }()
+	require.Eventually(t, func() bool {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return th.owner > 1
+	}, time.Second, 5*time.Millisecond)
+
+	// Hold the lock so that waiter's timer elapses un-committed, then let a fresh
+	// caller arrive on the immediate path.
+	th.mu.Lock()
+	time.Sleep(interval * 3)
+	th.mu.Unlock()
+
+	fresh := make(chan time.Time, 1)
+	go func() { _ = th.Wait(context.Background()); fresh <- time.Now() }()
+
+	a, b := <-old, <-fresh
+	earlier, later := a, b
+	if later.Before(earlier) {
+		earlier, later = later, earlier
+	}
+	require.GreaterOrEqual(t, later.Sub(earlier), interval-2*time.Millisecond,
+		"an immediate caller must not start beside a waiter whose floor it missed")
+}

@@ -207,10 +207,26 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	t.mu.Unlock()
 
 	if wait <= 0 {
-		// An idle slot still goes through the locked block check: an Observe can
-		// land between the reservation and here, and this path must not be the one
-		// way past a cooldown that has already begun.
+		// The immediate path gets exactly the same discipline as the timer path: a
+		// generation re-check, a block check and a cancellation check, all under one
+		// lock. It is otherwise a route that can dispatch beside a waiter that
+		// re-anchored the floor while queued reservations expired.
 		t.mu.Lock()
+		if t.generationLocked(seen) {
+			if t.owner == mine {
+				t.prevNext = time.Time{}
+			}
+			t.mu.Unlock()
+			return t.Wait(ctx)
+		}
+		if err := ctx.Err(); err != nil {
+			if t.owner == mine {
+				t.next = t.prevNext
+				t.prevNext = time.Time{}
+			}
+			t.mu.Unlock()
+			return err
+		}
 		if t.blockedLocked() {
 			if t.owner == mine {
 				t.next = t.prevNext
@@ -243,6 +259,17 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	// whose timers both elapsed can both see the old value and then dispatch
 	// together; if Observe can interleave, a caller starts during a cooldown.
 	t.mu.Lock()
+	// The timer already fired, but the caller may have been cancelled while this
+	// waiter waited for the lock. Committing a dispatch for a dead request would
+	// hand out a slot and let Acquire start a browser for it.
+	if err := ctx.Err(); err != nil {
+		if t.owner == mine {
+			t.next = t.prevNext
+			t.prevNext = time.Time{}
+		}
+		t.mu.Unlock()
+		return err
+	}
 	if t.generationLocked(seen) {
 		// Someone else re-anchored the floor while this caller slept. Drop this
 		// reservation without restoring anything - the newer floor stands - and
