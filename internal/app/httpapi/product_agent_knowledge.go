@@ -60,10 +60,23 @@ func (a *productAgentApplication) startRequest(ctx context.Context, binding agen
 	if !ok {
 		return agent.Request{}, knowledge.ErrForbidden
 	}
-	ref, err := a.context.Materialize(ctx, knowledge.ContextRequest{
+	command := knowledge.ContextRequest{
 		Scope: knowledge.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, Binding: binding, Key: key,
 		Selection: "knowledge-base:" + baseID, PolicyVersion: knowledge.ContextPolicyVersion,
-	})
+	}
+	if record, readErr := a.store.Read(ctx, agent.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, binding.ContextID, key); readErr == nil {
+		ref := record.State.Request.ContextSnapshotRef
+		if record.State.Request.Binding != binding || ref.Absent() || ref.Kind != knowledge.ContextKind {
+			return agent.Request{}, agent.ErrConflict
+		}
+		if err := a.context.ValidateMaterializedRequest(ctx, command, knowledge.ContextSnapshotRef{Kind: ref.Kind, ID: ref.ID, Digest: ref.Digest}); err != nil {
+			return agent.Request{}, err
+		}
+		request.ContextSnapshotRef = ref
+		request.PromptVersion = "product-title-agent-knowledge-v1"
+		return request, nil // Runtime.Start/Claim still compares the complete request.
+	}
+	ref, err := a.context.Materialize(ctx, command)
 	if err != nil {
 		return agent.Request{}, err
 	}

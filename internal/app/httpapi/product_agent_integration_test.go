@@ -385,6 +385,52 @@ func testProductAgentOwners(t *testing.T, mode string) {
 		f.grants.revoked.Store(false)
 		_, disableErr := kf.service.Mutate(context.Background(), knowledge.Command{Scope: knowledge.Scope{OrganizationID: "B", ActorID: "operator"}, Kind: "base_disable", Key: uuid.NewString(), BaseID: kf.base.ID, Version: kf.base.Version})
 		require.NoError(t, disableErr)
+		// An already claimed Start replays only its original opaque request. It
+		// needs no disabled content and must not send another model request.
+		code, raw, err = acquisitionHTTPRequest(reopened, "POST", path, "operator", "B", key, startBody)
+		require.NoError(t, err)
+		require.Equal(t, 200, code, string(raw))
+		require.Contains(t, string(raw), result.RunID)
+		require.Contains(t, string(raw), `"status":"unavailable"`)
+		require.NotContains(t, string(raw), "Frozen brand text")
+		require.NotContains(t, string(raw), "Brand wording")
+		require.EqualValues(t, 4, calls.Load())
+		for _, changed := range []string{`{"targetPlatform":"shein"}`, `{"targetPlatform":"shein","knowledgeSelection":{"knowledgeBaseId":"` + uuid.NewString() + `"}}`} {
+			code, raw, err = acquisitionHTTPRequest(reopened, "POST", path, "operator", "B", key, changed)
+			require.NoError(t, err)
+			require.Equal(t, 409, code, string(raw))
+		}
+		code, raw, err = acquisitionHTTPRequest(reopened, "POST", path, "operator", "B", uuid.NewString(), startBody)
+		require.NoError(t, err)
+		require.Equal(t, 409, code, string(raw))
+		require.EqualValues(t, 4, calls.Load(), "disabled context cannot authorize a new claim or dispatch")
+		// A bundle without a claimed run cannot use the metadata-only replay
+		// seam to pass disablement, even under its original command identity.
+		unclaimedBase, createErr := kf.service.Mutate(context.Background(), knowledge.Command{Scope: knowledge.Scope{OrganizationID: "B", ActorID: "operator"}, Kind: "base_create", Key: uuid.NewString(), Name: "Unclaimed guide"})
+		require.NoError(t, createErr)
+		kf.addSource(unclaimedBase.Base.ID, "Never dispatched", "")
+		unclaimedKey := uuid.NewString()
+		unclaimedBody := `{"targetPlatform":"shein","knowledgeSelection":{"knowledgeBaseId":"` + unclaimedBase.Base.ID + `"}}`
+		var failUnclaimed atomic.Bool
+		failUnclaimed.Store(true)
+		require.NoError(t, f.owner.Callback().Create().Before("gorm:create").Register("test-disable-unclaimed", func(tx *gorm.DB) {
+			if tx.Statement.Table == "product_agent_runs" && failUnclaimed.Swap(false) {
+				tx.AddError(errors.New("isolated unclaimed failure"))
+			}
+		}))
+		code, raw, err = acquisitionHTTPRequest(reopened, "POST", path, "operator", "B", unclaimedKey, unclaimedBody)
+		require.NoError(t, err)
+		require.Equal(t, 503, code, string(raw))
+		_, disableErr = kf.service.Mutate(context.Background(), knowledge.Command{Scope: knowledge.Scope{OrganizationID: "B", ActorID: "operator"}, Kind: "base_disable", Key: uuid.NewString(), BaseID: unclaimedBase.Base.ID, Version: unclaimedBase.Base.Version})
+		require.NoError(t, disableErr)
+		code, raw, err = acquisitionHTTPRequest(reopened, "POST", path, "operator", "B", unclaimedKey, unclaimedBody)
+		require.NoError(t, err)
+		require.Equal(t, 409, code, string(raw))
+		require.Contains(t, string(raw), knowledge.ErrInactive.Error())
+		var unclaimedRuns int64
+		require.NoError(t, f.owner.Table("product_agent_runs").Where("request_key = ?", unclaimedKey).Count(&unclaimedRuns).Error)
+		require.Zero(t, unclaimedRuns)
+		require.EqualValues(t, 4, calls.Load())
 		code, raw, err = acquisitionHTTPRequest(reopened, "GET", titleBasePath+"/"+view.ID, "operator", "B", "", "")
 		require.NoError(t, err)
 		require.Equal(t, 200, code, string(raw))

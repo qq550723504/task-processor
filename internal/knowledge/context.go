@@ -99,6 +99,7 @@ type KnowledgeDispatchPermitGate interface {
 type DispatchPermitRecovery interface{ RecoverExpiredDispatchPermits(context.Context) error }
 type ContextRepository interface {
 	Materialize(context.Context, ContextRequest) (ContextSnapshotRef, error)
+	ValidateMaterializedRequest(context.Context, ContextRequest, ContextSnapshotRef) error
 	ReadContext(context.Context, Scope, ContextSnapshotRef) (ContextBundle, error)
 	AcquireDispatchPermit(context.Context, Scope, ContextSnapshotRef, string) (DispatchPermit, error)
 	ReleaseDispatchPermit(context.Context, DispatchPermit) error
@@ -181,6 +182,19 @@ func (s *ContextService) Materialize(ctx context.Context, r ContextRequest) (Con
 		return ContextSnapshotRef{}, err
 	}
 	return s.repo.Materialize(ctx, r)
+}
+
+// ValidateMaterializedRequest validates only immutable command metadata for an
+// already claimed consumer operation. It authorizes no content read, new bundle,
+// resume or dispatch; the consumer must compare the complete saved request.
+func (s *ContextService) ValidateMaterializedRequest(ctx context.Context, r ContextRequest, ref ContextSnapshotRef) error {
+	if _, err := MaterializationFingerprint(r); err != nil || !ref.Valid() {
+		return ErrInvalid
+	}
+	if err := s.admit(ctx, r.Scope); err != nil {
+		return err
+	}
+	return s.repo.ValidateMaterializedRequest(ctx, r, ref)
 }
 func (s *ContextService) ReadContext(ctx context.Context, scope Scope, ref ContextSnapshotRef) (ContextBundle, error) {
 	if !ref.Valid() {

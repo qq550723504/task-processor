@@ -121,6 +121,15 @@ Materialization precedes Agent Claim; same-key retries adopt the committed bundl
 even if a source has a newer readable revision. Different selection or binding
 conflicts. A materialized but unclaimed bundle cannot send a model request.
 
+For a successfully scoped existing Agent record, Start first validates the original
+Knowledge command fingerprint and ref through the Knowledge owner's fresh
+authorizer. This metadata-only lookup reads ID/digest/fingerprint, without payload,
+new materialization or lifecycle mutation. It lets an identical claimed Start replay
+after content disablement; Runtime.Start/Claim still compares the full saved request.
+Changed selection/binding or missing/mismatched metadata conflicts. An unclaimed
+bundle still requires ordinary active Materialize admission. Content reads, quote,
+citations and dispatch permits retain their live active-state checks.
+
 The browser keeps only the stable request key and the normalized public Start
 command (platform and optional KnowledgeBase ID), scoped to the actor and
 Organization, in the current operation URL. It stores no protected label, excerpt,
