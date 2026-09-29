@@ -122,6 +122,15 @@ source of truth for long-lived rules.
 
 ## Supporting Context
 
+- [`organization-agent-configuration-v1.md`](./organization-agent-configuration-v1.md)
+  - APPROVED / IMPLEMENTATION_READY #570 Slice D: enterprise Agent enablement,
+    immutable templates/defaults and start snapshots, capability projections,
+    same-database activation/Claim ordering and existing Product Agent consumption.
+    Final reviewed contract HEAD `88b2be970b470fab45d1897d89b41de4061020ec`;
+    targeted review found no major issues and CI `36566072746` completed SUCCESS
+    including Required CI Gate. Production Writer starts only after PR #571 merges
+    to main; rollout/provider use remain separately gated.
+
 - [`account-audit-summary-v1.md`](./account-audit-summary-v1.md)
   - IMPLEMENTATION_READY #478 four true Account Audit totals over the complete
     30-day window of current committed owner events, preserving live Organization
