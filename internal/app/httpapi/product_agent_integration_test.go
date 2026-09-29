@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"task-processor/internal/agent"
+	"task-processor/internal/agentconfig"
 	"task-processor/internal/aicapability"
 	aistore "task-processor/internal/aicapability/store"
 	"task-processor/internal/authidentity"
@@ -22,6 +23,7 @@ import (
 	"task-processor/internal/integration/openai"
 	resourceadapter "task-processor/internal/integration/orgresource"
 	agentstore "task-processor/internal/integration/persistence/agent"
+	configstore "task-processor/internal/integration/persistence/agentconfig"
 	assetstore "task-processor/internal/integration/persistence/product/asset"
 	reviewstore "task-processor/internal/integration/persistence/product/review"
 	"task-processor/internal/knowledge"
@@ -74,14 +76,14 @@ func (agentReleaseFailure) ReleaseAIInvocationUsage(context.Context, string, str
 }
 
 func TestProductAgentAcquisitionToReviewUsesRealOwners(t *testing.T) {
-	for _, mode := range []string{"observed canonical", "guessed without tool", "asset only", "no quota", "revoked before dispatch", "release failed"} {
+	for _, mode := range []string{"observed canonical", "configuration", "guessed without tool", "asset only", "no quota", "revoked before dispatch", "release failed"} {
 		t.Run(mode, func(t *testing.T) { testProductAgentOwners(t, mode) })
 	}
 }
 
 func testProductAgentOwners(t *testing.T, mode string) {
 	f := newAcquisitionHTTPFixture(t)
-	canonicalMode := mode == "observed canonical" || mode == "knowledge"
+	canonicalMode := mode == "observed canonical" || mode == "configuration" || mode == "knowledge"
 	var kf *consumerKnowledgeFixture
 	if mode == "knowledge" {
 		kf = newConsumerKnowledgeFixture(t, f.owner)
@@ -90,6 +92,11 @@ func testProductAgentOwners(t *testing.T, mode string) {
 	op := acquisitionHTTPCall(t, acquisitionServer, "POST", productAcquisitionBase, "operator", "B", uuid.NewString(), `{"source":"https://detail.1688.com/offer/981645030344.html"}`, 200)
 	require.NoError(t, reviewstore.InstallSchema(f.owner))
 	require.NoError(t, agentstore.InstallSchema(f.owner))
+	require.NoError(t, configstore.InstallSchema(f.owner))
+	configuration, configErr := configstore.New(f.owner)
+	require.NoError(t, configErr)
+	_, configErr = configuration.Execute(context.Background(), agentconfig.Command{Scope: agent.Scope{OrganizationID: "B", ActorID: "admin"}, Key: uuid.NewString(), AgentID: "product.title.agent", Operation: "enable", Absent: true})
+	require.NoError(t, configErr)
 	require.NoError(t, assetstore.AutoMigrate(f.owner))
 	assets, err := assetstore.NewRepository(f.owner)
 	require.NoError(t, err)
@@ -189,6 +196,12 @@ func testProductAgentOwners(t *testing.T, mode string) {
 	key := uuid.NewString()
 	path := productAcquisitionBase + "/" + op.OperationID + "/product-agent/runs"
 	startBody := `{"targetPlatform":"shein"}`
+	var selectedTemplate agentconfig.Receipt
+	if mode == "configuration" {
+		selectedTemplate, err = configuration.Execute(context.Background(), agentconfig.Command{Scope: agent.Scope{OrganizationID: "B", ActorID: "admin"}, Key: uuid.NewString(), AgentID: "product.title.agent", Operation: "create-template", Input: agentconfig.TemplateInput{Name: "Exact v1", TargetPlatform: "amazon", DefaultKnowledgeBaseID: uuid.NewString()}})
+		require.NoError(t, err)
+		startBody = `{"targetPlatform":"shein","templateSelection":{"templateId":"` + selectedTemplate.TemplateID + `","revision":"1"}}`
+	}
 	var originalBundle struct{ ID, Digest string }
 	if kf != nil {
 		startBody = `{"targetPlatform":"shein","knowledgeSelection":{"knowledgeBaseId":"` + kf.base.ID + `"}}`
@@ -275,6 +288,30 @@ func testProductAgentOwners(t *testing.T, mode string) {
 		var bundles int64
 		require.NoError(t, f.owner.Table("knowledge_context_bundles").Where("request_key = ?", key).Count(&bundles).Error)
 		require.EqualValues(t, 1, bundles)
+	}
+	if mode == "configuration" {
+		require.Equal(t, &agentconfig.TemplateRef{TemplateID: selectedTemplate.TemplateID, Revision: "1"}, result.TemplateSelection)
+		require.Nil(t, result.Knowledge, "template default never opts into Knowledge")
+		configurationScope := agent.Scope{OrganizationID: "B", ActorID: "admin"}
+		_, err = configuration.Execute(context.Background(), agentconfig.Command{Scope: configurationScope, Key: uuid.NewString(), AgentID: "product.title.agent", Operation: "update-template", TemplateID: selectedTemplate.TemplateID, Expected: 1, Input: agentconfig.TemplateInput{Name: "new v2", TargetPlatform: "temu"}})
+		require.NoError(t, err)
+		_, err = configuration.Execute(context.Background(), agentconfig.Command{Scope: configurationScope, Key: uuid.NewString(), AgentID: "product.title.agent", Operation: "archive-template", TemplateID: selectedTemplate.TemplateID, Expected: 2})
+		require.NoError(t, err)
+		_, err = configuration.Execute(context.Background(), agentconfig.Command{Scope: configurationScope, Key: uuid.NewString(), AgentID: "product.title.agent", Operation: "disable", Expected: 1})
+		require.NoError(t, err)
+		code, raw, err = acquisitionHTTPRequest(server, "POST", path, "operator", "B", uuid.NewString(), startBody)
+		require.NoError(t, err)
+		require.Equal(t, 409, code, string(raw))
+		require.Contains(t, string(raw), "AGENT_NOT_ENABLED")
+		require.EqualValues(t, 4, calls.Load())
+		application := module.(productAgentModule).application
+		recent, _, recentErr := configuration.Recent(context.Background(), agent.Scope{OrganizationID: "B", ActorID: "operator"}, "product.title.agent", "", 20, application.store, func(b agent.Binding) error { require.Equal(t, op.ProductKey, b.ProductKey); return nil })
+		require.NoError(t, recentErr)
+		require.Len(t, recent, 1)
+		require.Equal(t, result.RunID, recent[0].RunID)
+		denied, _, recentErr := configuration.Recent(context.Background(), agent.Scope{OrganizationID: "B", ActorID: "other"}, "product.title.agent", "", 20, application.store, func(agent.Binding) error { return nil })
+		require.NoError(t, recentErr)
+		require.Empty(t, denied)
 	}
 	if mode == "release failed" {
 		require.Equal(t, agent.StopModelUnknown, result.StopReason)

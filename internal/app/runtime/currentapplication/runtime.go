@@ -119,7 +119,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	if cfg.Knowledge != nil && cfg.Knowledge.Enabled && (dependencies.OpenKnowledge == nil || dependencies.NewKnowledge == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("knowledge runtime lifecycle unavailable")
 	}
-	if cfg.ProductAgent != nil && cfg.ProductAgent.Enabled && (dependencies.OpenProductAgent == nil || dependencies.NewApplicationWithFeatures == nil) {
+	if cfg.ProductAgent != nil && (dependencies.OpenProductAgent == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("product agent lifecycle unavailable")
 	}
 	if cfg.ImageAgent != nil && (dependencies.OpenImageAgent == nil || dependencies.DialImageAgentWorkflow == nil || dependencies.NewApplicationWithFeatures == nil) {
@@ -208,11 +208,21 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		}
 	}
 	var agentDB, agentReviewDB, agentAssetDB *gorm.DB
-	if cfg.ProductAgent != nil && cfg.ProductAgent.Enabled {
-		for _, target := range []struct {
+	if cfg.ProductAgent != nil {
+		targets := []struct {
 			cfg  DatabaseConfig
 			dest **gorm.DB
-		}{{cfg.ProductAgent.Database, &agentDB}, {cfg.ProductAgent.ReviewDatabase, &agentReviewDB}, {cfg.ProductAgent.AssetDatabase, &agentAssetDB}} {
+		}{{cfg.ProductAgent.Database, &agentDB}}
+		if cfg.ProductAgent.Enabled {
+			targets = append(targets, struct {
+				cfg  DatabaseConfig
+				dest **gorm.DB
+			}{cfg.ProductAgent.ReviewDatabase, &agentReviewDB}, struct {
+				cfg  DatabaseConfig
+				dest **gorm.DB
+			}{cfg.ProductAgent.AssetDatabase, &agentAssetDB})
+		}
+		for _, target := range targets {
 			pool, openErr := dependencies.OpenProductAgent(startupContext, target.cfg)
 			if openErr != nil {
 				return errors.New("open existing product agent owner database failed")

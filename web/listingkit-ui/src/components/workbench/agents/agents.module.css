@@ -1,0 +1,251 @@
+.marketGrid {
+  margin-top: 24px;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 272px));
+  gap: 16px;
+}
+.mineGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 740px) minmax(280px, 376px);
+  gap: 20px;
+  margin-top: 20px;
+  align-items: start;
+}
+.mineCards {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.agentCard {
+  min-height: 174px;
+  padding: 18px;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.agentCard h2 {
+  font-size: 17px;
+  font-weight: 700;
+}
+.agentCard p {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.support {
+  color: var(--console-blue) !important;
+}
+.cardActions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+.cardActions a,
+.actions a {
+  color: var(--console-blue);
+  font-size: 12px;
+}
+.status {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.status[data-active="true"] {
+  color: var(--success-foreground);
+}
+.panel {
+  padding: 22px;
+  border-radius: 16px;
+  margin-top: 18px;
+}
+.panel h2,
+.detailHead h2 {
+  font-size: 17px;
+  font-weight: 700;
+}
+.panel p {
+  color: var(--muted-foreground);
+  margin-top: 8px;
+}
+.steps {
+  list-style: decimal;
+  padding-left: 22px;
+  margin: 18px 0;
+  display: grid;
+  gap: 18px;
+}
+.detailHead {
+  padding: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.detailGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.capability {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 16px;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  border-radius: 10px;
+}
+.capability h3 {
+  font-weight: 700;
+}
+.capability span {
+  white-space: nowrap;
+  color: var(--console-blue);
+  font-size: 12px;
+}
+.actions,
+.filters {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.filters {
+  justify-content: flex-start;
+  margin-top: 20px;
+}
+.filters button[aria-pressed="true"] {
+  border-color: var(--console-blue);
+  color: var(--console-blue);
+}
+.templateList {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+.templateRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.templateRow h3 {
+  font-weight: 700;
+}
+.version {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  margin-top: 20px;
+  padding-top: 20px;
+}
+.version input {
+  max-width: 220px;
+  margin-top: 8px;
+}
+.recent {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+.recent li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.recent a {
+  color: var(--console-blue);
+}
+.notice {
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  border-radius: 10px;
+  padding: 14px;
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.dialog {
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  width: min(560px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  color: var(--foreground);
+  background: var(--popover);
+  margin: auto;
+  box-shadow: 0 10px 28px #0004;
+}
+.dialog::backdrop {
+  background: #0009;
+}
+.dialog h2 {
+  font-size: 20px;
+  font-weight: 700;
+}
+.dialog p {
+  margin: 10px 0 18px;
+  color: var(--muted-foreground);
+}
+.dialog form,
+.dialog label {
+  display: grid;
+  gap: 10px;
+}
+.dialog form {
+  gap: 18px;
+}
+.dialog select {
+  padding: 12px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.dialog .actions {
+  margin-top: 20px;
+}
+@media (max-width: 900px) {
+  .mineGrid,
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+  .cards {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+  .templateRow,
+  .detailHead {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+@media (max-width: 480px) {
+  .cards {
+    grid-template-columns: 1fr;
+  }
+  .panel,
+  .detailHead,
+  .agentCard {
+    padding: 16px;
+  }
+  .capability {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .actions {
+    justify-content: flex-start;
+  }
+}

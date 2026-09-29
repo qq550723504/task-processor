@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 
 	"go.opentelemetry.io/otel/trace"
 
 	sigjson "sigs.k8s.io/json"
 	"task-processor/internal/agent"
+	"task-processor/internal/agentconfig"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/integration/commercetoolauth"
 	"task-processor/internal/integration/openai"
@@ -18,10 +20,27 @@ import (
 )
 
 type productAgentRequestBody struct {
+	TemplateSelection  json.RawMessage `json:"templateSelection,omitempty"`
 	Revision           string          `json:"revision,omitempty"`
 	Feedback           string          `json:"feedback,omitempty"`
 	TargetPlatform     string          `json:"targetPlatform,omitempty"`
 	KnowledgeSelection json.RawMessage `json:"knowledgeSelection,omitempty"`
+}
+
+func (b productAgentRequestBody) templateSelection(action string) (*agentconfig.TemplateRef, error) {
+	if len(b.TemplateSelection) == 0 {
+		return nil, nil
+	}
+	if action != "start" {
+		return nil, agent.ErrInvalid
+	}
+	var ref agentconfig.TemplateRef
+	violations, e := sigjson.UnmarshalStrict(b.TemplateSelection, &ref)
+	n, ne := strconv.ParseUint(ref.Revision, 10, 63)
+	if e != nil || len(violations) > 0 || !agentconfig.UUID(ref.TemplateID) || ne != nil || n == 0 || strconv.FormatUint(n, 10) != ref.Revision {
+		return nil, agent.ErrInvalid
+	}
+	return &ref, nil
 }
 
 func (b productAgentRequestBody) knowledgeSelection(action string) (string, error) {
@@ -53,33 +72,54 @@ func knowledgeRequestContext(ctx context.Context) (context.Context, error) {
 	return commercetoolauth.WithOrganizationRequest(ctx, commercetoolauth.OrganizationRequest{Identity: identity, BearerToken: capability.bearerToken, RequestedOrganizationID: identity.TenantID}), nil
 }
 
-func (a *productAgentApplication) startRequest(ctx context.Context, binding agent.Binding, key, baseID string) (agent.Request, error) {
+func (a *productAgentApplication) startRequest(ctx context.Context, binding agent.Binding, key, baseID string, template *agentconfig.TemplateRef) (agent.Request, error) {
 	request := agent.Request{Key: key, Binding: binding, PolicyVersion: "title-review-v1", PromptVersion: "product-title-agent-v1", Limits: a.config.Limits}
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+	if !ok {
+		return agent.Request{}, knowledge.ErrForbidden
+	}
+	if a.configuration == nil || a.store == nil {
+		return agent.Request{}, agentconfig.ErrUnavailable
+	}
+	if baseID != "" {
+		request.PromptVersion = "product-title-agent-knowledge-v1"
+	}
+	input := agentconfig.StartCommand{Scope: agent.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, AgentID: a.definition.ID, AgentVersion: a.definition.Version, KnowledgeBaseID: baseID, Template: template, Request: request}
+	existing, found, readErr := a.store.Lookup(ctx, input.Scope, binding, key)
+	if readErr != nil {
+		return agent.Request{}, readErr
+	}
+	if found {
+		if _, err := a.configuration.Match(ctx, input, existing.State.Request.ConfigurationSnapshotRef); err != nil {
+			return agent.Request{}, err
+		}
+		if baseID != "" {
+			if a.context == nil {
+				return agent.Request{}, knowledge.ErrUnavailable
+			}
+			ref := existing.State.Request.ContextSnapshotRef
+			command := knowledge.ContextRequest{Scope: knowledge.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, Binding: binding, Key: key, Selection: "knowledge-base:" + baseID, PolicyVersion: knowledge.ContextPolicyVersion}
+			if err := a.context.ValidateMaterializedRequest(ctx, command, knowledge.ContextSnapshotRef{Kind: ref.Kind, ID: ref.ID, Digest: ref.Digest}); err != nil {
+				return agent.Request{}, err
+			}
+		}
+		return existing.State.Request, nil
+	}
+	snapshot, err := a.configuration.Prepare(ctx, input)
+	if err != nil {
+		return agent.Request{}, err
+	}
+	request = snapshot.Request
+	request.ConfigurationSnapshotRef = agent.ConfigurationSnapshotRef{Kind: agentconfig.SnapshotKind, ID: snapshot.ID, Digest: snapshot.Digest}
 	if baseID == "" {
 		return request, nil
 	}
 	if a.context == nil {
 		return agent.Request{}, knowledge.ErrUnavailable
 	}
-	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
-	if !ok {
-		return agent.Request{}, knowledge.ErrForbidden
-	}
 	command := knowledge.ContextRequest{
 		Scope: knowledge.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, Binding: binding, Key: key,
 		Selection: "knowledge-base:" + baseID, PolicyVersion: knowledge.ContextPolicyVersion,
-	}
-	if record, readErr := a.store.Read(ctx, agent.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, binding.ContextID, key); readErr == nil {
-		ref := record.State.Request.ContextSnapshotRef
-		if record.State.Request.Binding != binding || ref.Absent() || ref.Kind != knowledge.ContextKind {
-			return agent.Request{}, agent.ErrConflict
-		}
-		if err := a.context.ValidateMaterializedRequest(ctx, command, knowledge.ContextSnapshotRef{Kind: ref.Kind, ID: ref.ID, Digest: ref.Digest}); err != nil {
-			return agent.Request{}, err
-		}
-		request.ContextSnapshotRef = ref
-		request.PromptVersion = "product-title-agent-knowledge-v1"
-		return request, nil // Runtime.Start/Claim still compares the complete request.
 	}
 	ref, err := a.context.Materialize(ctx, command)
 	if err != nil {

@@ -97,6 +97,9 @@ func execute() error {
 				options = append(options, httpapi.WithKnowledge(features.Knowledge))
 			}
 			var agentManager *openai.Manager
+			if features.ProductAgent != nil && !features.ProductAgent.Enabled {
+				options = append(options, httpapi.WithAgentConfiguration(features.ProductAgentDB))
+			}
 			if features.ProductAgent != nil && features.ProductAgent.Enabled {
 				p := features.ProductAgent
 				// A registered client is required by Manager; this value is never

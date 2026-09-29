@@ -3980,6 +3980,8 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "storecenter", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #556 freezes Knowledge HTTP as its own domain adapter; core stays framework-free.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "knowledge", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	// #570 / PR #571 admits only Agent Configuration's feature-local HTTP adapter.
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "agentconfig", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "listingsubscription", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "workbenchcontext", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "compatibility", "listingkit", "sourcehandoff", "a1688", "httpapi"))+string(os.PathSeparator)] = struct{}{}
@@ -5661,7 +5663,7 @@ func TestLegacyConsumersStayWithinDrainBaseline(t *testing.T) {
 }
 
 var currentOwnerLegacyListingKitRoots = []string{
-	"product", "listing", "marketplace", "agent", "commercetool", "console", "businesstask", "storecenter",
+	"product", "listing", "marketplace", "agent", "agentconfig", "commercetool", "console", "businesstask", "storecenter",
 }
 
 func TestCurrentOwnersDoNotImportLegacyListingKitRoot(t *testing.T) {
