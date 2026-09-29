@@ -11,7 +11,9 @@
 - 把 harness 实现混进设计 PR → 拆出至 #549
 - 误述「启动时每个组合模块都做 fail-closed 权限校验」→ **对商业域不成立**，已按代码核实并在 §3.1 更正
 
-**未获裁定的部分**：§3.1。待裁定范围已于 2026-09-29 收窄：**商业域不再是「启动校验语义」问题**（它没有启动校验），只剩**账号中心与认证两个域**；商业域留下的是一个**测试绑定路径的断言范围**问题，需要先确认该断言是否为有意为之，**在确认前不涉及任何生产授权边界**。在相关 owner 确认前，RUN-1 的商业授权范围随之待定。
+**当前执行决定（用户 2026-09-29，#541）**：先在 #541 修复 current-application manifest，默认不提供 `commercialOwnerDatabase`，不把旧字段改名、升级角色或继续补 GRANT。保持现有 SA1／账号资料／主体认证 required + forbidden 校验及商业权限矩阵。A/B 独立推进 owner 确认，不作为本修复前置；FULL 继续暂缓，出口代理与真实采集成功路径不属于 #541 启动验收。
+
+**未获裁定的部分**：§3.1 的长期提案仍需**账号中心与认证 owner**确认；商业域的独立问题是**测试绑定路径的目标和完整 runtime 权限合同**。当前 RUN-1 不连接商业 owner，保留既有商业授权，确认前不改矩阵。以下历史四层诊断不恢复已撤回的开工前置。
 **来源**：#541（四层漂移诊断）、#390（RUN-1 harness，原已关闭）
 **取代**：`docs/operations/current-application-run1.md` 中关于「当前应用只装配哪些域」的隐含假设
 
@@ -19,7 +21,7 @@
 
 RUN-1 自 2026-09-20 起无法启动，#541 逐层定位出**四个互相独立**的漂移：商业角色名、SA1 运行时授权、商业只读授权、以及一个 RUN-1 按定义**不应装配**的域（`accountallocation`）的表。
 
-第 4 层是决定性的：它说明 **current-application 组合的域集合已经宽于 RUN-1 声明的范围**。各域在启动时做 fail-closed 权限校验，断言的是**整域 admitted boundary**（SA1 确实如此，参见 §3.1.1）——因此继续逐层补 GRANT 会让 RUN-1 永久成为「生产的影子」——生产每加一个域，就要回来改一次，这正是本次连续暴露的成因。
+这四层是历史诊断。第 3、4 层来自商业测试绑定路径，不能推定为当前生产二进制的启动链（见 §3.1.1）。当前确认的首个启动缺陷是 launcher 仍输出已删除的 `commercialDatabase`；先修该配置合同，再观察真实启动结果。拆分保留不同验收目标，不以逐层扩大 RUN-1 schema/GRANT 来追随生产。
 
 因此把两类验收目标拆到两个环境，各自定义自己的 schema/授权范围。
 
@@ -28,7 +30,7 @@ RUN-1 自 2026-09-20 起无法启动，#541 逐层定位出**四个互相独立*
 | | **RUN-1（保留）** | **FULL（新增，跟随生产）** |
 |---|---|---|
 | 目的 | 身份 / 生效组织 / 账户路由的**隔离**验收 | 商业只读、SA1 + 账号中心 + 认证、**1688 采集**的整链验收 |
-| 装配模块 | **`cmd/current-application` 当前组合的全部模块**（身份/账户四条路由 + 商业概览 + 五条 SA1 路由）。本文早期版本把它写成「仅四条身份路由」，那是错的：二进制并没有这样一个更窄的组合，装配面只能由代码决定 | current-application 组合到的全部模块，外加独立的采集进程（见 §3.5） |
+| 装配模块 | 由 `cmd/current-application` / `buildCurrentApplication` 的当前默认组合决定，包含账号资料、主体认证及统一商业概览；本 launcher 不提供商业 owner 或采集配置，不能用早期路由数量代替实际清单 | current-application 组合到的全部模块，外加独立的采集进程（见 §3.5） |
 | schema 范围 | 仅其装配模块的域 | 全部组合域，随生产演进 |
 | 授权范围 | 同上 | 各域自己的 admitted boundary |
 | 生命周期 | 保留现有 start/stop/restart/destroy 边界 | 同源复用，不另造一套 |
@@ -39,9 +41,9 @@ RUN-1 自 2026-09-20 起无法启动，#541 逐层定位出**四个互相独立*
 
 ### 3.1（**提案，待相关域 owner 确认**）启动校验按「已组合模块」执行，而非全局边界
 
-各域的 `VerifyRuntimePermissions` 断言的是**该域 admitted boundary 的全部表**。当一个进程只组合部分模块时，断言整域边界会要求它拥有用不到的权限 —— 这既是 RUN-1 装不下的原因，也是一个真实的最小权限缺口：进程持有同库其他域的表权限，就能在自己的 handler 里读到那些域的数据。
+source-account pool 的 `VerifyRuntimePermissions` 检查 required 和 forbidden privileges。当前默认组合**实际包含账号资料与主体认证**，共用 source-account pool；harness 已授予相关表和审计序列权限，不能把它们视作未组合或尚未授权的模块。长期若需支持部分模块组合，再由 owner 明确具体未组合模块及其权限合同。
 
-**提案**：权限校验以**实际组合的模块集合**为界。未组合的域不参与校验，其表也不授权。
+**提案**：required privileges 可按实际组合模块集合计算；未组合模块不要求其必需权限，同时必须继续拒绝所有未准入的额外权限。未组合模块不要求 required privileges，与不检查越权是两回事。当前 #541 恢复保持现有组合、ACL 和启动校验，不实施本提案。
 
 > **这不是本文可以单方面裁定的事项。** 它会改变相关域的启动校验语义，属于它们的边界，需要这些域的 owner 明确同意后才能作为实现依据。
 
@@ -58,10 +60,10 @@ RUN-1 自 2026-09-20 起无法启动，#541 逐层定位出**四个互相独立*
 
 **因此**：
 
-1. **RUN-1 当前根本走不到第 3、4 层。** 独立评审（PR #568）查出：harness `scripts/issue357-runtime.mjs:72-73` 仍在 manifest 里发 `commercialDatabase`，而该字段已被 `f49a58be3`（2026-09-29）从 `Config` 移除；`LoadConfig` 用 `DisallowUnknownFields` 解码（`config.go:146`），因此**文档记载的 `start --current-application` 会在 manifest 解码阶段就失败**，先于任何权限断言。实测：带该字段 → `json: unknown field "commercialDatabase"`；只删这一个键 → 解码通过。所以第 3、4 层是**历史记录**，不是当前首个失败点。该 harness 缺陷属 #541 范围，尚未修复。
+1. **基线 `569555f3…` 的首个缺陷是 manifest 解码失败。** PR #568 查出：launcher 仍发送被 `f49a58be3` 移除的 `commercialDatabase`，`LoadConfig` 的 `DisallowUnknownFields` 因而拒绝配置。该缺陷在 #541 内修复：current-application 不再发送旧字段，也不自动补 `commercialOwnerDatabase`；后者要求 `commercial_owner_runtime` 并接入另一组能力，不是机械字段／角色改名。其他模式配置保持原状。商业概览可认证访问，缺失资源／店铺事实为 `unavailable`，不记作商业成功路径通过。解码通过也不预先承诺没有其他启动缺陷。
 2. 第 3、4 层的**来源判定**仍然成立：它们当时来自 `buildCommercialReadModuleFromDatabase` 这条只在测试里走的绑定路径（它要求 `accountallocation` 的表），生产二进制启动不经过它。只是它们已不是当前的阻塞点。
 3. 商业域**不存在**「启动校验语义」可收窄，因此**不需要商业域 owner 就 §3.1 表态**，否则会让 owner 面对一个不存在的问题。待裁定范围收窄为**账号中心与认证两个域**的启动校验语义。
-4. 商业域剩下的是一个**不同性质**的问题：那个测试绑定辅助函数是否**应当**断言整域边界（即 `account_member_token_*` 是否属于 `commercial_runtime` 的 admitted boundary）。这**不改变任何生产授权边界**，但需要 `listingsubscription` / 商业域 owner 先确认该断言是**有意的契约**还是**顺带写成**的。**在该确认前不作任何改动**，也不得反向推断为「商业域应该补上启动校验」—— 那是另一个缺陷，应单独立项。
+4. 商业域的 B 问题须结合实际依据确认：`accountallocation` installer 显式向 `commercial_runtime` 授予 member-token 四表 SELECT/INSERT/UPDATE，`listingsubscription/ai_usage.go` 消费 allocation 和 lock 表。因此不能因表名就认定权限误写。请 owner 确认完整 runtime 权限合同是否保留，以及辅助函数的测试目标是「商业概览读取」还是「完整商业 runtime 角色」；若为前者，明确如何分离且保留有效额度／计量安全测试。**确认前不改权限矩阵**，也不反向推定生产应新增启动校验。正常应用走 `buildUnifiedCommercialRead`，B 不作为 manifest 修复前置。
 
 > **这构成对已准入设计的事实更正，不构成裁定。** 更正只缩小待裁定范围，不新增任何实现授权。
 
@@ -77,17 +79,15 @@ RUN-1 自 2026-09-20 起无法启动，#541 逐层定位出**四个互相独立*
 
 **裁定**：FULL 直接复用该入口，**不新增**第二个 schema-init 命令——否则同一 schema 会有两个 owner 并各自漂移。若后续发现它无法满足需要（例如 manifest 契约、连接上限、安装后自校验），应先记录它具体不满足什么，而不是假定它不存在。
 
-### 3.4 RUN-1 的三层修复仍然要做
+### 3.4 RUN-1 当前修复范围
 
-即使拆分，RUN-1 自身的漂移仍需修（否则它继续坏着）：
+前三层角色／授权对齐已由 #549 合入，作为现状保留：
 
 1. 商业角色 `commercial_reader` → `commercial_runtime`
 2. SA1 运行时补账号中心/认证域授权（**更正**：这些表 SA1 schema 初始化本就安装，缺的只是授权）
 3. 商业只读补 usage/audit 表授权
 
-但**第 3 层要按 §3.1 收窄到 RUN-1 实际装配的范围**，而不是继续加到与生产一致 —— 否则拆分就没有意义。
-
-> **2026-09-29 更正**：第 3 条的依据已变。商业只读的 ACL 校验只在测试绑定路径 `buildCommercialReadModuleFromDatabase` 上执行（见 §3.1.1），所以「补 usage/audit 授权」不再是为了满足生产启动，而是为了满足**那个绑定路径的断言**。在 `listingsubscription` owner 确认 `account_member_token_*` 是否真属于 `commercial_runtime` 的 admitted boundary 之前，**第 3 条按现状保留不动**：它已经是现有断言的形状，而收紧它属于 §3.1.1 第 3 点所指的、尚未裁定的问题。
+本次仅修过期 manifest 和直接相关说明／测试断言；先验证真实 `LoadConfig`，再验证 READY、check、stop/start/restart 的事实保留。A/B 征询独立推进，现有权限合同保持不变，不继续补 GRANT。出口代理和挑战墙只影响另一路真实采集验收，不决定 #541 启动修复是否完成；RUN-1 不承载采集配置，FULL 暂缓。
 
 ### 3.5 FULL 还需要独立的采集进程
 
