@@ -755,6 +755,14 @@ func oversizedSkuMapPage(n, segments int) string {
 // must still surface the challenge, not a bare timeout. If only the deadline
 // survived, the throttle would treat it as an ordinary timeout and the next
 // acquisition would proceed after the rate floor, deepening the block.
+//
+// The budget is chosen to sit between the two durations this test actually
+// depends on. Chromium launch and navigation have to finish with room to spare, or
+// the budget expires before a challenge is ever detected and the test's premise
+// does not hold; the bounded solve then has to overrun it. The solve waits up to
+// six seconds for a challenge that this fixture never clears, so a budget well
+// under that still guarantees the overrun. An earlier version used 1.2s, which
+// fitted neither side reliably and failed about one run in three under -race.
 func TestBrowserAcquireKeepsChallengeSignalWhenTheSolveOutrunsBudget(t *testing.T) {
 	browser := fixtureBrowserPath(t)
 	srv := serveFixture(t, stubbornChallengePage())
@@ -764,7 +772,7 @@ func TestBrowserAcquireKeepsChallengeSignalWhenTheSolveOutrunsBudget(t *testing.
 		Headless:            true,
 		AllowedOrigins:      []string{srv.URL},
 		navigateURLOverride: srv.URL,
-		Budget:              1200 * time.Millisecond,
+		Budget:              4 * time.Second,
 	})
 	_, err := client.Acquire(t.Context(), mustCanonicalSourceForTest(t))
 	require.Error(t, err)
