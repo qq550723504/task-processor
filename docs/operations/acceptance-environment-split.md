@@ -1,6 +1,6 @@
 # 验收环境拆分：RUN-1 与跟随生产的完整环境
 
-**状态**：**拆分决策已准入（IMPLEMENTATION_READY，2026-09-27）**；FULL 部分**经用户决定暂缓**；§3.1 为**待三个域 owner 确认的提案**，未获裁定。本文不含实现。
+**状态**：**拆分决策已准入（IMPLEMENTATION_READY，2026-09-27）**；FULL 部分**经用户决定暂缓**；§3.1 为**待确认的提案**，未获裁定，且其**待裁定范围已于 2026-09-29 收窄**（见下）。本文不含实现。
 
 **准入记录**：独立只读评审（chatgpt-codex-connector），9 条 finding 全部处理完毕（0 未解决）。其中多数指出的都是我文档里的**事实错误**，已逐条更正而非绕过：
 
@@ -9,8 +9,9 @@
 - 误判「只读 `commercial_runtime` 会被启动拒绝」→ 预检只校验 ACL，不校验 `default_transaction_read_only`
 - §4 与 §3.5 对 FULL 增量的表述自相矛盾 → 已统一
 - 把 harness 实现混进设计 PR → 拆出至 #549
+- 误述「启动时每个组合模块都做 fail-closed 权限校验」→ **对商业域不成立**，已按代码核实并在 §3.1 更正
 
-**未获裁定的部分**：§3.1（启动权限校验按实际组合模块为界）改动商业/账号中心/认证三个域的边界，需三者 owner 同意后方可作为实现依据。在其确认前，RUN-1 的商业授权范围随之待定。
+**未获裁定的部分**：§3.1。待裁定范围已于 2026-09-29 收窄：**商业域不再是「启动校验语义」问题**（它没有启动校验），只剩**账号中心与认证两个域**；商业域留下的是一个**测试绑定路径的断言范围**问题，需要先确认该断言是否为有意为之，**在确认前不涉及任何生产授权边界**。在相关 owner 确认前，RUN-1 的商业授权范围随之待定。
 **来源**：#541（四层漂移诊断）、#390（RUN-1 harness，原已关闭）
 **取代**：`docs/operations/current-application-run1.md` 中关于「当前应用只装配哪些域」的隐含假设
 
@@ -18,7 +19,7 @@
 
 RUN-1 自 2026-09-20 起无法启动，#541 逐层定位出**四个互相独立**的漂移：商业角色名、SA1 运行时授权、商业只读授权、以及一个 RUN-1 按定义**不应装配**的域（`accountallocation`）的表。
 
-第 4 层是决定性的：它说明 **current-application 组合的域集合已经宽于 RUN-1 声明的范围**，而启动时每个组合模块都做 fail-closed 权限校验。继续逐层补 GRANT 会让 RUN-1 永久成为「生产的影子」——生产每加一个域，就要回来改一次，这正是本次连续暴露的成因。
+第 4 层是决定性的：它说明 **current-application 组合的域集合已经宽于 RUN-1 声明的范围**。各域在启动时做 fail-closed 权限校验，断言的是**整域 admitted boundary**（SA1 确实如此，参见 §3.1.1）——因此继续逐层补 GRANT 会让 RUN-1 永久成为「生产的影子」——生产每加一个域，就要回来改一次，这正是本次连续暴露的成因。
 
 因此把两类验收目标拆到两个环境，各自定义自己的 schema/授权范围。
 
@@ -42,7 +43,27 @@ RUN-1 自 2026-09-20 起无法启动，#541 逐层定位出**四个互相独立*
 
 **提案**：权限校验以**实际组合的模块集合**为界。未组合的域不参与校验，其表也不授权。
 
-> **这不是本文可以单方面裁定的事项。** 它会改变**商业、账号中心、认证三个域**的启动校验语义，属于它们的边界，需要这三个域的 owner 明确同意后才能作为实现依据。在得到确认前，RUN-1 的商业授权范围（见 §3.4 第 3 条）也随之待定。
+> **这不是本文可以单方面裁定的事项。** 它会改变相关域的启动校验语义，属于它们的边界，需要这些域的 owner 明确同意后才能作为实现依据。
+
+#### 3.1.1（**2026-09-29 事实更正**）商业域没有启动校验，待裁定范围因此收窄
+
+本文初版把四个漂移统一归因为「启动时每个组合模块都做 fail-closed 权限校验」。按代码核实后，**该表述对商业域不成立**：
+
+| 域 | 生产组合路径是否校验 admitted boundary |
+|---|---|
+| source account（SA1） | **是** —— `current_application.go` 的 `buildSourceAccount` 工厂内调用 `sourceaccountstore.VerifyRuntimePermissions` |
+| commercial read | **否** —— 生产组合走 `buildUnifiedCommercialRead`，**不调用任何校验** |
+
+`VerifyCommercialReadSchema` 在全仓库只有一个调用方：`buildCommercialReadModuleFromDatabase`。而该函数的**非测试调用方为零**，只有 `commercial_read_schema_binding_postgres_test.go` 使用；生产组合使用的是另一个函数（`composition_builder.go` 里的 `buildCommercialReadModule`），**不校验**。`VerifyStoreQuotaRuntime` 同样只有测试调用方。
+
+**因此**：
+
+1. **RUN-1 当前根本走不到第 3、4 层。** 独立评审（PR #568）查出：harness `scripts/issue357-runtime.mjs:72-73` 仍在 manifest 里发 `commercialDatabase`，而该字段已被 `f49a58be3`（2026-09-29）从 `Config` 移除；`LoadConfig` 用 `DisallowUnknownFields` 解码（`config.go:146`），因此**文档记载的 `start --current-application` 会在 manifest 解码阶段就失败**，先于任何权限断言。实测：带该字段 → `json: unknown field "commercialDatabase"`；只删这一个键 → 解码通过。所以第 3、4 层是**历史记录**，不是当前首个失败点。该 harness 缺陷属 #541 范围，尚未修复。
+2. 第 3、4 层的**来源判定**仍然成立：它们当时来自 `buildCommercialReadModuleFromDatabase` 这条只在测试里走的绑定路径（它要求 `accountallocation` 的表），生产二进制启动不经过它。只是它们已不是当前的阻塞点。
+3. 商业域**不存在**「启动校验语义」可收窄，因此**不需要商业域 owner 就 §3.1 表态**，否则会让 owner 面对一个不存在的问题。待裁定范围收窄为**账号中心与认证两个域**的启动校验语义。
+4. 商业域剩下的是一个**不同性质**的问题：那个测试绑定辅助函数是否**应当**断言整域边界（即 `account_member_token_*` 是否属于 `commercial_runtime` 的 admitted boundary）。这**不改变任何生产授权边界**，但需要 `listingsubscription` / 商业域 owner 先确认该断言是**有意的契约**还是**顺带写成**的。**在该确认前不作任何改动**，也不得反向推断为「商业域应该补上启动校验」—— 那是另一个缺陷，应单独立项。
+
+> **这构成对已准入设计的事实更正，不构成裁定。** 更正只缩小待裁定范围，不新增任何实现授权。
 
 ### 3.2 FULL 环境的域清单必须显式列出
 
@@ -65,6 +86,8 @@ RUN-1 自 2026-09-20 起无法启动，#541 逐层定位出**四个互相独立*
 3. 商业只读补 usage/audit 表授权
 
 但**第 3 层要按 §3.1 收窄到 RUN-1 实际装配的范围**，而不是继续加到与生产一致 —— 否则拆分就没有意义。
+
+> **2026-09-29 更正**：第 3 条的依据已变。商业只读的 ACL 校验只在测试绑定路径 `buildCommercialReadModuleFromDatabase` 上执行（见 §3.1.1），所以「补 usage/audit 授权」不再是为了满足生产启动，而是为了满足**那个绑定路径的断言**。在 `listingsubscription` owner 确认 `account_member_token_*` 是否真属于 `commercial_runtime` 的 admitted boundary 之前，**第 3 条按现状保留不动**：它已经是现有断言的形状，而收紧它属于 §3.1.1 第 3 点所指的、尚未裁定的问题。
 
 ### 3.5 FULL 还需要独立的采集进程
 
