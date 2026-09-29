@@ -10,7 +10,7 @@ const text = z.string();
 const diagnostic = z.strictObject({ Code: text, Field: text, Message: text, Metadata: z.record(z.string(), z.string()).nullable() });
 const change = z.strictObject({ Field: text, Value: text, EvidenceIDs: z.array(text).nullable() });
 export const agentEmptyRequestSchema = z.strictObject({});
-export const agentTargetPlatformSchema = z.enum(["shein", "temu", "amazon"]);
+const agentTargetPlatformSchema = z.enum(["shein", "temu", "amazon"]);
 export const agentStartRequestSchema = z.strictObject({ targetPlatform: agentTargetPlatformSchema, knowledgeSelection:knowledgeSelectionSchema.optional() });
 export const agentResumeRequestSchema = z.strictObject({ revision: version, feedback: z.string().refine(v => new TextEncoder().encode(v).length <= 8192) });
 export const agentReviewLinkSchema = z.strictObject({ proposalId: id, requestKey: id, operationId: id });
