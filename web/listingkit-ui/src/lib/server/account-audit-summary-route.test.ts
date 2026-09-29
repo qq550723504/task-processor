@@ -31,4 +31,3 @@ it("rejects a partial response and all mutations", async () => {
  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...summary, counts: { operations: "1" } })));
  expect((await GET(request())).status).toBe(502); expect(POST().status).toBe(405);
 });
-

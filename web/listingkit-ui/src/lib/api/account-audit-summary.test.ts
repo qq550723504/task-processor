@@ -25,4 +25,3 @@ it("rejects mismatched organizations and preserves explicit missing-source error
  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "SUMMARY_NOT_CONFIGURED", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
  await expect(getAccountAuditSummary({ expectedUserId: "u1", expectedOrganizationId: "B" })).rejects.toMatchObject({ code: "SUMMARY_NOT_CONFIGURED" });
 });
-
