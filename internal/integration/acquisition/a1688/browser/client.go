@@ -232,30 +232,20 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 		return sourcing.AcquisitionEvidence{}, err
 	}
 
-	reported := false
-	evidence, outcome := c.collect(ctx, source, &reported)
-	// A challenge is the only outcome that stops the process: it is the observed
-	// escalation, and continuing immediately is what deepens it.
-	//
-	// A challenge is notified at detection time so the cooldown engages while the
-	// solve is still running. The terminal outcome below is the same challenge seen
-	// again, so re-reporting it would restart the window from the end of the solve
-	// and make the configured cooldown last longer than it says. Suppressing it here,
-	// where both notifications are known to belong to one acquisition, keeps the
-	// suppression out of the throttle - where it would also discard a second,
-	// genuinely distinct challenge from an overlapping acquisition.
-	if !reported {
-		c.throttle.Observe(outcome)
-	}
+	// The challenge notification is NOT made here. A challenge is known in exactly
+	// one place - the detection site inside collect - which notifies the throttle the
+	// moment it is seen so the cooldown engages while the solve is still running.
+	// Re-reporting the terminal outcome from here would restart that window from the
+	// end of the solve, and it cannot be suppressed here either: collect may return
+	// on a caller cancellation without joining the detection goroutine, so a flag
+	// read here would race with the write that matters and would be false exactly
+	// when it has to be true.
+	evidence, outcome := c.collect(ctx, source)
 	return evidence, outcome
 }
 
 // collect performs one paced acquisition. Its outcome is observed by Acquire.
-// reported is set when this acquisition has already notified the throttle of a
-// challenge, so the caller can avoid reporting the same challenge twice.
-func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource, reported *bool) (
-	sourcing.AcquisitionEvidence, error,
-) {
+func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource) (sourcing.AcquisitionEvidence, error) {
 	deadlineAt, _ := ctx.Deadline()
 	pw, err := playwright.Run()
 	if err != nil {
@@ -405,7 +395,6 @@ func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource,
 			// caller can start a browser against an IP we already know is
 			// challenged, deepening the block.
 			c.throttle.Observe(ErrChallenge)
-			*reported = true
 		}
 		if err == nil && challenged && !isAuthenticationWall(page) {
 			if _, solveErr := c.trySolve(ctx, page); solveErr != nil && ctx.Err() != nil {

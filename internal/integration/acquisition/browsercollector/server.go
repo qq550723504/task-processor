@@ -86,6 +86,14 @@ func writeAcquireError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, sourcing.ErrInvalidAcquisition):
 		WriteError(w, http.StatusBadRequest, CodeInvalidRequest)
+	case errors.Is(err, browser.ErrChallenge):
+		// Checked before the budget, because a challenge whose automatic attempt ran
+		// out of budget is a joined error that matches both: the page is known to be
+		// challenged, and saying the budget expired would report a source that is
+		// refusing us as if we simply asked for too much time. The cooldown depends
+		// on the caller seeing the source failure, so the honest classification has
+		// to win here.
+		WriteError(w, http.StatusBadGateway, CodeSourceUnavailable)
 	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
 		WriteError(w, http.StatusGatewayTimeout, CodeBudgetExceeded)
 	case errors.Is(err, browser.ErrCapacity):
