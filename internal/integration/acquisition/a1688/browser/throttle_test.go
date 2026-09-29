@@ -789,3 +789,26 @@ func TestThrottleCooldownFloorAndDispatchFloorAreDistinct(t *testing.T) {
 			"the floor from the last real dispatch must survive a shorter cooldown")
 	})
 }
+
+// An on-time dispatch that does not move the queue tail must not invalidate a
+// waiter's still-valid timer: treating it as stale would push that waiter a full
+// extra interval out, which with a short configured interval turns a request that
+// originally fitted the budget into a refusal.
+func TestThrottleOnTimeDispatchDoesNotInvalidateWaiters(t *testing.T) {
+	interval := 40 * time.Millisecond
+	budget := time.Second
+	th := newThrottle(interval, 0, 0, -1, budget, budget/4)
+	require.NoError(t, th.Wait(context.Background()))
+
+	// Two waiters queue and both dispatch on time, back to back.
+	for i := 0; i < 2; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		start := time.Now()
+		require.NoError(t, th.Wait(ctx))
+		elapsed := time.Since(start)
+		cancel()
+		// On time means paced by the interval, never later than interval*3.
+		require.Less(t, elapsed, interval*3,
+			"a queued waiter must not be pushed an extra interval out by an on-time dispatch")
+	}
+}

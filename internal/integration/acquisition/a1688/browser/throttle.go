@@ -255,11 +255,19 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		// reservation must not stop this dispatch from recording the interval that
 		// follows it, or the next waiter can start too soon after this one.
 		dispatched := time.Now().Add(span)
+		slipped := time.Now().After(start)
 		t.dispatchFloor = dispatched
+		// Bump the generation only when this dispatch actually MOVED the schedule:
+		// advancing the queue tail, or happening later than the slot it reserved.
+		// An on-time dispatch that leaves the tail alone does not invalidate a
+		// waiter's still-valid timer, and treating that as stale would push the
+		// waiter a full extra interval out.
+		if dispatched.After(t.next) || slipped {
+			t.generation++
+		}
 		if dispatched.After(t.next) {
 			t.next = dispatched
 		}
-		t.generation++
 		t.mu.Unlock()
 		return nil
 	}
@@ -267,7 +275,12 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
-		t.release(mine)
+		// Same rule everywhere: roll back only while this reservation is still the
+		// newest. Restoring a stale prevNext after another waiter re-anchored would
+		// let the next caller start before that dispatch's interval elapsed.
+		if !t.rollbackIfNewest(mine) {
+			t.discard(mine)
+		}
 		return ctx.Err()
 	case <-timer.C:
 	}
@@ -326,11 +339,15 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	// reservation must not stop this dispatch from recording the interval that
 	// follows it, or the next waiter can start too soon after this one.
 	dispatched := time.Now().Add(span)
+	slipped := time.Now().After(start)
 	t.dispatchFloor = dispatched
+	// Bump only when the schedule really moved - see the immediate path.
+	if dispatched.After(t.next) || slipped {
+		t.generation++
+	}
 	if dispatched.After(t.next) {
 		t.next = dispatched
 	}
-	t.generation++
 	t.mu.Unlock()
 	return nil
 }
@@ -364,6 +381,22 @@ func (t *Throttle) blockedLocked() bool {
 // The caller must hold the lock.
 func (t *Throttle) generationLocked(seen uint64) bool {
 	return t.generation != seen
+}
+
+// rollbackIfNewest restores the displaced boundary only when this reservation is
+// still the newest. It reports whether it rolled back.
+func (t *Throttle) rollbackIfNewest(seq uint64) bool {
+	if t == nil {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.owner != seq {
+		return false
+	}
+	t.next = t.prevNext
+	t.prevNext = time.Time{}
+	return true
 }
 
 // release hands a committed slot back when no later caller has committed since.
