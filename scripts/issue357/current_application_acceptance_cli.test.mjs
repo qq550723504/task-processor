@@ -13,12 +13,12 @@ function run(scenario) {
   }, (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stdout, stderr })));
 }
 
-for (const scenario of ['stdout-id', 'stderr-id', 'destroy-fails-start', 'no-id', 'invalid-id', 'ambiguous-id', 'split-id', 'truncated-id', 'wrong-path', 'git-run-id', 'missing-manifest', 'stale-manifest', 'wrong-owner', 'wrong-sha', 'wrong-id', 'success', 'destroy-fails-after-success', 'body-fails']) {
+for (const scenario of ['stdout-id', 'stderr-id', 'destroy-fails-start', 'no-id', 'invalid-id', 'ambiguous-id', 'split-id', 'truncated-id', 'wrong-path', 'git-run-id', 'missing-manifest', 'stale-manifest', 'wrong-owner', 'wrong-sha', 'wrong-id', 'success', 'destroy-fails-after-success', 'body-fails', 'available-resources', 'available-store-services']) {
   test(`acceptance CLI: ${scenario}`, async () => {
     const result = await run(scenario);
     const output = result.stdout + result.stderr;
     assert.match(output, /FIXTURE_LOADED/);
-    const owned = ['stdout-id', 'stderr-id', 'destroy-fails-start', 'success', 'destroy-fails-after-success', 'body-fails'].includes(scenario);
+    const owned = ['stdout-id', 'stderr-id', 'destroy-fails-start', 'success', 'destroy-fails-after-success', 'body-fails', 'available-resources', 'available-store-services'].includes(scenario);
     const cleanup = owned && !scenario.startsWith('destroy-fails');
     assert.equal(result.code, scenario === 'success' ? 0 : 1, output);
     assert.deepEqual([...result.stdout.matchAll(/^FIXTURE_DESTROY (.+)$/gm)].map(match => match[1]), owned ? [id] : [], output);

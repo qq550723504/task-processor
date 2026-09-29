@@ -48,7 +48,7 @@ childProcess.execFile[promisify.custom] = async (_executable, args) => {
     if (scenario === 'truncated-id') fail(`runId=${id}\n`);
     if (scenario === 'wrong-path') fail(`runId=${id} manifest=${path.join(directory, 'other.json')}\n`);
     if (scenario === 'stderr-id') fail('', line() + secret);
-    if (!['success', 'destroy-fails-after-success', 'body-fails'].includes(scenario)) fail(line());
+    if (!['success', 'destroy-fails-after-success', 'body-fails', 'available-resources', 'available-store-services'].includes(scenario)) fail(line());
     return { stdout: line(), stderr: '' };
   }
   if (action === 'destroy') {
@@ -58,7 +58,7 @@ childProcess.execFile[promisify.custom] = async (_executable, args) => {
     return { stdout: JSON.stringify({ resourcesReleased: true }), stderr: '' };
   }
   if (scenario === 'body-fails') fail();
-  if (['source-permission-revoke', 'source-cross-grant', 'commercial-cross-grant', 'provider-stop'].includes(action)) rejectStart = true;
+  if (['source-permission-revoke', 'source-cross-grant', 'provider-stop'].includes(action)) rejectStart = true;
   if (action === 'provider-stop') dependencyUnavailable = true;
   if (action === 'provider-start') dependencyUnavailable = false;
   if (action === 'start' && rejectStart) { rejectStart = false; fail(); }
@@ -75,7 +75,15 @@ fs.readFile = async (file, encoding) => {
   const value = name === 'user-token.txt' ? secret : JSON.stringify(values[name] ?? {});
   return encoding ? value : Buffer.from(value);
 };
-globalThis.fetch = async (url, options) => ({ status: String(url).includes('/api/v1/') ? (options?.method === 'POST' ? 503 : 401) : dependencyUnavailable ? 503 : 200, text: async () => 'DEPENDENCY_UNAVAILABLE' });
+globalThis.fetch = async (url, options) => ({
+  status: String(url).includes('/api/v1/') ? (options?.method === 'POST' ? 503 : 401) : dependencyUnavailable ? 503 : 200,
+  text: async () => 'DEPENDENCY_UNAVAILABLE',
+  json: async () => ({
+    schema_version: 'unified-base-prepaid-v1',
+    resources: { state: scenario === 'available-resources' ? 'available' : 'unavailable', value: scenario === 'available-resources' ? {} : null },
+    store_services: { state: scenario === 'available-store-services' ? 'available' : 'unavailable', value: scenario === 'available-store-services' ? {} : null },
+  }),
+});
 syncBuiltinESMExports();
 
 registerHooks({

@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
@@ -80,6 +81,31 @@ func TestDatabasePasswordSeparatorsRejectedBeforeRuntimeDependencies(t *testing.
 				}
 			})
 		}
+	}
+}
+
+func TestLoadConfigAcceptsRUN1LauncherManifestWithoutCommercialOwner(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "node", "--input-type=module", "-e", `
+import { currentApplicationConfig } from './scripts/issue357/contract.mjs';
+const run = { ports: { go: 18443, database: 15432 }, origins: { issuer: 'http://localhost:18080' }, projectId: 'listingkit-project', secrets: { sourceRuntime: 'source-secret', reader: 'unused-commercial-secret' } };
+process.stdout.write(JSON.stringify(currentApplicationConfig(run, { APIClientID: 'runtime-client', APIClientSecret: 'runtime-secret' })));
+`)
+	command.Dir = filepath.Join("..", "..", "..", "..")
+	manifest, err := command.Output()
+	if err != nil {
+		t.Fatalf("generate synthetic RUN-1 launcher manifest: %v", err)
+	}
+	cfg, err := LoadConfig(writeManifest(t, string(manifest)))
+	if err != nil {
+		t.Fatalf("LoadConfig(RUN-1 launcher manifest): %v", err)
+	}
+	if cfg.CommercialOwnerDatabase != nil || cfg.ProductAcquisitionDatabase != nil || cfg.MoneyOwnerDatabase != nil {
+		t.Fatal("RUN-1 must not automatically connect commercial, money or acquisition owners")
+	}
+	if cfg.SourceAccountDatabase.User != "source_account_runtime" || cfg.ListenAddress() != "127.0.0.1:18443" {
+		t.Fatal("RUN-1 changed source-account role or assigned listener")
 	}
 }
 
