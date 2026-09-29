@@ -208,11 +208,24 @@ func TestAcquisitionActualCommitAcknowledgementLossAtEveryPersistenceBoundary(t 
 				require.Zero(t, versions)
 				_, err = rebuilt.Verify(ctx, key, "981645030344")
 				require.ErrorIs(t, err, sourcing.ErrAcquisitionUnknown)
-				// Expiry cannot authorize another provider invocation.
+				_, err = rebuilt.Acquire(ctx, key, "981645030344")
+				require.ErrorIs(t, err, sourcing.ErrAcquisitionUnknown, "an active original cannot be claimed")
+				// Only an unbound original can recover after expiry. A durable
+				// binding remains UNKNOWN even when its commit response was lost.
 				require.NoError(t, owner.Exec("UPDATE product_acquisition_operations SET lease_until=clock_timestamp()-interval '1 second' WHERE operation_id=?", op.ID).Error)
-				_, e := rebuilt.Acquire(ctx, key, "981645030344")
-				require.ErrorIs(t, e, sourcing.ErrAcquisitionUnknown)
-				require.Equal(t, before, fetches.Load())
+				result, e := rebuilt.Acquire(ctx, key, "981645030344")
+				if stage == "charge_binding" {
+					require.ErrorIs(t, e, sourcing.ErrAcquisitionUnknown)
+					require.Equal(t, before, fetches.Load())
+				} else {
+					require.NoError(t, e)
+					require.True(t, result.Replayed)
+					require.Equal(t, op.ID, result.Operation.ID)
+					require.EqualValues(t, 1, fetches.Load())
+					_, e = rebuilt.Acquire(ctx, key, "981645030344")
+					require.NoError(t, e)
+					require.EqualValues(t, 1, fetches.Load())
+				}
 			case "prepare":
 				require.Equal(t, sourcing.AcquisitionPrepared, op.State)
 				require.Zero(t, versions)

@@ -85,19 +85,20 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 	// its last slot would fail the capacity preflight below and report
 	// ACQUISITION_CAPACITY, even though a replayable operation for its own key
 	// now exists. Replay it instead.
-	if replay, replayed, err := s.replay(ctx, request); err != nil {
+	replay, existing, err := s.replay(ctx, request)
+	if err != nil {
 		return sourcing.AcquisitionResult{}, err
 	} else if replay != nil {
 		return *replay, nil
-	} else if replayed {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown
 	}
 
 	// Bounded capacity preflight so a capped organization does not launch a
-	// browser for every new key (finding #15/#19). StartPrepared stays the
-	// atomic correctness gate.
-	if err := s.capacityAdmitted(ctx, request.Scope); err != nil {
-		return sourcing.AcquisitionResult{}, err
+	// browser for every new key. An existing original uses no additional slot;
+	// Start remains the authoritative claim gate for safe pre-dispatch recovery.
+	if !existing {
+		if err := s.capacityAdmitted(ctx, request.Scope); err != nil {
+			return sourcing.AcquisitionResult{}, err
+		}
 	}
 	op, fetchClaim, err := s.core.operations.Start(ctx, request)
 	if err != nil {
@@ -167,10 +168,7 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 			return sourcing.AcquisitionResult{}, err
 		}
 	}
-	// A newly admitted operation is not a replay. Match the existing acquisition
-	// convention (replayed := !claim) so a first-time browser acquisition is not
-	// reported to clients as an idempotent replay.
-	return s.core.resolve(ctx, op, publishClaim, false)
+	return s.core.resolve(ctx, op, publishClaim, existing)
 }
 
 // replay resolves a durable operation without acquiring. A same-key
@@ -189,11 +187,6 @@ func (s *BrowserAcquisitionService) replay(ctx context.Context, request sourcing
 		return nil, false, err
 	}
 	if op.State == sourcing.AcquisitionAcquiring || op.Command == nil {
-		// A durable row that exists but has no command is a terminal or in-flight
-		// state left by another path (for example the HTTP provider, before the
-		// collector was enabled). Re-acquiring would spend browser and shared-IP
-		// capacity only for StartPrepared to rediscover the same row, so the
-		// existing outcome is reported instead of launching a browser.
 		if op.State == sourcing.AcquisitionFailed {
 			// Surface the stored terminal failure. Reporting it as merely
 			// "replayed" would make the caller answer OUTCOME_UNKNOWN instead of the
@@ -201,8 +194,8 @@ func (s *BrowserAcquisitionService) replay(ctx context.Context, request sourcing
 			// every retry after a provider cutover.
 			return nil, false, acquisitionFailure(op)
 		}
-		// acquiring with no command: report it as an in-flight request rather than
-		// starting a competing acquisition for the same key.
+		// Start alone can grant recovery of an expired, unbound original. An
+		// active or already-bound operation never grants another provider call.
 		return nil, true, nil
 	}
 	if op.State == sourcing.AcquisitionPrepared {

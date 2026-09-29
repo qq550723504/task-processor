@@ -99,13 +99,17 @@ func (r *Repository) BindChargeReservation(ctx context.Context, op sourcing.Acqu
 		if !matchesChargeIntent(current, intent) || row.ActorID != intent.Scope.ActorID || row.MemberID != intent.MemberID || row.Funding != intent.Funding {
 			return sourcing.ErrAcquisitionConflict
 		}
+		// Even an idempotent receipt replay must not authorize a stale worker.
+		if current.Fence != op.Fence {
+			return sourcing.ErrAcquisitionFence
+		}
 		if row.ReservationID != nil {
 			if *row.ReservationID == reservation {
 				return nil
 			}
 			return sourcing.ErrAcquisitionConflict
 		}
-		if current.Fence != op.Fence || (current.State != sourcing.AcquisitionAcquiring && current.State != sourcing.AcquisitionPrepared) || row.TerminalKind != "" {
+		if (current.State != sourcing.AcquisitionAcquiring && current.State != sourcing.AcquisitionPrepared) || row.TerminalKind != "" {
 			return sourcing.ErrAcquisitionFence
 		}
 		updated := tx.Exec("UPDATE "+chargeTable+" SET reservation_id=? WHERE organization_id=? AND actor_id=? AND operation_id=? AND reservation_id IS NULL AND terminal_kind=''", reservation, row.OrganizationID, row.ActorID, row.OperationID)

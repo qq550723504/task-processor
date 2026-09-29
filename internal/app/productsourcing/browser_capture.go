@@ -189,6 +189,9 @@ func (s *BrowserCaptureService) ByKey(ctx context.Context, key string) (sourcing
 		if err := s.core.authorizeScope(ctx, scope); err != nil {
 			return sourcing.AcquisitionResult{}, err
 		}
+		if err := s.core.admitCharge(ctx, op); err != nil {
+			return sourcing.AcquisitionResult{}, err
+		}
 		claimed, claim, err := s.core.operations.Claim(ctx, op)
 		if err != nil {
 			return sourcing.AcquisitionResult{}, err

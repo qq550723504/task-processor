@@ -46,7 +46,7 @@ func (s *AcquisitionService) Acquire(ctx context.Context, key, source string) (s
 	if err := sameAcquisition(request, op); err != nil {
 		return sourcing.AcquisitionResult{}, err
 	}
-	replayed := !fetchClaim
+	replayed := !fetchClaim || op.Fence > 1
 	if op.State == sourcing.AcquisitionAcquiring {
 		if !fetchClaim {
 			return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown

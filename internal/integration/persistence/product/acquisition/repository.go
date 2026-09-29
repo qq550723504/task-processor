@@ -148,9 +148,20 @@ func (r *Repository) Start(ctx context.Context, requested sourcing.AcquisitionOp
 			if op.Source != requested.Source || op.Fingerprint != requested.Fingerprint || op.CaptureSHA256 != requested.CaptureSHA256 {
 				return sourcing.ErrAcquisitionConflict
 			}
-			// An expired lease is not evidence that a previous acquisition had no
-			// effect. Replay only; never dispatch this original operation again.
-			return nil
+			// Dispatch requires a bound reservation. Under the same operation lock,
+			// only an expired, still-unbound original can receive a fresh fence.
+			// Old workers can no longer bind that fence and cannot dispatch late.
+			// A bound operation remains UNKNOWN regardless of lease expiry.
+			updated := tx.Exec("UPDATE "+table+" AS op SET fence=fence+1,lease_until=clock_timestamp()+interval '30 seconds' WHERE organization_id=? AND actor_id=? AND operation_id=? AND state='acquiring' AND fence=? AND fence<? AND lease_until<=clock_timestamp() AND NOT EXISTS (SELECT 1 FROM "+chargeTable+" AS charge WHERE charge.organization_id=op.organization_id AND charge.actor_id=op.actor_id AND charge.operation_id=op.operation_id AND charge.reservation_id IS NOT NULL)", op.Scope.OrganizationID, op.Scope.ActorID, op.ID, op.Fence, int64(math.MaxInt64))
+			if updated.Error != nil {
+				return sourcing.ErrAcquisitionUnavailable
+			}
+			if updated.RowsAffected == 0 {
+				return nil
+			}
+			op, e = read(tx, requested.Scope, "idempotency_key", requested.Key, false)
+			claim = e == nil
+			return e
 		}
 		if !errors.Is(e, sourcing.ErrAcquisitionNotFound) {
 			return e
