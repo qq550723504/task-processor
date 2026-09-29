@@ -6,7 +6,7 @@ set -eu
 commercial_database=${ACCOUNT_COMMERCIAL_DATABASE:-commercial}
 case "$commercial_database" in
   ''|[!a-z]*|*[!a-z0-9_]*) echo 'invalid commercial database name' >&2; exit 1 ;;
-  postgres|template0|template1|source_accounts|referrals|membership|product_acquisition|image_agent|store_center)
+  postgres|template0|template1|source_accounts|referrals|membership|product_acquisition|image_agent|store_center|knowledge)
     echo 'commercial database must have its own name' >&2; exit 1 ;;
 esac
 test "${#commercial_database}" -le 63
@@ -65,6 +65,12 @@ create_database referrals referral_owner
 create_database membership membership_owner
 create_database product_acquisition acquisition_owner
 create_database image_agent image_agent_owner
+
+if [ "${ACCOUNT_KNOWLEDGE_ENABLED:-}" = 1 ]; then
+ create_role knowledge_owner /secrets/knowledge-owner/owner-password
+ create_role knowledge_runtime /secrets/knowledge-runtime/runtime-password
+ create_database knowledge knowledge_owner
+fi
 
 psql -X -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<'SQL'
 REVOKE ALL ON DATABASE postgres, template1 FROM PUBLIC;

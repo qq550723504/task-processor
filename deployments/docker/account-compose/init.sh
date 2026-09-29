@@ -73,6 +73,27 @@ EOF
   store-center-schema-init -config "$work/store-owner-schema.json"
 }
 
+initialize_knowledge() {
+ if [ "${ACCOUNT_KNOWLEDGE_ENABLED:-}" != 1 ]; then
+  jq -e '.knowledge == null' "$runtime/current-application.json" >/dev/null || { echo 'knowledge topology changed; use its original overlay' >&2; exit 1; }
+  return
+ fi
+ cat > "$work/knowledge-owner.json" <<EOF
+{"host":"127.0.0.1","port":5433,"user":"knowledge_owner","password":"$(tr -d '\r\n' < /secrets/knowledge-owner/owner-password)","database":"knowledge","maxConnections":2,"maxIdleConnections":1}
+EOF
+ knowledge-schema-init -config "$work/knowledge-owner.json"
+ if jq -e '.knowledge != null' "$runtime/current-application.json" >/dev/null; then
+  jq -e '.knowledge.enabled == true and .knowledge.database.database == "knowledge" and .knowledge.database.user == "knowledge_runtime" and .knowledge.database.port == 5433 and .knowledge.parserEndpoint == "http://knowledge-parser:9998"' "$runtime/current-application.json" >/dev/null || { echo 'knowledge topology changed; use a new project' >&2; exit 1; }
+  return
+ fi
+ if [ -f "$state/.init-complete" ]; then echo 'knowledge requires first initialization in a new empty project' >&2; exit 1; fi
+ jq --rawfile password /secrets/knowledge-runtime/runtime-password --rawfile access /secrets/knowledge-storage/access-key --rawfile secret /secrets/knowledge-storage/secret-key \
+  '.knowledge = {enabled:true,database:{host:"127.0.0.1",port:5433,user:"knowledge_runtime",password:($password|rtrimstr("\n")),database:"knowledge",maxConnections:4},storage:{endpoint:"http://knowledge-objects:9000",region:"us-east-1",bucket:"knowledge",accessKeyId:($access|rtrimstr("\n")),secretAccessKey:($secret|rtrimstr("\n")),mode:"aws"},parserEndpoint:"http://knowledge-parser:9998"}' \
+  "$runtime/current-application.json" > "$runtime/current-application.json.tmp"
+ chmod 600 "$runtime/current-application.json.tmp"
+ mv "$runtime/current-application.json.tmp" "$runtime/current-application.json"
+}
+
 umask 077
 if [ -f "$state/.init-complete" ]; then
   jq -e --arg database "$commercial_database" '
@@ -113,6 +134,7 @@ SQL
   psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5433/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -v runtime_roles_ready=true -f "$terraform_source/referral-grants.sql"
   migrate_commercial_owner_schema
   initialize_store_center
+  initialize_knowledge
   membership_dsn="postgresql://membership_owner:$(tr -d '\r\n' < "$membership_db_owner_secret/membership-db-password")@127.0.0.1:5433/membership?sslmode=disable"
   printf '%s\n' "$membership_dsn" > "$work/membership-owner-dsn"
   chmod 600 "$work/membership-owner-dsn"
@@ -226,7 +248,7 @@ psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/re
 psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5433/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -v runtime_roles_ready=true -f "$terraform_source/referral-grants.sql"
 migrate_commercial_owner_schema
 initialize_store_center
-
+initialize_knowledge
 
 printf 'postgresql://membership_owner:%s@127.0.0.1:5433/membership?sslmode=disable\n' "$(tr -d '\r\n' < "$membership_db_owner_secret/membership-db-password")" > "$work/membership-owner-dsn"
 chmod 600 "$work/membership-owner-dsn"

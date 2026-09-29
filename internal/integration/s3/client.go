@@ -15,6 +15,7 @@ type ClientConfig struct {
 	AccessKeyID     string
 	SecretAccessKey string
 	UsePathStyle    bool
+	HTTPClient      aws.HTTPClient
 }
 
 func NewClient(cfg ClientConfig) (*s3.Client, error) {
@@ -24,7 +25,7 @@ func NewClient(cfg ClientConfig) (*s3.Client, error) {
 	}
 
 	awsCfg := aws.Config{
-		Region: region,
+		Region: region, HTTPClient: cfg.HTTPClient,
 	}
 	if strings.TrimSpace(cfg.AccessKeyID) != "" || strings.TrimSpace(cfg.SecretAccessKey) != "" {
 		awsCfg.Credentials = aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(

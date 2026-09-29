@@ -19,6 +19,7 @@ func maintainedOperationalCommands() map[string]struct{} {
 		"1688-local-agent":                    {},
 		"commercial-owner-schema-migrate":     {},
 		"fingerprint-browser-installer":       {},
+		"knowledge-schema-init":               {},
 		"listing-scheduler":                   {},
 		"listingkit-identity-preflight":       {},
 		"listingkit-owner-scope-dry-run":      {},

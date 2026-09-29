@@ -13,10 +13,13 @@ import (
 
 	coreconfig "task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
+	"task-processor/internal/knowledge"
 	"task-processor/internal/storecenter"
 )
 
 type Dependencies struct {
+	OpenKnowledge                func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	NewKnowledge                 func(context.Context, *gorm.DB, *KnowledgeConfig, *logrus.Logger) (*knowledge.Service, *knowledge.Processor, error)
 	OpenStoreCenter              func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenProductAgent             func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	IdentityPreflight            func(context.Context, IdentityConfig) error
@@ -40,6 +43,7 @@ type Dependencies struct {
 // ApplicationFeatures keeps separately owned, opt-in current modules together
 // only at the serving composition boundary.
 type ApplicationFeatures struct {
+	Knowledge                                            *knowledge.Service
 	StoreCenterDB                                        *gorm.DB
 	OfficialStoreProvider                                storecenter.OfficialConnectionProvider
 	OfficialStoreProtection                              storecenter.OfficialCredentialProtection
@@ -111,6 +115,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	if cfg.StoreCenter != nil && cfg.StoreCenter.Enabled && (dependencies.OpenStoreCenter == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("store center runtime lifecycle unavailable")
+	}
+	if cfg.Knowledge != nil && cfg.Knowledge.Enabled && (dependencies.OpenKnowledge == nil || dependencies.NewKnowledge == nil || dependencies.NewApplicationWithFeatures == nil) {
+		return errors.New("knowledge runtime lifecycle unavailable")
 	}
 	if cfg.ProductAgent != nil && cfg.ProductAgent.Enabled && (dependencies.OpenProductAgent == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("product agent lifecycle unavailable")
@@ -298,12 +305,30 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	if dependencies.Listen == nil {
 		return errors.New("current application serving lifecycle unavailable")
 	}
+	var knowledgeService *knowledge.Service
+	var knowledgeProcessor *knowledge.Processor
+	if cfg.Knowledge != nil && cfg.Knowledge.Enabled {
+		pool, openErr := dependencies.OpenKnowledge(startupContext, cfg.Knowledge.Database)
+		if openErr != nil || pool == nil {
+			return errors.New("knowledge database unavailable")
+		}
+		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, imageDB, referralDB, membershipDB, storeDB} {
+			if existing == pool {
+				return errors.New("knowledge requires an independently owned pool")
+			}
+		}
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(pool)) }()
+		knowledgeService, knowledgeProcessor, err = dependencies.NewKnowledge(startupContext, pool, cfg.Knowledge, logger)
+		if err != nil || knowledgeService == nil || knowledgeProcessor == nil {
+			return errors.New("knowledge dependencies unavailable")
+		}
+	}
 	if dependencies.NewApplicationWithFeatures == nil && commercialOwnerDB == nil && productDB == nil && referralDB == nil && membershipDB == nil && dependencies.NewApplication == nil {
 		return errors.New("current application serving lifecycle unavailable")
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{OfficialStoreProvider: officialProvider, OfficialStoreProtection: officialProtection, StoreCenterDB: storeDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreProvider: officialProvider, OfficialStoreProtection: officialProtection, StoreCenterDB: storeDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {
@@ -316,6 +341,12 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	if server == nil {
 		return errors.New("current application server unavailable")
+	}
+	if knowledgeProcessor != nil {
+		processingContext, stopProcessing := context.WithCancel(ctx)
+		processingDone := make(chan struct{})
+		go func() { defer close(processingDone); _ = knowledgeProcessor.Run(processingContext) }()
+		defer func() { stopProcessing(); <-processingDone }()
 	}
 	if err := startupContext.Err(); err != nil {
 		return fmt.Errorf("current application startup canceled: %w", err)
