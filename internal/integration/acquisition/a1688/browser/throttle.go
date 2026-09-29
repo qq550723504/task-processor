@@ -260,16 +260,11 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		// Re-anchor from THIS caller's own slot, not from the queue tail: a later
 		// reservation must not stop this dispatch from recording the interval that
 		// follows it, or the next waiter can start too soon after this one.
-		dispatched := time.Now().Add(span)
+		actual := time.Now()
+		dispatched := actual.Add(span)
 		t.dispatchFloor = dispatched
-		// A dispatch invalidates the waiters queued behind it when it either moved
-		// the queue tail or ran past the slot it reserved by more than the slip
-		// tolerance. Comparing only against the tail misses a real slip whenever a
-		// later reservation has already pushed the tail out; comparing with no
-		// tolerance counts every clock tick as one and pushes valid waiters a whole
-		// extra interval out. Both interleaveings are real, so the criterion has to
-		// admit both kinds and nothing in between.
-		if t.scheduleMoved(dispatched, start) {
+		// See scheduleMoved: lateness is measured on actual, the tail on the floor.
+		if t.scheduleMoved(dispatched, actual, start) {
 			t.generation++
 		}
 		if dispatched.After(t.next) {
@@ -345,10 +340,11 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	// Re-anchor from THIS caller's own slot, not from the queue tail: a later
 	// reservation must not stop this dispatch from recording the interval that
 	// follows it, or the next waiter can start too soon after this one.
-	dispatched := time.Now().Add(span)
+	actual := time.Now()
+	dispatched := actual.Add(span)
 	t.dispatchFloor = dispatched
-	// See the immediate path: a tail move, or a real slip past the reserved slot.
-	if t.scheduleMoved(dispatched, start) {
+	// See the immediate path: lateness on actual, the tail on the floor.
+	if t.scheduleMoved(dispatched, actual, start) {
 		t.generation++
 	}
 	if dispatched.After(t.next) {
@@ -389,19 +385,20 @@ func (t *Throttle) generationLocked(seen uint64) bool {
 	return t.generation != seen
 }
 
-// scheduleMoved reports whether a dispatch that started at start and produced a
-// floor of dispatched invalidates the waiters queued behind it.
+// scheduleMoved reports whether a dispatch that actually ran at actual, having
+// reserved a slot at start and leaving a floor of dispatched, invalidates the
+// waiters queued behind it.
 //
 // Both interleaveings are real and they pull in opposite directions. Comparing only
 // against the queue tail misses a genuine slip whenever a later reservation has
 // already pushed that tail out, letting the next waiter start right behind a
-// predecessor that ran late. Comparing with no tolerance counts a single clock tick
-// of goroutine scheduling as a slip and pushes every still-valid waiter a whole
-// extra interval out, refusing requests that fitted their budget. So a dispatch
-// counts as a change when it moved the tail, or when it overran its own reserved
-// slot by more than the tolerance.
-func (t *Throttle) scheduleMoved(dispatched, start time.Time) bool {
-	return dispatched.After(t.next) || dispatched.After(start.Add(t.slipTolerance))
+// predecessor that ran late. Comparing the floor against the slot with no tolerance
+// counts a single clock tick of goroutine scheduling as a slip, because the floor
+// is a full interval ahead of the dispatch by construction and would clear any
+// tolerance on every single dispatch. So the lateness has to be measured on the
+// instant the dispatch ran, and the tail on the floor it left.
+func (t *Throttle) scheduleMoved(dispatched, actual, start time.Time) bool {
+	return dispatched.After(t.next) || actual.After(start.Add(t.slipTolerance))
 }
 
 // rollbackIfNewest restores the displaced boundary only when this reservation is
@@ -471,6 +468,16 @@ func (t *Throttle) Observe(err error) {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	// A challenge is observed twice for one acquisition: once when the page is
+	// detected as challenged, and again when the bounded solve gives up. Restarting
+	// the window on the second call would push the end of the cooldown out by however
+	// long the solve took, so a configured ten-minute window would really last ten
+	// minutes and six seconds - and the drift grows as the configured window shrinks.
+	// A window already in flight therefore stands; only the first observation of a
+	// challenge starts it.
+	if t.blocked && t.cooledAt.After(time.Now()) {
+		return
+	}
 	t.blocked = true
 	t.cooledAt = time.Now().Add(t.ChallengeCooldown)
 	// Push the interval floor past the cooldown so work resumes paced.

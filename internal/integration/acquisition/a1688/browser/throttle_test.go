@@ -836,41 +836,78 @@ func TestThrottleMinimallyLateDispatchDoesNotInvalidateWaiters(t *testing.T) {
 
 // The two interleaveings pull in opposite directions, so the predicate that decides
 // whether a dispatch invalidates the waiters behind it has to admit both and nothing
-// in between. A tail-only rule misses a real slip; a no-tolerance rule counts a
-// clock tick as one.
+// in between. A tail-only rule misses a real slip; a rule that measures lateness on
+// the floor rather than on the instant the dispatch ran is true for every dispatch,
+// because the floor is a full interval ahead by construction.
+//
+// A dispatch is written the way the code builds it: it reserved a slot at start, it
+// actually ran at actual, and it left a floor one interval past actual.
 func TestThrottleScheduleMovedAdmitsBothInterleaveings(t *testing.T) {
 	base := time.Now()
-	tolerance := 100 * time.Millisecond
+	interval := 200 * time.Millisecond
 
-	// A later reservation has pushed the queue tail out beyond the dispatch. It did
-	// not move the tail, and it ran a real 50ms past its slot: the waiters behind it
-	// were scheduled against a schedule that no longer holds, so this is a change.
+	atTail := func(tail time.Time) *Throttle {
+		th := newThrottle(interval, 0, 0, -1, time.Second, time.Second/4)
+		th.next = tail
+		return th
+	}
+
+	// A later reservation has already pushed the queue tail out past the dispatch, so
+	// the dispatch did not move the tail - but it ran 150ms past the slot it
+	// reserved, well beyond the half-interval tolerance. The waiters behind it were
+	// scheduled against a schedule that no longer holds.
 	t.Run("real slip inside a tail pushed by a later reservation", func(t *testing.T) {
-		th := newThrottle(200*time.Millisecond, 0, 0, -1, time.Second, time.Second/4)
-		th.next = base.Add(500 * time.Millisecond)
-		require.True(t, th.scheduleMoved(base.Add(150*time.Millisecond), base),
+		actual := base.Add(150 * time.Millisecond)
+		require.True(t, atTail(base.Add(500*time.Millisecond)).
+			scheduleMoved(actual.Add(interval), actual, base),
 			"a dispatch that overran its slot by more than the tolerance must invalidate waiters")
 	})
 
-	// A clock tick of goroutine scheduling, landing inside the existing tail: not a
-	// change, or every queued waiter would be pushed a whole interval out.
+	// A clock tick of goroutine scheduling, landing inside the existing tail. The
+	// floor here is a full interval past the reserved slot, so a rule that compared
+	// the floor against the slot would call this a change and push valid waiters out.
 	t.Run("clock tick inside the tail", func(t *testing.T) {
-		th := newThrottle(200*time.Millisecond, 0, 0, -1, time.Second, time.Second/4)
-		th.next = base.Add(500 * time.Millisecond)
-		require.False(t, th.scheduleMoved(base.Add(time.Millisecond), base),
+		actual := base.Add(time.Millisecond)
+		require.False(t, atTail(base.Add(500*time.Millisecond)).
+			scheduleMoved(actual.Add(interval), actual, base),
 			"a tick of lateness must not invalidate waiters")
 	})
 
 	// An on-time dispatch that advances the tail still moves the schedule.
 	t.Run("on time but advancing the tail", func(t *testing.T) {
-		th := newThrottle(200*time.Millisecond, 0, 0, -1, time.Second, time.Second/4)
-		th.next = base
-		require.True(t, th.scheduleMoved(base.Add(10*time.Millisecond), base),
+		require.True(t, atTail(base).scheduleMoved(base.Add(interval), base, base),
 			"advancing the queue tail must invalidate waiters")
 	})
 
-	// The cases above are written against a 200ms interval, so the tolerance the
-	// throttle derives must be half of that for their margins to mean anything.
-	th := newThrottle(200*time.Millisecond, 0, 0, -1, time.Second, time.Second/4)
-	require.Equal(t, tolerance, th.slipTolerance)
+	// The tolerance is half the configured interval, so the margins above are real.
+	require.Equal(t, interval/2, atTail(base).slipTolerance)
+}
+
+// A single challenge is observed twice - once at detection, once when the bounded
+// solve gives up - and the window must describe the time since the challenge was
+// actually seen, not since the solve finished. A solve that consumes six seconds
+// must not make a ten-minute window last ten minutes and six.
+func TestThrottleCooldownIsNotRestartedByTheSolve(t *testing.T) {
+	cooldown := 300 * time.Millisecond
+	th := newThrottle(time.Millisecond, 0, cooldown, -1, time.Second, time.Second/4)
+	require.NoError(t, th.Wait(context.Background()))
+
+	expiry := func() time.Time {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return th.cooledAt
+	}
+
+	th.Observe(ErrChallenge)
+	first := expiry()
+	require.False(t, first.IsZero(), "the first observation must start a window")
+	require.Greater(t, th.CooldownRemaining(), cooldown/2)
+
+	// The bounded solve runs, then reports the same challenge again.
+	time.Sleep(120 * time.Millisecond)
+	th.Observe(ErrChallenge)
+	require.Equal(t, first, expiry(),
+		"a second observation of the same challenge must not move the deadline it already set")
+	require.Less(t, th.CooldownRemaining(), cooldown,
+		"the window must keep counting down from the observation, not restart")
 }
