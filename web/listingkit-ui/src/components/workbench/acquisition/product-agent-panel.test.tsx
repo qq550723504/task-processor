@@ -39,7 +39,7 @@ it("retains one request key after lost response without automatically retrying",
     expect(screen.queryByRole("button", {name:"重新确认配置"})).toBeNull();
 });
 
-it.each(["CONFIGURATION_CHANGED", "TEMPLATE_ARCHIVED", "AGENT_NOT_ENABLED"])("offers explicit new confirmation only after a zero-Claim Start rejection: %s", async code => {
+it.each(["CONFIGURATION_CHANGED", "TEMPLATE_ARCHIVED", "AGENT_NOT_ENABLED", "AGENT_DEFINITION_UNAVAILABLE"])("offers explicit new confirmation only after a zero-Claim Start rejection: %s", async code => {
     fixture.request.mockRejectedValueOnce(new ProductAgentError(code)).mockRejectedValueOnce(new ProductAgentError("OUTCOME_UNKNOWN"));
     render(<ProductAgentPanel {...props}/>);
     fireEvent.change(screen.getByLabelText("素材查询平台"), { target: { value: "shein" } });
@@ -61,8 +61,8 @@ it.each(["CONFIGURATION_CHANGED", "TEMPLATE_ARCHIVED", "AGENT_NOT_ENABLED"])("of
     expect(screen.queryByRole("button", {name:"重新确认配置"})).toBeNull();
 });
 
-it("preserves an interrupted run after CONFIGURATION_CHANGED on Resume", async () => {
-    fixture.request.mockResolvedValueOnce({runId:op,requestKey:op,operationId:op,productKey:"product",catalogVersion:"1",targetPlatform:"shein",phase:"interrupted",revision:"2",canSubmitReview:false,candidate:{Changes:[]},confidence:[],unresolved:[],steps:[],tokens:0,estimatedCostMicros:0,currency:"CNY",usageStatus:"observed"}).mockRejectedValueOnce(new ProductAgentError("CONFIGURATION_CHANGED"));
+it.each(["CONFIGURATION_CHANGED", "AGENT_DEFINITION_UNAVAILABLE"])("preserves an interrupted run after %s on Resume", async code => {
+    fixture.request.mockResolvedValueOnce({runId:op,requestKey:op,operationId:op,productKey:"product",catalogVersion:"1",targetPlatform:"shein",phase:"interrupted",revision:"2",canSubmitReview:false,candidate:{Changes:[]},confidence:[],unresolved:[],steps:[],tokens:0,estimatedCostMicros:0,currency:"CNY",usageStatus:"observed"}).mockRejectedValueOnce(new ProductAgentError(code));
     render(<ProductAgentPanel {...props}/>);
     fireEvent.change(screen.getByLabelText("素材查询平台"), { target: { value: "shein" } });
     fireEvent.click(screen.getByText("生成标题建议"));fireEvent.click(screen.getByText("确认生成"));
@@ -76,10 +76,10 @@ it("preserves an interrupted run after CONFIGURATION_CHANGED on Resume", async (
     expect(screen.queryByRole("button", {name:"重新确认配置"})).toBeNull();
 });
 
-it("allows reconfirmation after an original restored Start receives a definite zero-Claim response", async () => {
+it.each(["CONFIGURATION_CHANGED", "AGENT_DEFINITION_UNAVAILABLE"])("allows reconfirmation after an original restored Start receives a definite zero-Claim response: %s", async code => {
     fixture.params = new URLSearchParams({agent_key:op,agent_platform:"shein",agent_actor:"actor",agent_org:"org"});
     window.history.replaceState(null,"",`/?${fixture.params}`);
-    fixture.request.mockRejectedValueOnce(new ProductAgentError("CONFIGURATION_CHANGED"));
+    fixture.request.mockRejectedValueOnce(new ProductAgentError(code));
     render(<ProductAgentPanel {...props}/>);
     fireEvent.click(screen.getByText("使用原请求核实启动"));
     await screen.findByRole("alert");

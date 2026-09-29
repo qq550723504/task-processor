@@ -16,7 +16,7 @@ import type {AgentTemplate} from "@/lib/contracts/agent-configuration";
 import { TitleAgentConfirmation } from "./title-agent-confirmation";
 import { KnowledgeCitations } from "../task-center/knowledge-citations";
 const reasons: Record<string, string> = { budget_steps: "已达到步骤上限", budget_model_calls: "已达到模型调用上限", budget_tokens: "剩余 token 预算不足", budget_cost: "剩余费用预算不足", budget_runtime: "已达到运行时限", usage_unknown: "用量尚未确认，预留额度仍保留", model_outcome_unknown: "模型结果尚未确认，请勿重新生成", unauthorized: "当前权限不可用", dependency_unavailable: "模型配置、计费策略或依赖尚未就绪", invalid_model_output: "模型输出格式无效", repair_limit: "两次修复后仍未通过校验", audit_unavailable: "调用记录保存失败", tool_error: "证据工具读取失败" };
-const errors: Record<string, string> = { PRODUCT_AGENT_UNAVAILABLE: "当前企业尚未开放标题诊断，或文本模型配置尚未就绪。", OUTCOME_UNKNOWN: "请求结果尚未确认。请保留本次编号，读取当前结果，不要重新生成。", AGENT_CONFLICT: "运行状态已经变化，请读取当前结果。", CONFIGURATION_CHANGED:"配置准入已变化，请核实当前配置与原运行状态。",AGENT_NOT_ENABLED:"当前企业智能体已停用，请由管理员重新启用。",TEMPLATE_ARCHIVED:"所选模板已归档，请核实当前结果和模板。",IDEMPOTENCY_CONFLICT:"本次编号已绑定其他配置，请保留编号并读取当前结果。", FORBIDDEN: "当前身份没有操作权限。", ORGANIZATION_ACCESS_REVOKED: "当前企业权限已撤销。", DEPENDENCY_UNAVAILABLE: "暂时无法读取结果，请稍后用同一编号查询。" };
+const errors: Record<string, string> = { PRODUCT_AGENT_UNAVAILABLE: "当前企业尚未开放标题诊断，或文本模型配置尚未就绪。", OUTCOME_UNKNOWN: "请求结果尚未确认。请保留本次编号，读取当前结果，不要重新生成。", AGENT_CONFLICT: "运行状态已经变化，请读取当前结果。", CONFIGURATION_CHANGED:"配置准入已变化，请核实当前配置与原运行状态。",AGENT_DEFINITION_UNAVAILABLE:"当前执行引用的智能体版本不可用，请核实当前版本与原运行状态。",AGENT_NOT_ENABLED:"当前企业智能体已停用，请由管理员重新启用。",TEMPLATE_ARCHIVED:"所选模板已归档，请核实当前结果和模板。",IDEMPOTENCY_CONFLICT:"本次编号已绑定其他配置，请保留编号并读取当前结果。", FORBIDDEN: "当前身份没有操作权限。", ORGANIZATION_ACCESS_REVOKED: "当前企业权限已撤销。", DEPENDENCY_UNAVAILABLE: "暂时无法读取结果，请稍后用同一编号查询。" };
 const knowledgeStartErrors:Record<string,string>={KNOWLEDGE_CONTEXT_TOO_LARGE:"所选知识完整内容超过输入上限，本次未启动。请缩小知识范围后重新确认。",KNOWLEDGE_NOT_READY:"所选知识没有完整可读版本，本次未启动。",KNOWLEDGE_DISABLED:"所选知识已停用，本次未启动。",KNOWLEDGE_NOT_FOUND:"所选知识当前不可用，本次未启动。",KNOWLEDGE_FORBIDDEN:"当前身份无权读取所选知识，本次未启动。"};
 type StartIntent=z.infer<typeof agentStartRequestSchema>;
 function restoredStart(params:{get:(name:string)=>string|null},userId:string,organizationId:string):StartIntent|null {
@@ -122,7 +122,7 @@ function ScopedAgentPanel({ userId, organizationId, operationId, productKey, cat
         catch (error) {
             if (active.current) {
                 setFailure(error instanceof ProductAgentError ? error.code : "OUTCOME_UNKNOWN");
-                setReconfirmable(action==="start"&&!result&&error instanceof ProductAgentError&&["CONFIGURATION_CHANGED","TEMPLATE_ARCHIVED","AGENT_NOT_ENABLED"].includes(error.code));
+                setReconfirmable(action==="start"&&!result&&error instanceof ProductAgentError&&["CONFIGURATION_CHANGED","TEMPLATE_ARCHIVED","AGENT_NOT_ENABLED","AGENT_DEFINITION_UNAVAILABLE"].includes(error.code));
                 if(freshStart&&error instanceof ProductAgentError&&knowledgeStartErrors[error.code]){
                     setKey("");setIntent(null);const url=new URL(window.location.href);for(const name of intentParams)url.searchParams.delete(name);window.history.replaceState(null,"",url);
                 }
