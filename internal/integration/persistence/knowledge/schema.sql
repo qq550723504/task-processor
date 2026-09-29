@@ -50,3 +50,40 @@ CREATE TABLE public.knowledge_ingest_operations (
  FOREIGN KEY(organization_id,source_id) REFERENCES public.knowledge_sources(organization_id,id),
  FOREIGN KEY(organization_id,revision_id) REFERENCES public.knowledge_revisions(organization_id,id)
 );
+-- Greenfield install only. No serving DDL or retained-project migration.
+ALTER TABLE public.knowledge_sources ADD CONSTRAINT knowledge_source_base_identity UNIQUE(organization_id,base_id,id);
+CREATE TABLE public.knowledge_context_bundles (
+ organization_id varchar(128) NOT NULL, id uuid NOT NULL, actor_id varchar(256) NOT NULL,
+ context_kind varchar(128) NOT NULL, context_id varchar(128) NOT NULL, request_key varchar(128) NOT NULL,
+ fingerprint char(64) NOT NULL CHECK(fingerprint ~ '^[0-9a-f]{64}$'),
+ selection varchar(51) NOT NULL, policy_version varchar(128) NOT NULL,
+ base_id uuid NOT NULL, base_fence_version bigint NOT NULL CHECK(base_fence_version>0),
+ payload bytea NOT NULL CHECK(octet_length(payload) BETWEEN 1 AND 98304),
+ digest char(64) NOT NULL CHECK(digest ~ '^[0-9a-f]{64}$'), created_at timestamptz NOT NULL,
+ PRIMARY KEY(organization_id,id), UNIQUE(organization_id,base_id,id), UNIQUE(organization_id,id,digest),
+ UNIQUE(organization_id,actor_id,context_kind,context_id,request_key),
+ FOREIGN KEY(organization_id,base_id) REFERENCES public.knowledge_bases(organization_id,id),
+ CHECK(length(actor_id)>0 AND length(context_kind)>0 AND length(context_id)>0 AND length(request_key)>0 AND length(policy_version)>0),
+ CHECK(selection='knowledge-base:' || base_id::text)
+);
+CREATE TABLE public.knowledge_context_bundle_entries (
+ organization_id varchar(128) NOT NULL, bundle_id uuid NOT NULL, base_id uuid NOT NULL,
+ source_id uuid NOT NULL, revision_id uuid NOT NULL, citation_id uuid NOT NULL,
+ source_fence_version bigint NOT NULL CHECK(source_fence_version>0),
+ content_digest char(64) NOT NULL CHECK(content_digest ~ '^[0-9a-f]{64}$'),
+ PRIMARY KEY(organization_id,bundle_id,source_id), UNIQUE(organization_id,bundle_id,citation_id),
+ FOREIGN KEY(organization_id,base_id,bundle_id) REFERENCES public.knowledge_context_bundles(organization_id,base_id,id),
+ FOREIGN KEY(organization_id,base_id,source_id) REFERENCES public.knowledge_sources(organization_id,base_id,id),
+ FOREIGN KEY(organization_id,source_id,revision_id) REFERENCES public.knowledge_revisions(organization_id,source_id,id)
+);
+CREATE TABLE public.knowledge_dispatch_permits (
+ organization_id varchar(128) NOT NULL, id uuid NOT NULL, actor_id varchar(256) NOT NULL,
+ invocation_id varchar(128) NOT NULL CHECK(length(invocation_id)>0), bundle_id uuid NOT NULL,
+ digest char(64) NOT NULL, state varchar(16) NOT NULL CHECK(state IN ('ACTIVE','RELEASED','EXPIRED')),
+ acquired_at timestamptz NOT NULL, expires_at timestamptz NOT NULL,
+ PRIMARY KEY(organization_id,id), UNIQUE(organization_id,invocation_id),
+ FOREIGN KEY(organization_id,bundle_id,digest) REFERENCES public.knowledge_context_bundles(organization_id,id,digest),
+ CHECK(expires_at>acquired_at AND expires_at<=acquired_at+interval '5 minutes 30 seconds')
+);
+CREATE INDEX knowledge_permits_expiry ON public.knowledge_dispatch_permits(expires_at) WHERE state='ACTIVE';
+CREATE INDEX knowledge_permits_bundle ON public.knowledge_dispatch_permits(organization_id,bundle_id,state,expires_at);

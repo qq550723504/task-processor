@@ -29,7 +29,7 @@ func NewRepository(ctx context.Context, db *gorm.DB) (*Repository, error) {
 	if db == nil || db.Dialector.Name() != "postgres" {
 		return nil, errors.New("knowledge requires existing PostgreSQL schema")
 	}
-	for _, table := range []string{"knowledge_bases", "knowledge_sources", "knowledge_revisions", "knowledge_ingest_operations"} {
+	for _, table := range []string{"knowledge_bases", "knowledge_sources", "knowledge_revisions", "knowledge_ingest_operations", "knowledge_context_bundles", "knowledge_context_bundle_entries", "knowledge_dispatch_permits"} {
 		var name string
 		if err := db.WithContext(ctx).Raw("SELECT COALESCE(to_regclass(?)::text,'')", "public."+table).Scan(&name).Error; err != nil || name == "" {
 			return nil, errors.New("knowledge schema is not installed")
@@ -39,10 +39,13 @@ func NewRepository(ctx context.Context, db *gorm.DB) (*Repository, error) {
 }
 
 var runtimeColumns = map[string]struct{ insert, update string }{
-	"knowledge_bases":             {"organization_id,id,name,state,version,fence_version,created_by,updated_by,created_at,updated_at", "name,state,version,fence_version,updated_by,updated_at"},
-	"knowledge_sources":           {"organization_id,id,base_id,name,state,version,fence_version,latest_revision_id,current_readable_revision_id,created_by,updated_by,created_at,updated_at", "name,state,version,fence_version,latest_revision_id,current_readable_revision_id,updated_by,updated_at"},
-	"knowledge_revisions":         {"organization_id,id,source_id,number,filename,content_type,size_bytes,sha256,object_key,state,failure,warning,text,lease_owner,lease_until,attempts,next_attempt_at,created_at,updated_at", "state,failure,warning,text,lease_owner,lease_until,attempts,next_attempt_at,updated_at"},
-	"knowledge_ingest_operations": {"organization_id,kind,key,actor_id,fingerprint,result,source_id,revision_id,created_at", ""},
+	"knowledge_bases":                  {"organization_id,id,name,state,version,fence_version,created_by,updated_by,created_at,updated_at", "name,state,version,fence_version,updated_by,updated_at"},
+	"knowledge_sources":                {"organization_id,id,base_id,name,state,version,fence_version,latest_revision_id,current_readable_revision_id,created_by,updated_by,created_at,updated_at", "name,state,version,fence_version,latest_revision_id,current_readable_revision_id,updated_by,updated_at"},
+	"knowledge_revisions":              {"organization_id,id,source_id,number,filename,content_type,size_bytes,sha256,object_key,state,failure,warning,text,lease_owner,lease_until,attempts,next_attempt_at,created_at,updated_at", "state,failure,warning,text,lease_owner,lease_until,attempts,next_attempt_at,updated_at"},
+	"knowledge_ingest_operations":      {"organization_id,kind,key,actor_id,fingerprint,result,source_id,revision_id,created_at", ""},
+	"knowledge_context_bundles":        {"organization_id,id,actor_id,context_kind,context_id,request_key,fingerprint,selection,policy_version,base_id,base_fence_version,payload,digest,created_at", ""},
+	"knowledge_context_bundle_entries": {"organization_id,bundle_id,base_id,source_id,revision_id,citation_id,source_fence_version,content_digest", ""},
+	"knowledge_dispatch_permits":       {"organization_id,id,actor_id,invocation_id,bundle_id,digest,state,acquired_at,expires_at", "state"},
 }
 
 func GrantRuntime(ctx context.Context, db *gorm.DB) error {

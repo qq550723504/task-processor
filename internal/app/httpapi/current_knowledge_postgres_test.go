@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm/logger"
 	"net/http/httptest"
 	"strings"
+	"task-processor/internal/agent"
 	"task-processor/internal/core/config"
 	store "task-processor/internal/integration/persistence/knowledge"
 	kernelmodule "task-processor/internal/kernel/module"
@@ -65,6 +66,9 @@ func TestCurrentKnowledgePostgresLiveAuthorizationAndRestart(t *testing.T) {
 		if key != "" {
 			r.Header.Set("Idempotency-Key", key)
 		}
+		if strings.HasSuffix(path, "/disable") {
+			r.Header.Set("If-Match", `"1"`)
+		}
 		w := httptest.NewRecorder()
 		// Exercise the same composed runtime Handler without going through a test BFF.
 		clientRequest := r.Clone(ctx)
@@ -111,4 +115,31 @@ func TestCurrentKnowledgePostgresLiveAuthorizationAndRestart(t *testing.T) {
 	status, _ = request("GET", root+"/"+id, "B", "", "")
 	require.Equal(t, 403, status)
 	require.Greater(t, f.grantReads.Load(), int32(5))
+	// A real local permit changes the existing disable response to 202 until
+	// release. The mounted HTTP path retains its original live authorization.
+	f.role.Store("listingkit_admin")
+	repo, err := store.NewRepository(ctx, db)
+	require.NoError(t, err)
+	scope := k.Scope{OrganizationID: "B", ActorID: "u1"}
+	admitted, err := repo.Apply(ctx, k.Command{Scope: scope, Kind: "source_create", Key: uuid.NewString(), Fingerprint: k.Digest([]byte("source")), BaseID: id, Name: "Guide", Upload: &k.Revision{Filename: "guide.txt", ContentType: "text/plain", SizeBytes: 5, SHA256: k.Digest([]byte("hello"))}})
+	require.NoError(t, err)
+	upload, ok, err := repo.ClaimUpload(ctx, "B", admitted.Revision.ID, "upload")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NoError(t, repo.ConfirmObject(ctx, upload))
+	revisions, err := repo.ClaimProcessing(ctx, "parser", 2)
+	require.NoError(t, err)
+	require.Len(t, revisions, 1)
+	require.NoError(t, repo.Finish(ctx, revisions[0], k.ParseResult{Text: "frozen"}))
+	ref, err := repo.Materialize(ctx, k.ContextRequest{Scope: scope, Binding: agent.Binding{ContextKind: "acquisition", ContextID: "operation", ProductKey: "product", CatalogVersion: "1", PublicationID: "publication", TargetPlatform: "shein"}, Key: "request", Selection: "knowledge-base:" + id, PolicyVersion: k.ContextPolicyVersion})
+	require.NoError(t, err)
+	permit, err := repo.AcquireDispatchPermit(ctx, scope, ref, "invocation")
+	require.NoError(t, err)
+	status, out = request("POST", root+"/"+id+"/disable", "B", "", uuid.NewString())
+	require.Equal(t, 202, status, out)
+	require.Equal(t, "DISABLING", out["knowledgeBase"].(map[string]any)["state"])
+	require.NoError(t, repo.ReleaseDispatchPermit(ctx, permit))
+	status, out = request("GET", root+"/"+id, "B", "", "")
+	require.Equal(t, 200, status)
+	require.Equal(t, "DISABLED", out["state"])
 }

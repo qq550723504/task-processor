@@ -149,6 +149,41 @@ func TestKnowledgeRuntimePrivilegesCrashBudgetAndDisableFence(t *testing.T) {
 	if err != nil || source.CurrentReadableRevision == nil || source.CurrentReadableRevision.State != k.Partial {
 		t.Fatal("partial promotion missing", err)
 	}
+	// Exercise bundle/permit writes with the actual narrow serving role, not
+	// the owner connection. Exclude the intentionally failed ACTIVE source.
+	apply(k.Command{Kind: "source_disable", SourceID: first.Source.ID, Version: first.Source.Version})
+	request := (&contextFixture{scope: scope, base: *base}).request()
+	ref, err := repo.Materialize(ctx, request)
+	if err != nil {
+		t.Fatal("runtime bundle insert:", err)
+	}
+	if _, err = repo.ReadContext(ctx, scope, ref); err != nil {
+		t.Fatal("runtime bundle read:", err)
+	}
+	permit, err := repo.AcquireDispatchPermit(ctx, scope, ref, "runtime-invocation")
+	if err != nil {
+		t.Fatal("runtime permit insert:", err)
+	}
+	for _, query := range []string{
+		"UPDATE public.knowledge_context_bundles SET payload=payload",
+		"UPDATE public.knowledge_context_bundles SET fingerprint=fingerprint",
+		"UPDATE public.knowledge_context_bundle_entries SET content_digest=content_digest",
+		"UPDATE public.knowledge_dispatch_permits SET expires_at=expires_at",
+		"UPDATE public.knowledge_dispatch_permits SET invocation_id=invocation_id",
+		"DELETE FROM public.knowledge_context_bundles",
+		"DELETE FROM public.knowledge_context_bundle_entries",
+		"DELETE FROM public.knowledge_dispatch_permits",
+	} {
+		if runtimeDB.Exec(query).Error == nil {
+			t.Fatal("runtime mutated immutable Knowledge fact:", query)
+		}
+	}
+	if err = repo.ReleaseDispatchPermit(ctx, permit); err != nil {
+		t.Fatal("runtime permit release:", err)
+	}
+	if err = repo.RecoverExpiredDispatchPermits(ctx); err != nil {
+		t.Fatal("runtime permit recovery:", err)
+	}
 	third := admit()
 	upload, ok, err = repo.ClaimUpload(ctx, scope.OrganizationID, third.Revision.ID, "upload-third")
 	if err != nil || !ok {
