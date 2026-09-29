@@ -75,6 +75,7 @@ func ValidID(s string) bool {
 // Scope comes from the current authorizer, never model or browser payload.
 type Scope struct{ OrganizationID, ActorID string }
 type Request struct {
+	ContextSnapshotRef           ContextSnapshotRef `json:",omitzero"`
 	Key                          string
 	Binding                      Binding
 	PolicyVersion, PromptVersion string
@@ -101,6 +102,9 @@ type ObservedUsage struct {
 	Known              bool
 }
 type Action struct {
+	// Untrusted model IDs; the governed adapter validates and removes these
+	// before handing validated ContextCitationRefs to the runtime.
+	ContextCitationIDs []string `json:",omitempty"`
 	// Kind is tool, propose or interrupt. No arbitrary next-node name is accepted.
 	Kind       string
 	Tool       commercetool.ToolRef
@@ -117,9 +121,10 @@ type FieldConfidence struct {
 	Known bool
 }
 type ModelResult struct {
-	Action       Action
-	InvocationID string
-	Usage        ObservedUsage
+	ContextCitationRefs []ContextCitationRef `json:",omitempty"`
+	Action              Action
+	InvocationID        string
+	Usage               ObservedUsage
 }
 
 // ErrModelNotDispatched is returned only by the governed adapter after it has
@@ -129,6 +134,7 @@ type ModelResult struct {
 var ErrModelNotDispatched = errors.New("model was not dispatched; reservation resolved")
 
 type ModelInput struct {
+	ContextSnapshotRef                         ContextSnapshotRef `json:",omitzero"`
 	Binding                                    Binding
 	PolicyVersion, PromptVersion, InvocationID string
 	History                                    []Observation
@@ -179,6 +185,7 @@ type RejectedPayload struct {
 	Bytes                        int
 }
 type State struct {
+	ContextCitationRefs   []ContextCitationRef `json:",omitempty"`
 	RunID                 string
 	Scope                 Scope
 	Request               Request

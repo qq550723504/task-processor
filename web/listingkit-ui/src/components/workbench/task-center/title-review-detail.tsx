@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import type { ProductTitleProposal } from "@/lib/api/product-title-review";
 import { TitleApplyConfirmation, TitleComparison, TitleEditor } from "./title-review-presentation";
 import styles from "./title-review.module.css";
+import { KnowledgeCitations } from "./knowledge-citations";
 
 export const titleReviewStateLabel = { pending: "待审核", accepted: "已接受，待应用", rejected: "已拒绝", applied: "已应用" };
 
@@ -13,6 +14,7 @@ export function TitleReviewDetail({ proposal: p }: { proposal: ProductTitlePropo
     <h3>调整标准商品标题</h3><p className={p.state === "pending" ? styles.pending : styles.accepted}>{titleReviewStateLabel[p.state]}</p>
     <dl><dt>目标商品</dt><dd>{p.input.product_key}</dd><dt>基线版本</dt><dd>{p.input.base_version}</dd><dt>提案修订</dt><dd>{p.revision}</dd><dt>审核策略</dt><dd>{p.policy}</dd></dl>
     <TitleComparison before={p.before} after={p.after} originalTitle={p.original_title} />
+    <KnowledgeCitations knowledge={p.knowledge} humanEdited={p.after!==p.original_title || p.decisions.some(decision=>decision.action==="edit")}/>
     <section><h3>依据与来源</h3>{p.evidence.length ? p.evidence.map((item, index) => <details key={`${item.id}-${index}`} open={p.evidence.length === 1}>
       <summary>依据 {index + 1} · {item.reference_type}</summary>
       <dl><dt>证据标识</dt><dd>{item.id}</dd><dt>引用标识</dt><dd>{item.reference_id}</dd><dt>来源快照</dt><dd>{item.snapshot_id}</dd><dt>校验和</dt><dd>{item.checksum}</dd></dl>

@@ -18,7 +18,7 @@ import (
 	sigjson "sigs.k8s.io/json"
 )
 
-func productReviewRoutes(s *review.Service, bind func(context.Context, string) (context.Context, error)) []httproute.Descriptor {
+func productReviewRoutes(s *review.Service, bind func(context.Context, string) (context.Context, error), projections ...productReviewContextProjector) []httproute.Descriptor {
 	base := "/api/product/text-proposals"
 	specs := []struct{ method, path, kind string }{{"POST", base, "create"}, {"GET", base, "list"}, {"GET", base + "/:proposal_id", "get"}, {"POST", base + "/:proposal_id/decisions", "decision"}, {"POST", base + "/:proposal_id/apply", "apply"}}
 	routes := make([]httproute.Descriptor, 0, len(specs))
@@ -44,6 +44,14 @@ func productReviewRoutes(s *review.Service, bind func(context.Context, string) (
 			if spec.kind == "list" {
 				listProductReviews(c, s)
 				return
+			}
+			if len(projections) == 1 && projections[0] != nil {
+				if spec.kind == "get" && bind != nil {
+					if ctx, err := bind(c.Request.Context(), c.GetHeader("Authorization")); err == nil {
+						c.Request = c.Request.WithContext(ctx)
+					}
+				}
+				c.Set(productReviewContextProjectorKey, projections[0])
 			}
 			productReviewRequest(c, s, spec.kind)
 		}})
@@ -213,7 +221,11 @@ func validReviewJSONUnicode(raw []byte) bool {
 }
 func reviewResponse(c *gin.Context, v review.View, err error) {
 	if err == nil {
-		wire, marshalErr := marshalProductReviewView(v)
+		var projection *productKnowledgeDTO
+		if projector, ok := c.Get(productReviewContextProjectorKey); ok {
+			projection = projector.(productReviewContextProjector)(c.Request.Context(), v.ContextProvenance)
+		}
+		wire, marshalErr := marshalProductReviewView(v, projection)
 		if marshalErr != nil || len(wire) > maxProductReviewResponseBytes {
 			writeProductReviewError(c, review.ErrUnavailable)
 			return

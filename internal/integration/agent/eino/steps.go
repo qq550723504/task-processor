@@ -22,7 +22,7 @@ func (e *execution) model(ctx context.Context, s *flowState) {
 		s.stop(agent.StopModelCalls)
 		return
 	}
-	in := agent.ModelInput{Binding: s.State.Request.Binding, PolicyVersion: s.State.Request.PolicyVersion, PromptVersion: s.State.Request.PromptVersion, History: s.State.History, Validation: s.State.Validation, UserFeedback: s.State.UserFeedback, AgentRunID: s.State.RunID, AgentID: e.runtime.config.Definition.ID, AgentVersion: e.runtime.config.Definition.Version, TraceID: s.State.TraceID}
+	in := agent.ModelInput{ContextSnapshotRef: s.State.Request.ContextSnapshotRef, Binding: s.State.Request.Binding, PolicyVersion: s.State.Request.PolicyVersion, PromptVersion: s.State.Request.PromptVersion, History: s.State.History, Validation: s.State.Validation, UserFeedback: s.State.UserFeedback, AgentRunID: s.State.RunID, AgentID: e.runtime.config.Definition.ID, AgentVersion: e.runtime.config.Definition.Version, TraceID: s.State.TraceID}
 	quote, err := e.runtime.config.Model.Quote(ctx, clone(in))
 	if err != nil {
 		s.stop(agent.StopDependency)
@@ -74,6 +74,10 @@ func (e *execution) model(ctx context.Context, s *flowState) {
 		return
 	}
 	raw, err := json.Marshal(result.Action)
+	if !agent.ValidContextCitations(s.State.Request.ContextSnapshotRef, result.ContextCitationRefs) || len(result.Action.ContextCitationIDs) != 0 || result.Action.Kind != "propose" && len(result.ContextCitationRefs) != 0 {
+		s.stop(agent.StopInvalidOutput)
+		return
+	}
 	if err != nil || len(raw) > agent.MaxModelOutputBytes {
 		s.stop(agent.StopInvalidOutput)
 		return
@@ -85,6 +89,7 @@ func (e *execution) model(ctx context.Context, s *flowState) {
 	case "tool":
 		next.Next = "tool"
 	case "propose":
+		next.State.ContextCitationRefs = clone(result.ContextCitationRefs)
 		confidence, ok := fieldConfidence(result.Action)
 		if !ok {
 			s.stop(agent.StopInvalidOutput)

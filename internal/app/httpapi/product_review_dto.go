@@ -66,9 +66,10 @@ type productReviewViewDTO struct {
 	Unresolved    []string                   `json:"unresolved"`
 	Decisions     []productReviewDecisionDTO `json:"decisions"`
 	ApplyReceipt  *productReviewReceiptDTO   `json:"apply_receipt,omitempty"`
+	Knowledge     *productKnowledgeDTO       `json:"knowledge,omitempty"`
 }
 
-func marshalProductReviewView(view review.View) ([]byte, error) {
+func marshalProductReviewView(view review.View, projections ...*productKnowledgeDTO) ([]byte, error) {
 	if err := review.ValidateView(view); err != nil {
 		return nil, err
 	}
@@ -82,6 +83,7 @@ func marshalProductReviewView(view review.View) ([]byte, error) {
 	evidence := append([]review.Evidence{}, view.Evidence...)
 	unresolved := append([]string{}, view.Unresolved...)
 	dto := productReviewViewDTO{
+		Knowledge:     unavailableKnowledge(view.ContextProvenance),
 		SchemaVersion: productReviewSchemaVersion,
 		Coverage:      productReviewCoverage,
 		ProposalID:    view.ID,
@@ -97,6 +99,9 @@ func marshalProductReviewView(view review.View) ([]byte, error) {
 		Quality:       productReviewQualityDTO{Overall: view.Quality.Overall, EvidenceCoverage: view.Quality.EvidenceCoverage, RequiredFieldCoverage: view.Quality.RequiredFieldCoverage},
 		Unresolved:    unresolved,
 		Decisions:     decisions,
+	}
+	if view.ContextProvenance != nil && len(projections) == 1 && projections[0] != nil {
+		dto.Knowledge = projections[0]
 	}
 	if view.Receipt != nil {
 		if view.Receipt.At.IsZero() {

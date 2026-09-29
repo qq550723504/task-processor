@@ -38,3 +38,8 @@ it("distinguishes domain, authorization and ambiguous transport failures", () =>
   expect(parseProductTitleReviewFailure({ error: "SQL private" }, 503)).toBeNull();
   expect(parseProductTitleReviewFailure({ code: "RESULT_UNVERIFIED", message: "check", requestId: "r1", fieldErrors: [], outcome: "unknown" }, 502)).not.toBeNull();
 });
+it("preserves additive opaque Knowledge display while rejecting leaked unavailable content",()=>{
+ const fixture=titleProposalFixture();const knowledge={status:"unavailable",originAgentRunId:fixture.proposal_id,citations:[]};
+ expect(parseProductTitleProposal({...fixture,knowledge})?.knowledge).toEqual(knowledge);
+ expect(parseProductTitleProposal({...fixture,knowledge:{...knowledge,text:"protected"}})).toBeNull();
+});

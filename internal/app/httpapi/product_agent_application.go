@@ -18,12 +18,14 @@ import (
 	einoruntime "task-processor/internal/integration/agent/eino"
 	"task-processor/internal/integration/agent/grsaitext"
 	"task-processor/internal/integration/commercetoolauth"
+	"task-processor/internal/integration/knowledgeauth"
 	"task-processor/internal/integration/openai"
 	orgresourceadapter "task-processor/internal/integration/orgresource"
 	agentstore "task-processor/internal/integration/persistence/agent"
 	assetstore "task-processor/internal/integration/persistence/product/asset"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	reviewstore "task-processor/internal/integration/persistence/product/review"
+	"task-processor/internal/knowledge"
 	"task-processor/internal/listing/readiness/tools/readinessinspect"
 	"task-processor/internal/product/asset/tools/assetinspect"
 	"task-processor/internal/product/catalog/tools/canonicalinspect"
@@ -41,6 +43,7 @@ import (
 // and the manager are caller-owned. Construction never installs schema, creates
 // entitlements, calls the model or edits a Product.
 type ProductAgentDependencies struct {
+	Knowledge                *knowledge.Service
 	RunDB, AssetDB, ReviewDB *gorm.DB
 	PointAccountingDB        *gorm.DB
 	Manager                  *openai.Manager
@@ -58,6 +61,7 @@ type ProductAgentInvocationLedger interface {
 }
 
 type productAgentApplication struct {
+	context    *knowledge.ContextService
 	runtime    *einoruntime.Runtime
 	store      *agentstore.Store
 	reviews    *review.Service
@@ -93,6 +97,18 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 	a := &productAgentApplication{receipts: receipts, resolver: resolver, authorizer: auth, config: cfg}
 	a.config.AllowedOrganizationIDs = append([]string(nil), cfg.AllowedOrganizationIDs...)
 	var err error
+	var contexts []grsaitext.KnowledgeContext
+	if cfg.Knowledge != nil {
+		knowledgeAuth, authErr := knowledgeauth.NewAuthorizer(resolver, auth)
+		if authErr != nil {
+			return nil, authErr
+		}
+		a.context, err = cfg.Knowledge.Context(knowledgeAuth)
+		if err != nil {
+			return nil, err
+		}
+		contexts = append(contexts, a.context)
+	}
 	a.points, err = orgresourceadapter.NewGormModelInvocationRepository(cfg.PointAccountingDB, orgresourceadapter.TransactionConfig{}, cfg.Ledger, a)
 	if err != nil {
 		return nil, err
@@ -156,7 +172,7 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 	if err != nil {
 		return nil, err
 	}
-	model, err := grsaitext.NewAgentTextModel(cfg.Manager, cfg.Ledger, cfg.TextPolicy, definition.AllowedTools, a.freshIdentity)
+	model, err := grsaitext.NewAgentTextModel(cfg.Manager, cfg.Ledger, cfg.TextPolicy, definition.AllowedTools, a.freshIdentity, contexts...)
 	if err != nil {
 		return nil, err
 	}

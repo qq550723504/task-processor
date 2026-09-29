@@ -868,7 +868,7 @@ export async function buildWorkbenchBrowserResponse(
     }
     if(upstream.status===404)return protocolError(503,"PRODUCT_AGENT_UNAVAILABLE","Product Agent is not enabled",options.requestId??"");
     const code=payload&&typeof payload==="object"&&"code" in payload&&typeof payload.code==="string"?payload.code:"";
-    const statuses:Record<string,number>={INVALID_AGENT_REQUEST:400,FORBIDDEN:403,AGENT_CONFLICT:409,PRODUCT_AGENT_UNAVAILABLE:503,...acquisitionErrorStatuses};
+    const statuses:Record<string,number>={INVALID_AGENT_REQUEST:400,FORBIDDEN:403,AGENT_CONFLICT:409,PRODUCT_AGENT_UNAVAILABLE:503,KNOWLEDGE_CONTEXT_TOO_LARGE:409,KNOWLEDGE_FORBIDDEN:403,KNOWLEDGE_DISABLED:409,KNOWLEDGE_NOT_READY:409,KNOWLEDGE_NOT_FOUND:409,...acquisitionErrorStatuses};
     if(statuses[code]!==upstream.status)return invalid();
     const response=protocolError(upstream.status,code,"Agent request could not be completed",options.requestId??"");
     if(code==="ORGANIZATION_ACCESS_REVOKED" || code==="ORGANIZATION_ACCESS_DENIED")clearSelectionCookie(response);

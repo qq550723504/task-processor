@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isAcquisitionUUID } from "./product-acquisition";
+import { knowledgeSelectionSchema, productKnowledgeSchema } from "./product-knowledge";
 const id = z.string().refine(isAcquisitionUUID);
 const version = z.string().max(19).regex(/^[1-9][0-9]*$/).refine(v => BigInt(v) <= BigInt("9223372036854775807"));
 // Candidate Action is bounded to 64 KiB by the runtime. HTTP and both BFF/client
@@ -10,10 +11,11 @@ const diagnostic = z.strictObject({ Code: text, Field: text, Message: text, Meta
 const change = z.strictObject({ Field: text, Value: text, EvidenceIDs: z.array(text).nullable() });
 export const agentEmptyRequestSchema = z.strictObject({});
 export const agentTargetPlatformSchema = z.enum(["shein", "temu", "amazon"]);
-export const agentStartRequestSchema = z.strictObject({ targetPlatform: agentTargetPlatformSchema });
+export const agentStartRequestSchema = z.strictObject({ targetPlatform: agentTargetPlatformSchema, knowledgeSelection:knowledgeSelectionSchema.optional() });
 export const agentResumeRequestSchema = z.strictObject({ revision: version, feedback: z.string().refine(v => new TextEncoder().encode(v).length <= 8192) });
 export const agentReviewLinkSchema = z.strictObject({ proposalId: id, requestKey: id, operationId: id });
 export const agentResultSchema = z.strictObject({
+    knowledge:productKnowledgeSchema.optional(),
     runId: id, requestKey: id, operationId: id, productKey: z.string().min(1).max(128), catalogVersion: version, publicationId: z.string().min(1).max(128), targetPlatform: agentTargetPlatformSchema,
     phase: z.enum(["running", "interrupted", "human_review_required", "stopped"]), revision: version, stopReason: z.string().max(128).optional(), humanReviewRequired: z.literal(true),
     candidate: z.strictObject({ Changes: z.array(change).nullable(), Warnings: z.array(diagnostic).nullable(), Rejections: z.array(diagnostic).nullable() }),

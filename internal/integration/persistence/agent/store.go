@@ -169,6 +169,9 @@ func (s *Store) Commit(ctx context.Context, record agent.Record, expected uint64
 }
 
 func validEnvelope(s agent.State) bool {
+	if !agent.ValidContextCitations(s.Request.ContextSnapshotRef, s.ContextCitationRefs) {
+		return false
+	}
 	digest, err := hex.DecodeString(s.Fingerprint)
 	return err == nil && len(digest) == 32 && hex.EncodeToString(digest) == s.Fingerprint && agent.ValidID(s.RunID) && agent.ValidID(s.Scope.OrganizationID) && agent.ValidID(s.Scope.ActorID) && agent.ValidID(s.Request.Key) && s.Request.Binding.Valid() && agent.ValidID(s.Request.PolicyVersion) && agent.ValidID(s.Request.PromptVersion) && s.Request.Limits.Valid() && !s.StartedAt.IsZero() && s.Deadline.After(s.StartedAt) && s.HumanReviewRequired && s.Usage.Steps >= 0 && s.Usage.ModelCalls >= 0 && s.Usage.Tokens >= 0 && s.Usage.CostMicros >= 0
 }

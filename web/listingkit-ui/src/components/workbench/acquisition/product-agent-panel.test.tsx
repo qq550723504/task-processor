@@ -6,7 +6,7 @@ const fixture = vi.hoisted(() => ({ request: vi.fn(), params: new URLSearchParam
 vi.mock("@/lib/api/product-agent", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/api/product-agent")>(), requestProductAgent: fixture.request }));
 vi.mock("next/navigation", () => ({ useSearchParams: () => fixture.params }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => fixture.context }));
-beforeEach(() => { fixture.request.mockReset(); fixture.params = new URLSearchParams(); window.history.replaceState(null, "", "/"); });
+beforeEach(() => { fixture.request.mockReset(); fixture.params = new URLSearchParams(); window.history.replaceState(null, "", "/"); Object.defineProperty(HTMLDialogElement.prototype,"showModal",{configurable:true,value:function(this:HTMLDialogElement){this.open=true}});Object.defineProperty(HTMLDialogElement.prototype,"close",{configurable:true,value:function(this:HTMLDialogElement){this.open=false}}); });
 afterEach(cleanup);
 const op = "11111111-1111-4111-8111-111111111111";
 const props = { enabled: true, operationId: op, productKey: "product", catalogVersion: "1" };
@@ -21,6 +21,9 @@ it("retains one request key after lost response and only reads on recovery", asy
     expect(screen.getByText("生成标题建议")).toBeDisabled();
     fireEvent.change(screen.getByLabelText("素材查询平台"), { target: { value: "shein" } });
     fireEvent.click(screen.getByText("生成标题建议"));
+    expect(fixture.request).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog",{name:"确认标题优化"})).toBeInTheDocument();
+    fireEvent.click(screen.getByText("确认生成"));
     await screen.findByRole("alert");
     expect(fixture.request).toHaveBeenCalledTimes(1);
     expect(fixture.request.mock.calls[0][7]).toBe("shein");
@@ -37,6 +40,7 @@ it("only admits a validated candidate to existing human review", async () => {
     expect(screen.getByText("生成标题建议")).toBeDisabled();
     fireEvent.change(screen.getByLabelText("素材查询平台"), { target: { value: "shein" } });
     fireEvent.click(screen.getByText("生成标题建议"));
+    fireEvent.click(screen.getByText("确认生成"));
     await screen.findByText("title：建议标题");
     expect(screen.getByText("状态：候选已通过校验，等待人工审核")).toBeInTheDocument();
     expect(screen.queryByText("自动应用")).not.toBeInTheDocument();
@@ -51,6 +55,7 @@ it("shows an invalid repair-limit candidate without claiming validation or offer
     render(<ProductAgentPanel {...props}/>);
     fireEvent.change(screen.getByLabelText("素材查询平台"), { target: { value: "shein" } });
     fireEvent.click(screen.getByText("生成标题建议"));
+    fireEvent.click(screen.getByText("确认生成"));
     await screen.findByText("title：无效标题");
     expect(screen.getByText("状态：候选未通过校验，不能提交人工审核")).toBeInTheDocument();
     expect(screen.getByText("两次修复后仍未通过校验")).toBeInTheDocument();

@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,6 +43,46 @@ func agentReviewFixture(t *testing.T) (*titleFixture, *review.Service, context.C
 		Candidate: enrichment.Candidate{Changes: []enrichment.FieldChange{{Field: "title", Value: "Agent suggested title", EvidenceIDs: []string{"evidence1"}}}},
 	}
 	return f, service, ctx, in
+}
+
+func TestProductAgentReviewPreservesOpaqueContextThroughReloadAndHumanEdit(t *testing.T) {
+	f, service, ctx, input := agentReviewFixture(t)
+	raw, _ := json.Marshal(input)
+	var wire map[string]any
+	require.NoError(t, json.Unmarshal(raw, &wire))
+	bundle := "11111111-1111-4111-8111-111111111111"
+	citation := "22222222-2222-4222-8222-222222222222"
+	wire["ContextProvenance"] = map[string]any{"Kind": "knowledge", "BundleID": bundle, "BundleDigest": strings.Repeat("a", 64), "CitationIDs": []string{citation}, "OriginAgentRunID": "33333333-3333-4333-8333-333333333333"}
+	raw, _ = json.Marshal(wire)
+	require.NoError(t, json.Unmarshal(raw, &input))
+	view, err := service.CreateFromCandidate(ctx, "agent:context", input)
+	require.NoError(t, err)
+	encoded, _ := json.Marshal(view)
+	require.Contains(t, string(encoded), bundle, "Review discarded the immutable context provenance")
+	require.Contains(t, string(encoded), citation)
+	repo, err := reviewstore.NewRepository(f.db, func(tx *gorm.DB) (review.SourcePublicationReader, error) {
+		return productsourcing.NewTransactionReader(tx)
+	})
+	require.NoError(t, err)
+	reader, err := catalogstore.NewBoundedSnapshotReader(f.db, 2<<20)
+	require.NoError(t, err)
+	auth, err := authz.NewListingKitAuthorizer(nil, nil)
+	require.NoError(t, err)
+	restarted, err := review.NewCandidateService(reader, f.sourceProducer, repo, auth)
+	require.NoError(t, err)
+	restored, err := restarted.Get(ctx, view.ID)
+	require.NoError(t, err)
+	require.Equal(t, view, restored)
+	edited, err := restarted.Decide(ctx, "edit:context", view.ID, review.DecisionInput{Action: "edit", ExpectedRevision: view.Revision, Title: "Human edited title"})
+	require.NoError(t, err)
+	encoded, _ = json.Marshal(edited)
+	require.Contains(t, string(encoded), bundle)
+	require.Equal(t, "Agent suggested title", edited.OriginalTitle)
+	wire["ContextProvenance"].(map[string]any)["BundleDigest"] = strings.Repeat("b", 64)
+	raw, _ = json.Marshal(wire)
+	require.NoError(t, json.Unmarshal(raw, &input))
+	_, err = restarted.CreateFromCandidate(ctx, "agent:context", input)
+	require.ErrorIs(t, err, review.ErrConflict)
 }
 
 func TestProductAgentReviewIntakeReusesPendingAndIdempotencyWithoutModel(t *testing.T) {
