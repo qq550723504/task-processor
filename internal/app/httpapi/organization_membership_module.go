@@ -30,14 +30,14 @@ type MembershipDependencies struct {
 
 // NewCurrentApplicationWithMembership borrows pools owned by the caller. It
 // incrementally extends current defaults and never installs schema or closes DBs.
-func NewCurrentApplicationWithMembership(ctx context.Context, sourceDB, commercialDB *gorm.DB, cfg *config.Config, logger *logrus.Logger, membershipDeps MembershipDependencies) (*http.Server, error) {
+func NewCurrentApplicationWithMembership(ctx context.Context, sourceDB *gorm.DB, cfg *config.Config, logger *logrus.Logger, membershipDeps MembershipDependencies) (*http.Server, error) {
 	if ctx == nil {
 		return nil, errors.New("membership startup context unavailable")
 	}
-	if membershipDeps.ReceiptDB == nil || membershipDeps.ReceiptDB == sourceDB || membershipDeps.ReceiptDB == commercialDB || cfg == nil {
+	if membershipDeps.ReceiptDB == nil || membershipDeps.ReceiptDB == sourceDB || cfg == nil {
 		return nil, errors.New("membership requires an independent receipt pool")
 	}
-	return NewCurrentApplicationWithOptions(ctx, sourceDB, commercialDB, cfg, logger, WithMembership(membershipDeps))
+	return NewCurrentApplicationWithOptions(ctx, sourceDB, cfg, logger, WithMembership(membershipDeps))
 }
 
 func buildMembershipModule(ctx context.Context, cfg *config.Config, deps MembershipDependencies, authorizer *authz.ListingKitAuthorizer, auth routeAuthDependencies) (kernelmodule.Module, error) {

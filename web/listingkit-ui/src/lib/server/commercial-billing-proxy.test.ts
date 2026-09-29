@@ -1,13 +1,20 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { proxyCommercialBilling } from "./commercial-billing-proxy";
 
+beforeEach(() => vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL", "http://localhost"));
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+it("rejects foreign-origin resource quotes and orders before forwarding",async()=>{
+ vi.stubEnv("COMMERCIAL_API_ORIGIN","http://localhost:8888");const fetcher=vi.fn();vi.stubGlobal("fetch",fetcher);
+ for(const path of ["quotes","orders"]){const request=new Request(`http://localhost/api/workbench/commercial/${path}`,{method:"POST",headers:{origin:"https://foreign.example",cookie:"shuomi_effective_organization=org-a","X-Expected-Organization-ID":"org-a","X-Expected-User-ID":"user-a","content-type":"application/json"},body:"{}"});expect((await proxyCommercialBilling(request,"fixture-token","user-a")).status).toBe(403);}
+ expect(fetcher).not.toHaveBeenCalled();
+});
 
 function postRequest(body: ReadableStream<Uint8Array>): Request {
   return new Request("http://localhost/api/workbench/commercial/orders", {
     method: "POST",
     headers: {
-      cookie: "shuomi_effective_organization=org-a",
+      origin: "http://localhost", cookie: "shuomi_effective_organization=org-a",
       "X-Expected-Organization-ID": "org-a",
       "X-Expected-User-ID": "user-a",
       "content-type": "application/json",
@@ -58,7 +65,7 @@ it("aborts a stalled upstream request at the fixed deadline", async () => {
   vi.stubGlobal("fetch", fetchMock);
   const request = new Request("http://localhost/api/workbench/commercial/orders", {
     method: "POST",
-    headers: { cookie: "shuomi_effective_organization=org-a", "X-Expected-Organization-ID": "org-a", "X-Expected-User-ID": "user-a", "content-type": "application/json" },
+    headers: { origin: "http://localhost", cookie: "shuomi_effective_organization=org-a", "X-Expected-Organization-ID": "org-a", "X-Expected-User-ID": "user-a", "content-type": "application/json" },
     body: "{}",
   });
 

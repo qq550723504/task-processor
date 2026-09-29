@@ -16,7 +16,7 @@ func TestWalletTopUpRequiresSeparateMoneyOwner(t *testing.T) {
 		t.Fatalf("accepted missing owner: %v", err)
 	}
 	cfg.Identity.TenantDirectoryToken = "synthetic-directory-token"
-	owner := cfg.CommercialDatabase
+	owner := cfg.SourceAccountDatabase
 	owner.User = "money_owner_runtime"
 	cfg.MoneyOwnerDatabase = &owner
 	if err := cfg.validate(); err != nil {

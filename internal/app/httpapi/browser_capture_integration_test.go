@@ -44,7 +44,7 @@ func (f *acquisitionHTTPFixture) browserServer(t *testing.T) *httptest.Server {
 		buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return currentApplicationTestModule{name: "source", routes: currentWorkbenchApplicationRoutes[5:]}, nil
 		},
-		buildCommercial: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+		buildCommercial: func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return currentApplicationTestModule{name: "commercial", routes: currentWorkbenchApplicationRoutes[4:5]}, nil
 		},
 		buildAcquisition: func(auth *authz.ListingKitAuthorizer, d routeAuthDependencies) (kernelmodule.Module, error) {
@@ -54,7 +54,7 @@ func (f *acquisitionHTTPFixture) browserServer(t *testing.T) *httptest.Server {
 			return buildBrowserCaptureModule(context.Background(), f.db, d, auth, testHTTPResourceCharges{db: f.db})
 		},
 	}
-	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
+	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
 	require.NoError(t, err)
 	result := httptest.NewServer(server.Handler)
 	t.Cleanup(result.Close)

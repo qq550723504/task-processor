@@ -39,12 +39,12 @@ it("uses real context/switcher and commercial client, drops late HTTP response, 
     requests.push(init!);
     if (revoked) return Response.json({ code: "PERMISSION_DENIED", message: "private", requestId: "test-request", fieldErrors: [] }, { status: 403 });
     if (new Headers(init?.headers).get("X-Expected-Organization-ID") === "org-B") return late;
-    return Response.json({ ...commercialOverviewFixture("org-C"), subscription: null });
+    return Response.json(commercialOverviewFixture("org-C"));
   }));
   const view = render(<QueryClientProvider client={queryClient}><WorkbenchContextProvider><OrganizationSwitcher /><CommercialPage page="entitlements" /></WorkbenchContextProvider></QueryClientProvider>);
   await waitFor(() => expect(requests).toHaveLength(1));
   await userEvent.selectOptions(screen.getByLabelText("当前企业"), "org-C");
-  expect(await screen.findByText("无订阅")).toBeVisible();
+  expect(await screen.findByText("基础方案")).toBeVisible();
   expect(requests[0].signal?.aborted).toBe(true);
   expect(new Headers(requests[1].headers).get("X-Expected-Organization-ID")).toBe("org-C");
   expect(await screen.findAllByText("88 点")).toHaveLength(2);
@@ -59,7 +59,7 @@ it("uses real context/switcher and commercial client, drops late HTTP response, 
   await act(async () => { await queryClient.invalidateQueries({ queryKey: WORKBENCH_CONTEXT_QUERY_KEY }); });
   expect(await screen.findByRole("heading", { name: "无查看权限" })).toBeVisible();
   expect(await screen.findByText(/无资源查看权限/)).toBeVisible();
-  expect(screen.queryByText("无订阅")).not.toBeInTheDocument();
+  expect(screen.queryByText("基础方案")).not.toBeInTheDocument();
   expect(screen.queryByText("private")).not.toBeInTheDocument();
   expect(screen.queryByText("88 点")).not.toBeInTheDocument();
   expect([...requests, ...resourceRequests].every(request => request.method === "GET" && request.cache === "no-store" && request.redirect === "manual")).toBe(true);
@@ -76,6 +76,6 @@ it("validates component fixtures using the single actual wire parser and reautho
   const view = render(<QueryClientProvider client={queryClient}><WorkbenchContextProvider><CommercialPage page="options" /></WorkbenchContextProvider></QueryClientProvider>);
   expect(await screen.findByRole("alert")).toHaveTextContent("企业访问已撤销");
   expect(screen.queryByText("基础方案 · 按需使用")).not.toBeInTheDocument();
-  expect(fetchMock.mock.calls.some(([url]) => url === "/api/workbench/commercial/overview")).toBe(true);
+  expect(fetchMock.mock.calls.some(([url]) => url === "/api/workbench/commercial/resource-offers")).toBe(true);
   view.unmount(); queryClient.clear();
 });

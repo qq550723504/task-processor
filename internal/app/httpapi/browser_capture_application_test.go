@@ -189,7 +189,7 @@ func TestBrowserCaptureOptionRequiresProductPool(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{}
 	cfg.Workbench.Enabled = true
-	_, err := NewCurrentApplicationWithOptions(context.Background(), &gorm.DB{}, &gorm.DB{}, cfg, logrus.New(), WithBrowserCapture())
+	_, err := NewCurrentApplicationWithOptions(context.Background(), &gorm.DB{}, cfg, logrus.New(), WithBrowserCapture())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "browser capture requires the product acquisition pool")
 }

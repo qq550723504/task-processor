@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/ledger/orgresource"
-	"task-processor/internal/listingsubscription"
 	"task-processor/internal/storecenter"
 )
 
@@ -60,10 +59,6 @@ func mapStoreError(err error) protocolError {
 		response.Status, response.Code, response.Message = http.StatusUnprocessableEntity, "STORE_INVALID_STATE", "Store state does not allow this operation"
 	case errors.Is(err, storecenter.ErrInvalidTransition):
 		response.Status, response.Code, response.Message = http.StatusUnprocessableEntity, "STORE_INVALID_STATE", "Store state does not allow this operation"
-	case errors.Is(err, listingsubscription.ErrSubscriptionRequired):
-		response.Status, response.Code, response.Message = http.StatusConflict, "SUBSCRIPTION_REQUIRED", "A subscription is required"
-	case errors.Is(err, storecenter.ErrLimitReached):
-		response.Status, response.Code, response.Message = http.StatusConflict, "STORE_LIMIT_REACHED", "Store limit has been reached"
 	}
 	return response
 }

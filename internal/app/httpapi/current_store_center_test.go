@@ -61,24 +61,23 @@ func TestCurrentStoreRouteAdmissionRejectsDrift(t *testing.T) {
 }
 
 func TestCurrentStoreOptionalAssembly(t *testing.T) {
-	for _, mode := range []string{"disabled", "enabled", "nil-records", "nil-quota", "shared", "missing-owner", "duplicate", "missing-factory"} {
+	for _, mode := range []string{"disabled", "enabled", "nil-records", "shared", "missing-owner", "duplicate", "missing-factory"} {
 		t.Run(mode, func(t *testing.T) {
 			deps := newRouteAuthDependencies()
 			calls := 0
-			source, read, owner, records, quota := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
+			source, owner, records := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
 			factories := currentApplicationFactories{
 				buildWorkbench: func(*config.Config, *logrus.Logger) (workbenchContextBuildResult, error) {
 					return workbenchContextBuildResult{module: currentApplicationTestModule{name: "base", routes: currentWorkbenchApplicationRoutes}, authDependencies: &deps}, nil
 				},
 				buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
-				buildCommercial:    func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
+				buildCommercial:    func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
 				buildResourceCharges: func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (*orgresource.ConsumerChargeService, error) {
 					return orgresource.NewConsumerChargeService(currentStoreChargeFixture{}, map[orgresource.ResourceConsumer]orgresource.ConsumerChargeOwner{orgresource.ConsumerStoreService: currentStoreChargeFixture{}})
 				},
-				buildStoreCenter: func(_ context.Context, r, q *gorm.DB, _ *authz.ListingKitAuthorizer, charges orgresource.ConsumerChargePort, _ storecenter.OfficialConnectionProvider, _ storecenter.OfficialCredentialProtection) (kernelmodule.Module, error) {
+				buildStoreCenter: func(_ context.Context, r *gorm.DB, _ *authz.ListingKitAuthorizer, charges orgresource.ConsumerChargePort, _ storecenter.OfficialConnectionProvider, _ storecenter.OfficialCredentialProtection) (kernelmodule.Module, error) {
 					calls++
 					require.Same(t, records, r)
-					require.Same(t, quota, q)
 					require.NotNil(t, charges)
 					return currentStoreRouteFixture{routes: currentStoreTestRoutes(t)}, nil
 				},
@@ -87,22 +86,20 @@ func TestCurrentStoreOptionalAssembly(t *testing.T) {
 			switch mode {
 			case "nil-records":
 				records = nil
-			case "nil-quota":
-				quota = nil
 			case "shared":
-				quota = records
+				records = source
 			case "missing-owner":
 				options = nil
 			case "missing-factory":
 				factories.buildStoreCenter = nil
 			}
 			if mode != "disabled" {
-				options = append(options, WithStoreCenter(records, quota))
+				options = append(options, WithStoreCenter(records))
 			}
 			if mode == "duplicate" {
-				options = append(options, WithStoreCenter(records, quota))
+				options = append(options, WithStoreCenter(records))
 			}
-			server, err := buildCurrentApplication(context.Background(), source, read, currentApplicationTestConfig(), logrus.New(), factories, options...)
+			server, err := buildCurrentApplication(context.Background(), source, currentApplicationTestConfig(), logrus.New(), factories, options...)
 			if mode == "enabled" || mode == "disabled" {
 				require.NoError(t, err)
 				require.NotNil(t, server)

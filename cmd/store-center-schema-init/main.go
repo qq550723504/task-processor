@@ -18,52 +18,38 @@ import (
 
 	storeschema "task-processor/internal/app/schema/storecenter"
 	coreconfig "task-processor/internal/core/config"
-	"task-processor/internal/listingsubscription"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
 func main() {
 	path := flag.String("config", "", "absolute private Store schema-owner JSON config")
-	quotaPath := flag.String("quota-config", "", "absolute private canonical commercial schema-owner JSON config")
 	flag.Parse()
-	if err := run(*path, *quotaPath); err != nil {
+	if err := run(*path); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	fmt.Println("current Store schema installed and narrow runtime roles granted")
 }
 
-func run(storePath, quotaPath string) error {
+func run(storePath string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	storeCfg, err := loadOwnerConfig(storePath, "store_center_owner")
 	if err != nil {
 		return err
 	}
-	quotaCfg, err := loadOwnerConfig(quotaPath, "commercial_schema_owner")
-	if err != nil {
-		return err
-	}
-	if storeCfg.Host == quotaCfg.Host && storeCfg.Port == quotaCfg.Port && storeCfg.Database == quotaCfg.Database {
-		return errors.New("Store schema requires a dedicated database")
-	}
 	records, err := platformdatabase.OpenExistingWritableContext(ctx, storeCfg)
 	if err != nil {
 		return errors.New("open Store schema-owner database failed")
 	}
 	defer platformdatabase.Close(records)
-	quota, err := platformdatabase.OpenExistingWritableContext(ctx, quotaCfg)
-	if err != nil {
-		return errors.New("open canonical commercial owner database failed")
-	}
-	defer platformdatabase.Close(quota)
 	if err := storeschema.Migrate(ctx, records); err != nil {
 		return fmt.Errorf("initialize current Store schema: %w", err)
 	}
 	if err := grantStoreRuntime(ctx, records); err != nil {
 		return err
 	}
-	return listingsubscription.GrantStoreQuotaRuntimeAccess(ctx, quota)
+	return nil
 }
 
 func grantStoreRuntime(ctx context.Context, db *gorm.DB) error {

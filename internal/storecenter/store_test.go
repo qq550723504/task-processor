@@ -36,8 +36,7 @@ func TestStoreCreateInitializesPersistedAggregateState(t *testing.T) {
 	assertEqual(t, "Region", store.Region(), "Singapore")
 	assertEqual(t, "ExternalStoreID", store.ExternalStoreID(), "external-42")
 	assertEqual(t, "ConnectionRef", store.ConnectionRef(), "")
-	assertEqual(t, "QuotaAllocationID", store.QuotaAllocationID(), testAllocationID)
-	assertEqual(t, "RecordStatus", store.RecordStatus(), storecenter.RecordStatusProvisioning)
+	assertEqual(t, "RecordStatus", store.RecordStatus(), storecenter.RecordStatusActive)
 	assertEqual(t, "Version", store.Version(), int64(1))
 	assertEqual(t, "CreatedBy", store.CreatedBy(), "subject_Exact-Value")
 	assertEqual(t, "UpdatedBy", store.UpdatedBy(), "subject_Exact-Value")
@@ -97,7 +96,6 @@ func TestStoreCreateRejectsInvalidInput(t *testing.T) {
 		{"external store id control character", func(in *storecenter.CreateStoreInput) { in.ExternalStoreID = "ext\x00" }},
 		{"external store id invalid utf8", func(in *storecenter.CreateStoreInput) { in.ExternalStoreID = string([]byte{0xff}) }},
 		{"blank idempotency key", func(in *storecenter.CreateStoreInput) { in.CreateIdempotencyKey = "" }},
-		{"blank quota allocation id", func(in *storecenter.CreateStoreInput) { in.QuotaAllocationID = "" }},
 		{"malformed store id", func(in *storecenter.CreateStoreInput) { in.ID = "not-a-uuid" }},
 		{"nil store id", func(in *storecenter.CreateStoreInput) { in.ID = "00000000-0000-0000-0000-000000000000" }},
 		{"uppercase store id", func(in *storecenter.CreateStoreInput) { in.ID = strings.ToUpper(testStoreID) }},
@@ -106,9 +104,6 @@ func TestStoreCreateRejectsInvalidInput(t *testing.T) {
 			in.CreateIdempotencyKey = "00000000-0000-0000-0000-000000000000"
 		}},
 		{"uppercase idempotency key", func(in *storecenter.CreateStoreInput) { in.CreateIdempotencyKey = strings.ToUpper(testIdempotencyKey) }},
-		{"malformed quota allocation id", func(in *storecenter.CreateStoreInput) { in.QuotaAllocationID = "not-a-uuid" }},
-		{"nil quota allocation id", func(in *storecenter.CreateStoreInput) { in.QuotaAllocationID = "00000000-0000-0000-0000-000000000000" }},
-		{"uppercase quota allocation id", func(in *storecenter.CreateStoreInput) { in.QuotaAllocationID = strings.ToUpper(testAllocationID) }},
 		{"zero occurred at", func(in *storecenter.CreateStoreInput) { in.OccurredAt = time.Time{} }},
 		{"name over code-point limit", func(in *storecenter.CreateStoreInput) {
 			in.Name = strings.Repeat("界", storecenter.MaxStoreNameCodePoints+1)
@@ -150,13 +145,10 @@ func TestLifecycleTransitionsEnforceEdgesAndVersions(t *testing.T) {
 		wantStatus  storecenter.RecordStatus
 		wantVersion int64
 	}{
-		{"provisioning activates", storecenter.RecordStatusProvisioning, storecenter.RecordStatusActive, nil, storecenter.RecordStatusActive, 2},
 		{"active disables", storecenter.RecordStatusActive, storecenter.RecordStatusDisabled, nil, storecenter.RecordStatusDisabled, 3},
 		{"disabled activates", storecenter.RecordStatusDisabled, storecenter.RecordStatusActive, nil, storecenter.RecordStatusActive, 4},
 		{"active cannot bypass begin delete", storecenter.RecordStatusActive, storecenter.RecordStatusDeleting, storecenter.ErrInvalidTransition, storecenter.RecordStatusActive, 2},
 		{"disabled cannot bypass begin delete", storecenter.RecordStatusDisabled, storecenter.RecordStatusDeleting, storecenter.ErrInvalidTransition, storecenter.RecordStatusDisabled, 3},
-		{"provisioning cannot disable", storecenter.RecordStatusProvisioning, storecenter.RecordStatusDisabled, storecenter.ErrInvalidTransition, storecenter.RecordStatusProvisioning, 1},
-		{"provisioning cannot delete", storecenter.RecordStatusProvisioning, storecenter.RecordStatusDeleting, storecenter.ErrInvalidTransition, storecenter.RecordStatusProvisioning, 1},
 		{"active cannot activate", storecenter.RecordStatusActive, storecenter.RecordStatusActive, storecenter.ErrInvalidTransition, storecenter.RecordStatusActive, 2},
 		{"deleting cannot activate", storecenter.RecordStatusDeleting, storecenter.RecordStatusActive, storecenter.ErrInvalidTransition, storecenter.RecordStatusDeleting, 3},
 	}
@@ -211,7 +203,6 @@ func TestStoreRehydrateRejectsInvalidPersistedState(t *testing.T) {
 		name   string
 		mutate func(*storecenter.StoreSnapshot)
 	}{
-		{"nil quota allocation id", func(s *storecenter.StoreSnapshot) { s.QuotaAllocationID = "00000000-0000-0000-0000-000000000000" }},
 		{"zero created at", func(s *storecenter.StoreSnapshot) { s.CreatedAt = time.Time{} }},
 		{"updated before created", func(s *storecenter.StoreSnapshot) { s.UpdatedAt = testCreatedAt.Add(-time.Second) }},
 		{"deleted active store", func(s *storecenter.StoreSnapshot) {
@@ -240,15 +231,13 @@ func TestStoreRehydrateEnforcesLifecycleMinimumVersions(t *testing.T) {
 		version int64
 		wantErr bool
 	}{
-		{"provisioning starts at one", storecenter.RecordStatusProvisioning, 1, false},
-		{"provisioning permits later edits", storecenter.RecordStatusProvisioning, 8, false},
-		{"active rejects creation version", storecenter.RecordStatusActive, 1, true},
+		{"active starts at creation version", storecenter.RecordStatusActive, 1, false},
 		{"active permits first transition", storecenter.RecordStatusActive, 2, false},
 		{"active permits later edits", storecenter.RecordStatusActive, 8, false},
-		{"disabled rejects version two", storecenter.RecordStatusDisabled, 2, true},
+		{"disabled rejects creation version", storecenter.RecordStatusDisabled, 1, true},
 		{"disabled permits first disable", storecenter.RecordStatusDisabled, 3, false},
 		{"disabled permits later edits", storecenter.RecordStatusDisabled, 9, false},
-		{"deleting rejects version two", storecenter.RecordStatusDeleting, 2, true},
+		{"deleting rejects creation version", storecenter.RecordStatusDeleting, 1, true},
 		{"deleting permits direct active delete", storecenter.RecordStatusDeleting, 3, false},
 		{"deleting permits later edits", storecenter.RecordStatusDeleting, 10, false},
 	}
@@ -263,6 +252,7 @@ func TestStoreRehydrateEnforcesLifecycleMinimumVersions(t *testing.T) {
 			snapshot.Version = tt.version
 			if tt.status == storecenter.RecordStatusDeleting {
 				snapshot.DeleteOperationKey = uuid.NewString()
+				snapshot.ServiceStatus = ""
 			}
 
 			_, err := storecenter.RehydrateStore(snapshot)
@@ -279,7 +269,7 @@ func TestLifecycleTransitionPreservesImmutableIdentity(t *testing.T) {
 	store := newTestStore(t)
 	wantID, wantOrganizationID, wantPlatform := store.ID(), store.OrganizationID(), store.Platform()
 
-	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject_Update", testUpdatedAt); err != nil {
+	if err := store.TransitionTo(storecenter.RecordStatusDisabled, "subject_Update", testUpdatedAt); err != nil {
 		t.Fatalf("TransitionTo(active) error = %v", err)
 	}
 
@@ -353,9 +343,6 @@ func newTestStore(t *testing.T) *storecenter.Store {
 
 func TestStoreEditBasicOwnsNormalizedMutableFields(t *testing.T) {
 	store := newTestStore(t)
-	if err := store.TransitionTo(storecenter.RecordStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
 	before := store.Snapshot()
 	changed, err := store.EditBasic("  Updated Shop  ", "  MY  ", "editor", store.UpdatedAt().Add(time.Second))
 	if err != nil {
@@ -365,7 +352,7 @@ func TestStoreEditBasicOwnsNormalizedMutableFields(t *testing.T) {
 		t.Fatalf("EditBasic() = changed %v snapshot %+v", changed, store.Snapshot())
 	}
 	after := store.Snapshot()
-	if after.OrganizationID != before.OrganizationID || after.Platform != before.Platform || after.ExternalStoreID != before.ExternalStoreID || after.QuotaAllocationID != before.QuotaAllocationID || after.CreateIdempotencyKey != before.CreateIdempotencyKey || after.ConnectionRef != before.ConnectionRef || after.CreatedBy != before.CreatedBy || !after.CreatedAt.Equal(before.CreatedAt) {
+	if after.OrganizationID != before.OrganizationID || after.Platform != before.Platform || after.ExternalStoreID != before.ExternalStoreID || after.CreateIdempotencyKey != before.CreateIdempotencyKey || after.ConnectionRef != before.ConnectionRef || after.CreatedBy != before.CreatedBy || !after.CreatedAt.Equal(before.CreatedAt) {
 		t.Fatalf("EditBasic() changed immutable identity: before=%+v after=%+v", before, after)
 	}
 	changed, err = store.EditBasic("Updated Shop", "MY", "editor", store.UpdatedAt())
@@ -376,12 +363,6 @@ func TestStoreEditBasicOwnsNormalizedMutableFields(t *testing.T) {
 
 func TestStoreEditBasicRejectsTransitionalStates(t *testing.T) {
 	store := newTestStore(t)
-	if _, err := store.EditBasic("Name", "SG", "editor", store.UpdatedAt()); !errors.Is(err, storecenter.ErrInvalidTransition) {
-		t.Fatalf("provisioning EditBasic() error = %v", err)
-	}
-	if err := store.TransitionTo(storecenter.RecordStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
 	if err := store.BeginDelete(uuid.NewString(), "deleter", store.UpdatedAt().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
@@ -392,9 +373,6 @@ func TestStoreEditBasicRejectsTransitionalStates(t *testing.T) {
 
 func TestStoreBeginDeleteBindsCanonicalKeyOnce(t *testing.T) {
 	store := newTestStore(t)
-	if err := store.TransitionTo(storecenter.RecordStatusActive, "creator", store.UpdatedAt().Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
 	key := uuid.NewString()
 	beforeVersion := store.Version()
 	if err := store.BeginDelete(key, "deleter", store.UpdatedAt().Add(time.Second)); err != nil {
@@ -418,9 +396,6 @@ func TestStoreDeleteKeyRehydrationInvariant(t *testing.T) {
 		t.Fatal("active Store with delete key rehydrated")
 	}
 	deleting := newTestStore(t)
-	if err := deleting.TransitionTo(storecenter.RecordStatusActive, "creator", deleting.UpdatedAt().Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
 	deletingSnapshot := deleting.Snapshot()
 	deletingSnapshot.RecordStatus = storecenter.RecordStatusDeleting
 	deletingSnapshot.Version++
@@ -439,7 +414,9 @@ func newStoreAtStatus(t *testing.T, status storecenter.RecordStatus) *storecente
 	}
 	snapshot.Version = minimumVersionForStatus(status)
 	if status == storecenter.RecordStatusDeleting {
+		snapshot.ServiceStatus = ""
 		snapshot.DeleteOperationKey = uuid.NewString()
+		snapshot.ServiceStatus = ""
 	}
 	store, err := storecenter.RehydrateStore(snapshot)
 	if err != nil {
@@ -450,7 +427,7 @@ func newStoreAtStatus(t *testing.T, status storecenter.RecordStatus) *storecente
 
 func minimumVersionForStatus(status storecenter.RecordStatus) int64 {
 	switch status {
-	case storecenter.RecordStatusProvisioning:
+	case storecenter.RecordStatus("provisioning"):
 		return 1
 	case storecenter.RecordStatusActive:
 		return 2
@@ -471,7 +448,6 @@ func validCreateStoreInput() storecenter.CreateStoreInput {
 		Region:               "Singapore",
 		ExternalStoreID:      "external-42",
 		CreateIdempotencyKey: testIdempotencyKey,
-		QuotaAllocationID:    testAllocationID,
 		OccurredAt:           testCreatedAt,
 	}
 }

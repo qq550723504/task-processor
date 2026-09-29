@@ -14,15 +14,15 @@ import (
 )
 
 func TestMembershipPoolFailureAndShutdownOwnership(t *testing.T) {
-	for _, scenario := range []string{"open-error", "open-nil", "source-alias", "commercial-alias", "construct", "cancel-after-open", "listen", "nil-server", "serve"} {
+	for _, scenario := range []string{"open-error", "open-nil", "source-alias", "construct", "cancel-after-open", "listen", "nil-server", "serve"} {
 		t.Run(scenario, func(t *testing.T) {
 			cfg := runtimeTestConfig()
 			cfg.Membership = &MembershipConfig{ProviderOrigin: cfg.Identity.IssuerURL, ReadToken: "read", WriteToken: "write", Database: DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "organization_membership_runtime", Password: "password", Database: "member", MaxConnections: 2}}
-			source, commercial, member := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
+			source, member := &gorm.DB{}, &gorm.DB{}
 			closed := []*gorm.DB{}
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			deps := runtimeDependencies{IdentityPreflight: func(context.Context, IdentityConfig) error { return nil }, OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil }, OpenCommercial: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil }, CloseDatabase: func(db *gorm.DB) error { closed = append(closed, db); return nil }}
+			deps := runtimeDependencies{IdentityPreflight: func(context.Context, IdentityConfig) error { return nil }, OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil }, CloseDatabase: func(db *gorm.DB) error { closed = append(closed, db); return nil }}
 			deps.OpenMembership = func(openContext context.Context, _ DatabaseConfig) (*gorm.DB, error) {
 				deadline, ok := openContext.Deadline()
 				if !ok || time.Until(deadline) > 15*time.Second {
@@ -37,16 +37,13 @@ func TestMembershipPoolFailureAndShutdownOwnership(t *testing.T) {
 				if scenario == "source-alias" {
 					return source, nil
 				}
-				if scenario == "commercial-alias" {
-					return commercial, nil
-				}
 				if scenario == "cancel-after-open" {
 					cancel()
 				}
 				return member, nil
 			}
-			deps.NewApplicationWithMembership = func(_ context.Context, a, b, c *gorm.DB, _ *coreconfig.Config, m *MembershipConfig, _ *logrus.Logger) (*http.Server, error) {
-				if a != source || b != commercial || c != member || m != cfg.Membership {
+			deps.NewApplicationWithMembership = func(_ context.Context, a, c *gorm.DB, _ *coreconfig.Config, m *MembershipConfig, _ *logrus.Logger) (*http.Server, error) {
+				if a != source || c != member || m != cfg.Membership {
 					t.Error("wrong dependencies")
 				}
 				if scenario == "construct" {
@@ -70,8 +67,8 @@ func TestMembershipPoolFailureAndShutdownOwnership(t *testing.T) {
 			if err := run(ctx, cfg, logrus.New(), deps); err == nil {
 				t.Fatal("failure reported success")
 			}
-			expected := []*gorm.DB{member, commercial, source}
-			if scenario == "open-error" || scenario == "open-nil" || scenario == "source-alias" || scenario == "commercial-alias" {
+			expected := []*gorm.DB{member, source}
+			if scenario == "open-error" || scenario == "open-nil" || scenario == "source-alias" {
 				expected = expected[1:]
 			}
 			if len(closed) != len(expected) {

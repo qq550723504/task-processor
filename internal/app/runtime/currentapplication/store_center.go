@@ -2,12 +2,10 @@ package currentapplication
 
 import "errors"
 
-// StoreCenterConfig uses a dedicated record database and a narrow quota role
-// on the explicit canonical commercial owner database.
+// StoreCenterConfig uses the independently owned native record database.
 type StoreCenterConfig struct {
 	Enabled            bool                           `json:"enabled"`
 	Database           DatabaseConfig                 `json:"database"`
-	QuotaDatabase      DatabaseConfig                 `json:"quotaDatabase"`
 	OfficialConnection *OfficialStoreConnectionConfig `json:"officialConnection,omitempty"`
 }
 
@@ -22,16 +20,13 @@ func (c *Config) validateStoreCenter() error {
 	if err := s.Database.validate("storeCenter.database"); err != nil {
 		return err
 	}
-	if err := s.QuotaDatabase.validate("storeCenter.quotaDatabase"); err != nil {
-		return err
-	}
-	if s.Database.User != "store_center_runtime" || s.QuotaDatabase.User != "store_quota_runtime" || s.Database.MaxConnections > 8 || s.QuotaDatabase.MaxConnections > 8 {
+	if s.Database.User != "store_center_runtime" || s.Database.MaxConnections > 8 {
 		return errors.New("store center requires narrow runtime roles and at most 8 connections per pool")
 	}
-	if c.CommercialOwnerDatabase == nil || !sameDatabaseTarget(s.QuotaDatabase, *c.CommercialOwnerDatabase) {
-		return errors.New("store quota requires the explicit canonical commercial owner database target")
+	if c.CommercialOwnerDatabase == nil {
+		return errors.New("store service requires its resource owner database")
 	}
-	others := []*DatabaseConfig{&c.SourceAccountDatabase, &c.CommercialDatabase, c.CommercialOwnerDatabase, c.MoneyOwnerDatabase, c.ProductAcquisitionDatabase}
+	others := []*DatabaseConfig{&c.SourceAccountDatabase, c.CommercialOwnerDatabase, c.MoneyOwnerDatabase, c.ProductAcquisitionDatabase}
 	if c.Referrals.Enabled {
 		others = append(others, &c.Referrals.Database)
 	}

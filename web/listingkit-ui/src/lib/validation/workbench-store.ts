@@ -2,7 +2,6 @@ import { z } from "zod";
 
 const workbenchStorePlatformSchema = z.literal("shein");
 const workbenchStoreRecordStatusSchema = z.enum([
-  "provisioning",
   "active",
   "disabled",
   "deleting",
@@ -59,7 +58,7 @@ export type WorkbenchStoreListFilters = z.infer<
 
 export function hasValidStoreServiceFacts(store: { recordStatus: string; serviceStatus: string | null; serviceStartedAt: string | null; serviceExpiresAt: string | null }) {
   const { recordStatus, serviceStatus, serviceStartedAt: start, serviceExpiresAt: expiry } = store;
-  if (recordStatus === "provisioning" || recordStatus === "deleting") return serviceStatus === null && start === null && expiry === null;
+  if (recordStatus === "deleting") return serviceStatus === null && start === null && expiry === null;
   if (serviceStatus === "pending_activation") return start === null && expiry === null;
   const orderedPeriod = start !== null && expiry !== null && Date.parse(expiry) > Date.parse(start);
   if (serviceStatus === "active" || serviceStatus === "expired") return orderedPeriod;

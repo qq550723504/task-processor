@@ -30,11 +30,14 @@ const (
 )
 
 type InvocationRecord struct {
-	InvocationID       string
-	ParentInvocationID string
-	AgentRunID         string
-	TenantID           string
-	UserID             string
+	PointTariff             ModelPointTariff
+	MaximumPromptTokens     int64
+	MaximumCompletionTokens int64
+	InvocationID            string
+	ParentInvocationID      string
+	AgentRunID              string
+	TenantID                string
+	UserID                  string
 	// MemberID is the canonical membership-grant identity used by commercial
 	// allocation. It is intentionally distinct from the identity-provider user
 	// subject.

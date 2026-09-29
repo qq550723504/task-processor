@@ -88,6 +88,7 @@ func agentModelFixture(t *testing.T, content, usage string) (*AgentTextModel, co
 	manager.SetConfigResolver(resolver)
 	m, err := NewAgentTextModel(manager, ledger, AgentTextPolicy{
 		ClientName: "text", PolicyVersion: "title-review-v1", PricingVersion: "test-price-v1", BoundEvidence: "isolated-fixture-v1", Currency: "CNY", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000,
+		PointPricing: &aicapability.ModelPointTariff{PriceVersion: "synthetic-points-v1", InputPointsPerMillionTokens: 1000000, OutputPointsPerMillionTokens: 2000000},
 	}, []commercetool.ToolRef{{ID: "product.snapshot.read", Version: "v1"}}, func(context.Context) (authidentity.AuthenticatedIdentity, error) {
 		return fresh.Load().(authidentity.AuthenticatedIdentity), nil
 	})
@@ -96,6 +97,41 @@ func agentModelFixture(t *testing.T, content, usage string) (*AgentTextModel, co
 	m.policy.AdmittedRoute, err = manager.ResolveTextRoute(authidentity.WithAuthenticatedIdentity(context.Background(), identity), "text")
 	requireNoErrorText(t, err)
 	return m, authidentity.WithAuthenticatedIdentity(context.Background(), identity), in, ledger, &calls, &fresh
+}
+
+func TestAgentTextModelPointTariffRequiredBeforeClaimAndFrozenInFact(t *testing.T) {
+	m, ctx, in, ledger, calls, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`)
+	tariff := *m.policy.PointPricing
+	m.policy.PointPricing = nil
+	_, err := m.Quote(ctx, in)
+	if !errors.Is(err, agent.ErrUnavailable) || ledger.claims != 0 || calls.Load() != 0 {
+		t.Fatal("missing point tariff must fail before dispatch")
+	}
+	m.policy.PointPricing = &tariff
+	first, err := m.Quote(ctx, in)
+	requireNoErrorText(t, err)
+	changed := tariff
+	changed.PriceVersion = "synthetic-points-v2"
+	changed.OutputPointsPerMillionTokens++
+	m.policy.PointPricing = &changed
+	second, err := m.Quote(ctx, in)
+	requireNoErrorText(t, err)
+	if first.Reference == second.Reference {
+		t.Fatal("point tariff not bound in quote")
+	}
+	in.InvocationID = "frozen-points"
+	in.UpperBound = first
+	_, err = m.Decide(ctx, in)
+	if err == nil || ledger.claims != 0 || calls.Load() != 0 {
+		t.Fatal("changed tariff must invalidate original quote")
+	}
+	in.UpperBound = second
+	_, err = m.Decide(ctx, in)
+	requireNoErrorText(t, err)
+	fact := ledger.rows[in.InvocationID]
+	if fact.PointTariff != changed || fact.MaximumPromptTokens != agentInputWindow || fact.MaximumCompletionTokens != agentOutputWindow {
+		t.Fatalf("missing frozen point metadata: %+v", fact)
+	}
 }
 
 func TestAgentTextModelClaimAndObservedInvalidOutput(t *testing.T) {

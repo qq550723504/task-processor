@@ -52,14 +52,14 @@ func TestCurrentImageAgentRequiresExplicitOwnedRuntimeAndNeverFallsBack(t *testi
 	// Acquisition always uses the canonical resource owner, even without AI.
 	cfg.ImageAgent.Generation = coreconfig.ImageAgentGenerationConfig{}
 
-	source, commercial, product, imageDB, owner := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
+	source, product, imageDB, owner := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
 	var closed []*gorm.DB
 	var workflowClosed bool
 	stop := errors.New("stop before listener")
 	err := Run(context.Background(), cfg, logrus.New(), Dependencies{
-		IdentityPreflight:      func(context.Context, IdentityConfig) error { return nil },
-		OpenSourceAccount:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
-		OpenCommercial:         func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
+		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
+		OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+
 		OpenCommercialOwner:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return owner, nil },
 		OpenProductAcquisition: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return product, nil },
 		OpenImageAgent: func(_ context.Context, got DatabaseConfig) (*gorm.DB, error) {
@@ -71,9 +71,8 @@ func TestCurrentImageAgentRequiresExplicitOwnedRuntimeAndNeverFallsBack(t *testi
 			require.Equal(t, "default", namespace)
 			return fakeImageWorkflowClient{}, func() error { workflowClosed = true; return nil }, nil
 		},
-		NewApplicationWithFeatures: func(_ context.Context, a, b *gorm.DB, features ApplicationFeatures, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+		NewApplicationWithFeatures: func(_ context.Context, a *gorm.DB, features ApplicationFeatures, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
 			require.Same(t, source, a)
-			require.Same(t, commercial, b)
 			require.Same(t, product, features.ProductAcquisitionDB)
 			require.Same(t, imageDB, features.ImageAgentDB)
 			require.NotNil(t, features.ImageAgentWorkflow)
@@ -83,7 +82,7 @@ func TestCurrentImageAgentRequiresExplicitOwnedRuntimeAndNeverFallsBack(t *testi
 		CloseDatabase: func(db *gorm.DB) error { closed = append(closed, db); return nil },
 	})
 	require.ErrorIs(t, err, stop)
-	require.Equal(t, []*gorm.DB{imageDB, product, owner, commercial, source}, closed)
+	require.Equal(t, []*gorm.DB{imageDB, product, owner, source}, closed)
 	require.True(t, workflowClosed)
 }
 

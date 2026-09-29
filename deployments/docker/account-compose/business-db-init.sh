@@ -42,7 +42,6 @@ SQL
 
 create_role store_center_owner /secrets/store-owner/store-owner-password
 create_role store_center_runtime /secrets/store-runtime/store-runtime-password
-create_role store_quota_runtime /secrets/store-quota/store-quota-password
 create_role source_account_owner /secrets/source-owner/source-db-password
 create_role commercial_schema_owner /secrets/commercial-owner/commercial-db-password
 create_role referral_owner /secrets/referral-owner/referral-db-password

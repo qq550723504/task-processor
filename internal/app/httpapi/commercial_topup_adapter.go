@@ -21,7 +21,7 @@ import (
 )
 
 type topUpRuntimeAuthorizer struct {
-	directory subscriptionPurchaseRecoveryAuthorizer
+	directory financialRecoveryAuthorizer
 }
 
 func (a topUpRuntimeAuthorizer) AuthorizeTopUp(ctx context.Context, org, actor string, refund bool) error {

@@ -26,7 +26,6 @@ acquisition_runtime_secret=/acquisition-runtime-secret
 image_minio_secret=/image-minio-secret
 store_owner_secret=/store-owner-secret
 store_runtime_secret=/store-runtime-secret
-store_quota_secret=/store-quota-secret
 marker="$state/.bootstrap-complete"
 case "${ACCOUNT_IMAGE_AGENT_TRIAL:-}" in
   ''|ISOLATED_TRIAL_ONLY) ;;
@@ -34,7 +33,7 @@ case "${ACCOUNT_IMAGE_AGENT_TRIAL:-}" in
 esac
 
 if [ -f "$marker" ]; then
-  for path in "$store_owner_secret/store-owner-password" "$store_runtime_secret/store-runtime-password" "$store_quota_secret/store-quota-password"; do test -s "$path" || { echo 'Store Center requires a new empty project' >&2; exit 1; }; done
+  for path in "$store_owner_secret/store-owner-password" "$store_runtime_secret/store-runtime-password"; do test -s "$path" || { echo 'Store Center requires a new empty project' >&2; exit 1; }; done
   test -s "$business_db_admin_secret/admin-password" || { echo 'retained multi-instance project: use its original checkout; create a new project for the consolidated database' >&2; exit 1; }
   for path in \
     "$trusted_ca/root-ca.pem" "$traefik_tls/localhost.crt" "$traefik_tls/localhost.key" \
@@ -66,11 +65,10 @@ write_random() {
   mv "$2.tmp" "$2"
 }
 
-mkdir -p "$store_owner_secret" "$store_runtime_secret" "$store_quota_secret"
+mkdir -p "$store_owner_secret" "$store_runtime_secret"
 write_random 24 "$store_owner_secret/store-owner-password"
 write_random 24 "$store_runtime_secret/store-runtime-password"
-write_random 24 "$store_quota_secret/store-quota-password"
-chown 70:70 "$store_owner_secret/store-owner-password" "$store_runtime_secret/store-runtime-password" "$store_quota_secret/store-quota-password"
+chown 70:70 "$store_owner_secret/store-owner-password" "$store_runtime_secret/store-runtime-password"
 write_random 24 "$business_db_admin_secret/admin-password"
 write_random 16 "$zitadel_api_secrets/zitadel-masterkey"
 write_random 24 "$identity_db_secret/identity-db-password"

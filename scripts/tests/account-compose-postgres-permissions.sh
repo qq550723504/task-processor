@@ -1,10 +1,10 @@
 #!/bin/sh
-# Integration regression for a NEW account-compose project with the image overlay initialized.
+# Integration regression for a NEW account-compose project with the current native owners initialized.
 # Uses real TCP authentication and PostgreSQL enforcement, not configuration matching.
 set -eu
 umask 077
 commercial=${ACCOUNT_COMMERCIAL_DATABASE:?}
-databases="source_accounts $commercial referrals membership product_acquisition image_agent postgres template1"
+databases="store_center source_accounts $commercial referrals membership product_acquisition image_agent postgres template1"
 denied=0
 roles=0
 check_role() {
@@ -40,6 +40,8 @@ check_role() {
   roles=$((roles+1))
   echo "PASS $role: own database, non-superuser, no memberships, cross-database denial"
 }
+check_role store_center_owner store_center /secrets/store-owner/store-owner-password
+check_role store_center_runtime store_center /secrets/store-runtime/store-runtime-password
 check_role source_account_owner source_accounts /secrets/source-owner/source-db-password
 check_role commercial_schema_owner "$commercial" /secrets/commercial-owner/commercial-db-password
 check_role referral_owner referrals /secrets/referral-owner/referral-db-password
@@ -47,20 +49,21 @@ check_role membership_owner membership /secrets/membership-owner/membership-db-p
 check_role acquisition_owner product_acquisition /secrets/acquisition-owner/acquisition-db-password
 check_role image_agent_owner image_agent /secrets/image-owner/image-db-password
 check_role source_account_runtime source_accounts /secrets/source-runtime/source-runtime-password
-check_role commercial_runtime "$commercial" /secrets/commercial-runtime/commercial-reader-password
 check_role commercial_owner_runtime "$commercial" /secrets/commercial-runtime/commercial-owner-password
 check_role referral_runtime referrals /secrets/referral-runtime/referral-runtime-password
 check_role organization_membership_runtime membership /secrets/membership-runtime/membership-runtime-password
 check_role source_acquisition_runtime product_acquisition /secrets/acquisition-runtime/acquisition-runtime-password
 check_role image_agent_runtime image_agent /secrets/image-runtime/image-runtime-password
 check_role image_agent_worker_runtime image_agent /secrets/image-worker/image-worker-password
-PGPASSWORD=$(cat /secrets/commercial-runtime/commercial-reader-password)
+PGPASSWORD=$(cat /secrets/commercial-runtime/commercial-owner-password)
 export PGPASSWORD
-for sql in 'UPDATE public.saas_plans SET active=false WHERE false' 'SELECT * FROM public.commercial_orders LIMIT 0' 'SELECT * FROM public.saas_modules LIMIT 0' 'SET ROLE commercial_owner_runtime'; do
-  if psql -X -h 127.0.0.1 -p 5433 -U commercial_runtime -d "$commercial" -v VERBOSITY=verbose -v ON_ERROR_STOP=1 -c "$sql" >/tmp/compose-permissions-denied 2>&1; then echo 'FAIL commercial reader escaped boundary'; exit 1; fi
+for sql in 'DELETE FROM public.saas_organization_resource_buckets WHERE false' 'UPDATE public.saas_organization_resource_events SET quantity=1 WHERE false' 'SET ROLE commercial_schema_owner'; do
+  if psql -X -h 127.0.0.1 -p 5433 -U commercial_owner_runtime -d "$commercial" -v VERBOSITY=verbose -v ON_ERROR_STOP=1 -c "$sql" >/tmp/compose-permissions-denied 2>&1; then echo 'FAIL current commercial owner escaped boundary'; exit 1; fi
   grep -Eq '42501|does not have CONNECT privilege' /tmp/compose-permissions-denied
   denied=$((denied+1))
 done
+PGPASSWORD=$(cat /secrets/commercial-runtime/money-owner-password)
+export PGPASSWORD
 if psql -X -h 127.0.0.1 -p 5433 -U commercial_owner_runtime -d "$commercial" -c 'SELECT 1' >/tmp/compose-permissions-denied 2>&1; then echo 'FAIL commercial role passwords are shared'; exit 1; fi
 grep -q 'password authentication failed' /tmp/compose-permissions-denied
-echo "PASS role checks=$roles, permission denials=$denied, separate commercial passwords"
+echo "PASS role checks=$roles, permission denials=$denied, separate commercial and money passwords"

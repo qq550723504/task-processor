@@ -287,16 +287,17 @@ func (r *Repository) ReadQuote(ctx context.Context, organizationID, quoteID stri
 }
 
 func (r *Repository) CreatePendingResourceOrder(ctx context.Context, request billing.CreateResourceOrderRequest, quote billing.Quote) (billing.Order, error) {
-	if r == nil || r.db == nil || quote.Validate() != nil || quote.OrganizationID != request.OrganizationID || strings.TrimSpace(request.IdempotencyKey) == "" {
+	if r == nil || r.db == nil || quote.Validate() != nil || quote.ProductKind == billing.ProductSubscriptionPlan || quote.OrganizationID != request.OrganizationID || request.ActorID == "" || strings.TrimSpace(request.ActorID) != request.ActorID || len(request.ActorID) > 128 || strings.TrimSpace(request.IdempotencyKey) == "" {
 		return billing.Order{}, billing.ErrInvalid
 	}
 	fingerprint := fingerprint(struct {
 		OrganizationID   string `json:"organization_id"`
+		ActorID          string `json:"actor_id"`
 		QuoteID          string `json:"quote_id"`
 		QuoteFingerprint string `json:"quote_fingerprint"`
 		Quantity         int64  `json:"quantity"`
 		TotalMinor       int64  `json:"total_minor"`
-	}{request.OrganizationID, request.QuoteID, quote.Fingerprint, quote.ResourceQuantity, quote.TotalMinor})
+	}{request.OrganizationID, request.ActorID, request.QuoteID, quote.Fingerprint, quote.ResourceQuantity, quote.TotalMinor})
 	var out billing.Order
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existing orderRow
@@ -314,7 +315,7 @@ func (r *Repository) CreatePendingResourceOrder(ctx context.Context, request bil
 			return billing.ErrFeatureUnavailable
 		}
 		now := r.now().UTC()
-		row := orderRow{OrderID: uuid.NewString(), OrganizationID: request.OrganizationID, Kind: string(billing.OrderResourcePurchase), QuoteID: quote.QuoteID, Description: billing.DescribeOrder(billing.OrderResourcePurchase, quote.ProductKind, quote.ResourceQuantity), Currency: quote.Currency, AmountMinor: quote.TotalMinor, Status: string(billing.OrderPending), ProductKind: string(quote.ProductKind), IdempotencyKey: request.IdempotencyKey, RequestFingerprint: fingerprint, Version: 1, CreatedAt: now, UpdatedAt: now}
+		row := orderRow{OrderID: uuid.NewString(), OrganizationID: request.OrganizationID, ActorID: request.ActorID, Kind: string(billing.OrderResourcePurchase), QuoteID: quote.QuoteID, Description: billing.DescribeOrder(billing.OrderResourcePurchase, quote.ProductKind, quote.ResourceQuantity), Currency: quote.Currency, AmountMinor: quote.TotalMinor, Status: string(billing.OrderPending), ProductKind: string(quote.ProductKind), IdempotencyKey: request.IdempotencyKey, RequestFingerprint: fingerprint, Version: 1, CreatedAt: now, UpdatedAt: now}
 		item := orderItemRow{OrderItemID: uuid.NewString(), OrderID: row.OrderID, ProductKind: string(quote.ProductKind), ResourceType: string(quote.ResourceType), ResourceQuantity: quote.ResourceQuantity, AmountMinor: quote.TotalMinor}
 		result := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "organization_id"}, {Name: "idempotency_key"}}, DoNothing: true}).Create(&row)
 		if result.Error != nil {

@@ -147,7 +147,6 @@ func referralBinaryConfig(t *testing.T, owner *gorm.DB, connection *config.Datab
 	}
 	require.NoError(t, owner.Exec(`GRANT SELECT,INSERT ON public.referral_codes,public.registration_intents,public.referral_relations,public.referral_receipts,public.registration_admission_buckets TO referral_runtime; GRANT UPDATE(state,ciphertext,lease_until) ON public.registration_intents TO referral_runtime; GRANT UPDATE,DELETE ON public.registration_admission_buckets TO referral_runtime; ALTER ROLE commercial_reader SET default_transaction_read_only=on`).Error)
 	cfg.SourceAccountDatabase = dbConfig("source_account_runtime")
-	cfg.CommercialDatabase = dbConfig("commercial_reader")
 	write := func(name string, b []byte) string {
 		path := filepath.Join(t.TempDir(), name)
 		require.NoError(t, os.WriteFile(path, b, 0600))

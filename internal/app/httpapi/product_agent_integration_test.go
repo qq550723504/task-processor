@@ -19,11 +19,11 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/integration/agent/grsaitext"
 	"task-processor/internal/integration/openai"
-	allocationstore "task-processor/internal/integration/persistence/accountallocation"
+	resourceadapter "task-processor/internal/integration/orgresource"
 	agentstore "task-processor/internal/integration/persistence/agent"
 	assetstore "task-processor/internal/integration/persistence/product/asset"
 	reviewstore "task-processor/internal/integration/persistence/product/review"
-	"task-processor/internal/listingsubscription"
+	"task-processor/internal/ledger/orgresource"
 	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/workbenchcontext"
 
@@ -43,12 +43,12 @@ func (g agentFixtureGrants) Load(ctx context.Context, source workbenchcontext.Gr
 func (g agentFixtureGrants) Invalidate(actor, project string) { g.base.Invalidate(actor, project) }
 
 type agentReserveHook struct {
-	grsaitext.AgentInvocationLedger
+	ProductAgentInvocationLedger
 	afterReserve func()
 }
 
 func (l agentReserveHook) ReserveAIInvocationUsage(ctx context.Context, org, member, invocation string, tokens int64, at time.Time) error {
-	err := l.AgentInvocationLedger.ReserveAIInvocationUsage(ctx, org, member, invocation, tokens, at)
+	err := l.ProductAgentInvocationLedger.ReserveAIInvocationUsage(ctx, org, member, invocation, tokens, at)
 	if err == nil {
 		l.afterReserve()
 	}
@@ -56,7 +56,14 @@ func (l agentReserveHook) ReserveAIInvocationUsage(ctx context.Context, org, mem
 }
 
 type agentReleaseFailure struct {
-	listingsubscription.AIInvocationUsageAdapter
+	aicapability.InvocationUsageSettler
+	aicapability.InvocationUsageReservation
+}
+
+type agentReleaseHook struct{ ProductAgentInvocationLedger }
+
+func (l agentReleaseHook) SetUsageSettler(s aicapability.InvocationUsageSettler) {
+	l.ProductAgentInvocationLedger.SetUsageSettler(agentReleaseFailure{InvocationUsageSettler: s, InvocationUsageReservation: s.(aicapability.InvocationUsageReservation)})
 }
 
 func (agentReleaseFailure) ReleaseAIInvocationUsage(context.Context, string, string) error {
@@ -84,14 +91,15 @@ func testProductAgentOwners(t *testing.T, mode string) {
 	require.NoError(t, err)
 	require.NoError(t, aistore.AutoMigrateInvocationLedger(f.owner))
 	require.NoError(t, f.owner.AutoMigrate(&openai.AIClientCredential{}))
-	require.NoError(t, allocationstore.AutoMigrate(f.owner))
+	require.NoError(t, resourceadapter.AutoMigrate(f.owner))
 	now := time.Now().UTC()
-	start := now.Add(-time.Hour)
-	end := now.Add(time.Hour)
-	require.NoError(t, f.owner.Exec(`INSERT INTO saas_tenant_entitlements (tenant_id,module_code,status,starts_at,expires_at,limits) VALUES (?,?,?,?,?,?)`, "B", listingsubscription.ModuleListingKit, listingsubscription.StatusActive, start, end, `{"ai_tokens":10000000}`).Error)
-	require.NoError(t, f.owner.Exec(`INSERT INTO account_member_token_allocations (organization_id,member_id,metric,allocated,version,active,window_start,window_end,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`, "B", "member-B-operator", "token", 10000000, 1, true, start, end, now).Error)
+	limit, err := resourceadapter.NewGormMemberLimitRepository(f.owner, resourceadapter.TransactionConfig{})
+	require.NoError(t, err)
+	_, err = limit.SetMonthlyLimit(context.Background(), orgresource.SetMemberLimitExecution{OrganizationID: "B", MemberID: "member-B-operator", ActorID: "admin", OperationID: "point-limit", Target: 10000000})
+	require.NoError(t, err)
+	require.NoError(t, f.owner.Exec("INSERT INTO saas_organization_resource_buckets (organization_id,resource_type,available,allocated,reserved,consumed,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)", "B", "ai_point", 10000000, 0, 0, 0, now, now).Error)
 	if mode == "no quota" {
-		require.NoError(t, f.owner.Exec(`UPDATE account_member_token_allocations SET allocated = 1 WHERE organization_id = 'B'`).Error)
+		require.NoError(t, f.owner.Exec("UPDATE saas_member_ai_point_limits SET monthly_limit = 1 WHERE organization_id = 'B'").Error)
 	}
 	var calls atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -126,19 +134,18 @@ func testProductAgentOwners(t *testing.T, mode string) {
 	route, err := m.ResolveTextRoute(authidentity.WithAuthenticatedIdentity(context.Background(), i), "default")
 	require.NoError(t, err)
 	ledger := aistore.NewGormInvocationRecorder(f.owner)
-	ledger.SetUsageSettler(listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(f.owner)})
-	if mode == "release failed" {
-		ledger.SetUsageSettler(agentReleaseFailure{listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(f.owner)}})
-	}
 	deps := newRouteAuthDependencies()
 	deps.workbenchVerifier = titleVerifier{}
 	deps.organizationResolver = workbenchcontext.NewResolver(agentFixtureGrants{f.grants}, "project", "v1", nil)
 	auth, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
 	deps.authorizer = auth
-	settings := ProductAgentDependencies{Enabled: true, AllowedOrganizationIDs: []string{"B"}, RunDB: f.owner, AssetDB: f.owner, ReviewDB: f.owner, Manager: m, Ledger: ledger, TextPolicy: grsaitext.AgentTextPolicy{ClientName: "default", PolicyVersion: "title-review-v1", PricingVersion: "fixture-v1", BoundEvidence: "fixture-metering-v1", Currency: "CNY", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000, AdmittedRoute: route}, Limits: agent.Limits{Steps: 12, ModelCalls: 6, Tokens: 5000000, CostMicros: 5000000, Currency: "CNY", Runtime: time.Minute}}
+	settings := ProductAgentDependencies{Enabled: true, AllowedOrganizationIDs: []string{"B"}, RunDB: f.owner, PointAccountingDB: f.owner, AssetDB: f.owner, ReviewDB: f.owner, Manager: m, Ledger: ledger, TextPolicy: grsaitext.AgentTextPolicy{ClientName: "default", PolicyVersion: "title-review-v1", PricingVersion: "fixture-v1", BoundEvidence: "fixture-metering-v1", Currency: "CNY", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000, AdmittedRoute: route, PointPricing: &aicapability.ModelPointTariff{PriceVersion: "synthetic-points-v1", InputPointsPerMillionTokens: 1000000, OutputPointsPerMillionTokens: 2000000}}, Limits: agent.Limits{Steps: 12, ModelCalls: 6, Tokens: 5000000, CostMicros: 5000000, Currency: "CNY", Runtime: time.Minute}}
 	if mode == "revoked before dispatch" || mode == "release failed" {
-		settings.Ledger = agentReserveHook{AgentInvocationLedger: ledger, afterReserve: func() { f.grants.revoked.Store(true) }}
+		if mode == "release failed" {
+			settings.Ledger = agentReleaseHook{ProductAgentInvocationLedger: ledger}
+		}
+		settings.Ledger = agentReserveHook{ProductAgentInvocationLedger: settings.Ledger, afterReserve: func() { f.grants.revoked.Store(true) }}
 	}
 	module, err := buildProductAgentModule(context.Background(), f.db, deps, auth, settings, nil)
 	require.NoError(t, err)
@@ -164,7 +171,7 @@ func testProductAgentOwners(t *testing.T, mode string) {
 		require.Equal(t, "unknown_reserved", result.UsageStatus)
 		require.Zero(t, calls.Load())
 		var remaining int64
-		require.NoError(t, f.owner.Table("saas_usage_events").Where("status = ?", "reserved").Count(&remaining).Error)
+		require.NoError(t, f.owner.Table("saas_organization_resource_reservations").Where("owner_type = ? AND state = ?", "model_invocation_v1", "reserved").Count(&remaining).Error)
 		require.EqualValues(t, 1, remaining, "failed release must not be acknowledged as zero usage")
 		var terminal struct{ Outcome string }
 		require.NoError(t, f.owner.Table("ai_invocations").Select("outcome").Take(&terminal).Error)
@@ -184,13 +191,13 @@ func testProductAgentOwners(t *testing.T, mode string) {
 		require.Equal(t, "observed", result.UsageStatus)
 		require.Zero(t, calls.Load())
 		var remaining int64
-		require.NoError(t, f.owner.Table("saas_usage_events").Where("status = ?", "reserved").Count(&remaining).Error)
+		require.NoError(t, f.owner.Table("saas_organization_resource_reservations").Where("owner_type = ? AND state = ?", "model_invocation_v1", "reserved").Count(&remaining).Error)
 		require.Zero(t, remaining, "no provider call must not occupy quota")
 		var terminal struct{ Outcome string }
 		require.NoError(t, f.owner.Table("ai_invocations").Select("outcome").Take(&terminal).Error)
 		require.Equal(t, string(aicapability.InvocationFailed), terminal.Outcome)
 		if mode == "revoked before dispatch" {
-			require.NoError(t, f.owner.Table("saas_usage_events").Where("status = ?", "released").Count(&remaining).Error)
+			require.NoError(t, f.owner.Table("saas_organization_resource_reservations").Where("owner_type = ? AND state = ?", "model_invocation_v1", "released").Count(&remaining).Error)
 			require.EqualValues(t, 1, remaining)
 		}
 		return
@@ -245,8 +252,8 @@ func testProductAgentOwners(t *testing.T, mode string) {
 	require.NoError(t, f.owner.Table("product_agent_tool_calls").Count(&callsCount).Error)
 	require.EqualValues(t, 2, callsCount)
 	var usage struct{ Quantity int64 }
-	require.NoError(t, f.owner.Table("saas_usage_events").Select("SUM(quantity) AS quantity").Where("source_type = ?", "ai_invocation").Scan(&usage).Error)
-	require.EqualValues(t, 120, usage.Quantity)
+	require.NoError(t, f.owner.Table("saas_organization_resource_events").Select("SUM(consumed_delta) AS quantity").Where("source_type = ?", "model_invocation_v1").Scan(&usage).Error)
+	require.EqualValues(t, 160, usage.Quantity)
 	// The human, using the original Review endpoint, decides and applies.
 	accepted := titleCall(t, server, "POST", titleBasePath+"/"+view.ID+"/decisions", "admin", "B", uuid.NewString(), `{"action":"accept","expected_revision":1}`, 200)
 	_ = accepted

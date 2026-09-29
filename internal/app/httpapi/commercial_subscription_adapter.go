@@ -4,11 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
-	"strings"
-	"time"
 
-	zitadelruntime "task-processor/internal/authruntime/zitadel"
-	"task-processor/internal/authz"
 	billing "task-processor/internal/commercial/billing"
 	"task-processor/internal/listingsubscription"
 )
@@ -61,29 +57,4 @@ func mapPurchasedActivation(result listingsubscription.PurchasedPlanActivationRe
 		subscriptionID = strconv.FormatInt(result.SubscriptionID, 10)
 	}
 	return billing.SubscriptionActivationResult{OperationID: result.OperationID, OrganizationID: result.OrganizationID, CommercialOrderID: result.SourceID, PlanCode: result.PlanCode, PlanFingerprint: result.PlanFingerprint, ActivationRequestFingerprint: result.ActivationRequestFingerprint, Outcome: billing.SubscriptionActivationOutcome(result.Outcome), FailureCode: billing.SubscriptionActivationFailureCode(result.FailureCode), SubscriptionID: subscriptionID, StartsAt: result.StartsAt, ExpiresAt: result.ExpiresAt, EntitlementSetFingerprint: result.EntitlementSetFingerprint, DecidedAt: result.DecidedAt, Existing: result.Existing}
-}
-
-type exactServiceAuthorizationReader interface {
-	ReadExactServiceProjectAuthorization(context.Context, string, string, string, string) (zitadelruntime.ExactServiceProjectAuthorization, error)
-}
-
-type subscriptionPurchaseRecoveryAuthorizer struct {
-	reader       exactServiceAuthorizationReader
-	serviceToken string
-	projectID    string
-	authorizer   *authz.ListingKitAuthorizer
-}
-
-func (adapter subscriptionPurchaseRecoveryAuthorizer) ReauthorizeCommercialPurchase(ctx context.Context, organizationID, actorID string) (billing.CommercialPurchaseAuthorization, error) {
-	organizationID = strings.TrimSpace(organizationID)
-	actorID = strings.TrimSpace(actorID)
-	if adapter.reader == nil || adapter.authorizer == nil || strings.TrimSpace(adapter.serviceToken) == "" || strings.TrimSpace(adapter.projectID) == "" || organizationID == "" || actorID == "" {
-		return billing.CommercialPurchaseAuthorization{}, billing.ErrFeatureUnavailable
-	}
-	result, err := adapter.reader.ReadExactServiceProjectAuthorization(ctx, adapter.serviceToken, actorID, adapter.projectID, organizationID)
-	if err != nil {
-		return billing.CommercialPurchaseAuthorization{}, err
-	}
-	allowed := result.Found && result.State == "STATE_ACTIVE" && adapter.authorizer.Authorize(actorID, result.Roles, authz.PermissionWorkbenchCommercialPurchase)
-	return billing.CommercialPurchaseAuthorization{OrganizationID: organizationID, ActorID: actorID, Roles: append([]string(nil), result.Roles...), Allowed: allowed, ObservedAt: time.Now().UTC()}, nil
 }

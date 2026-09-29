@@ -3,7 +3,6 @@ package storecenter
 import (
 	"errors"
 	"sync"
-	"task-processor/internal/listingsubscription"
 	"time"
 )
 
@@ -35,24 +34,9 @@ type GetStoreRequest struct {
 	StoreID        string
 }
 
-type ResumeCreateStoreRequest struct {
-	OrganizationID  string
-	ActorSubject    string
-	StoreID         string
-	ExpectedVersion int64
-}
-
 type StoreProjection struct {
 	Store            Store
 	ConnectionStatus ConnectionStatus
-}
-
-type StoreQuotaProjection struct {
-	Used     int64
-	Reserved int64
-	Limit    *int64
-	Allowed  bool
-	Reason   string
 }
 
 type ListStoresResult struct {
@@ -60,7 +44,6 @@ type ListStoresResult struct {
 	Total    int64
 	Page     int
 	PageSize int
-	Quota    StoreQuotaProjection
 }
 
 type UpdateStoreRequest struct {
@@ -98,14 +81,8 @@ type DeleteStoreResult struct {
 	Replayed bool
 }
 
-type StoreLimitReachedError struct{ Committed, Used, Reserved, Limit int64 }
-
-func (e *StoreLimitReachedError) Error() string        { return "store limit reached" }
-func (e *StoreLimitReachedError) Is(target error) bool { return target == ErrLimitReached }
-
 type Service struct {
 	repository  Repository
-	quota       listingsubscription.StoreQuotaLedger
 	audit       AuditRepository
 	connections ConnectionStatusProvider
 	now         func() time.Time
@@ -154,9 +131,9 @@ func (r *mutationLockRegistry) acquire(organizationID, storeID string) func() {
 	}
 }
 
-func NewService(repository Repository, quota listingsubscription.StoreQuotaLedger, audit AuditRepository, connections ConnectionStatusProvider, now func() time.Time) (*Service, error) {
-	if isNilDependency(repository) || isNilDependency(quota) || isNilDependency(audit) || isNilDependency(connections) || now == nil {
+func NewService(repository Repository, audit AuditRepository, connections ConnectionStatusProvider, now func() time.Time) (*Service, error) {
+	if isNilDependency(repository) || isNilDependency(audit) || isNilDependency(connections) || now == nil {
 		return nil, errors.New("store service dependencies are required")
 	}
-	return &Service{repository: repository, quota: quota, audit: audit, connections: connections, now: now}, nil
+	return &Service{repository: repository, audit: audit, connections: connections, now: now}, nil
 }

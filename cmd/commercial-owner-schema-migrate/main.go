@@ -13,33 +13,13 @@ import (
 	orgresourceadapter "task-processor/internal/integration/orgresource"
 	commercialstore "task-processor/internal/integration/persistence/commercialbilling"
 	moneystore "task-processor/internal/integration/persistence/money"
-	"task-processor/internal/listingsubscription"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
 func main() {
 	manifest := flag.String("config", "", "absolute path to the private commercial schema-owner database JSON config")
 	moneyManifest := flag.String("money-config", "", "absolute path to the private canonical money schema-owner database JSON config")
-	isolatedTrialCatalog := flag.Bool("isolated-trial-catalog", false, "explicit one-time trial catalog provisioning mode; never a runtime seed")
-	expectedDatabase := flag.String("expected-database", "", "exact isolated trial database name")
-	confirm := flag.String("confirm", "", "must be ISOLATED_TRIAL_ONLY for trial catalog mode")
 	flag.Parse()
-	if *isolatedTrialCatalog {
-		if *manifest == "" || *moneyManifest != "" || *expectedDatabase == "" || *confirm != "ISOLATED_TRIAL_ONLY" {
-			fmt.Fprintln(os.Stderr, "trial catalog mode requires -config, -expected-database and -confirm ISOLATED_TRIAL_ONLY; omit -money-config")
-			os.Exit(2)
-		}
-		if err := runIsolatedTrial(*manifest, *expectedDatabase); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		fmt.Println("isolated subscription catalog provisioned; start the application only after reviewing this database")
-		return
-	}
-	if *expectedDatabase != "" || *confirm != "" {
-		fmt.Fprintln(os.Stderr, "-expected-database and -confirm require -isolated-trial-catalog")
-		os.Exit(2)
-	}
 	if *manifest == "" || *moneyManifest == "" {
 		fmt.Fprintln(os.Stderr, "-config and -money-config are required")
 		os.Exit(2)
@@ -103,9 +83,6 @@ func migrateOwnerSchemas(moneyDB, commercialDB *gorm.DB) error {
 	if err := orgresourceadapter.AutoMigrate(commercialDB); err != nil {
 		return fmt.Errorf("migrate organization resource schema: %w", err)
 	}
-	if err := listingsubscription.AutoMigrateRepository(commercialDB); err != nil {
-		return fmt.Errorf("migrate subscription owner schema: %w", err)
-	}
 	return nil
 }
 
@@ -120,6 +97,7 @@ func grantCommercialRuntimeAccess(db interface{ Exec(string, ...any) *gorm.DB })
 
 func commercialRuntimeGrants() []string {
 	return []string{
+		`DO $$ BEGIN EXECUTE format('GRANT CONNECT ON DATABASE %I TO commercial_owner_runtime', current_database()); END $$`,
 		`GRANT USAGE ON SCHEMA public TO commercial_owner_runtime`,
 		`GRANT SELECT ON TABLE public.commercial_offers TO commercial_owner_runtime`,
 		`GRANT SELECT, INSERT ON TABLE public.commercial_quotes, public.commercial_order_items TO commercial_owner_runtime`,
@@ -131,11 +109,6 @@ func commercialRuntimeGrants() []string {
 		`GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_member_resource_positions TO commercial_owner_runtime`,
 		`GRANT SELECT, INSERT ON TABLE public.saas_organization_resource_source_claims, public.saas_organization_resource_events, public.saas_organization_resource_audit_logs TO commercial_owner_runtime`,
 		`GRANT USAGE, SELECT ON SEQUENCE public.saas_organization_resource_audit_logs_id_seq TO commercial_owner_runtime`,
-		`GRANT SELECT ON TABLE public.saas_plans, public.saas_plan_modules TO commercial_owner_runtime`,
-		`GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_tenant_subscriptions, public.saas_subscription_activation_fences TO commercial_owner_runtime`,
-		`GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.saas_tenant_entitlements TO commercial_owner_runtime`,
-		`GRANT SELECT, INSERT ON TABLE public.saas_purchased_plan_activations, public.saas_subscription_audit_logs TO commercial_owner_runtime`,
-		`GRANT USAGE, SELECT ON SEQUENCE public.saas_tenant_subscriptions_id_seq, public.saas_tenant_entitlements_id_seq, public.saas_subscription_audit_logs_id_seq TO commercial_owner_runtime`,
 	}
 }
 

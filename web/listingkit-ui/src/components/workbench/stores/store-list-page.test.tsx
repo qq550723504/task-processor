@@ -71,13 +71,12 @@ describe("StoreListPage", () => {
     table.props = [];
   });
 
-  it("normalizes URL state, exposes the server quota, and writes only allowlisted filters", async () => {
+  it("normalizes URL state, exposes the native records, and writes only allowlisted filters", async () => {
     navigation.search = "page=02&page=3&pageSize=020&platform=shein&status=active&organizationId=org-a&random=keep";
     storesQuery.value = listData();
     const user = userEvent.setup();
     render(<StoreListPage />);
 
-    expect(screen.getByText("已使用 4 / 5")).toBeInTheDocument();
     expect(useWorkbenchStores).toHaveBeenCalledWith({
       page: 1,
       pageSize: 20,
@@ -115,11 +114,10 @@ describe("StoreListPage", () => {
     await waitFor(() => expect(screen.queryByText("企业 A 店铺")).not.toBeInTheDocument());
   });
 
-  it("honors create roles and server quota decisions without payment links", () => {
+  it("honors create roles and native records decisions without payment links", () => {
     storesQuery.value = listData({ data: { ...listData().data, quota: { used: 5, reserved: 0, limit: 5, allowed: false, reason: "store_limit_reached" } } });
     const { rerender } = render(<StoreListPage />);
     expect(screen.getByRole("link", { name: "新建店铺" })).toHaveAttribute("href", "/workbench/stores/new");
-    expect(screen.getByText(/联系管理员或升级套餐/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /升级|支付/ })).not.toBeInTheDocument();
 
     context.roles = ["listingkit_viewer"];
@@ -138,7 +136,7 @@ describe("StoreListPage", () => {
     );
   });
 
-  it("distinguishes true empty, filtered empty, and subscription-required quota", () => {
+  it("distinguishes true empty and filtered empty without a subscription", () => {
     storesQuery.value = listData({
       data: {
         items: [],
@@ -154,8 +152,6 @@ describe("StoreListPage", () => {
     });
     const { rerender } = render(<StoreListPage />);
     expect(screen.getByText("还没有店铺")).toBeInTheDocument();
-    expect(screen.getByText("已使用 2 / —")).toBeInTheDocument();
-    expect(screen.getByText(/需要管理员配置有效订阅/)).toBeInTheDocument();
 
     navigation.search = "platform=shein";
     rerender(<StoreListPage />);
@@ -163,11 +159,10 @@ describe("StoreListPage", () => {
     expect(screen.getByRole("button", { name: "清除筛选" })).toBeInTheDocument();
   });
 
-  it("keeps disabled Stores in the directory and explains that they still consume quota", () => {
+  it("keeps disabled Stores in the directory without a quota projection", () => {
     storesQuery.value = listData({ data: { ...listData().data, items: [{ ...STORE, recordStatus: "disabled" as const, serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null }] } });
     render(<StoreListPage />);
     expect(screen.getByText("企业 A 店铺")).toBeInTheDocument();
-    expect(screen.getByText(/已停用店铺仍占用店铺额度/)).toBeInTheDocument();
   });
 
   it("consumes only the exact static successful-delete notice and never preserves it on filter navigation", async () => {
@@ -175,7 +170,7 @@ describe("StoreListPage", () => {
     storesQuery.value = listData();
     const user = userEvent.setup();
     const { rerender } = render(<StoreListPage />);
-    expect(screen.getByRole("status")).toHaveTextContent("当前不提供恢复入口");
+    expect(screen.getByRole("status")).toHaveTextContent("已购资源与历史消费记录保留");
     await user.selectOptions(screen.getByRole("combobox", { name: "平台" }), "shein");
     expect(navigation.push).toHaveBeenLastCalledWith("/workbench/stores?page=1&pageSize=20&platform=shein");
     navigation.search = "notice=store-deleted&notice=store-deleted";
@@ -183,7 +178,7 @@ describe("StoreListPage", () => {
     expect(screen.queryByRole("status", { name: /恢复/ })).not.toBeInTheDocument();
     navigation.search = "notice=other";
     rerender(<StoreListPage />);
-    expect(screen.queryByText(/当前不提供恢复入口/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/已购资源与历史消费记录保留/)).not.toBeInTheDocument();
   });
 
   it("resets platform filters to page one and preserves filters across pagination boundaries", async () => {

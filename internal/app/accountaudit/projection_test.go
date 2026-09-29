@@ -79,7 +79,7 @@ func TestProjectionInterleavesSourceAndUsageAcrossCursorsWithoutLoss(t *testing.
 	}
 }
 
-func (s *usageHistoryStub) ListCommittedAIUsageAudit(_ context.Context, org string, limit int, after *AuditPosition) (UsageAuditPage, error) {
+func (s *usageHistoryStub) ListObservedAIUsageAudit(_ context.Context, org string, limit int, after *AuditPosition) (UsageAuditPage, error) {
 	s.calls++
 	page := UsageAuditPage{Items: []UsageAuditEvent{}}
 	for _, item := range s.events {
@@ -117,7 +117,7 @@ func TestProjectionPagesCommittedAIUsageWithoutActorImpersonation(t *testing.T) 
 			t.Fatalf("page %d: %+v %v", i, page, err)
 		}
 		item := page.Items[0]
-		if item.Actor != "" || item.Usage == nil || item.Usage.Quantity != int64(7+i) || item.EventType != "account_ai_tokens.committed" {
+		if item.Actor != "" || item.Usage == nil || item.Usage.Quantity != int64(7+i) || item.EventType != "ai_invocation.usage_observed" {
 			t.Fatalf("item=%+v", item)
 		}
 		seen = append(seen, item.Relation.Reference)

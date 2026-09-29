@@ -142,7 +142,7 @@ func (repository *GormRepository) ExecutePurchasedResourceGrant(ctx context.Cont
 		if err := tx.Model(&organizationResourceBucketRow{}).Where("organization_id = ? AND resource_type = ?", input.OrganizationID, input.ResourceType).Updates(map[string]any{"available": credit.availableAfter, "updated_at": now}).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&organizationResourceEventRow{EventID: eventID, OrganizationID: input.OrganizationID, OperationID: input.OperationID, ResourceType: string(input.ResourceType), Quantity: input.Quantity, AvailableDelta: credit.net, Reason: input.OperationType, SourceType: input.SourceType, SourceIdentity: input.SourceIdentity, BalanceAfter: credit.availableAfter, AvailableAfter: credit.availableAfter, ReservedAfter: bucket.Reserved, ConsumedAfter: bucket.Consumed, GrossCredit: credit.gross, DebtRepaid: credit.debtRepaid, NetCredit: credit.net, CreatedAt: now}).Error; err != nil {
+		if err := tx.Create(&organizationResourceEventRow{EventID: eventID, OrganizationID: input.OrganizationID, OperationID: input.OperationID, ResourceType: string(input.ResourceType), Quantity: input.Quantity, AvailableDelta: credit.net, Reason: input.OperationType, SourceType: input.SourceType, SourceIdentity: input.SourceIdentity, BalanceAfter: credit.availableAfter, AvailableAfter: credit.availableAfter, AllocatedAfter: bucket.Allocated, ReservedAfter: bucket.Reserved, ConsumedAfter: bucket.Consumed, GrossCredit: credit.gross, DebtRepaid: credit.debtRepaid, NetCredit: credit.net, CreatedAt: now}).Error; err != nil {
 			return err
 		}
 		payload, _ := json.Marshal(snapshot)

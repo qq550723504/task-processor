@@ -14,7 +14,6 @@ services:
     volumes:
       - store-owner-secret:/store-owner-secret
       - store-runtime-secret:/store-runtime-secret
-      - store-quota-secret:/store-quota-secret
       - bootstrap-state:/state
       - business-db-admin-secret:/business-db-admin-secret
       - image-db-owner-secret:/image-db-owner-secret
@@ -63,7 +62,6 @@ services:
       - ./business-db-init.sh:/docker-entrypoint-initdb.d/10-business-databases.sh:ro
       - store-owner-secret:/secrets/store-owner:ro
       - store-runtime-secret:/secrets/store-runtime:ro
-      - store-quota-secret:/secrets/store-quota:ro
       - source-db-owner-secret:/secrets/source-owner:ro
       - source-runtime-secret:/secrets/source-runtime:ro
       - commercial-db-owner-secret:/secrets/commercial-owner:ro
@@ -178,7 +176,6 @@ services:
       - schema-state:/schema-state
       - store-owner-secret:/secrets/store-owner:ro
       - store-runtime-secret:/secrets/store-runtime:ro
-      - store-quota-secret:/secrets/store-quota:ro
       - source-db-owner-secret:/secrets/source-owner:ro
       - source-runtime-secret:/secrets/source-runtime:ro
       - commercial-db-owner-secret:/secrets/commercial-owner:ro
@@ -289,4 +286,3 @@ volumes:
 
   store-owner-secret: { name: "${COMPOSE_PROJECT_NAME}-store-owner-secret" }
   store-runtime-secret: { name: "${COMPOSE_PROJECT_NAME}-store-runtime-secret" }
-  store-quota-secret: { name: "${COMPOSE_PROJECT_NAME}-store-quota-secret" }

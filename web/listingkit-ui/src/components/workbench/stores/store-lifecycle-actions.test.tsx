@@ -217,15 +217,6 @@ describe("StoreLifecycleActions", () => {
     expect(remove.retryLast).not.toHaveBeenCalled();
   });
 
-  it("resumes a provisioning Store through the durable create operation", async () => {
-    const user = userEvent.setup();
-    render(<StoreLifecycleActions store={{ ...STORE, recordStatus: "provisioning", serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null }} />);
-    await user.click(screen.getByRole("button", { name: "恢复创建" }));
-    expect(resumeCreate.mutate).toHaveBeenCalledWith(
-      { id: STORE.id, version: STORE.version },
-      expect.any(Object),
-    );
-  });
 
   it("never exposes an eligible deleting retry after the current role loses delete permission", () => {
     remove.canRetryLast = true;

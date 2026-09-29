@@ -20,23 +20,15 @@ var ErrAuditIdentityMismatch = errors.New("store audit identity mismatch")
 type AuditAction string
 
 const (
-	AuditActionQuotaReserved          AuditAction = "quota_reserved"
-	AuditActionStoreCreated           AuditAction = "store_created"
-	AuditActionQuotaCommitStarted     AuditAction = "quota_commit_started"
-	AuditActionQuotaCommitFailed      AuditAction = "quota_commit_failed"
-	AuditActionStoreCreateFailed      AuditAction = "store_create_failed"
-	AuditActionStoreCreateUnknown     AuditAction = "store_create_unknown"
-	AuditActionStoreCreationCommitted AuditAction = "store_creation_committed"
-	AuditActionStoreUpdateStarted     AuditAction = "store_update_started"
-	AuditActionStoreUpdated           AuditAction = "store_updated"
-	AuditActionStoreUpdateNoOp        AuditAction = "store_update_noop"
-	AuditActionStoreLifecycleStarted  AuditAction = "store_lifecycle_started"
-	AuditActionStoreDisabled          AuditAction = "store_disabled"
-	AuditActionStoreEnabled           AuditAction = "store_enabled"
-	AuditActionDeleteStarted          AuditAction = "delete_started"
-	AuditActionStoreMarkedDeleting    AuditAction = "store_marked_deleting"
-	AuditActionQuotaDeallocated       AuditAction = "quota_deallocated"
-	AuditActionDeleteComplete         AuditAction = "delete_complete"
+	AuditActionStoreCreated          AuditAction = "store_created"
+	AuditActionStoreUpdateStarted    AuditAction = "store_update_started"
+	AuditActionStoreUpdated          AuditAction = "store_updated"
+	AuditActionStoreUpdateNoOp       AuditAction = "store_update_noop"
+	AuditActionStoreLifecycleStarted AuditAction = "store_lifecycle_started"
+	AuditActionStoreDisabled         AuditAction = "store_disabled"
+	AuditActionStoreEnabled          AuditAction = "store_enabled"
+	AuditActionDeleteStarted         AuditAction = "delete_started"
+	AuditActionDeleteComplete        AuditAction = "delete_complete"
 )
 
 type AuditOutcome string
@@ -62,7 +54,6 @@ type AuditEvent struct {
 	EventID            string           `json:"eventId"`
 	OrganizationID     string           `json:"-"`
 	StoreID            string           `json:"storeId"`
-	AllocationID       string           `json:"allocationId"`
 	RequestKey         string           `json:"requestKey"`
 	Action             AuditAction      `json:"action"`
 	Outcome            AuditOutcome     `json:"outcome"`
@@ -90,7 +81,6 @@ type workbenchStoreAuditLogRecord struct {
 	EventID            string    `gorm:"column:event_id;type:char(36);primaryKey;not null"`
 	OrganizationID     string    `gorm:"column:organization_id;size:200;not null;index:idx_workbench_store_audit_org_store_created,priority:1;uniqueIndex:ux_workbench_store_audit_org_request_action,priority:1"`
 	StoreID            string    `gorm:"column:store_id;type:char(36);not null;index:idx_workbench_store_audit_org_store_created,priority:2"`
-	AllocationID       string    `gorm:"column:allocation_id;type:char(36);not null"`
 	RequestKey         string    `gorm:"column:request_key;type:char(36);not null;uniqueIndex:ux_workbench_store_audit_org_request_action,priority:2"`
 	Action             string    `gorm:"column:action;size:64;not null;uniqueIndex:ux_workbench_store_audit_org_request_action,priority:3"`
 	Outcome            string    `gorm:"column:outcome;size:32;not null"`
@@ -136,7 +126,10 @@ func (r *GormAuditRepository) Record(ctx context.Context, event AuditEvent) (Aud
 		Columns:   []clause.Column{{Name: "organization_id"}, {Name: "request_key"}, {Name: "action"}},
 		DoNothing: true,
 	}).Create(&record)
-	if result.Error == nil && result.RowsAffected == 1 {
+	if result.Error != nil {
+		return AuditEvent{}, false, result.Error
+	}
+	if result.RowsAffected == 1 {
 		return normalized, false, nil
 	}
 	existing, err := r.Get(ctx, normalized.OrganizationID, normalized.RequestKey, normalized.Action)
@@ -212,9 +205,6 @@ func normalizeAuditEvent(event AuditEvent) (AuditEvent, error) {
 	if event.StoreID, err = canonicalUUID(event.StoreID); err != nil {
 		return AuditEvent{}, fmt.Errorf("audit store ID: %w", err)
 	}
-	if event.AllocationID, err = canonicalUUID(event.AllocationID); err != nil {
-		return AuditEvent{}, fmt.Errorf("audit allocation ID: %w", err)
-	}
 	if event.RequestKey, err = canonicalUUID(event.RequestKey); err != nil {
 		return AuditEvent{}, fmt.Errorf("audit request key: %w", err)
 	}
@@ -273,19 +263,15 @@ func validTaskFiveAuditCombination(event AuditEvent) bool {
 		return succeeded && event.PreviousState == RecordStatusDisabled && event.NewState == RecordStatusActive && exactSafeFields(event.SafeFieldNames, "record_status")
 	case AuditActionDeleteStarted:
 		return unknown && (event.PreviousState == RecordStatusActive || event.PreviousState == RecordStatusDisabled) && event.NewState == RecordStatusDeleting && exactSafeFields(event.SafeFieldNames, "record_status")
-	case AuditActionStoreMarkedDeleting:
-		return succeeded && (event.PreviousState == RecordStatusActive || event.PreviousState == RecordStatusDisabled) && event.NewState == RecordStatusDeleting && exactSafeFields(event.SafeFieldNames, "record_status")
-	case AuditActionQuotaDeallocated:
-		return succeeded && event.PreviousState == RecordStatusDeleting && event.NewState == RecordStatusDeleting && exactSafeFields(event.SafeFieldNames, "quota_allocation_id")
 	case AuditActionDeleteComplete:
-		return succeeded && event.PreviousState == RecordStatusDeleting && event.NewState == "" && exactSafeFields(event.SafeFieldNames, "record_status")
+		return succeeded && (event.PreviousState == RecordStatusActive || event.PreviousState == RecordStatusDisabled) && event.NewState == RecordStatusDeleted && exactSafeFields(event.SafeFieldNames, "record_status")
 	default:
 		return true
 	}
 }
 
 func normalizeSafeFieldNames(fields []string) ([]string, error) {
-	allowed := map[string]bool{"name": true, "platform": true, "region": true, "external_store_id": true, "record_status": true, "quota_allocation_id": true}
+	allowed := map[string]bool{"name": true, "platform": true, "region": true, "external_store_id": true, "record_status": true}
 	set := make(map[string]bool, len(fields))
 	for _, field := range fields {
 		if !allowed[field] {
@@ -303,7 +289,7 @@ func normalizeSafeFieldNames(fields []string) ([]string, error) {
 
 func validAuditAction(action AuditAction) bool {
 	switch action {
-	case AuditActionQuotaReserved, AuditActionStoreCreated, AuditActionQuotaCommitStarted, AuditActionQuotaCommitFailed, AuditActionStoreCreateFailed, AuditActionStoreCreateUnknown, AuditActionStoreCreationCommitted, AuditActionStoreUpdateStarted, AuditActionStoreUpdated, AuditActionStoreUpdateNoOp, AuditActionStoreLifecycleStarted, AuditActionStoreDisabled, AuditActionStoreEnabled, AuditActionDeleteStarted, AuditActionStoreMarkedDeleting, AuditActionQuotaDeallocated, AuditActionDeleteComplete:
+	case AuditActionStoreCreated, AuditActionStoreUpdateStarted, AuditActionStoreUpdated, AuditActionStoreUpdateNoOp, AuditActionStoreLifecycleStarted, AuditActionStoreDisabled, AuditActionStoreEnabled, AuditActionDeleteStarted, AuditActionDeleteComplete:
 		return true
 	}
 	return false
@@ -321,7 +307,7 @@ func auditRecordFromEvent(event AuditEvent) (workbenchStoreAuditLogRecord, error
 	if err != nil {
 		return workbenchStoreAuditLogRecord{}, err
 	}
-	return workbenchStoreAuditLogRecord{EventID: event.EventID, OrganizationID: event.OrganizationID, StoreID: event.StoreID, AllocationID: event.AllocationID, RequestKey: event.RequestKey, Action: string(event.Action), Outcome: string(event.Outcome), ActorSubject: event.ActorSubject, SafeFieldNames: string(fields), PayloadFingerprint: event.PayloadFingerprint, PreviousState: string(event.PreviousState), NewState: string(event.NewState), FailureCode: string(event.FailureCode), StoreVersion: event.StoreVersion, CreatedAt: time.Now().UTC(), OccurredAt: event.OccurredAt.UTC()}, nil
+	return workbenchStoreAuditLogRecord{EventID: event.EventID, OrganizationID: event.OrganizationID, StoreID: event.StoreID, RequestKey: event.RequestKey, Action: string(event.Action), Outcome: string(event.Outcome), ActorSubject: event.ActorSubject, SafeFieldNames: string(fields), PayloadFingerprint: event.PayloadFingerprint, PreviousState: string(event.PreviousState), NewState: string(event.NewState), FailureCode: string(event.FailureCode), StoreVersion: event.StoreVersion, CreatedAt: time.Now().UTC(), OccurredAt: event.OccurredAt.UTC()}, nil
 }
 
 func auditEventFromRecord(record workbenchStoreAuditLogRecord) (AuditEvent, error) {
@@ -329,7 +315,7 @@ func auditEventFromRecord(record workbenchStoreAuditLogRecord) (AuditEvent, erro
 	if err := json.Unmarshal([]byte(record.SafeFieldNames), &fields); err != nil {
 		return AuditEvent{}, err
 	}
-	return normalizeAuditEvent(AuditEvent{EventID: record.EventID, OrganizationID: record.OrganizationID, StoreID: record.StoreID, AllocationID: record.AllocationID, RequestKey: record.RequestKey, Action: AuditAction(record.Action), Outcome: AuditOutcome(record.Outcome), ActorSubject: record.ActorSubject, SafeFieldNames: fields, PayloadFingerprint: record.PayloadFingerprint, PreviousState: RecordStatus(record.PreviousState), NewState: RecordStatus(record.NewState), FailureCode: AuditFailureCode(record.FailureCode), StoreVersion: record.StoreVersion, OccurredAt: record.OccurredAt})
+	return normalizeAuditEvent(AuditEvent{EventID: record.EventID, OrganizationID: record.OrganizationID, StoreID: record.StoreID, RequestKey: record.RequestKey, Action: AuditAction(record.Action), Outcome: AuditOutcome(record.Outcome), ActorSubject: record.ActorSubject, SafeFieldNames: fields, PayloadFingerprint: record.PayloadFingerprint, PreviousState: RecordStatus(record.PreviousState), NewState: RecordStatus(record.NewState), FailureCode: AuditFailureCode(record.FailureCode), StoreVersion: record.StoreVersion, OccurredAt: record.OccurredAt})
 }
 
 func sameAuditSemanticPayload(a, b AuditEvent) bool {
@@ -341,8 +327,8 @@ func sameAuditSemanticPayload(a, b AuditEvent) bool {
 	return reflect.DeepEqual(a, b)
 }
 
-func newAuditEvent(organizationID, storeID, allocationID, requestKey string, action AuditAction, outcome AuditOutcome, actor string, fields []string, previous, next RecordStatus, failure AuditFailureCode, occurredAt time.Time) AuditEvent {
-	return AuditEvent{EventID: uuid.NewString(), OrganizationID: organizationID, StoreID: storeID, AllocationID: allocationID, RequestKey: requestKey, Action: action, Outcome: outcome, ActorSubject: actor, SafeFieldNames: fields, PreviousState: previous, NewState: next, FailureCode: failure, OccurredAt: occurredAt.UTC()}
+func newAuditEvent(organizationID, storeID, requestKey string, action AuditAction, outcome AuditOutcome, actor string, fields []string, previous, next RecordStatus, failure AuditFailureCode, occurredAt time.Time) AuditEvent {
+	return AuditEvent{EventID: uuid.NewString(), OrganizationID: organizationID, StoreID: storeID, RequestKey: requestKey, Action: action, Outcome: outcome, ActorSubject: actor, SafeFieldNames: fields, PreviousState: previous, NewState: next, FailureCode: failure, OccurredAt: occurredAt.UTC()}
 }
 
 func auditFailureFor(err error) AuditFailureCode {
@@ -359,8 +345,4 @@ func stableFailureFromAudit(event AuditEvent) error {
 	default:
 		return ErrDependencyUnavailable
 	}
-}
-
-func auditEventMatchesAllocation(event AuditEvent, allocationID, storeID string) bool {
-	return event.AllocationID == allocationID && event.StoreID == storeID
 }

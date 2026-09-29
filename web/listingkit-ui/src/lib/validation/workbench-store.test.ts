@@ -120,8 +120,7 @@ describe("workbench Store input validation", () => {
       }).success,
     ).toBe(false);
     for (const status of [
-      "provisioning",
-      "active",
+            "active",
       "disabled",
       "deleting",
     ]) {

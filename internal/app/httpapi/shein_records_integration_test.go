@@ -153,8 +153,7 @@ func prepareRecordStoreID(t *testing.T, db *gorm.DB, organizationID, storeID str
 	}
 	stored, err := storecenter.NewStore(storecenter.CreateStoreInput{
 		ID: storeID, OrganizationID: organizationID, ActorSubject: "store-owner", Name: "Controlled SHEIN Store", Platform: "shein", Region: "US",
-		ExternalStoreID: "controlled-store", CreateIdempotencyKey: uuid.NewString(), QuotaAllocationID: uuid.NewString(),
-		OccurredAt: time.Date(2026, 9, 9, 0, 0, 0, 0, time.UTC),
+		ExternalStoreID: "controlled-store", CreateIdempotencyKey: uuid.NewString(), OccurredAt: time.Date(2026, 9, 9, 0, 0, 0, 0, time.UTC),
 	})
 	require.NoError(t, err)
 	_, replayed, err := repository.CreateOrReplay(context.Background(), organizationID, stored)

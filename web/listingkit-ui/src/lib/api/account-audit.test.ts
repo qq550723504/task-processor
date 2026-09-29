@@ -17,11 +17,11 @@ describe("account audit query boundary", () => {
       await expect(getAccountAudit(options)).rejects.toMatchObject({ code: "INVALID_UPSTREAM_RESPONSE" });
     }
   });
-  it("accepts only the canonical committed AI usage projection without inventing an actor", async () => {
-    const usage = { eventType: "account_ai_tokens.committed", actor: "", time: "2026-09-25T01:00:00Z", objectType: "ai_invocation", objectReference: "inv-1", operation: "consume", result: "succeeded", relation: { type: "saas_usage_event", reference: reference, version: "" }, usage: { memberId: "grant-1", quantity: 7, metric: "ai_tokens" } };
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+saas_ai_usage_events", items: [usage] })));
+  it("accepts only the native observed model usage projection without inventing an actor", async () => {
+    const usage = { eventType: "ai_invocation.usage_observed", actor: "", time: "2026-09-25T01:00:00Z", objectType: "ai_invocation", objectReference: "inv-1", operation: "observe", result: "observed", relation: { type: "ai_invocation", reference: reference, version: "" }, usage: { memberId: "grant-1", quantity: 7, metric: "model_tokens" } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+ai_invocations", items: [usage] })));
     expect((await getAccountAudit(options)).items).toEqual([usage]);
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+saas_ai_usage_events", items: [{ ...usage, actor: "grant-1" }] })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+ai_invocations", items: [{ ...usage, actor: "grant-1" }] })));
     await expect(getAccountAudit(options)).rejects.toMatchObject({ code: "INVALID_UPSTREAM_RESPONSE" });
   });
   it("preserves only a structured operation from the source", async () => {

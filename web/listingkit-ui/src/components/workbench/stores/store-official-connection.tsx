@@ -142,8 +142,7 @@ export function StoreOfficialConnection({
         官方授权页，由店铺主账号确认。连接只证明当前授权有效，发布权限另行判断。
       </p>
       {canWrite &&
-      store.recordStatus !== "deleting" &&
-      store.recordStatus !== "provisioning" ? (
+      store.recordStatus !== "deleting" ? (
         <div className="flex flex-wrap gap-2">
           <Button disabled={working || !data} onClick={() => void run("begin")}>
             {data?.attemptId ? "重新官方授权" : "前往官方授权"}

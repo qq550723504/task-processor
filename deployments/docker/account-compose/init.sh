@@ -13,7 +13,6 @@ membership_db_owner_secret=/secrets/membership-owner
 membership_runtime_secret=/secrets/membership-runtime
 store_owner_secret=/secrets/store-owner
 store_runtime_secret=/secrets/store-runtime
-store_quota_secret=/secrets/store-quota
 runtime=/runtime
 frontend=/frontend
 identity_port=${ACCOUNT_IDENTITY_PORT:?ACCOUNT_IDENTITY_PORT is required}
@@ -23,10 +22,10 @@ case "$commercial_database" in
   ''|[!a-z]*|*[!a-z0-9_]*) echo 'invalid commercial database name' >&2; exit 1 ;;
 esac
 if [ "${#commercial_database}" -gt 63 ]; then echo 'commercial database name is too long' >&2; exit 1; fi
-case "${ACCOUNT_ISOLATED_TRIAL_CATALOG:-}" in
-  ''|ISOLATED_TRIAL_ONLY) ;;
-  *) echo 'invalid isolated trial catalog confirmation' >&2; exit 1 ;;
-esac
+if [ -n "${ACCOUNT_ISOLATED_TRIAL_CATALOG:-}" ]; then
+  echo 'subscription trial catalog is retired; resource prices must be configured separately' >&2
+  exit 1
+fi
 
 read_bootstrap_user_id() {
   bootstrap_user_id=$(tr -d '\r\n' < "$runtime/bootstrap-user-id")
@@ -45,9 +44,9 @@ install_listingkit_authorization() {
   mv "$runtime/current-application.json.tmp" "$runtime/current-application.json"
 }
 
-install_subscription_directory_token() {
+install_payment_directory_token() {
   if [ ! -s "$runtime/membership-read.pat" ]; then
-    echo 'subscription directory read credential is unavailable' >&2
+    echo 'payment directory read credential is unavailable' >&2
     exit 1
   fi
   jq --rawfile directory_token "$runtime/membership-read.pat" \
@@ -71,19 +70,15 @@ initialize_store_center() {
   cat > "$work/store-owner-schema.json" <<EOF
 {"host":"127.0.0.1","port":5433,"user":"store_center_owner","password":"$(tr -d '\r\n' < "$store_owner_secret/store-owner-password")","database":"store_center","maxConnections":2,"maxIdleConnections":1}
 EOF
-  store-center-schema-init -config "$work/store-owner-schema.json" -quota-config "$work/commercial-owner-schema.json"
+  store-center-schema-init -config "$work/store-owner-schema.json"
 }
 
 umask 077
 if [ -f "$state/.init-complete" ]; then
-  if [ "${ACCOUNT_ISOLATED_TRIAL_CATALOG:-}" = ISOLATED_TRIAL_ONLY ]; then
-    echo 'isolated trial catalog can only be provisioned on first initialization' >&2
-    exit 1
-  fi
   jq -e --arg database "$commercial_database" '
     .sourceAccountDatabase.port == 5433 and .sourceAccountDatabase.database == "source_accounts" and
-    .commercialDatabase.port == 5433 and .commercialDatabase.database == $database and
-    .storeCenter.enabled == true and .storeCenter.database.database == "store_center" and .storeCenter.database.user == "store_center_runtime" and .storeCenter.database.port == 5433 and .storeCenter.quotaDatabase.database == $database and .storeCenter.quotaDatabase.user == "store_quota_runtime" and .storeCenter.quotaDatabase.port == 5433 and
+    (has("commercialDatabase") | not) and
+    .storeCenter.enabled == true and .storeCenter.database.database == "store_center" and .storeCenter.database.user == "store_center_runtime" and .storeCenter.database.port == 5433 and (.storeCenter | has("quotaDatabase") | not) and
     .commercialOwnerDatabase.port == 5433 and .commercialOwnerDatabase.database == $database and
     .moneyOwnerDatabase.port == 5433 and .moneyOwnerDatabase.database == "referrals" and .moneyOwnerDatabase.user == "money_owner_runtime" and
     .referrals.referralDatabase.port == 5433 and .referrals.referralDatabase.database == "referrals" and
@@ -112,32 +107,8 @@ GRANT SELECT, INSERT, UPDATE ON TABLE public.subject_verification_applications, 
 GRANT SELECT, INSERT ON TABLE public.account_business_profile_audit_events TO source_account_runtime;
 GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO source_account_runtime;
 SQL
-  commercial_dsn="postgresql://commercial_schema_owner:$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")@127.0.0.1:5433/${commercial_database}?sslmode=disable"
-  psql "$commercial_dsn" -v ON_ERROR_STOP=1 -v "runtime_roles_ready=true" -f "$terraform_source/commercial-schema.sql"
-  cat > "$work/commercial-schema.yaml" <<EOF
-commercialDatabase:
-  host: 127.0.0.1
-  port: 5433
-  user: commercial_schema_owner
-  password: "$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")"
-  database: ${commercial_database}
-  max_connections: 2
-  max_idle_connections: 1
-  connection_max_lifetime: 1h
-EOF
-  listingkit-schema-migrate -config "$work/commercial-schema.yaml" -scope commercial -log-level warn
-  psql "$commercial_dsn" -v ON_ERROR_STOP=1 -v "runtime_roles_ready=true" <<SQL
-GRANT CONNECT ON DATABASE ${commercial_database} TO commercial_runtime;
-GRANT USAGE ON SCHEMA public TO commercial_runtime;
-REVOKE INSERT, UPDATE, DELETE ON TABLE public.saas_plans, public.saas_plan_modules, public.saas_tenant_subscriptions, public.saas_tenant_entitlements FROM commercial_runtime;
-GRANT CONNECT ON DATABASE ${commercial_database} TO commercial_owner_runtime;
-GRANT USAGE ON SCHEMA public TO commercial_owner_runtime;
-GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_modules, public.saas_plans, public.saas_plan_modules, public.saas_tenant_subscriptions, public.saas_tenant_entitlements, public.saas_usage_counters, public.saas_usage_counter_adjustments, public.saas_subscription_audit_logs TO commercial_owner_runtime;
-GRANT DELETE ON TABLE public.saas_modules, public.saas_plan_modules, public.saas_tenant_entitlements TO commercial_owner_runtime;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO commercial_owner_runtime;
-SQL
   install_listingkit_authorization
-  install_subscription_directory_token
+  install_payment_directory_token
   psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5433/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-economics-schema.sql"
   psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5433/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -v runtime_roles_ready=true -f "$terraform_source/referral-grants.sql"
   migrate_commercial_owner_schema
@@ -187,9 +158,8 @@ cat > "$runtime/current-application.json.tmp" <<EOF
     "projectID": "$(tr -d '\r\n' < "$runtime/project-id")"
   },
   "sourceAccountDatabase": {"host": "127.0.0.1", "port": 5433, "user": "source_account_runtime", "password": "$(tr -d '\r\n' < "$source_runtime_secret/source-runtime-password")", "database": "source_accounts", "maxConnections": 4},
-  "commercialDatabase": {"host": "127.0.0.1", "port": 5433, "user": "commercial_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")", "database": "${commercial_database}", "maxConnections": 4},
   "commercialOwnerDatabase": {"host": "127.0.0.1", "port": 5433, "user": "commercial_owner_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-owner-password")", "database": "${commercial_database}", "maxConnections": 2},
-  "storeCenter": {"enabled": true, "database": {"host":"127.0.0.1","port":5433,"user":"store_center_runtime","password":"$(tr -d '\r\n' < "$store_runtime_secret/store-runtime-password")","database":"store_center","maxConnections":4}, "quotaDatabase": {"host":"127.0.0.1","port":5433,"user":"store_quota_runtime","password":"$(tr -d '\r\n' < "$store_quota_secret/store-quota-password")","database":"${commercial_database}","maxConnections":4}},
+  "storeCenter": {"enabled": true, "database": {"host":"127.0.0.1","port":5433,"user":"store_center_runtime","password":"$(tr -d '\r\n' < "$store_runtime_secret/store-runtime-password")","database":"store_center","maxConnections":4}},
   "moneyOwnerDatabase": {"host": "127.0.0.1", "port": 5433, "user": "money_owner_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/money-owner-password")", "database": "referrals", "maxConnections": 4},
   "membership": {
     "invitationMail": {"host": "127.0.0.1", "port": 1025, "from": "invitations@localhost", "publicOrigin": "${public_app}", "localPlaintext": true},
@@ -219,7 +189,7 @@ cat > "$runtime/current-application.json.tmp" <<EOF
 EOF
 chmod 600 "$runtime/current-application.json.tmp"
 mv "$runtime/current-application.json.tmp" "$runtime/current-application.json"
-install_subscription_directory_token
+install_payment_directory_token
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -249,28 +219,6 @@ GRANT SELECT, INSERT ON TABLE public.account_business_profile_audit_events TO so
 GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO source_account_runtime;
 SQL
 
-psql "postgresql://commercial_schema_owner:$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")@127.0.0.1:5433/${commercial_database}?sslmode=disable" -v ON_ERROR_STOP=1 -v runtime_roles_ready=true -f "$terraform_source/commercial-schema.sql"
-cat > "$work/commercial-schema.yaml" <<EOF
-commercialDatabase:
-  host: 127.0.0.1
-  port: 5433
-  user: commercial_schema_owner
-  password: "$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")"
-  database: ${commercial_database}
-  max_connections: 2
-  max_idle_connections: 1
-  connection_max_lifetime: 1h
-EOF
-listingkit-schema-migrate -config "$work/commercial-schema.yaml" -scope commercial -log-level warn
-psql "postgresql://commercial_schema_owner:$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")@127.0.0.1:5433/${commercial_database}?sslmode=disable" -v ON_ERROR_STOP=1 <<SQL
-REVOKE INSERT, UPDATE, DELETE ON TABLE public.saas_plans, public.saas_plan_modules, public.saas_tenant_subscriptions, public.saas_tenant_entitlements FROM commercial_runtime;
-GRANT CONNECT ON DATABASE ${commercial_database} TO commercial_owner_runtime;
-GRANT USAGE ON SCHEMA public TO commercial_owner_runtime;
-GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_modules, public.saas_plans, public.saas_plan_modules, public.saas_tenant_subscriptions, public.saas_tenant_entitlements, public.saas_usage_counters, public.saas_usage_counter_adjustments, public.saas_subscription_audit_logs TO commercial_owner_runtime;
-GRANT DELETE ON TABLE public.saas_modules, public.saas_plan_modules, public.saas_tenant_entitlements TO commercial_owner_runtime;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO commercial_owner_runtime;
-SQL
-
 printf 'postgresql://referral_owner:%s@127.0.0.1:5433/referrals?sslmode=disable\n' "$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")" > "$work/referral-owner-dsn"
 chmod 600 "$work/referral-owner-dsn"
 referral-schema-init -dsn-file "$work/referral-owner-dsn"
@@ -278,11 +226,7 @@ psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/re
 psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5433/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -v runtime_roles_ready=true -f "$terraform_source/referral-grants.sql"
 migrate_commercial_owner_schema
 initialize_store_center
-if [ "${ACCOUNT_ISOLATED_TRIAL_CATALOG:-}" = ISOLATED_TRIAL_ONLY ]; then
-  commercial-owner-schema-migrate -isolated-trial-catalog \
-    -config "$work/commercial-owner-schema.json" \
-    -expected-database "$commercial_database" -confirm ISOLATED_TRIAL_ONLY
-fi
+
 
 printf 'postgresql://membership_owner:%s@127.0.0.1:5433/membership?sslmode=disable\n' "$(tr -d '\r\n' < "$membership_db_owner_secret/membership-db-password")" > "$work/membership-owner-dsn"
 chmod 600 "$work/membership-owner-dsn"

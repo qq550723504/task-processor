@@ -22,28 +22,27 @@ func TestBodyConsumingPOSTRoutesUseBoundedBodyRead(t *testing.T) {
 	}
 	seen := map[string]bool{}
 	for _, route := range routes {
-		if route.Method == http.MethodPost && (route.Path == quotePath || route.Path == orderPath || route.Path == subscriptionQuotePath || route.Path == subscriptionOrderPath) {
+		if route.Method == http.MethodPost && (route.Path == quotePath || route.Path == orderPath) {
 			seen[route.Path] = true
 			if route.RejectUnreadRequestBody || route.Handler == nil {
 				t.Errorf("body-consuming route %s must not reject before handler read", route.Path)
 			}
 		}
 	}
-	if !seen[quotePath] || !seen[orderPath] || !seen[subscriptionQuotePath] || !seen[subscriptionOrderPath] {
+	if !seen[quotePath] || !seen[orderPath] {
 		t.Fatalf("expected quote and order body-consuming routes, got %#v", seen)
 	}
 }
 
-func TestSubscriptionPurchaseRoutesAreDedicated(t *testing.T) {
+func TestResourcePurchaseRoutesAreDedicated(t *testing.T) {
 	routes, err := Routes(NewHandler(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := map[string]string{
-		http.MethodGet + " " + subscriptionOfferPath:       authz.PermissionWorkbenchCommercialRead,
-		http.MethodPost + " " + subscriptionQuotePath:      authz.PermissionWorkbenchCommercialPurchase,
-		http.MethodPost + " " + subscriptionOrderPath:      authz.PermissionWorkbenchCommercialPurchase,
-		http.MethodGet + " " + subscriptionOrderDetailPath: authz.PermissionWorkbenchCommercialRead,
+		http.MethodGet + " /api/v1/workbench/commercial/resource-offers": authz.PermissionWorkbenchCommercialRead,
+		http.MethodPost + " " + quotePath:                                authz.PermissionWorkbenchCommercialPurchase,
+		http.MethodPost + " " + orderPath:                                authz.PermissionWorkbenchCommercialPurchase,
 	}
 	seen := map[string]bool{}
 	for _, route := range routes {
@@ -60,6 +59,38 @@ func TestSubscriptionPurchaseRoutesAreDedicated(t *testing.T) {
 		if !seen[route] {
 			t.Errorf("missing route %s", route)
 		}
+	}
+}
+
+func TestResourceQuoteRejectsAmbiguousQuantityAndBudget(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, body := range []string{
+		`{"offer_id":"offer-1","quantity":"1","amount_minor":"100"}`,
+		`{"offer_id":"offer-1","amount_minor":"0"}`,
+		`{"offer_id":"offer-1","amount_minor":"100","organization_id":"other"}`,
+	} {
+		response := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(response)
+		request := httptest.NewRequest(http.MethodPost, quotePath, strings.NewReader(body))
+		request = request.WithContext(authidentity.WithAuthenticatedIdentity(request.Context(), authidentity.AuthenticatedIdentity{UserID: "actor-1", TenantID: "org-1", EffectiveOrganizationID: "org-1"}))
+		ctx.Request = request
+		NewHandler(&billing.Service{}).CreateQuote(ctx)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestResourceAmountQuoteReachesServerPricing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	response := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(response)
+	request := httptest.NewRequest(http.MethodPost, quotePath, strings.NewReader(`{"offer_id":"offer-1","amount_minor":"100"}`))
+	request = request.WithContext(authidentity.WithAuthenticatedIdentity(request.Context(), authidentity.AuthenticatedIdentity{UserID: "actor-1", TenantID: "org-1", EffectiveOrganizationID: "org-1"}))
+	ctx.Request = request
+	NewHandler(&billing.Service{}).CreateQuote(ctx)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 

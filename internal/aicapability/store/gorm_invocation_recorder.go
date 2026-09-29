@@ -35,6 +35,9 @@ func (r *GormInvocationRecorder) ClaimInvocation(ctx context.Context, record aic
 	if record.Outcome != aicapability.InvocationDispatched || record.StartedAt.IsZero() || !record.FinishedAt.IsZero() || record.UsageKnown || record.PromptTokens != 0 || record.CompletionTokens != 0 || record.TotalTokens != 0 || record.ImageCount != 0 || record.EstimatedCostKnown || record.EstimatedCostMicros != 0 {
 		return false, fmt.Errorf("invalid initial dispatch fact")
 	}
+	if err := validateUsage(record); err != nil {
+		return false, err
+	}
 	row := invocationRowFromRecord(record)
 	insert := r.db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "invocation_id"}}, DoNothing: true}).Create(&row)
 	if insert.Error != nil {
@@ -49,6 +52,9 @@ func (r *GormInvocationRecorder) ClaimInvocation(ctx context.Context, record aic
 	}
 	if !found || existing.UserID != record.UserID || existing.AgentRunID != record.AgentRunID || existing.Operation != record.Operation {
 		return false, fmt.Errorf("ai invocation identity conflict")
+	}
+	if (existing.PointTariff.Valid() || record.PointTariff.Valid()) && !samePointDispatchMetadata(invocationRowFromRecord(existing), row) {
+		return false, fmt.Errorf("ai invocation frozen charge identity conflict")
 	}
 	return false, nil
 }
@@ -135,6 +141,14 @@ func (r *GormInvocationRecorder) ResolveDispatchedInvocation(ctx context.Context
 		// already-recorded terminal fact. Never ask the provider again.
 		return r.RecordInvocation(ctx, existing)
 	}
+	if existing.Outcome == aicapability.InvocationDispatched && existing.PointTariff.Valid() {
+		resolved := existing
+		resolved.Outcome, resolved.FinishedAt = record.Outcome, record.FinishedAt
+		resolved.UsageKnown, resolved.EstimatedCostKnown, resolved.EstimatedCostMicros = record.UsageKnown, record.EstimatedCostKnown, record.EstimatedCostMicros
+		resolved.PromptTokens, resolved.CompletionTokens, resolved.TotalTokens = record.PromptTokens, record.CompletionTokens, record.TotalTokens
+		resolved.ErrorCategory, resolved.ErrorCode, resolved.OutputHash, resolved.ProviderRequestID = record.ErrorCategory, record.ErrorCode, record.OutputHash, record.ProviderRequestID
+		return r.RecordInvocation(ctx, resolved)
+	}
 	if existing.Outcome == aicapability.InvocationDispatched {
 		// Preserve the original dispatch identity and metadata while applying
 		// only the terminal, operator-observed result.
@@ -189,6 +203,9 @@ func (r *GormInvocationRecorder) RecordInvocation(ctx context.Context, record ai
 	var existing invocationRow
 	lookupErr := r.db.WithContext(ctx).Where("invocation_id = ?", record.InvocationID).Take(&existing).Error
 	if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		if record.PointTariff.Valid() && record.Outcome != aicapability.InvocationDispatched {
+			return fmt.Errorf("priced invocation requires a durable dispatch fact")
+		}
 		if record.Outcome == aicapability.InvocationUsageObservedFailed {
 			return fmt.Errorf("observed-failed invocation requires a durable dispatched invocation")
 		}
@@ -218,9 +235,24 @@ func (r *GormInvocationRecorder) RecordInvocation(ctx context.Context, record ai
 			// retry commercial settlement, but may never overwrite observed usage.
 			record = invocationRecordFromRow(existing)
 		} else {
-			if err := r.db.WithContext(ctx).Save(&row).Error; err != nil {
-				return err
+			if existing.PointPriceVersion != "" && !samePointDispatchMetadata(existing, row) {
+				return fmt.Errorf("ai invocation frozen charge identity conflict")
 			}
+			updated := r.db.WithContext(ctx).Model(&invocationRow{}).Where("invocation_id = ? AND outcome = ?", row.InvocationID, string(aicapability.InvocationDispatched)).Select("*").Updates(&row)
+			if updated.Error != nil {
+				return updated.Error
+			}
+			if updated.RowsAffected != 1 {
+				var winner invocationRow
+				if err := r.db.WithContext(ctx).Where("invocation_id = ?", row.InvocationID).Take(&winner).Error; err != nil {
+					return err
+				}
+				if !sameImmutableInvocationFact(winner, row) {
+					return fmt.Errorf("ai invocation terminal identity conflict")
+				}
+				record = invocationRecordFromRow(winner)
+			}
+
 		}
 	}
 	if r.usageSettler != nil {
@@ -248,7 +280,32 @@ func sameImmutableInvocationFact(existing, replay invocationRow) bool {
 	return reflect.DeepEqual(normalize(existing), normalize(replay))
 }
 
+func samePointDispatchMetadata(original, proposed invocationRow) bool {
+	proposed.FinishedAt = original.FinishedAt
+	proposed.LatencyMilliseconds = original.LatencyMilliseconds
+	proposed.PromptTokens, proposed.CompletionTokens, proposed.TotalTokens = original.PromptTokens, original.CompletionTokens, original.TotalTokens
+	proposed.ImageCount = original.ImageCount
+	proposed.EstimatedCostMicros, proposed.EstimatedCostKnown, proposed.UsageKnown = original.EstimatedCostMicros, original.EstimatedCostKnown, original.UsageKnown
+	proposed.Outcome, proposed.ErrorCategory, proposed.ErrorCode = original.Outcome, original.ErrorCategory, original.ErrorCode
+	proposed.RouteErrorCategory = original.RouteErrorCategory
+	proposed.ProviderRequestID, proposed.UpstreamJobID, proposed.OutputHash = original.ProviderRequestID, original.UpstreamJobID, original.OutputHash
+	proposed.ReviewScore, proposed.ReviewNeedsHuman, proposed.ReviewReasonsJSON = original.ReviewScore, original.ReviewNeedsHuman, original.ReviewReasonsJSON
+	return sameImmutableInvocationFact(original, proposed)
+}
+
 func validateUsage(record aicapability.InvocationRecord) error {
+	if record.PointTariff != (aicapability.ModelPointTariff{}) || record.MaximumPromptTokens != 0 || record.MaximumCompletionTokens != 0 {
+		if record.Operation != aicapability.OperationProductAgentDecision || !record.PointTariff.Valid() || record.MaximumPromptTokens <= 0 || record.MaximumCompletionTokens <= 0 {
+			return fmt.Errorf("invalid frozen model point policy")
+		}
+		if _, err := record.PointTariff.Points(record.MaximumPromptTokens, record.MaximumCompletionTokens); err != nil {
+			return err
+		}
+		if record.UsageKnown && (record.Outcome == aicapability.InvocationSucceeded || record.Outcome == aicapability.InvocationUsageObservedFailed) && (int64(record.PromptTokens) > record.MaximumPromptTokens || int64(record.CompletionTokens) > record.MaximumCompletionTokens || record.PromptTokens+record.CompletionTokens != record.TotalTokens) {
+			return fmt.Errorf("observed model usage exceeds frozen bound")
+		}
+	}
+
 	if record.PromptTokens < 0 || record.CompletionTokens < 0 || record.TotalTokens < 0 || record.ImageCount < 0 || record.EstimatedCostMicros < 0 {
 		return fmt.Errorf("invocation usage and cost counters must not be negative")
 	}
@@ -259,6 +316,12 @@ func validateUsage(record aicapability.InvocationRecord) error {
 }
 
 type invocationRow struct {
+	PointPriceVersion            string `gorm:"column:point_price_version;size:128;not null;default:''"`
+	InputPointsPerMillionTokens  int64  `gorm:"column:input_points_per_million_tokens;not null;default:0"`
+	OutputPointsPerMillionTokens int64  `gorm:"column:output_points_per_million_tokens;not null;default:0"`
+	MaximumPromptTokens          int64  `gorm:"column:maximum_prompt_tokens;not null;default:0"`
+	MaximumCompletionTokens      int64  `gorm:"column:maximum_completion_tokens;not null;default:0"`
+
 	InvocationID         string    `gorm:"column:invocation_id;primaryKey;size:128"`
 	ParentInvocationID   string    `gorm:"column:parent_invocation_id;size:128"`
 	AgentRunID           string    `gorm:"column:agent_run_id;size:128"`
@@ -324,6 +387,8 @@ func invocationRowFromRecord(record aicapability.InvocationRecord) invocationRow
 	}
 	reasons, _ := json.Marshal(record.ReviewReasons)
 	return invocationRow{
+		PointPriceVersion: record.PointTariff.PriceVersion, InputPointsPerMillionTokens: record.PointTariff.InputPointsPerMillionTokens, OutputPointsPerMillionTokens: record.PointTariff.OutputPointsPerMillionTokens, MaximumPromptTokens: record.MaximumPromptTokens, MaximumCompletionTokens: record.MaximumCompletionTokens,
+
 		EstimatedCostKnown: record.EstimatedCostKnown, UsageKnown: record.UsageKnown,
 		InvocationID: trim(record.InvocationID), ParentInvocationID: trim(record.ParentInvocationID), AgentRunID: trim(record.AgentRunID),
 		TenantID: trim(record.TenantID), UserID: trim(record.UserID), MemberID: trim(record.MemberID), BusinessTaskID: trim(record.BusinessTaskID), TraceID: trim(record.TraceID),
@@ -342,6 +407,7 @@ func invocationRecordFromRow(row invocationRow) aicapability.InvocationRecord {
 	var reasons []string
 	_ = json.Unmarshal([]byte(row.ReviewReasonsJSON), &reasons)
 	return aicapability.InvocationRecord{
+		PointTariff: aicapability.ModelPointTariff{PriceVersion: row.PointPriceVersion, InputPointsPerMillionTokens: row.InputPointsPerMillionTokens, OutputPointsPerMillionTokens: row.OutputPointsPerMillionTokens}, MaximumPromptTokens: row.MaximumPromptTokens, MaximumCompletionTokens: row.MaximumCompletionTokens,
 		InvocationID: row.InvocationID, ParentInvocationID: row.ParentInvocationID, AgentRunID: row.AgentRunID, TenantID: row.TenantID, UserID: row.UserID, MemberID: row.MemberID, BusinessTaskID: row.BusinessTaskID, TraceID: row.TraceID,
 		Capability: aicapability.Capability(row.Capability), Operation: aicapability.Operation(row.Operation), RouteMode: aicapability.RoutingMode(row.RouteMode), RouteOutcome: aicapability.RouteOutcome(row.RouteOutcome), CacheStatus: aicapability.CacheStatus(row.CacheStatus), ProviderID: row.ProviderID, ModelID: row.ModelID, RequestedRoutingKey: row.RequestedRoutingKey, RoutingKey: row.RoutingKey, CredentialReference: row.CredentialReference, PolicyVersion: row.PolicyVersion, ConfigurationVersion: row.ConfigurationVersion, PromptKey: row.PromptKey, PromptVersion: row.PromptVersion, PromptScope: row.PromptScope, PromptHash: row.PromptHash, StartedAt: row.StartedAt, FinishedAt: row.FinishedAt, LatencyMilliseconds: row.LatencyMilliseconds, Attempt: row.Attempt, FallbackIndex: row.FallbackIndex, PromptTokens: row.PromptTokens, CompletionTokens: row.CompletionTokens, TotalTokens: row.TotalTokens, ImageCount: row.ImageCount, EstimatedCostMicros: row.EstimatedCostMicros, EstimatedCostKnown: row.EstimatedCostKnown, UsageKnown: row.UsageKnown, Currency: row.Currency, Outcome: aicapability.InvocationOutcome(row.Outcome), ErrorCategory: aicapability.ErrorCategory(row.ErrorCategory), RouteErrorCategory: aicapability.ErrorCategory(row.RouteErrorCategory), ErrorCode: row.ErrorCode, ProviderRequestID: row.ProviderRequestID, UpstreamJobID: row.UpstreamJobID, InputHash: row.InputHash, OutputHash: row.OutputHash, ReviewScore: row.ReviewScore, ReviewNeedsHumanReview: row.ReviewNeedsHuman, ReviewReasons: reasons,
 	}

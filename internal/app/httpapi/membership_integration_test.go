@@ -84,7 +84,7 @@ func newMembershipFixture(t *testing.T) *membershipFixture {
 	logger := logrus.New()
 	logger.SetOutput(io.Discard)
 	mailPort := membershipSMTP(t)
-	server, err := NewCurrentApplicationWithMembership(ctx, pools["source_account_runtime"], pools["commercial_reader"], cfg, logger, MembershipDependencies{ReceiptDB: pools["organization_membership_runtime"], ProviderOrigin: fixture.provider.URL, ReadToken: "directory-read-sentinel", WriteToken: "membership-write-sentinel", InvitationMail: &invitationmail.Config{Host: "127.0.0.1", Port: mailPort, LocalPlaintext: true, From: "invitations@example.test", PublicOrigin: "https://localhost:22544"}})
+	server, err := NewCurrentApplicationWithMembership(ctx, pools["source_account_runtime"], cfg, logger, MembershipDependencies{ReceiptDB: pools["organization_membership_runtime"], ProviderOrigin: fixture.provider.URL, ReadToken: "directory-read-sentinel", WriteToken: "membership-write-sentinel", InvitationMail: &invitationmail.Config{Host: "127.0.0.1", Port: mailPort, LocalPlaintext: true, From: "invitations@example.test", PublicOrigin: "https://localhost:22544"}})
 	require.NoError(t, err)
 	fixture.application = httptest.NewServer(server.Handler)
 	t.Cleanup(fixture.application.Close)

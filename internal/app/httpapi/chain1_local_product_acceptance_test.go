@@ -200,7 +200,7 @@ func TestChain1LocalProductAcceptance(t *testing.T) {
 	require.NoError(t, err)
 	auditRepository, err := storecenter.NewGormAuditRepository(db)
 	require.NoError(t, err)
-	storeService, err := storecenter.NewService(storeRepository, listingsubscription.NewGormStoreQuotaLedger(subscriptionRepository), auditRepository, chain1ConnectionStatus{}, time.Now)
+	storeService, err := storecenter.NewService(storeRepository, auditRepository, chain1ConnectionStatus{}, time.Now)
 	require.NoError(t, err)
 	storeCreate := storecenter.CreateStoreRequest{
 		OrganizationID: chain1Organization, ActorSubject: chain1Actor, IdempotencyKey: uuid.NewString(),

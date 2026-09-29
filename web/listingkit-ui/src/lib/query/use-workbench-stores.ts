@@ -18,7 +18,6 @@ import {
   enableWorkbenchStore,
   getWorkbenchStore,
   listWorkbenchStores,
-  resumeWorkbenchStore,
   updateWorkbenchStore,
   type WorkbenchStoreCreateInput,
   type WorkbenchStore,
@@ -247,10 +246,6 @@ export function useDeleteWorkbenchStore() {
     resume,
     canRetryLast: retryState?.available === true && retryState.organizationId === organizationId,
   };
-}
-
-export function useResumeWorkbenchStore() {
-  return useStoreStateMutation(resumeWorkbenchStore, "resume");
 }
 
 function useStoreStateMutation(

@@ -410,7 +410,7 @@ func serviceLifecycleStore(t *testing.T, connectionRef string) *Store {
 	store, err := RehydrateStore(StoreSnapshot{
 		ID: testServiceStoreID, OrganizationID: "org-a", Name: "Store", Platform: PlatformShein, Region: "SG",
 		RecordStatus: RecordStatusActive, ServiceStatus: ServiceStatusPendingActivation, ConnectionRef: connectionRef,
-		QuotaAllocationID: "33333333-3333-4333-8333-333333333333", Version: 2,
+		Version:   2,
 		CreatedBy: "user-a", UpdatedBy: "user-a", CreatedAt: now, UpdatedAt: now,
 		CreateIdempotencyKey: "44444444-4444-4444-8444-444444444444",
 	})

@@ -13,13 +13,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"sort"
+	aistore "task-processor/internal/aicapability/store"
 	"task-processor/internal/app/accountaudit"
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	resourceadapter "task-processor/internal/integration/orgresource"
-	accountallocationstore "task-processor/internal/integration/persistence/accountallocation"
 	accountprofilestore "task-processor/internal/integration/persistence/accountprofile"
 	memberstore "task-processor/internal/integration/persistence/organization/membership"
 	store "task-processor/internal/integration/persistence/sourceaccountregistry"
@@ -36,25 +37,40 @@ var accountAuditLimit = regexp.MustCompile(`^[1-9][0-9]{0,2}$`)
 
 type accountAuditModule struct{ query *accountaudit.Query }
 
-type aiUsageAuditReader struct {
-	repository *accountallocationstore.Repository
-}
+type invocationAuditSources map[string]*gorm.DB
 
-func (r aiUsageAuditReader) ListCommittedAIUsageAudit(ctx context.Context, organizationID string, limit int, after *accountaudit.AuditPosition) (accountaudit.UsageAuditPage, error) {
-	var position *accountallocationstore.UsageAuditPosition
+type aiUsageAuditReader struct{ sources invocationAuditSources }
+
+func (r aiUsageAuditReader) ListObservedAIUsageAudit(ctx context.Context, org string, limit int, after *accountaudit.AuditPosition) (accountaudit.UsageAuditPage, error) {
+	var position *aistore.ObservedUsagePosition
 	if after != nil {
-		position = &accountallocationstore.UsageAuditPosition{OccurredAt: after.CreatedAt, EventID: after.Key}
+		position = &aistore.ObservedUsagePosition{At: after.CreatedAt, Key: after.Key}
 	}
-	ledgerPage, err := r.repository.ListCommittedAIUsageAudit(ctx, organizationID, limit, position)
-	if err != nil {
-		return accountaudit.UsageAuditPage{}, err
+	page := accountaudit.UsageAuditPage{Items: []accountaudit.UsageAuditEvent{}}
+	more := false
+	for namespace, db := range r.sources {
+		rows, err := aistore.NewGormInvocationRecorder(db).ListObservedUsage(ctx, org, namespace, limit, position)
+		if err != nil {
+			return accountaudit.UsageAuditPage{}, err
+		}
+		more = more || rows.Next != nil
+		for _, row := range rows.Items {
+			page.Items = append(page.Items, accountaudit.UsageAuditEvent{OrganizationID: org, EventID: row.Key, MemberID: row.MemberID, InvocationID: row.InvocationID, Quantity: row.Tokens, Time: row.At})
+		}
 	}
-	page := accountaudit.UsageAuditPage{Items: make([]accountaudit.UsageAuditEvent, 0, len(ledgerPage.Items))}
-	for _, item := range ledgerPage.Items {
-		page.Items = append(page.Items, accountaudit.UsageAuditEvent{OrganizationID: item.TenantID, EventID: item.EventID, MemberID: item.MemberID, InvocationID: item.SourceID, Quantity: item.Quantity, Time: item.OccurredAt})
+	sort.Slice(page.Items, func(i, j int) bool {
+		if !page.Items[i].Time.Equal(page.Items[j].Time) {
+			return page.Items[i].Time.After(page.Items[j].Time)
+		}
+		return page.Items[i].EventID > page.Items[j].EventID
+	})
+	if len(page.Items) > limit {
+		more = true
+		page.Items = page.Items[:limit]
 	}
-	if ledgerPage.Next != nil {
-		page.Next = &accountaudit.AuditPosition{CreatedAt: ledgerPage.Next.OccurredAt, Key: ledgerPage.Next.EventID}
+	if more && len(page.Items) > 0 {
+		last := page.Items[len(page.Items)-1]
+		page.Next = &accountaudit.AuditPosition{CreatedAt: last.Time, Key: last.EventID}
 	}
 	return page, nil
 }
@@ -235,7 +251,7 @@ func writeAccountAuditError(c *gin.Context, err error) {
 	}
 	writeWorkbenchProtocolError(c, status, code, "Operation history request could not be completed")
 }
-func buildAccountAuditModule(ctx context.Context, sourceDB, commercialDB, membershipDB, resourceDB *gorm.DB, authorizer *authz.ListingKitAuthorizer, membershipProjectID string) (kernelmodule.Module, error) {
+func buildAccountAuditModule(ctx context.Context, sourceDB, membershipDB, resourceDB *gorm.DB, sources invocationAuditSources, authorizer *authz.ListingKitAuthorizer, membershipProjectID string) (kernelmodule.Module, error) {
 	repository, err := store.NewRepository(ctx, sourceDB)
 	if err != nil {
 		return nil, err
@@ -245,10 +261,6 @@ func buildAccountAuditModule(ctx context.Context, sourceDB, commercialDB, member
 		return nil, err
 	}
 	history, err := registry.NewHistoryService(service, repository)
-	if err != nil {
-		return nil, err
-	}
-	allocationRepository, err := accountallocationstore.New(commercialDB)
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +287,7 @@ func buildAccountAuditModule(ctx context.Context, sourceDB, commercialDB, member
 			return nil, err
 		}
 	}
-	query, err := accountaudit.NewWithImagePointAuditSources(history, allocationRepository, profileHistory, membershipHistory, aiUsageAuditReader{repository: allocationRepository}, pointHistory)
+	query, err := accountaudit.NewCurrentAuditSources(history, profileHistory, membershipHistory, aiUsageAuditReader{sources: sources}, pointHistory)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +300,7 @@ func NewAccountAuditApplication(ctx context.Context, db *gorm.DB, verifier zitad
 	if ctx == nil || db == nil || verifier == nil || resolver == nil || authorizer == nil {
 		return nil, registry.ErrUnavailable
 	}
-	module, err := buildAccountAuditModule(ctx, db, db, nil, nil, authorizer, "")
+	module, err := buildAccountAuditModule(ctx, db, nil, nil, nil, authorizer, "")
 	if err != nil {
 		return nil, err
 	}

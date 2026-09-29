@@ -35,7 +35,6 @@ var (
 type StoreService interface {
 	List(context.Context, storecenter.ListStoresRequest) (storecenter.ListStoresResult, error)
 	Create(context.Context, storecenter.CreateStoreRequest) (storecenter.CreateStoreResult, error)
-	ResumeCreate(context.Context, storecenter.ResumeCreateStoreRequest) (storecenter.CreateStoreResult, error)
 	Get(context.Context, storecenter.GetStoreRequest) (storecenter.StoreProjection, error)
 	Update(context.Context, storecenter.UpdateStoreRequest) (storecenter.StoreMutationResult, error)
 	Disable(context.Context, storecenter.StoreLifecycleRequest) (storecenter.StoreMutationResult, error)
@@ -104,14 +103,6 @@ type StoreResponse struct {
 	UpdatedAt        time.Time                    `json:"updatedAt"`
 }
 
-type QuotaResponse struct {
-	Used     int64  `json:"used"`
-	Reserved int64  `json:"reserved"`
-	Limit    *int64 `json:"limit"`
-	Allowed  bool   `json:"allowed"`
-	Reason   string `json:"reason"`
-}
-
 type PaginationResponse struct {
 	Page     int   `json:"page"`
 	PageSize int   `json:"pageSize"`
@@ -120,7 +111,6 @@ type PaginationResponse struct {
 
 type ListStoresResponse struct {
 	Items      []StoreResponse    `json:"items"`
-	Quota      QuotaResponse      `json:"quota"`
 	Pagination PaginationResponse `json:"pagination"`
 }
 
@@ -209,33 +199,6 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 	h.writeCreateResponse(c, result, identity.EffectiveOrganizationID, http.StatusCreated)
-}
-
-func (h *Handler) ResumeCreate(c *gin.Context) {
-	identity, storeID, ok := h.itemIdentity(c)
-	if !ok {
-		return
-	}
-	version, err := requiredIfMatch(c.Request)
-	if err != nil {
-		writeInvalid(c, "If-Match", "invalid")
-		return
-	}
-	if err := requireNoBody(c.Request.Body); err != nil {
-		writeInvalid(c, "body", "not_allowed")
-		return
-	}
-	result, err := h.service.ResumeCreate(c.Request.Context(), storecenter.ResumeCreateStoreRequest{
-		OrganizationID:  identity.EffectiveOrganizationID,
-		ActorSubject:    identity.UserID,
-		StoreID:         storeID,
-		ExpectedVersion: version,
-	})
-	if err != nil {
-		writeStoreError(c, err)
-		return
-	}
-	h.writeCreateResponse(c, result, identity.EffectiveOrganizationID, http.StatusOK)
 }
 
 func (h *Handler) writeCreateResponse(c *gin.Context, result storecenter.CreateStoreResult, organizationID string, status int) {
@@ -530,7 +493,7 @@ func parseListRequest(rawQuery string) (storecenter.ListStoresRequest, string, e
 	if value, ok := query["status"]; ok {
 		status := storecenter.RecordStatus(value[0])
 		switch status {
-		case storecenter.RecordStatusProvisioning, storecenter.RecordStatusActive, storecenter.RecordStatusDisabled, storecenter.RecordStatusDeleting:
+		case storecenter.RecordStatusActive, storecenter.RecordStatusDisabled, storecenter.RecordStatusDeleting:
 			request.Status = status
 		default:
 			return storecenter.ListStoresRequest{}, "status", errors.New("invalid status")
@@ -789,7 +752,7 @@ func utcTimePointer(value *time.Time) *time.Time {
 }
 
 func listResponse(result storecenter.ListStoresResult, request storecenter.ListStoresRequest) (ListStoresResponse, error) {
-	if result.Total < int64(len(result.Items)) || len(result.Items) > result.PageSize || result.Page != request.Page || result.PageSize != request.PageSize || !validQuotaProjection(result.Quota) {
+	if result.Total < int64(len(result.Items)) || len(result.Items) > result.PageSize || result.Page != request.Page || result.PageSize != request.PageSize {
 		return ListStoresResponse{}, storecenter.ErrDependencyUnavailable
 	}
 	items := make([]StoreResponse, 0, len(result.Items))
@@ -800,32 +763,7 @@ func listResponse(result storecenter.ListStoresResult, request storecenter.ListS
 		}
 		items = append(items, response)
 	}
-	var limit *int64
-	if result.Quota.Limit != nil {
-		value := *result.Quota.Limit
-		limit = &value
-	}
-	return ListStoresResponse{Items: items, Quota: QuotaResponse{Used: result.Quota.Used, Reserved: result.Quota.Reserved, Limit: limit, Allowed: result.Quota.Allowed, Reason: result.Quota.Reason}, Pagination: PaginationResponse{Page: result.Page, PageSize: result.PageSize, Total: result.Total}}, nil
-}
-
-func validQuotaProjection(quota storecenter.StoreQuotaProjection) bool {
-	if quota.Used < 0 || quota.Reserved < 0 {
-		return false
-	}
-	if quota.Limit == nil {
-		return !quota.Allowed && quota.Reason == "subscription_required"
-	}
-	if *quota.Limit <= 0 {
-		return false
-	}
-	allowed := quota.Used < *quota.Limit && quota.Reserved < *quota.Limit-quota.Used
-	if quota.Allowed != allowed {
-		return false
-	}
-	if allowed {
-		return quota.Reason == ""
-	}
-	return quota.Reason == "store_limit_reached"
+	return ListStoresResponse{Items: items, Pagination: PaginationResponse{Page: result.Page, PageSize: result.PageSize, Total: result.Total}}, nil
 }
 
 func projectionResponse(projection storecenter.StoreProjection, organizationID, storeID string) (StoreResponse, error) {

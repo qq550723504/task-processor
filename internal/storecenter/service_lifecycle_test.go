@@ -34,7 +34,7 @@ func TestActivateStoreServiceRejectsInvalidPreconditionsWithoutChangingState(t *
 		{name: "already active", state: activeServiceState(now), connection: ConnectionStatusConnected, want: ErrServiceAlreadyActive},
 		{name: "suspended", state: StoreServiceState{RecordStatus: RecordStatusActive, ServiceStatus: ServiceStatusSuspended}, connection: ConnectionStatusConnected, want: ErrServiceSuspended},
 		{name: "record disabled", state: StoreServiceState{RecordStatus: RecordStatusDisabled, ServiceStatus: ServiceStatusPendingActivation}, connection: ConnectionStatusConnected, want: ErrInvalidServiceTransition},
-		{name: "record provisioning", state: StoreServiceState{RecordStatus: RecordStatusProvisioning}, connection: ConnectionStatusConnected, want: ErrInvalidServiceTransition},
+		{name: "retired record status", state: StoreServiceState{RecordStatus: RecordStatus("provisioning")}, connection: ConnectionStatusConnected, want: ErrInvalidServiceState},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

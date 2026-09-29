@@ -55,7 +55,7 @@ type UsageAuditPage struct {
 	Next  *AuditPosition
 }
 type UsageHistory interface {
-	ListCommittedAIUsageAudit(context.Context, string, int, *AuditPosition) (UsageAuditPage, error)
+	ListObservedAIUsageAudit(context.Context, string, int, *AuditPosition) (UsageAuditPage, error)
 }
 type Query struct {
 	history    History
@@ -109,6 +109,16 @@ func NewWithImagePointAuditSources(history History, allocationHistory Allocation
 	query.membership = membership
 	query.usage = usage
 	query.points = points
+	return query, nil
+}
+
+// NewCurrentAuditSources consumes only current native and resource owners.
+func NewCurrentAuditSources(history History, profile, membership AdditionalHistory, usage UsageHistory, points ImagePointHistory) (*Query, error) {
+	query, err := New(history)
+	if err != nil {
+		return nil, err
+	}
+	query.profile, query.membership, query.usage, query.points = profile, membership, usage, points
 	return query, nil
 }
 
@@ -229,7 +239,7 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 	}
 	usagePage := UsageAuditPage{}
 	if q.usage != nil && filter.ActorSubject == "" && filter.Kind == "" && filter.ResourceOperation == "" && filter.ProfileOperation == "" && filter.MembershipOperation == "" {
-		usagePage, err = q.usage.ListCommittedAIUsageAudit(ctx, identity.EffectiveOrganizationID, limit, state.usage)
+		usagePage, err = q.usage.ListObservedAIUsageAudit(ctx, identity.EffectiveOrganizationID, limit, state.usage)
 		if err != nil {
 			return Page{}, err
 		}
@@ -320,7 +330,7 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 			return Page{}, registry.ErrUnavailable
 		}
 		p := AuditPosition{CreatedAt: item.Time.UTC().Truncate(time.Microsecond), Key: item.EventID}
-		merged = append(merged, mergedEvent{event: Event{EventType: "account_ai_tokens.committed", Time: item.Time.UTC(), ObjectType: "ai_invocation", ObjectReference: item.InvocationID, Operation: "consume", Result: "succeeded", Relation: Relation{Type: "saas_usage_event", Reference: item.EventID}, Usage: &UsageDetail{MemberID: item.MemberID, Quantity: item.Quantity, Metric: "ai_tokens"}}, usage: &p, kind: "usage", key: item.EventID})
+		merged = append(merged, mergedEvent{event: Event{EventType: "ai_invocation.usage_observed", Time: item.Time.UTC(), ObjectType: "ai_invocation", ObjectReference: item.InvocationID, Operation: "observe", Result: "observed", Relation: Relation{Type: "ai_invocation", Reference: item.EventID}, Usage: &UsageDetail{MemberID: item.MemberID, Quantity: item.Quantity, Metric: "model_tokens"}}, usage: &p, kind: "usage", key: item.EventID})
 	}
 	for _, item := range pointPage.Items {
 		if item.OrganizationID != identity.EffectiveOrganizationID || item.EventID == "" || item.ActorID == "" || filter.ActorSubject != "" && item.ActorID != filter.ActorSubject || item.MemberID == "" || item.RunID == "" || item.IntentID == "" || item.PriceVersion == "" || item.Points <= 0 || item.CreatedAt.IsZero() {
@@ -375,7 +385,7 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 		result.Source += "+organization_member_audit"
 	}
 	if len(usagePage.Items) > 0 {
-		result.Source += "+saas_ai_usage_events"
+		result.Source += "+ai_invocations"
 	}
 	if len(pointPage.Items) > 0 {
 		result.Source += "+image_ai_point_debits"

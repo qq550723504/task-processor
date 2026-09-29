@@ -73,9 +73,9 @@ func buildSMSApplication(t *testing.T) (*http.Server, error) {
 			return workbenchContextBuildResult{module: currentApplicationTestModule{name: "base", routes: currentWorkbenchApplicationRoutes}, authDependencies: &deps}, nil
 		},
 		buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
-		buildCommercial:    func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
+		buildCommercial:    func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
 	}
-	return buildCurrentApplication(context.Background(), &gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
+	return buildCurrentApplication(context.Background(), &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
 }
 
 const validSMSPrivateConfig = `{"SigningKey":"test-signing-key","TencentSecretID":"fake-id","TencentSecretKey":"fake-key","TencentAppID":"fake-app","TencentSignName":"test-sign","TencentTemplateID":"test-template","PhoneVerificationExpiryMinutes":5}`

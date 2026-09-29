@@ -90,13 +90,6 @@ const store = {
 };
 const list = {
   items: [store],
-  quota: {
-    used: 1,
-    reserved: 0,
-    limit: 5,
-    allowed: true,
-    reason: "",
-  },
   pagination: { page: 2, pageSize: 20, total: 21 },
 };
 const serviceLifecycleResult = {
@@ -470,7 +463,7 @@ describe("workbench Store API", () => {
       { ...list, items: Array.from({ length: 101 }, () => store) },
       {
         ...list,
-        quota: { ...list.quota, allowed: false, reason: "" },
+        quota: { used: 1, reserved: 0, limit: 5, allowed: false, reason: "" },
       },
       {
         ...list,
@@ -550,3 +543,5 @@ describe("workbench Store API", () => {
     );
   });
 });
+
+it("reads native store records without a subscription quota projection",async()=>{vi.stubGlobal("fetch",vi.fn().mockResolvedValue(Response.json({items:[store],pagination:list.pagination})));await expect(listWorkbenchStores({page:2,pageSize:20})).resolves.toEqual({items:[store],pagination:list.pagination});});

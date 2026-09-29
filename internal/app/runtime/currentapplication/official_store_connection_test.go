@@ -15,6 +15,8 @@ func TestOfficialStoreConfigRequiresSeparatePrivateKeysAndFixedHTTPSOrigin(t *te
 	require.NoError(t, c.validate())
 	require.NoError(t, os.WriteFile(c.AppSecretFile, []byte(strings.Repeat("synthetic", 4)), 0600))
 	require.NoError(t, os.WriteFile(c.CredentialKeyFile, []byte(base64.StdEncoding.EncodeToString(make([]byte, 32))), 0600))
+	privatizeSyntheticTestFile(t, c.AppSecretFile)
+	privatizeSyntheticTestFile(t, c.CredentialKeyFile)
 	provider, protection, err := c.prepare(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, provider)

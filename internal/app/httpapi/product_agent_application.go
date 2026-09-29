@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"task-processor/internal/agent"
+	"task-processor/internal/aicapability"
+	aistore "task-processor/internal/aicapability/store"
 	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
@@ -17,6 +19,7 @@ import (
 	"task-processor/internal/integration/agent/grsaitext"
 	"task-processor/internal/integration/commercetoolauth"
 	"task-processor/internal/integration/openai"
+	orgresourceadapter "task-processor/internal/integration/orgresource"
 	agentstore "task-processor/internal/integration/persistence/agent"
 	assetstore "task-processor/internal/integration/persistence/product/asset"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
@@ -39,12 +42,19 @@ import (
 // entitlements, calls the model or edits a Product.
 type ProductAgentDependencies struct {
 	RunDB, AssetDB, ReviewDB *gorm.DB
+	PointAccountingDB        *gorm.DB
 	Manager                  *openai.Manager
-	Ledger                   grsaitext.AgentInvocationLedger
+	Ledger                   ProductAgentInvocationLedger
 	TextPolicy               grsaitext.AgentTextPolicy
 	Enabled                  bool
 	AllowedOrganizationIDs   []string
 	Limits                   agent.Limits
+}
+
+type ProductAgentInvocationLedger interface {
+	grsaitext.AgentInvocationLedger
+	orgresourceadapter.ModelInvocationFactReader
+	SetUsageSettler(aicapability.InvocationUsageSettler)
 }
 
 type productAgentApplication struct {
@@ -59,11 +69,18 @@ type productAgentApplication struct {
 	sources    *sourceevidenceinspect.Invoker
 	assets     *assetinspect.Invoker
 	readiness  *readinessinspect.Invoker
+	points     *orgresourceadapter.GormModelInvocationRepository
 }
 
-func buildProductAgentApplication(productDB *gorm.DB, receipts sourcing.PublishedAcquisitionReader, resolver organizationIdentityResolver, auth *authz.ListingKitAuthorizer, cfg ProductAgentDependencies) (*productAgentApplication, error) {
+func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, receipts sourcing.PublishedAcquisitionReader, resolver organizationIdentityResolver, auth *authz.ListingKitAuthorizer, cfg ProductAgentDependencies) (*productAgentApplication, error) {
 	if !cfg.Enabled || len(cfg.AllowedOrganizationIDs) == 0 || !cfg.Limits.Valid() || cfg.Limits.Runtime > 2*time.Minute || cfg.Limits.Steps > 16 || cfg.Limits.ModelCalls > 8 || productDB == nil || cfg.AssetDB == nil || receipts == nil || resolver == nil || auth == nil {
 		return nil, agent.ErrUnavailable
+	}
+	if cfg.PointAccountingDB == nil || cfg.Ledger == nil {
+		return nil, agent.ErrUnavailable
+	}
+	if err := aistore.VerifyModelPointInvocationSchema(ctx, cfg.RunDB); err != nil {
+		return nil, err
 	}
 	for _, table := range []string{"product_agent_runs", "product_agent_tool_calls"} {
 		if cfg.RunDB == nil || !cfg.RunDB.Migrator().HasTable(table) {
@@ -76,6 +93,11 @@ func buildProductAgentApplication(productDB *gorm.DB, receipts sourcing.Publishe
 	a := &productAgentApplication{receipts: receipts, resolver: resolver, authorizer: auth, config: cfg}
 	a.config.AllowedOrganizationIDs = append([]string(nil), cfg.AllowedOrganizationIDs...)
 	var err error
+	a.points, err = orgresourceadapter.NewGormModelInvocationRepository(cfg.PointAccountingDB, orgresourceadapter.TransactionConfig{}, cfg.Ledger, a)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Ledger.SetUsageSettler(a.points)
 	a.store, err = agentstore.New(cfg.RunDB)
 	if err != nil {
 		return nil, err
@@ -143,6 +165,17 @@ func buildProductAgentApplication(productDB *gorm.DB, receipts sourcing.Publishe
 		return nil, err
 	}
 	return a, nil
+}
+
+func (a *productAgentApplication) AuthorizeModelInvocation(ctx context.Context, fact aicapability.InvocationRecord) error {
+	i, err := a.freshIdentity(ctx)
+	if err != nil {
+		return err
+	}
+	if i.TenantID != fact.TenantID || i.UserID != fact.UserID || i.EffectiveMemberID != fact.MemberID {
+		return review.ErrForbidden
+	}
+	return nil
 }
 
 func (a *productAgentApplication) freshIdentity(ctx context.Context) (authidentity.AuthenticatedIdentity, error) {

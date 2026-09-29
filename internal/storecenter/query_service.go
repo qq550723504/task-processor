@@ -30,15 +30,7 @@ func (s *Service) List(ctx context.Context, request ListStoresRequest) (ListStor
 		items[i].Store = *store
 	}
 	s.projectConnections(ctx, items)
-	summary, err := s.quota.Summary(ctx, normalized.OrganizationID)
-	if err != nil {
-		return ListStoresResult{}, dependencyError(err)
-	}
-	quota, err := validateQuotaSummary(normalized.OrganizationID, summary)
-	if err != nil {
-		return ListStoresResult{}, dependencyError(err)
-	}
-	return ListStoresResult{Items: items, Total: page.Total, Page: normalized.Page, PageSize: normalized.PageSize, Quota: quota}, nil
+	return ListStoresResult{Items: items, Total: page.Total, Page: normalized.Page, PageSize: normalized.PageSize}, nil
 }
 
 func (s *Service) Get(ctx context.Context, request GetStoreRequest) (StoreProjection, error) {

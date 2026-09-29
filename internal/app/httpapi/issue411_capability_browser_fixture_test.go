@@ -63,7 +63,7 @@ func TestIssue411CapabilityBrowserFixture(t *testing.T) {
 	log := logrus.New()
 	log.SetOutput(io.Discard)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	server, err := NewCurrentApplication(ctx, source, commercial, core, log)
+	server, err := NewCurrentApplication(ctx, source, core, log)
 	cancel()
 	require.NoError(t, err)
 	listener := httptest.NewServer(server.Handler)

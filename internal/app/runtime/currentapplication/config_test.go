@@ -24,7 +24,7 @@ import (
 )
 
 func TestDatabasePasswordSeparatorsRejectedBeforeRuntimeDependencies(t *testing.T) {
-	for _, role := range []string{"sourceAccountDatabase", "commercialDatabase"} {
+	for _, role := range []string{"sourceAccountDatabase", "commercialOwnerDatabase"} {
 		for _, tc := range []struct{ name, password string }{
 			{"vertical_tab", "synthetic\vY"},
 			{"form_feed", "synthetic\fY"},
@@ -43,7 +43,10 @@ func TestDatabasePasswordSeparatorsRejectedBeforeRuntimeDependencies(t *testing.
 				if role == "sourceAccountDatabase" {
 					cfg.SourceAccountDatabase.Password = tc.password
 				} else {
-					cfg.CommercialDatabase.Password = tc.password
+					owner := cfg.SourceAccountDatabase
+					owner.User = "commercial_owner_runtime"
+					owner.Password = tc.password
+					cfg.CommercialOwnerDatabase = &owner
 				}
 				manifest, err := json.Marshal(cfg)
 				if err != nil {
@@ -66,8 +69,8 @@ func TestDatabasePasswordSeparatorsRejectedBeforeRuntimeDependencies(t *testing.
 				runErr := Run(context.Background(), cfg, logger, Dependencies{
 					IdentityPreflight: func(context.Context, IdentityConfig) error { preflights++; return nil },
 					OpenSourceAccount: open,
-					OpenCommercial:    open,
-					CloseDatabase:     func(*gorm.DB) error { return nil },
+
+					CloseDatabase: func(*gorm.DB) error { return nil },
 				})
 				if runErr == nil || runErr.Error() != wantError {
 					t.Error("Run must independently reject the password with a credential-free validation error")
@@ -92,9 +95,6 @@ func TestLoadConfigAcceptsBoundedPrivateManifest(t *testing.T) {
 	}
 	if cfg.SourceAccountDatabase.User != "source_account_runtime" {
 		t.Fatalf("source account user = %q", cfg.SourceAccountDatabase.User)
-	}
-	if cfg.CommercialDatabase.User != "commercial_runtime" {
-		t.Fatalf("commercial user = %q", cfg.CommercialDatabase.User)
 	}
 	if cfg.CommercialOwnerDatabase == nil || cfg.CommercialOwnerDatabase.User != "commercial_owner_runtime" {
 		t.Fatalf("commercial owner user = %#v", cfg.CommercialOwnerDatabase)
@@ -144,18 +144,18 @@ func TestCurrentApplicationStartsFromConfiguredPrivateManifest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
-	source, commercial := &gorm.DB{}, &gorm.DB{}
+	source := &gorm.DB{}
 	started := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var startedCore *coreconfig.Config
 	dependencies := Dependencies{
-		IdentityPreflight:   func(context.Context, IdentityConfig) error { return nil },
-		OpenSourceAccount:   func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
-		OpenCommercial:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
+		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
+		OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+
 		OpenCommercialOwner: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return &gorm.DB{}, nil },
-		NewApplicationWithFeatures: func(startup context.Context, gotSource, gotCommercial *gorm.DB, features ApplicationFeatures, core *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
-			if gotSource != source || gotCommercial != commercial {
+		NewApplicationWithFeatures: func(startup context.Context, gotSource *gorm.DB, features ApplicationFeatures, core *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+			if gotSource != source {
 				t.Fatal("application received unexpected database pools")
 			}
 			if _, ok := startup.Deadline(); !ok {
@@ -214,8 +214,8 @@ func TestLoadConfigRejectsInvalidListingKitAuthorizationBeforeRuntimeSideEffects
 				err = Run(context.Background(), cfg, logrus.New(), Dependencies{
 					IdentityPreflight: func(context.Context, IdentityConfig) error { preflights++; return nil },
 					OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { opens++; return &gorm.DB{}, nil },
-					OpenCommercial:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { opens++; return &gorm.DB{}, nil },
-					Listen:            func(string, string) (net.Listener, error) { listens++; return nil, errors.New("unexpected listener") },
+
+					Listen: func(string, string) (net.Listener, error) { listens++; return nil, errors.New("unexpected listener") },
 				})
 			}
 			if err == nil {
@@ -290,9 +290,9 @@ func TestLoadConfigRejectsNonLoopbackOrSharedDatabaseRole(t *testing.T) {
 		"issuer":        strings.Replace(validManifest(), `"issuerURL": "http://localhost:18080"`, `"issuerURL": "https://identity.example"`, 1),
 		"authorization": strings.Replace(validManifest(), `"authorizationAPIURL": "http://localhost:18080"`, `"authorizationAPIURL": "http://127.0.0.1:18081"`, 1),
 		"database_host": strings.Replace(validManifest(), `"host": "127.0.0.1", "port": 15432, "user": "source_account_runtime"`, `"host": "postgres", "port": 15432, "user": "source_account_runtime"`, 1),
-		"shared_role":   strings.Replace(validManifest(), `"user": "commercial_runtime"`, `"user": "source_account_runtime"`, 1),
+		"shared_role":   strings.Replace(validManifest(), `"user": "commercial_owner_runtime"`, `"user": "source_account_runtime"`, 1),
 		"source_admin":  strings.Replace(validManifest(), `"user": "source_account_runtime"`, `"user": "postgres"`, 1),
-		"reader_admin":  strings.Replace(validManifest(), `"user": "commercial_runtime"`, `"user": "postgres"`, 1),
+		"reader_admin":  strings.Replace(validManifest(), `"user": "commercial_owner_runtime"`, `"user": "postgres"`, 1),
 		"dsn_password":  strings.Replace(validManifest(), `"password": "source-secret"`, `"password": "x host=198.51.100.1"`, 1),
 		"dsn_database":  strings.Replace(validManifest(), `"database": "task_processor"`, `"database": "task_processor sslmode=require"`, 1),
 	}
@@ -330,6 +330,7 @@ func referralRuntimeConfig(t *testing.T) *Config {
 		if err := os.WriteFile(path, []byte(hex.EncodeToString(b)), 0600); err != nil {
 			t.Fatal(err)
 		}
+		privatizeSyntheticTestFile(t, path)
 		return path
 	}
 	cfg.Referrals = ReferralsConfig{ReferralsConfig: coreconfig.ReferralsConfig{Enabled: true, Issuer: cfg.Identity.IssuerURL, InstanceID: "fixture", SignupOrganizationID: "signup", ProviderOrigin: "https://provider.example", OfficialLoginOrigin: "https://login.example", PublicAppOrigin: "https://app.example", CredentialFile: secret("provider"), ServiceCredentialFile: secret("service"), LookupKeyFile: secret("lookup"), KeyID: "k1", ProofKeyFiles: map[string]string{"k1": secret("proof")}, EncryptionKeyFiles: map[string]string{"k1": secret("encryption")}}, Database: DatabaseConfig{Host: "127.0.0.1", Port: 15432, User: "referral_runtime", Password: "fixture-referral", Database: "referrals", MaxConnections: 2}}
@@ -338,7 +339,7 @@ func referralRuntimeConfig(t *testing.T) *Config {
 
 func TestSubscriptionPurchaseDirectoryCredentialFlowsThroughPrivateManifest(t *testing.T) {
 	cfg := referralRuntimeConfig(t)
-	owner := cfg.CommercialDatabase
+	owner := cfg.SourceAccountDatabase
 	owner.User = "commercial_owner_runtime"
 	cfg.CommercialOwnerDatabase = &owner
 	if err := cfg.validate(); err == nil || !strings.Contains(err.Error(), "identity.tenantDirectoryToken") {
@@ -436,6 +437,7 @@ func writeManifest(t *testing.T, contents string) string {
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	privatizeSyntheticTestFile(t, path)
 	return path
 }
 
@@ -454,13 +456,26 @@ func validManifest() string {
     "host": "127.0.0.1", "port": 15432, "user": "source_account_runtime",
     "password": "source-secret", "database": "task_processor", "maxConnections": 4
   },
-  "commercialDatabase": {
-    "host": "127.0.0.1", "port": 15432, "user": "commercial_runtime",
-    "password": "commercial-secret", "database": "task_processor", "maxConnections": 4
-  },
   "commercialOwnerDatabase": {
     "host": "127.0.0.1", "port": 15432, "user": "commercial_owner_runtime",
     "password": "commercial-owner-secret", "database": "task_processor", "maxConnections": 2
   }
 }`
+}
+
+// Restrict only newly generated test files; Windows does not apply os.FileMode.
+func privatizeSyntheticTestFile(t *testing.T, path string) {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		return
+	}
+	raw, err := json.Marshal(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", `$ErrorActionPreference='Stop'; $p=([Console]::In.ReadToEnd() | ConvertFrom-Json); $sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User; $acl=New-Object System.Security.AccessControl.FileSecurity; $acl.SetOwner($sid); $acl.SetAccessRuleProtection($true,$false); $rule=New-Object System.Security.AccessControl.FileSystemAccessRule($sid,'FullControl','Allow'); $acl.AddAccessRule($rule); [System.IO.File]::SetAccessControl($p,$acl)`)
+	command.Stdin = bytes.NewReader(raw)
+	if _, err := command.CombinedOutput(); err != nil {
+		t.Fatal("could not restrict synthetic test file")
+	}
 }

@@ -82,7 +82,7 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	records, quota := open("store_center", "store_center_runtime"), open("commercial", "store_quota_runtime")
 	charges, err := orgresource.NewConsumerChargeService(currentStoreChargeFixture{}, map[orgresource.ResourceConsumer]orgresource.ConsumerChargeOwner{orgresource.ConsumerStoreService: currentStoreChargeFixture{}})
 	require.NoError(t, err)
-	module, err := buildCurrentStoreCenterModule(ctx, records, quota, authz.DefaultListingKitAuthorizer(), charges, nil, nil)
+	module, err := buildCurrentStoreCenterModule(ctx, records, authz.DefaultListingKitAuthorizer(), charges, nil, nil)
 	require.NoError(t, err)
 	f := newAccountFixture(t)
 	cfg := &config.Config{Workbench: config.WorkbenchConfig{Enabled: true}, ListingKit: config.ListingKitConfig{Zitadel: config.ListingKitZitadelConfig{IssuerURL: f.provider.URL, ClientID: "fixture-client", ClientSecret: "fixture-secret", ProjectID: "project", AuthorizationAPIURL: f.provider.URL}}}
@@ -159,7 +159,7 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	require.Equal(t, 404, status, out)
 	require.Greater(t, f.grantReads.Load(), int32(5))
 	// A fresh module/pool reads the durable results after reconstructing runtime.
-	fresh, err := buildCurrentStoreCenterModule(ctx, open("store_center", "store_center_runtime"), open("commercial", "store_quota_runtime"), authz.DefaultListingKitAuthorizer(), charges, nil, nil)
+	fresh, err := buildCurrentStoreCenterModule(ctx, open("store_center", "store_center_runtime"), authz.DefaultListingKitAuthorizer(), charges, nil, nil)
 	require.NoError(t, err)
 	reg = kernelmodule.NewRegistry()
 	require.NoError(t, fresh.Register(reg))
@@ -249,7 +249,7 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	t.Run("official-credential-shape-on-narrow-postgres", func(t *testing.T) {
 		repo, err := storecenter.NewMemberScopedStoreRepository(records, postgresConnectionAccess{})
 		require.NoError(t, err)
-		candidate, err := storecenter.NewStore(storecenter.CreateStoreInput{ID: uuid.NewString(), OrganizationID: "official-fixture", ActorSubject: "synthetic-operator", Name: "Official fixture", Platform: "shein", Region: "SG", ExternalStoreID: "metadata-only", CreateIdempotencyKey: uuid.NewString(), QuotaAllocationID: uuid.NewString(), OccurredAt: time.Now().UTC().Add(-time.Minute)})
+		candidate, err := storecenter.NewStore(storecenter.CreateStoreInput{ID: uuid.NewString(), OrganizationID: "official-fixture", ActorSubject: "synthetic-operator", Name: "Official fixture", Platform: "shein", Region: "SG", ExternalStoreID: "metadata-only", CreateIdempotencyKey: uuid.NewString(), OccurredAt: time.Now().UTC().Add(-time.Minute)})
 		require.NoError(t, err)
 		candidate, _, err = repo.CreateOrReplay(ctx, "official-fixture", candidate)
 		require.NoError(t, err)

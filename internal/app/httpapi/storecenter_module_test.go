@@ -11,7 +11,6 @@ import (
 
 	"task-processor/internal/core/config"
 	kernelmodule "task-processor/internal/kernel/module"
-	"task-processor/internal/listingsubscription"
 	"task-processor/internal/storecenter"
 	storecenterhttpapi "task-processor/internal/storecenter/httpapi"
 	workbenchcontexthttpapi "task-processor/internal/workbenchcontext/httpapi"
@@ -61,7 +60,7 @@ func TestStoreCenterBuildSharesOneDatabaseAcrossPersistenceAndReturnsOneCloser(t
 	db := &gorm.DB{}
 	factories := defaultStoreCenterFactories()
 	openCalls, closeCalls := 0, 0
-	var storeDB, subscriptionDB, auditDB *gorm.DB
+	var storeDB, auditDB *gorm.DB
 	factories.openDatabase = func(*config.DatabaseConfig) (*gorm.DB, error) {
 		openCalls++
 		return db, nil
@@ -76,10 +75,6 @@ func TestStoreCenterBuildSharesOneDatabaseAcrossPersistenceAndReturnsOneCloser(t
 	factories.newStoreRepository = func(got *gorm.DB) (storecenter.Repository, error) {
 		storeDB = got
 		return storecenter.NewGormStoreRepository(got)
-	}
-	factories.newSubscriptionRepository = func(got *gorm.DB) *listingsubscription.GormRepository {
-		subscriptionDB = got
-		return listingsubscription.NewGormRepository(got)
 	}
 	factories.newAuditRepository = func(got *gorm.DB) (storecenter.AuditRepository, error) {
 		auditDB = got
@@ -96,8 +91,8 @@ func TestStoreCenterBuildSharesOneDatabaseAcrossPersistenceAndReturnsOneCloser(t
 	if openCalls != 1 {
 		t.Fatalf("database open calls = %d, want 1", openCalls)
 	}
-	if storeDB != db || subscriptionDB != db || auditDB != db {
-		t.Fatalf("persistence DBs differ: store=%p subscription=%p audit=%p want=%p", storeDB, subscriptionDB, auditDB, db)
+	if storeDB != db || auditDB != db {
+		t.Fatalf("persistence DBs differ: store=%p audit=%p want=%p", storeDB, auditDB, db)
 	}
 	if closeCalls != 0 {
 		t.Fatalf("database closed before runtime shutdown: %d", closeCalls)
@@ -235,8 +230,8 @@ func TestStoreCenterRoutesRegisterOnceAfterWorkbenchContextRoutes(t *testing.T) 
 	if lastContextIndex < 0 || firstStoreIndex <= lastContextIndex {
 		t.Fatalf("route order context=%d store=%d", lastContextIndex, firstStoreIndex)
 	}
-	if storeRoutes != 8 {
-		t.Fatalf("Store Center route count = %d, want 8", storeRoutes)
+	if storeRoutes != 7 {
+		t.Fatalf("Store Center route count = %d, want 7", storeRoutes)
 	}
 }
 

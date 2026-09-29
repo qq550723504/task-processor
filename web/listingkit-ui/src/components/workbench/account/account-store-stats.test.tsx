@@ -34,7 +34,6 @@ it("shows the full Store owner total through the current nonempty DTO instead of
           serviceExpiresAt: null, connectionStatus: "unavailable", version: 1,
           createdAt: "2026-09-28T00:00:00Z", updatedAt: "2026-09-28T00:00:00Z",
         }],
-        quota: { used: 37, reserved: 0, limit: 100, allowed: true, reason: "" },
         pagination: { page: 1, pageSize: 1, total: 37 },
       }));
     }

@@ -34,7 +34,6 @@ type workbenchStoreRecord struct {
 	ServiceStartedAt         *time.Time     `gorm:"column:service_started_at"`
 	ServiceExpiresAt         *time.Time     `gorm:"column:service_expires_at"`
 	ConnectionRef            string         `gorm:"column:connection_ref;not null"`
-	QuotaAllocationID        string         `gorm:"column:quota_allocation_id;type:char(36);not null"`
 	Version                  int64          `gorm:"column:version;not null"`
 	CreatedBy                string         `gorm:"column:created_by;size:200;not null"`
 	UpdatedBy                string         `gorm:"column:updated_by;size:200;not null"`
@@ -55,7 +54,7 @@ func AutoMigrateStoreRepository(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("store repository database is required")
 	}
-	return db.AutoMigrate(&workbenchStoreRecord{}, &storeMemberGrantRow{}, &storeMemberGrantOperation{}, &storeServiceChargeRow{}, &officialConnectionRow{}, &officialAttemptRow{}, &officialMerchantBinding{})
+	return db.AutoMigrate(&workbenchStoreAuditLogRecord{}, &workbenchStoreRecord{}, &storeMemberGrantRow{}, &storeMemberGrantOperation{}, &storeServiceChargeRow{}, &officialConnectionRow{}, &officialAttemptRow{}, &officialMerchantBinding{})
 }
 
 func NewGormStoreRepository(db *gorm.DB) (*GormStoreRepository, error) {
@@ -68,6 +67,18 @@ func NewGormStoreRepository(db *gorm.DB) (*GormStoreRepository, error) {
 var _ Repository = (*GormStoreRepository)(nil)
 
 func (r *GormStoreRepository) CreateOrReplay(ctx context.Context, organizationID string, store *Store) (*Store, bool, error) {
+	var stored *Store
+	var replayed bool
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		base := &GormStoreRepository{db: tx}
+		var err error
+		stored, replayed, err = base.createOrReplay(ctx, organizationID, store)
+		return err
+	})
+	return stored, replayed, err
+}
+
+func (r *GormStoreRepository) createOrReplay(ctx context.Context, organizationID string, store *Store) (*Store, bool, error) {
 	if err := requireStoreScope(organizationID, store); err != nil {
 		return nil, false, err
 	}
@@ -83,7 +94,17 @@ func (r *GormStoreRepository) CreateOrReplay(ctx context.Context, organizationID
 	}
 
 	record := recordFromSnapshot(snapshot, identityKey(snapshot), fingerprint)
-	if err := r.db.WithContext(ctx).Create(&record).Error; err == nil {
+	result := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&record)
+	if result.Error != nil {
+		return nil, false, fmt.Errorf("create workbench store: %w", result.Error)
+	}
+	if result.RowsAffected == 1 {
+		audit := &GormAuditRepository{db: r.db}
+		event := newAuditEvent(organizationID, snapshot.ID, snapshot.CreateIdempotencyKey, AuditActionStoreCreated, AuditOutcomeSucceeded, snapshot.CreatedBy, []string{"name", "platform", "region", "external_store_id", "record_status"}, "", RecordStatusActive, AuditFailureNone, snapshot.CreatedAt)
+		event.StoreVersion = snapshot.Version
+		if _, _, err := audit.Record(ctx, event); err != nil {
+			return nil, false, err
+		}
 		created, err := r.Get(ctx, organizationID, snapshot.ID)
 		if err != nil {
 			return nil, false, fmt.Errorf("reload created workbench store: %w", err)
@@ -97,7 +118,7 @@ func (r *GormStoreRepository) CreateOrReplay(ctx context.Context, organizationID
 		if errors.Is(resolveErr, ErrAlreadyExists) {
 			return nil, false, ErrAlreadyExists
 		}
-		return nil, false, fmt.Errorf("create workbench store: %w", err)
+		return nil, false, resolveErr
 	}
 }
 
@@ -243,12 +264,11 @@ func (r *GormStoreRepository) LockServiceState(ctx context.Context, tx *gorm.DB,
 		return ServiceStoreSnapshot{}, err
 	}
 	return ServiceStoreSnapshot{
-		Identity:          ServiceStoreIdentity{OrganizationID: record.OrganizationID, StoreID: record.ID},
-		QuotaAllocationID: record.QuotaAllocationID,
-		ConnectionRef:     record.ConnectionRef,
-		Version:           record.Version,
-		UpdatedAt:         record.UpdatedAt,
-		State:             copyServiceState(state),
+		Identity:      ServiceStoreIdentity{OrganizationID: record.OrganizationID, StoreID: record.ID},
+		ConnectionRef: record.ConnectionRef,
+		Version:       record.Version,
+		UpdatedAt:     record.UpdatedAt,
+		State:         copyServiceState(state),
 	}, nil
 }
 
@@ -449,7 +469,7 @@ func recordFromSnapshot(snapshot StoreSnapshot, identity, fingerprint string) wo
 		ID: snapshot.ID, OrganizationID: snapshot.OrganizationID, Name: snapshot.Name, Platform: string(snapshot.Platform), Region: snapshot.Region,
 		ExternalStoreID: snapshot.ExternalStoreID, RecordStatus: string(snapshot.RecordStatus), ConnectionRef: snapshot.ConnectionRef,
 		ServiceStatus: optionalString(string(snapshot.ServiceStatus)), ServiceStartedAt: copyTimePointer(snapshot.ServiceStartedAt), ServiceExpiresAt: copyTimePointer(snapshot.ServiceExpiresAt),
-		QuotaAllocationID: snapshot.QuotaAllocationID, Version: snapshot.Version, CreatedBy: snapshot.CreatedBy, UpdatedBy: snapshot.UpdatedBy,
+		Version: snapshot.Version, CreatedBy: snapshot.CreatedBy, UpdatedBy: snapshot.UpdatedBy,
 		CreatedAt: snapshot.CreatedAt, UpdatedAt: snapshot.UpdatedAt, CreateIdempotencyKey: snapshot.CreateIdempotencyKey, DeleteOperationKey: snapshot.DeleteOperationKey,
 		IdentityKey: identity, CreateRequestFingerprint: fingerprint,
 	}
@@ -492,7 +512,7 @@ func rehydrateRecord(record workbenchStoreRecord) (*Store, error) {
 		ID: record.ID, OrganizationID: record.OrganizationID, Name: record.Name, Platform: Platform(record.Platform), Region: record.Region,
 		ExternalStoreID: record.ExternalStoreID, RecordStatus: RecordStatus(record.RecordStatus), ConnectionRef: record.ConnectionRef,
 		ServiceStartedAt: copyTimePointer(record.ServiceStartedAt), ServiceExpiresAt: copyTimePointer(record.ServiceExpiresAt),
-		QuotaAllocationID: record.QuotaAllocationID, Version: record.Version, CreatedBy: record.CreatedBy, UpdatedBy: record.UpdatedBy,
+		Version: record.Version, CreatedBy: record.CreatedBy, UpdatedBy: record.UpdatedBy,
 		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, CreateIdempotencyKey: record.CreateIdempotencyKey, DeleteOperationKey: record.DeleteOperationKey,
 	}
 	if record.ServiceStatus != nil {
@@ -516,14 +536,14 @@ func requireStoreScope(organizationID string, store *Store) error {
 }
 
 func requirePristineCreateSnapshot(snapshot StoreSnapshot) error {
-	if snapshot.RecordStatus != RecordStatusProvisioning || snapshot.Version != 1 || snapshot.DeletedAt != nil || snapshot.ConnectionRef != "" || snapshot.DeleteOperationKey != "" || snapshot.CreatedBy != snapshot.UpdatedBy || !snapshot.CreatedAt.Equal(snapshot.UpdatedAt) {
-		return errors.New("store creation snapshot must be pristine provisioning state")
+	if snapshot.RecordStatus != RecordStatusActive || snapshot.ServiceStatus != ServiceStatusPendingActivation || snapshot.ServiceStartedAt != nil || snapshot.ServiceExpiresAt != nil || snapshot.Version != 1 || snapshot.DeletedAt != nil || snapshot.ConnectionRef != "" || snapshot.DeleteOperationKey != "" || snapshot.CreatedBy != snapshot.UpdatedBy || !snapshot.CreatedAt.Equal(snapshot.UpdatedAt) {
+		return errors.New("store creation snapshot must be pristine active state")
 	}
 	return nil
 }
 
 func validateSaveSnapshot(durable, incoming StoreSnapshot) error {
-	if durable.ID != incoming.ID || durable.OrganizationID != incoming.OrganizationID || durable.Platform != incoming.Platform || durable.ExternalStoreID != incoming.ExternalStoreID || durable.ConnectionRef != incoming.ConnectionRef || durable.QuotaAllocationID != incoming.QuotaAllocationID || durable.CreateIdempotencyKey != incoming.CreateIdempotencyKey || durable.CreatedBy != incoming.CreatedBy || !durable.CreatedAt.Equal(incoming.CreatedAt) {
+	if durable.ID != incoming.ID || durable.OrganizationID != incoming.OrganizationID || durable.Platform != incoming.Platform || durable.ExternalStoreID != incoming.ExternalStoreID || durable.ConnectionRef != incoming.ConnectionRef || durable.CreateIdempotencyKey != incoming.CreateIdempotencyKey || durable.CreatedBy != incoming.CreatedBy || !durable.CreatedAt.Equal(incoming.CreatedAt) {
 		return errors.New("store immutable fields changed")
 	}
 	if incoming.DeletedAt != nil {
@@ -536,9 +556,6 @@ func validateSaveSnapshot(durable, incoming StoreSnapshot) error {
 	// Paid service writes belong to the separate transactional service executor.
 	expectedService := durable.serviceState()
 	expectedService.RecordStatus = incoming.RecordStatus
-	if durable.RecordStatus == RecordStatusProvisioning && incoming.RecordStatus == RecordStatusActive {
-		expectedService.ServiceStatus = ServiceStatusPendingActivation
-	}
 	if incoming.RecordStatus == RecordStatusDeleting {
 		expectedService.ServiceStatus = ""
 		expectedService.StartedAt = nil
@@ -601,7 +618,7 @@ func identityKey(snapshot StoreSnapshot) string {
 }
 
 func createRequestFingerprint(snapshot StoreSnapshot) string {
-	return hashTuple("store-create-request", snapshot.ID, snapshot.QuotaAllocationID, string(snapshot.Platform), snapshot.Region, snapshot.ExternalStoreID, snapshot.Name)
+	return hashTuple("store-create-request", string(snapshot.Platform), snapshot.Region, snapshot.ExternalStoreID, snapshot.Name)
 }
 
 func hashTuple(values ...string) string {

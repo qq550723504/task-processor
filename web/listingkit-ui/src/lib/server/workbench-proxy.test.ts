@@ -100,7 +100,6 @@ describe("buildWorkbenchUpstreamRequest", () => {
     ["delete", "DELETE", ["stores", storeId], `http://localhost/api/workbench/stores/${storeId}`, { "Idempotency-Key": operationKey, "If-Match": '"2"' }, undefined],
     ["enable", "POST", ["stores", storeId, "enable"], `http://localhost/api/workbench/stores/${storeId}/enable`, { "If-Match": '"2"' }, undefined],
     ["disable", "POST", ["stores", storeId, "disable"], `http://localhost/api/workbench/stores/${storeId}/disable`, { "If-Match": '"2"' }, undefined],
-    ["resume", "POST", ["stores", storeId, "resume"], `http://localhost/api/workbench/stores/${storeId}/resume`, { "If-Match": '"2"' }, undefined],
   ] as const)("binds %s to match/mismatch/no-cookie Organization assertions", async (_name, method, path, url, routeHeaders, body) => {
     for (const [mode, headers] of [
       ["match", { cookie: `${WORKBENCH_COOKIE_NAME}=org-cookie`, "X-Expected-Organization-ID": "org-cookie", ...routeHeaders }],
@@ -1193,7 +1192,6 @@ describe("strict Store Center response boundary", () => {
   const rawStore = JSON.stringify(storePayload);
   const rawList = JSON.stringify({
     items: [storePayload],
-    quota: { used: 1, reserved: 1, limit: 5, allowed: true, reason: "" },
     pagination: { page: 1, pageSize: 20, total: 1 },
   });
 
@@ -1323,24 +1321,6 @@ describe("strict Store Center response boundary", () => {
       `{"id":"${storeId}","deleted":true,"version":9007199254740991.1}`,
     ],
     [
-      "quota used",
-      "store-list",
-      200,
-      rawList.replace('"used":1', '"used":1.00000000000000001'),
-    ],
-    [
-      "quota reserved",
-      "store-list",
-      200,
-      rawList.replace('"reserved":1', '"reserved":1.00000000000000001'),
-    ],
-    [
-      "non-null quota limit",
-      "store-list",
-      200,
-      rawList.replace('"limit":5', '"limit":5.0000000000000001'),
-    ],
-    [
       "pagination page",
       "store-list",
       200,
@@ -1376,7 +1356,7 @@ describe("strict Store Center response boundary", () => {
     },
   );
 
-  it("accepts canonical integer tokens, nullable quota limit, and numeric text in strings", async () => {
+  it("accepts canonical integer tokens, empty native records, and numeric text in strings", async () => {
     const store = await buildWorkbenchBrowserResponse(
       new Response(
         rawStore
@@ -1395,13 +1375,6 @@ describe("strict Store Center response boundary", () => {
       new Response(
         JSON.stringify({
           items: [],
-          quota: {
-            used: 0,
-            reserved: 0,
-            limit: null,
-            allowed: false,
-            reason: "subscription_required",
-          },
           pagination: { page: 1, pageSize: 20, total: 0 },
         }),
       ),
@@ -1409,7 +1382,7 @@ describe("strict Store Center response boundary", () => {
     );
     expect(list.status).toBe(200);
     await expect(list.json()).resolves.toMatchObject({
-      quota: { limit: null },
+      pagination: { total: 0 },
     });
   });
 
@@ -1420,9 +1393,9 @@ describe("strict Store Center response boundary", () => {
       rawStore.replace('"version":2', '"version":2e0'),
     ],
     [
-      "negative-zero quota count",
+      "negative-zero pagination count",
       "store-list",
-      rawList.replace('"used":1', '"used":-0'),
+      rawList.replace('"total":1', '"total":-0'),
     ],
     [
       "decimal pagination integer",
@@ -1441,7 +1414,6 @@ describe("strict Store Center response boundary", () => {
             version: 3,
           },
         ],
-        quota: { used: 1, reserved: 1, limit: 5, allowed: true, reason: "" },
         pagination: { page: 1, pageSize: 20, total: 2 },
       }).replace('"version":3', '"version":3.00000000000000001'),
     ],
@@ -1479,7 +1451,6 @@ describe("strict Store Center response boundary", () => {
   it("accepts the exact list and delete DTOs", async () => {
     const listPayload = {
       items: [storePayload],
-      quota: { used: 1, reserved: 0, limit: 5, allowed: true, reason: "" },
       pagination: { page: 1, pageSize: 20, total: 1 },
     };
     const list = await buildWorkbenchBrowserResponse(
@@ -1545,8 +1516,8 @@ describe("strict Store Center response boundary", () => {
     ["item wrong status", "store-item", 201, storePayload],
     ["delete wrong status", "store-delete", 204, null],
     ["list wrong shape", "store-list", 200, storePayload],
-    ["too many items", "store-list", 200, { items: Array.from({ length: 101 }, () => storePayload), quota: { used: 0, reserved: 0, limit: null, allowed: false, reason: "subscription_required" }, pagination: { page: 1, pageSize: 100, total: 101 } }],
-    ["negative count", "store-list", 200, { items: [], quota: { used: -1, reserved: 0, limit: 5, allowed: true, reason: "" }, pagination: { page: 1, pageSize: 20, total: 0 } }],
+    ["too many items", "store-list", 200, { items: Array.from({ length: 101 }, () => storePayload), pagination: { page: 1, pageSize: 100, total: 101 } }],
+    ["negative count", "store-list", 200, { items: [], pagination: { page: 1, pageSize: 20, total: -1 } }],
   ] as const)("rejects Store status/body mismatch: %s", async (_name, contract, status, payload) => {
     const response = await buildWorkbenchBrowserResponse(
       payload === null ? new Response(null, { status }) : Response.json(payload, { status }),

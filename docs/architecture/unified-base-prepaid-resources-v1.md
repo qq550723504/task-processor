@@ -4,7 +4,18 @@ Issue: #478 · Delivery Batch: 账户中心与套餐权益统一模型
 
 Design Basis: **Independent Architecture**
 
-Admission Status: **REVIEW_REQUIRED** (正式业务代码尚未修改)
+Admission Status: **IMPLEMENTATION_READY**
+
+模型点数扩展（第 9 节）Admission Status: **IMPLEMENTATION_READY**。2026-09-29 用户明确将
+Product Agent 标题评审的模型点数计费合同与接线纳入本批；第 1–8 节冻结准入继续有效，
+独立 reviewer 于同日核对增量 blob `90a25b05419802ef71edb05bb3a371f7641129e5`，无设计级 BLOCKER。冻结价格/native terminal CAS、严格未 dispatch 释放、实际费用与余数原子守恒、model-only recovery 装配作为 IMPLEMENTATION_TEST，在本批收敛。
+
+2026-09-29 独立 reviewer `payment_architecture_review` 明确准入，无设计级 BLOCKER。
+所读设计 blob `3436be93d29ca3467da67047631b7dd63af000a1`，design-only commit
+`a9b59071682371a00fd3f683c17ea972535f9d26`。本状态更新不改变已审核合同。
+Native Store 单库审计/授权/业务指纹及 PG 冲突收敛、resource reserve decision/scanner 恢复、
+购入事件 allocated-after 与真实 bucket 一致、current config/audit/UI/API hard-cut 为 IMPLEMENTATION_TEST，
+在本批 TDD 与最终交付检查收敛；此准入不签发产品验收或合并批准。
 
 ## 1. 产品决定与交付结果
 
@@ -188,3 +199,63 @@ Current owner: 上述第 3 节；不包装 listingsubscription/accountallocation
 Cutover/deletion condition: 当前新安装入口只装配本模型，旧订阅 UI/API/准入及 quota pool 停止使用，
 触及的纯旧测试删除/改写为当前不变量；未装配的 legacy 代码按既有 RETIRE 登记停止使用，不为批量清理扩大本交付。
 没有历史业务数据转换、双读、双写、fallback 或真实环境 destructive action。
+
+## 9. Product Agent 模型点数计费扩展
+
+用户结果：已配置模型调用点数价格且企业/成员余额足够时，可以继续当前显式 opt-in 的标题评审试用；
+每次真实模型调用占用并最终扣减同一个企业 AI 点数池和成员 UTC 月度消费上限。
+本节替代当前 `cmd/current-application` 的旧订阅 `AIInvocationUsageAdapter`；
+不改变 Agent/Eino 预算、工具调用准入、provider、prompt、标题提案/保存或发布权限。
+没有配置调用价格时返回不可用，不能用预付资源兑换价格推算模型费率或免费调用。
+AI 资源购买价格、模型 provider 成本预算与模型调用点数费率是三个不同合同。
+
+点数规则由可信部署配置指定 `pointPricing.priceVersion`、正整数 `inputPointsPerMillionTokens`、
+`outputPointsPerMillionTokens`。调用扣减为
+`ceil((promptTokens * inputRate + completionTokens * outputRate) / 1_000_000)`；
+调用前按当前治理模型的完整输入/输出 Token 上界用同一公式预留，最低消费为 1 点。
+使用整数/任意精度计算并拒绝 int64 溢出；不自行填写正式价格。
+用户已批准先完成链路、正式价格稍后配置；本节仅定义配置与计算，不引入新默认价格。
+
+事实 owner：仍是 native `ai_invocations`（调用身份、输入 hash、原 org/user/member、路由、
+已观测 Token、结果）与 Resource（点数预留/消费及月计数）。不新增调用表或第二用量账本。
+在当前新安装 invocation schema 增加冻结点数价格版本、输入/输出费率、Token 上界字段；
+这些字段在 ClaimInvocation 前从治理配置冻结，参与 input hash，调用终态更新和 operator resolution
+必须保留并核对原字段。旧 schema 明确拒绝，不迁移真实数据。
+
+路径：grsaitext trusted policy → native ClaimInvocation → 固定 model-point adapter → Resource reserve
+→ 原单次 provider dispatch → native terminal observation → Resource finalize。
+保留 recorder 的既有 reservation/settlement seam，固定 adapter 始终重新读取原 native fact，
+接口上的 caller token 总数不能成为扣费 proof。adapter 仅接受 `product_agent_decision` 的明确当前 owner。
+当前 ImageAgent 图片按张计价保持原合同；不把这个模型接口推广到其他 legacy AI worker。
+
+Resource 使用原 operations/reservations/events/audit 与 member month 表：
+owner_type=`model_invocation_v1`，owner_attempt_id=原 invocation ID，原 org + invocation 唯一。
+原 reserve operation 绑定原调用指纹及冻结价格；原 receipt 保存价格、原 member、
+UTC 月开始、limit version、预留数量。reserve 在一个 Resource 事务中锁原 operation、
+member limit/month 与企业 AI bucket，核对当前月/限额并扣可用、增预留，写 event/audit。
+缺余额/缺月限/撤权不 dispatch；同键异载荷、不同 org/member/route/input/price 冲突。
+LiveWrite/provider fresh check 沿现有治理模型；初次 reserve 必须匹配 trusted current identity，
+恢复只完成原已准入持有，不创造新调用、资源或授权。
+
+finalize 重新读取原 native immutable terminal proof，在单个 Resource 事务锁原 reserve/finalize
+operation、原 reservation、原 month counter 与企业 bucket：
+
+- `succeeded` 或白名单 `usage_observed_failed` 且完整可信 Token：按原冻结费率消费，释放上界余数；
+  不因结构化输出无效免除已发生模型费用。实际 Token 必须非负、sum 一致、在原治理上界内。
+- `failed` 且 native owner 已明确 provider 未 dispatch：释放原预留；
+  若 reserve 尚未出现，关闭原 reserve 身份，使迟到 reserve 不能再创建持有。
+- dispatched、usage 未知、读取失败、缺 native fact 或终态证据不完整：保留预留/UNKNOWN，永不重发 provider。
+
+原调用可见 terminal 与点数结算不是跨库原子事实；RecordInvocation 先持久化原 native terminal，再幂等 finalize。
+原 adapter 重试只读相同终态并结算。若 native terminal 保存成功但 finalize 失败/响应丢失，
+Resource 原 reservation 的既有 NextCheckAt 供当前应用同一 30 秒 loop 扫描（最多 50），
+只读原 native proof 续行，不重新 reserve/调用；unknown 设置下次时间，使有界扫批不饿死后面的终态。
+跨月完成使用预留时原 UTC 月，不重新扣新月。月限降低只影响新 reserve，不阻断已发生费用的 finalize。
+最终原 reservation/operation receipt/event source identity 证明恰好一次；native invocation 删除/凭据变更
+不能推断未调用并释放，保留原未知事实。当前不开放删除调用历史。
+
+必要增量验证：冻结费率/整数边界/不同 token 价、余额/月限/撤权拒绝无 provider effect、
+真实独立调用/Resource DB 上 reserve/terminal/finalize 响应丢失与重启幂等、
+输出失败计费、明确未 dispatch 释放与迟到 reserve fence、未知保持、跨月归属、
+bounded recovery 进展、原 Claim/dispatch 不重复、旧 Token owner 当前装配缺席。
+实现者只做这些开发检查；真实 GRSAI 调用/产品验收按原获准范围另行交接，不在本节自动触发付费调用。

@@ -22,11 +22,11 @@ const browserCaptureBase = "/api/v1/workbench/sourcing/1688/browser-captures"
 // NewCurrentApplicationWithBrowserCapture is an explicit opt-in composition.
 // The existing 10-route and Public-only 13-route constructors remain unchanged.
 // Caller-owned pools are inspected read-only; this is not a production switch.
-func NewCurrentApplicationWithBrowserCapture(ctx context.Context, sourceAccountDB, commercialDB, productDB, resourceDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {
+func NewCurrentApplicationWithBrowserCapture(ctx context.Context, sourceAccountDB, productDB, resourceDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {
 	if ctx == nil || productDB == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
-	return NewCurrentApplicationWithOptions(ctx, sourceAccountDB, commercialDB, cfg, logger, WithProductAcquisition(productDB), WithBrowserCapture(), WithCommercialOwnerDatabase(resourceDB))
+	return NewCurrentApplicationWithOptions(ctx, sourceAccountDB, cfg, logger, WithProductAcquisition(productDB), WithBrowserCapture(), WithCommercialOwnerDatabase(resourceDB))
 }
 
 type browserCaptureService interface {

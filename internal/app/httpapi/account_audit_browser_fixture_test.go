@@ -59,12 +59,11 @@ func TestAccountAuditBrowserFixture(t *testing.T) {
 	}
 	require.NoError(t, owner.Exec("ALTER ROLE commercial_reader SET default_transaction_read_only=on").Error)
 	source := openSourceAccountApplicationDB(t, fmt.Sprintf("host=127.0.0.1 port=%d dbname=issue347 user=source_account_runtime password=synthetic-audit-password sslmode=disable", connection.Port))
-	commercial := openSourceAccountApplicationDB(t, fmt.Sprintf("host=127.0.0.1 port=%d dbname=issue347 user=commercial_reader password=synthetic-audit-password sslmode=disable", connection.Port))
 	external := newAccountFixture(t)
 	cfg := &config.Config{Workbench: config.WorkbenchConfig{Enabled: true}, ListingKit: config.ListingKitConfig{Zitadel: config.ListingKitZitadelConfig{IssuerURL: external.provider.URL, ClientID: "fixture-client", ClientSecret: "fixture-secret", ProjectID: "project", AuthorizationAPIURL: external.provider.URL}}}
 	log := logrus.New()
 	log.SetOutput(io.Discard)
-	server, err := NewCurrentApplication(ctx, source, commercial, cfg, log)
+	server, err := NewCurrentApplication(ctx, source, cfg, log)
 	require.NoError(t, err)
 	running := httptest.NewServer(server.Handler)
 	defer running.Close()

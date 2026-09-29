@@ -8,28 +8,8 @@ vi.mock("./wallet-topup", () => ({ WalletTopUpEntry: () => <button disabled>充�
 
 afterEach(cleanup);
 
-it("renders the overview entry points from real commercial observations without fixture amounts", () => {
-  render(<CommercialOverviewView data={commercialOverviewFixture()} />);
-
-  expect(screen.getByRole("heading", { name: "当前方案" })).toBeVisible();
-  expect(screen.getByText("企业实际合同")).toBeVisible();
-  expect(screen.getByText("充值中心")).toBeVisible();
-  expect(screen.getAllByText("账单与订单").length).toBeGreaterThan(0);
-  expect(screen.getByText("0 家")).toBeVisible();
-  expect(screen.getByText(/钱包余额、资金流水、账单汇总与订单由独立商业 owner 提供/)).toBeVisible();
-  expect(screen.queryByText(/8,650|300,000|¥5,000/)).not.toBeInTheDocument();
-});
-
-it("keeps usage units and unknown state explicit while filtering the returned ledger client-side", async () => {
-  render(<UsageDetailsView data={commercialOverviewFixture()} />);
-
-  expect(screen.getByText("9,007,199,254,740,993 字节")).toBeVisible();
-  expect(screen.getAllByText("未知（作业次）").length).toBeGreaterThan(0);
-  expect(screen.getAllByText("未提供").length).toBeGreaterThan(0);
-  await userEvent.selectOptions(screen.getByLabelText("用量类型"), "storage_bytes_current");
-  expect(screen.getByText("当前保留存储")).toBeVisible();
-  expect(screen.queryByText("资料生成作业")).not.toBeInTheDocument();
-});
+it("renders unified base and real service observations without a subscription gate",()=>{render(<CommercialOverviewView data={commercialOverviewFixture()}/>);expect(screen.getByText("基础方案")).toBeVisible();expect(screen.getByText("2 家生效中")).toBeVisible();expect(screen.getByRole("link",{name:"购买资源"})).toHaveAttribute("href","/workbench/plans/options");expect(screen.queryByText(/¥168|未提供|专业版/)).not.toBeInTheDocument();});
+it("filters actual resource ledger rows on the server and preserves exact resource units",async()=>{const onFilter=vi.fn();render(<UsageDetailsView page={{organization_id:"org-B",items:[],next_cursor:null}} onFilter={onFilter} onNext={()=>undefined}/>);expect(screen.getByText("暂无匹配的资源流水。")).toBeVisible();await userEvent.selectOptions(screen.getByLabelText("用量类型"),"ai_point");await userEvent.click(screen.getByRole("button",{name:"筛选"}));expect(onFilter).toHaveBeenCalledWith({resourceType:"ai_point",from:undefined,until:undefined});});
 
 it("renders only real wallet data and delegates recharge to the configured payment entry", () => {
   render(<WalletView userId="reader" roles={["listingkit_admin"]} wallet={{ organization_id: "org-A", currency: "CNY", available_minor: "12000", reserved_minor: "3000", debt_minor: "0", lifetime_topup_minor: "30000", lifetime_spend_minor: "18000", version: "4", observed_at: "2026-09-23T10:00:00Z" }} entries={{ organization_id: "org-A", items: [{ entry_id: "entry-1", currency: "CNY", entry_type: "PURCHASE_COMMIT", available_delta_minor: "0", reserved_delta_minor: "-3000", debt_delta_minor: "0", available_after_minor: "12000", reserved_after_minor: "0", debt_after_minor: "0", order_id: "order-1", source_id: "commercial-order:order-1", occurred_at: "2026-09-23T10:00:00Z" }], next_cursor: "" }} onNext={() => undefined} />);

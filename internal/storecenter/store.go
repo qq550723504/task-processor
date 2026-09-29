@@ -51,7 +51,6 @@ type Store struct {
 	serviceStartedAt     *time.Time
 	serviceExpiresAt     *time.Time
 	connectionRef        string
-	quotaAllocationID    string
 	version              int64
 	createdBy            string
 	updatedBy            string
@@ -76,7 +75,6 @@ type StoreSnapshot struct {
 	ServiceStartedAt     *time.Time
 	ServiceExpiresAt     *time.Time
 	ConnectionRef        string
-	QuotaAllocationID    string
 	Version              int64
 	CreatedBy            string
 	UpdatedBy            string
@@ -96,7 +94,6 @@ type CreateStoreInput struct {
 	Region               string
 	ExternalStoreID      string
 	CreateIdempotencyKey string
-	QuotaAllocationID    string
 	OccurredAt           time.Time
 }
 
@@ -133,10 +130,6 @@ func NewStore(input CreateStoreInput) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create idempotency key: %w", err)
 	}
-	quotaAllocationID, err := canonicalUUID(input.QuotaAllocationID)
-	if err != nil {
-		return nil, fmt.Errorf("quota allocation ID: %w", err)
-	}
 	if input.OccurredAt.IsZero() {
 		return nil, errors.New("occurred at is required")
 	}
@@ -148,9 +141,9 @@ func NewStore(input CreateStoreInput) (*Store, error) {
 		Platform:             platform,
 		Region:               region,
 		ExternalStoreID:      externalStoreID,
-		RecordStatus:         RecordStatusProvisioning,
+		RecordStatus:         RecordStatusActive,
+		ServiceStatus:        ServiceStatusPendingActivation,
 		ConnectionRef:        "",
-		QuotaAllocationID:    quotaAllocationID,
 		Version:              1,
 		CreatedBy:            actorSubject,
 		UpdatedBy:            actorSubject,
@@ -177,7 +170,6 @@ func (s *Store) ServiceStatus() ServiceStatus { return s.serviceStatus }
 func (s *Store) ServiceStartedAt() *time.Time { return copyTimePointer(s.serviceStartedAt) }
 func (s *Store) ServiceExpiresAt() *time.Time { return copyTimePointer(s.serviceExpiresAt) }
 func (s *Store) ConnectionRef() string        { return s.connectionRef }
-func (s *Store) QuotaAllocationID() string    { return s.quotaAllocationID }
 func (s *Store) Version() int64               { return s.version }
 func (s *Store) CreatedBy() string            { return s.createdBy }
 func (s *Store) UpdatedBy() string            { return s.updatedBy }
@@ -200,7 +192,6 @@ func (s *Store) Snapshot() StoreSnapshot {
 		ServiceStartedAt:     copyTimePointer(s.serviceStartedAt),
 		ServiceExpiresAt:     copyTimePointer(s.serviceExpiresAt),
 		ConnectionRef:        s.connectionRef,
-		QuotaAllocationID:    s.quotaAllocationID,
 		Version:              s.version,
 		CreatedBy:            s.createdBy,
 		UpdatedBy:            s.updatedBy,
@@ -289,9 +280,6 @@ func (s *Store) TransitionTo(target RecordStatus, actorSubject string, occurredA
 	if occurredAt.IsZero() || occurredAt.Before(s.updatedAt) {
 		return errors.New("transition time must not precede the last update")
 	}
-	if s.recordStatus == RecordStatusProvisioning && target == RecordStatusActive {
-		s.serviceStatus = ServiceStatusPendingActivation
-	}
 	s.recordStatus = target
 	s.updatedBy = actorSubject
 	s.updatedAt = occurredAt
@@ -327,10 +315,6 @@ func newStoreFromSnapshot(snapshot StoreSnapshot) (*Store, error) {
 	connectionRef, err := validateOpaqueOptionalValue("connection reference", snapshot.ConnectionRef)
 	if err != nil {
 		return nil, err
-	}
-	quotaAllocationID, err := canonicalUUID(snapshot.QuotaAllocationID)
-	if err != nil {
-		return nil, fmt.Errorf("quota allocation ID: %w", err)
 	}
 	createIdempotencyKey, err := canonicalUUID(snapshot.CreateIdempotencyKey)
 	if err != nil {
@@ -392,7 +376,6 @@ func newStoreFromSnapshot(snapshot StoreSnapshot) (*Store, error) {
 		serviceStartedAt:     copyTimePointer(snapshot.ServiceStartedAt),
 		serviceExpiresAt:     copyTimePointer(snapshot.ServiceExpiresAt),
 		connectionRef:        connectionRef,
-		quotaAllocationID:    quotaAllocationID,
 		version:              snapshot.Version,
 		createdBy:            createdBy,
 		updatedBy:            updatedBy,
@@ -406,8 +389,6 @@ func newStoreFromSnapshot(snapshot StoreSnapshot) (*Store, error) {
 
 func canTransition(current, target RecordStatus) bool {
 	switch current {
-	case RecordStatusProvisioning:
-		return target == RecordStatusActive
 	case RecordStatusActive:
 		return target == RecordStatusDisabled
 	case RecordStatusDisabled:
@@ -419,7 +400,7 @@ func canTransition(current, target RecordStatus) bool {
 
 func validRecordStatus(status RecordStatus) bool {
 	switch status {
-	case RecordStatusProvisioning, RecordStatusActive, RecordStatusDisabled, RecordStatusDeleting, RecordStatusDeleted:
+	case RecordStatusActive, RecordStatusDisabled, RecordStatusDeleting, RecordStatusDeleted:
 		return true
 	default:
 		return false
@@ -428,14 +409,12 @@ func validRecordStatus(status RecordStatus) bool {
 
 func minimumRecordVersion(status RecordStatus) int64 {
 	switch status {
-	case RecordStatusProvisioning:
-		return 1
 	case RecordStatusActive:
-		return 2
+		return 1
 	case RecordStatusDisabled, RecordStatusDeleting:
-		return 3
+		return 2
 	case RecordStatusDeleted:
-		return 4
+		return 3
 	default:
 		return 1
 	}

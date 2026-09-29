@@ -131,7 +131,7 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 				if request.actionName == "update" {
 					intentPrevious, intentNext = candidate.RecordStatus(), candidate.RecordStatus()
 				}
-				intent := newAuditEvent(request.organizationID, request.storeID, candidate.QuotaAllocationID(), operationKey, request.intentAuditAction, AuditOutcomeUnknown, applyActor, auditFields, intentPrevious, intentNext, AuditFailureNone, s.utcNow())
+				intent := newAuditEvent(request.organizationID, request.storeID, operationKey, request.intentAuditAction, AuditOutcomeUnknown, applyActor, auditFields, intentPrevious, intentNext, AuditFailureNone, s.utcNow())
 				intent.StoreVersion = request.expectedVersion
 				intent.PayloadFingerprint = request.payloadFingerprint
 				recordedIntent, _, intentErr := s.audit.Record(ctx, intent)
@@ -190,7 +190,7 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 	if request.actionName == "update" {
 		previous, next = store.RecordStatus(), store.RecordStatus()
 	}
-	event := newAuditEvent(request.organizationID, request.storeID, store.QuotaAllocationID(), operationKey, auditAction, AuditOutcomeSucceeded, request.actor, auditFields, previous, next, AuditFailureNone, s.utcNow())
+	event := newAuditEvent(request.organizationID, request.storeID, operationKey, auditAction, AuditOutcomeSucceeded, request.actor, auditFields, previous, next, AuditFailureNone, s.utcNow())
 	if durableIntent != nil {
 		event.ActorSubject = durableIntent.ActorSubject
 	}
@@ -208,11 +208,11 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 }
 
 func mutationIntentHasDifferentPayload(event *AuditEvent, request mutationRequest, store *Store, operationKey string) bool {
-	return event != nil && store != nil && event.OrganizationID == request.organizationID && event.StoreID == request.storeID && event.AllocationID == store.QuotaAllocationID() && event.RequestKey == operationKey && event.Action == request.intentAuditAction && event.Outcome == AuditOutcomeUnknown && event.FailureCode == AuditFailureNone && event.StoreVersion == request.expectedVersion && event.PayloadFingerprint != request.payloadFingerprint
+	return event != nil && store != nil && event.OrganizationID == request.organizationID && event.StoreID == request.storeID && event.RequestKey == operationKey && event.Action == request.intentAuditAction && event.Outcome == AuditOutcomeUnknown && event.FailureCode == AuditFailureNone && event.StoreVersion == request.expectedVersion && event.PayloadFingerprint != request.payloadFingerprint
 }
 
 func validateMutationIntent(event *AuditEvent, request mutationRequest, store *Store, operationKey string) error {
-	if event == nil || store == nil || event.OrganizationID != request.organizationID || event.StoreID != request.storeID || event.AllocationID != store.QuotaAllocationID() || event.RequestKey != operationKey || event.Action != request.intentAuditAction || event.Outcome != AuditOutcomeUnknown || event.FailureCode != AuditFailureNone || event.StoreVersion != request.expectedVersion || event.PayloadFingerprint != request.payloadFingerprint {
+	if event == nil || store == nil || event.OrganizationID != request.organizationID || event.StoreID != request.storeID || event.RequestKey != operationKey || event.Action != request.intentAuditAction || event.Outcome != AuditOutcomeUnknown || event.FailureCode != AuditFailureNone || event.StoreVersion != request.expectedVersion || event.PayloadFingerprint != request.payloadFingerprint {
 		return ErrAuditIdentityMismatch
 	}
 	if request.actionName == "update" && (event.PreviousState != store.RecordStatus() || event.NewState != store.RecordStatus() || (!exactSafeFields(event.SafeFieldNames, "name") && !exactSafeFields(event.SafeFieldNames, "region") && !exactSafeFields(event.SafeFieldNames, "name", "region"))) {
@@ -225,7 +225,7 @@ func validateMutationIntent(event *AuditEvent, request mutationRequest, store *S
 }
 
 func validateMutationIntentForRepair(event *AuditEvent, request mutationRequest, store *Store, operationKey string) error {
-	if event == nil || store == nil || event.OrganizationID != request.organizationID || event.StoreID != request.storeID || event.AllocationID != store.QuotaAllocationID() || event.RequestKey != operationKey || event.Action != request.intentAuditAction || event.Outcome != AuditOutcomeUnknown || event.FailureCode != AuditFailureNone || event.StoreVersion != request.expectedVersion || event.PayloadFingerprint != request.payloadFingerprint {
+	if event == nil || store == nil || event.OrganizationID != request.organizationID || event.StoreID != request.storeID || event.RequestKey != operationKey || event.Action != request.intentAuditAction || event.Outcome != AuditOutcomeUnknown || event.FailureCode != AuditFailureNone || event.StoreVersion != request.expectedVersion || event.PayloadFingerprint != request.payloadFingerprint {
 		return ErrAuditIdentityMismatch
 	}
 	if request.actionName == "update" {
@@ -255,7 +255,7 @@ func (s *Service) repairMutationAfterLaterVersion(ctx context.Context, request m
 	if completed == nil {
 		return StoreMutationResult{}, ErrVersionConflict
 	}
-	if completed.StoreID != request.storeID || completed.AllocationID != store.QuotaAllocationID() || completed.Outcome != AuditOutcomeSucceeded || completed.StoreVersion != request.expectedVersion+1 || completed.PayloadFingerprint != request.payloadFingerprint {
+	if completed.StoreID != request.storeID || completed.Outcome != AuditOutcomeSucceeded || completed.StoreVersion != request.expectedVersion+1 || completed.PayloadFingerprint != request.payloadFingerprint {
 		return StoreMutationResult{}, dependencyError(ErrAuditIdentityMismatch)
 	}
 	projection, err := s.projectOne(ctx, store)

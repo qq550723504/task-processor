@@ -67,6 +67,8 @@ Use these as the main source of truth for structural work:
 - `product-agent-runtime-contract.md`
   - #131 bounded Product Agent execution contract and #132 consumer gaps;
     contract/fake execution does not imply real model or product availability
+- `unified-base-prepaid-resources-v1.md`
+  - current Figma base plan, native Stores, prepaid purchases, real resource events and Product Agent point metering; supersedes subscription/quota/Token entry paths
 - `commercial-wallet-billing-contract.md`
   - canonical money/wallet, commercial offer/quote/order, and purchased-resource ownership contract for #457
 - `self-service-subscription-purchase-contract.md`
