@@ -648,9 +648,12 @@ risk-matched tests to the existing owners/isolated PostgreSQL/controlled-model f
 | Projection / UI | Optional Knowledge does not disable title generation; image/write NOT_SUPPORTED; no paid GET; org switch/late response isolation; real save/refetch and desktop/narrow path. |
 | Rollout | Empty install no implicit activation; missing schema/readiness fail closed; no unguarded alternate route or destructive fallback; mixed-version tightening test proves Start/Resume stays closed until every old execution-serving process is drained, then new ceilings reject stale snapshots with zero Claim/dispatch. |
 
-Architecture admission remains pending independent review of actual diff: new owner and pool
-boundary, atomic Claim ordering, permission composition, replay/snapshot identity and default
-semantics. Normal review follows the existing maximum-two-round rule; only demonstrated
-BLOCKERs reopen frozen contracts. Implementation preferences go to IMPLEMENTATION_TEST/BACKLOG,
-not additional governance platforms. No reviewer approval, CI pass, runtime test, Figma visual
-verification, browser acceptance, paid model result or production deployment is asserted here.
+Architecture admission is complete for the contract reviewed at
+`88b2be970b470fab45d1897d89b41de4061020ec`: the targeted review reported no major issues and
+CI `36566072746` completed SUCCESS including Required CI Gate. The current status-only/document
+consistency commits do not change those architecture semantics. Production implementation may
+start only after PR #571 is merged to main. Normal review follows the existing maximum-two-round
+rule; only a newly demonstrated BLOCKER reopens the frozen contract. Implementation preferences
+remain IMPLEMENTATION_TEST/BACKLOG rather than reasons to create new governance platforms.
+No runtime implementation test, new Figma visual verification, browser acceptance, paid model
+result or production deployment is asserted by this architecture admission.
