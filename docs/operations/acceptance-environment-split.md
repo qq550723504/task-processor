@@ -19,7 +19,7 @@
 
 RUN-1 自 2026-09-20 起无法启动，#541 逐层定位出**四个互相独立**的漂移：商业角色名、SA1 运行时授权、商业只读授权、以及一个 RUN-1 按定义**不应装配**的域（`accountallocation`）的表。
 
-第 4 层是决定性的：它说明 **current-application 组合的域集合已经宽于 RUN-1 声明的范围**，而启动时每个组合模块都做 fail-closed 权限校验。继续逐层补 GRANT 会让 RUN-1 永久成为「生产的影子」——生产每加一个域，就要回来改一次，这正是本次连续暴露的成因。
+第 4 层是决定性的：它说明 **current-application 组合的域集合已经宽于 RUN-1 声明的范围**。各域在启动时做 fail-closed 权限校验，断言的是**整域 admitted boundary**（SA1 确实如此，参见 §3.1.1）——因此继续逐层补 GRANT 会让 RUN-1 永久成为「生产的影子」——生产每加一个域，就要回来改一次，这正是本次连续暴露的成因。
 
 因此把两类验收目标拆到两个环境，各自定义自己的 schema/授权范围。
 
@@ -58,9 +58,10 @@ RUN-1 自 2026-09-20 起无法启动，#541 逐层定位出**四个互相独立*
 
 **因此**：
 
-1. RUN-1 第 3、4 层（`commercial read permissions do not match the admitted boundary`、`relation "public.account_member_token_locks" does not exist`）是因为**验收测试用 `buildCommercialReadModuleFromDatabase` 绑定商业模块**，该路径才要求 `accountallocation` 的表。**生产二进制启动不经过它。**
-2. 商业域**不存在**「启动校验语义」可收窄，因此**不需要商业域 owner 就 §3.1 表态**，否则会让 owner 面对一个不存在的问题。待裁定范围收窄为**账号中心与认证两个域**的启动校验语义。
-3. 商业域剩下的是一个**不同性质**的问题：那个测试绑定辅助函数是否**应当**断言整域边界（即 `account_member_token_*` 是否属于 `commercial_runtime` 的 admitted boundary）。这**不改变任何生产授权边界**，但需要 `listingsubscription` / 商业域 owner 先确认该断言是**有意的契约**还是**顺带写成**的。**在该确认前不作任何改动**，也不得反向推断为「商业域应该补上启动校验」—— 那是另一个缺陷，应单独立项。
+1. **RUN-1 当前根本走不到第 3、4 层。** 独立评审（PR #568）查出：harness `scripts/issue357-runtime.mjs:72-73` 仍在 manifest 里发 `commercialDatabase`，而该字段已被 `f49a58be3`（2026-09-29）从 `Config` 移除；`LoadConfig` 用 `DisallowUnknownFields` 解码（`config.go:146`），因此**文档记载的 `start --current-application` 会在 manifest 解码阶段就失败**，先于任何权限断言。实测：带该字段 → `json: unknown field "commercialDatabase"`；只删这一个键 → 解码通过。所以第 3、4 层是**历史记录**，不是当前首个失败点。该 harness 缺陷属 #541 范围，尚未修复。
+2. 第 3、4 层的**来源判定**仍然成立：它们当时来自 `buildCommercialReadModuleFromDatabase` 这条只在测试里走的绑定路径（它要求 `accountallocation` 的表），生产二进制启动不经过它。只是它们已不是当前的阻塞点。
+3. 商业域**不存在**「启动校验语义」可收窄，因此**不需要商业域 owner 就 §3.1 表态**，否则会让 owner 面对一个不存在的问题。待裁定范围收窄为**账号中心与认证两个域**的启动校验语义。
+4. 商业域剩下的是一个**不同性质**的问题：那个测试绑定辅助函数是否**应当**断言整域边界（即 `account_member_token_*` 是否属于 `commercial_runtime` 的 admitted boundary）。这**不改变任何生产授权边界**，但需要 `listingsubscription` / 商业域 owner 先确认该断言是**有意的契约**还是**顺带写成**的。**在该确认前不作任何改动**，也不得反向推断为「商业域应该补上启动校验」—— 那是另一个缺陷，应单独立项。
 
 > **这构成对已准入设计的事实更正，不构成裁定。** 更正只缩小待裁定范围，不新增任何实现授权。
 
