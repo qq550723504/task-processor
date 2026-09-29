@@ -188,7 +188,7 @@ documents unless they say so explicitly:
 - `2026-09-27-1688-anonymous-rate-and-egress-proxy-addendum.md`
   - Draft addendum to the #514 browser acquisition design: anonymous collection
     rate governance (the observed 1688 challenge is frequency-triggered) and the
-    constraints any egress proxy must satisfy the proxy must satisfy. **Proposal only — neither the
+    constraints any egress proxy must satisfy. **Proposal only — neither the
     rate-governance half nor the egress-proxy half is implemented.** Implementation
     waits on admission of this document and an explicit `IMPLEMENTATION_READY`.
 - `2026-09-26-1688-server-public-browser-acquisition-design.md`
