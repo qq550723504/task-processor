@@ -389,12 +389,16 @@ func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource)
 		// the first detection would leave the rest uninterruptible.
 		challenged, err := detectChallenge(page)
 		if challenged {
-			sawChallenge.Store(true)
-			// Notify the throttle NOW, not when collect returns. The solver can spend
-			// several seconds here, and until the cooldown engages another queued
-			// caller can start a browser against an IP we already know is
-			// challenged, deepening the block.
+			// Engage the cooldown BEFORE publishing the flag. The main select reads
+			// this flag to decide whether to report a challenge, and it can win the
+			// race with this goroutine being rescheduled between the two operations.
+			// Publishing first would let the caller return a joined challenge error
+			// while the throttle is still unblocked, and with any concurrency another
+			// acquisition would then start a browser against an IP already known to be
+			// challenged. In this order a reader that sees the flag is guaranteed to
+			// see the cooldown too; a reader that does not still gets the protection.
 			c.throttle.Observe(ErrChallenge)
+			sawChallenge.Store(true)
 		}
 		if err == nil && challenged && !isAuthenticationWall(page) {
 			if _, solveErr := c.trySolve(ctx, page); solveErr != nil && ctx.Err() != nil {
