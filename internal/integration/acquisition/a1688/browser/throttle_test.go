@@ -751,3 +751,41 @@ func TestThrottleCooldownRespectsBothDirections(t *testing.T) {
 		require.True(t, dispatch.Add(300*time.Millisecond).After(time.Now()))
 	})
 }
+
+// Observe overwrites the floor with a synthetic cooldown value, so the real
+// dispatch floor must be tracked separately: a long cooldown must resume at its
+// deadline, and a short one must still honour the interval from the last real
+// dispatch. Neither requirement may be satisfied at the other's expense.
+func TestThrottleCooldownFloorAndDispatchFloorAreDistinct(t *testing.T) {
+	budget := time.Minute
+
+	// The shipped relationship, scaled down: a cooldown LONGER than the interval,
+	// with a budget and headroom that the synthetic cooldown+interval floor cannot
+	// fit. The last real dispatch's own floor has by then expired, so resumption is
+	// due - and a generous budget would not have caught this.
+	t.Run("long cooldown is not extended by a synthetic floor", func(t *testing.T) {
+		interval, acquisitionBudget := 200*time.Millisecond, 100*time.Millisecond
+		headroom := acquisitionBudget * 3 / 4
+		th := newThrottle(interval, 0, 500*time.Millisecond, -1, acquisitionBudget, headroom)
+		require.NoError(t, th.Wait(context.Background()))
+		th.Observe(ErrChallenge)
+		require.Eventually(t, func() bool { return th.CooldownRemaining() == 0 },
+			2*time.Second, 5*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), acquisitionBudget)
+		defer cancel()
+		require.NoError(t, th.Wait(ctx),
+			"the synthetic cooldown+interval floor must not delay resumption past the window")
+	})
+
+	t.Run("short cooldown still respects the real dispatch floor", func(t *testing.T) {
+		th := newThrottle(400*time.Millisecond, 0, 50*time.Millisecond, -1, budget, budget/4)
+		require.NoError(t, th.Wait(context.Background()))
+		th.Observe(ErrChallenge)
+		require.Eventually(t, func() bool { return th.CooldownRemaining() == 0 },
+			2*time.Second, 5*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
+		require.ErrorIs(t, th.Wait(ctx), ErrThrottled,
+			"the floor from the last real dispatch must survive a shorter cooldown")
+	})
+}

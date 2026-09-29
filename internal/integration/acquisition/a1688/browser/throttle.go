@@ -55,6 +55,11 @@ type Throttle struct {
 	// conservative choice - it can delay a request, never let two start together.
 	owner    uint64
 	prevNext time.Time
+	// dispatchFloor is the earliest start allowed by the last REAL acquisition
+	// dispatch. Observe overwrites next with a synthetic cooldown floor, so the real
+	// one has to be kept here or it is lost; on expiry the floor resumes at
+	// max(now, dispatchFloor).
+	dispatchFloor time.Time
 	// generation is bumped whenever the floor is re-anchored on a late dispatch.
 	// Waiters capture it before sleeping and re-loop when it changed, so a
 	// caller already in the queue is not admitted on its original timer after an
@@ -160,21 +165,16 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	if t.blocked && !t.cooledAt.IsZero() && !now.Before(t.cooledAt) {
 		t.blocked = false
 		t.cooledAt = time.Time{}
-		// Resume at the configured deadline. Observe had pushed the floor to
-		// cooldown+interval; leaving it there would refuse every request for a
+		// Resume at the configured deadline. Observe overwrote next with a synthetic
+		// cooldown+interval floor, so leaving it there refuses every request for a
 		// further interval - well past the window the operator configured - because
-		// the budget and headroom no longer fit.
-		//
-		// No real acquisition can start during a cooldown, so the floor here is
-		// always the one Observe pushed; whenever a cooldown longer than the interval
-		// has elapsed it is already in the past and the reset resumes at the
-		// configured deadline. A cooldown shorter than the interval leaves a real
-		// dispatch's floor in the future, and that one stands. So: with a
-		// cooldown LONGER than the interval it is already past and resumption is
-		// immediate, while with a cooldown SHORTER it is still ahead and must stand,
-		// or the first request would start before MinInterval has elapsed.
-		if t.next.Before(now) {
-			t.next = now
+		// the budget and headroom no longer fit. The real floor is kept in
+		// dispatchFloor, so resumption is at max(now, dispatchFloor): immediate when
+		// the cooldown outlasted the interval, still paced when a real dispatch is
+		// still inside its own interval.
+		t.next = now
+		if t.dispatchFloor.After(t.next) {
+			t.next = t.dispatchFloor
 		}
 	}
 	if t.blocked {
@@ -251,10 +251,15 @@ func (t *Throttle) Wait(ctx context.Context) error {
 			t.mu.Unlock()
 			return ErrThrottled
 		}
-		if dispatched := time.Now().Add(span); dispatched.After(t.next) {
+		// Re-anchor from THIS caller's own slot, not from the queue tail: a later
+		// reservation must not stop this dispatch from recording the interval that
+		// follows it, or the next waiter can start too soon after this one.
+		dispatched := time.Now().Add(span)
+		t.dispatchFloor = dispatched
+		if dispatched.After(t.next) {
 			t.next = dispatched
-			t.generation++
 		}
+		t.generation++
 		t.mu.Unlock()
 		return nil
 	}
@@ -279,7 +284,15 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	// waiter waited for the lock. Committing a dispatch for a dead request would
 	// hand out a slot and let Acquire start a browser for it.
 	if err := ctx.Err(); err != nil {
-		if t.owner == mine {
+		// Same rule as the immediate path and the requeue path: roll back only
+		// while this reservation is still the newest. If another waiter already
+		// re-anchored the floor, restoring this caller's stale prevNext would let
+		// the next caller start beside that waiter.
+		if t.generationLocked(seen) {
+			if t.owner == mine {
+				t.prevNext = time.Time{}
+			}
+		} else if t.owner == mine {
 			t.next = t.prevNext
 			t.prevNext = time.Time{}
 		}
@@ -309,10 +322,15 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	// otherwise let the next reservation be admitted on the ideal timeline, so two
 	// real acquisition starts could be only milliseconds apart - the burst this
 	// throttle exists to prevent, produced by the pacing itself.
-	if dispatched := time.Now().Add(span); dispatched.After(t.next) {
+	// Re-anchor from THIS caller's own slot, not from the queue tail: a later
+	// reservation must not stop this dispatch from recording the interval that
+	// follows it, or the next waiter can start too soon after this one.
+	dispatched := time.Now().Add(span)
+	t.dispatchFloor = dispatched
+	if dispatched.After(t.next) {
 		t.next = dispatched
-		t.generation++
 	}
+	t.generation++
 	t.mu.Unlock()
 	return nil
 }
