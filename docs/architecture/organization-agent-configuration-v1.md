@@ -369,11 +369,22 @@ alone materializes/adopts its exact immutable bundle. T3 occurs after both recei
 initial input bounds are checked. **Before the first Claim is allowed to acquire work, T3 also
 loads the current code-owned hard ceilings for this exact Agent definition and verifies that the
 snapshot's frozen Limits are still admissible.** The check is monotonic: each frozen limit must
-be less than or equal to the corresponding current maximum; a later relaxation never enlarges
-the frozen Request. If any current maximum was tightened below the snapshot value, T3 returns
-409 `CONFIGURATION_CHANGED`, performs zero Claim/provider work, and requires a new explicit
-confirmation/request key. It must not silently clamp, regenerate the snapshot, or mutate the
-same-key Request. No transaction spans T2, provider I/O or another database.
+be less than or equal to the corresponding **effective deployment ceiling**; a later relaxation
+never enlarges the frozen Request. If any effective maximum was tightened below the snapshot
+value, T3 returns 409 `CONFIGURATION_CHANGED`, performs zero Claim/provider work, and requires
+a new explicit confirmation/request key. It must not silently clamp, regenerate the snapshot,
+or mutate the same-key Request.
+
+A tighter ceiling is **not effective merely because a new binary/config exists on some
+instances**. ProductAgent hard ceilings remain code/config owned, but their rollout has one
+required operational fence: before declaring a tightening effective, stop admitting new
+Start/Resume on every old process that can still evaluate the previous ceiling, drain those
+processes from execution-route traffic, then bring/verify only processes carrying the new
+ceiling before reopening admission. During that fence the execution entry is unavailable
+rather than partially tightened. No mixed-version fleet may continue to admit Product Agent
+Start/Resume while operators claim the tighter ceiling is effective. Relaxations do not need
+this safety fence because old processes are more restrictive, but they still cannot enlarge an
+already frozen Request. No transaction spans T2, provider I/O or another database.
 
 Snapshots are immutable retained metadata, with no ACTIVE/RUNNING/FAILED lifecycle, lease,
 outbox or recovery worker. A pre-Claim crash resumes through the same explicit Start key;
@@ -413,9 +424,12 @@ existing Claim implementation; do not copy its SQL/state machine. Nested helpers
 commit the outer transaction early. Run acquisition is true only after the outer commit.
 
 For a new Start: verify ENABLED and snapshot.activation_epoch == current activation_epoch;
-lock/check the selected template is still ACTIVE; re-resolve the current code-owned hard
-ceilings for the exact stored Agent definition and require the frozen Request Limits to remain
-within those ceilings; only then execute existing Claim. This is an admission check, not
+lock/check the selected template is still ACTIVE; resolve the **effective deployment hard
+ceilings** for the exact stored Agent definition and require the frozen Request Limits to remain
+within those ceilings; only then execute existing Claim. The serving process may participate
+only if it belongs to the currently admitted deployment generation for execution traffic; a
+process from the pre-tightening generation must already have been drained from Start/Resume
+routing before the tighter ceiling is considered effective. This is an admission check, not
 re-resolution of template defaults or a mutation of the frozen Request. Tightened ceilings
 that make the old snapshot inadmissible return 409 `CONFIGURATION_CHANGED` with zero Claim
 or provider work. Relaxed ceilings do not upgrade the snapshot: the original smaller limits
@@ -553,6 +567,7 @@ cover these interactions using existing components; no new verification framewor
 | Knowledge disabled/revoked before use | Existing #556 materialization/read/permit fence denies use; D does not substitute an empty bundle. |
 | Config owner unavailable | New Start/Resume/config writes fail closed. Outcome persistence and read-only Review remain with existing owners; no config outage should discard model usage. |
 | Projection stale / paid resources changed | Recheck actual owners at execution; no cached availability permits work or creates entitlements. |
+| Rolling deployment tightens hard ceilings | Tightening has no cluster-wide effect until all old execution-serving processes are removed from Start/Resume admission. Close/drain execution admission, verify only new-generation processes serve it, then reopen. Mixed-version Start/Resume under a claimed tighter ceiling is forbidden. |
 
 ## 13. Greenfield rollout, scope of supersession and delivery
 
@@ -572,6 +587,36 @@ consumer before opening the product entry. The configuration-only milestone may 
 its feature gate; do not expose a working enable toggle while title execution ignores it.
 Rollback disables new execution routes/rollout and preserves records; do not downgrade to an
 older unguarded binary serving those routes or drop historical snapshots to make it start.
+
+### 13.1 Hard-ceiling rollout fence
+
+Hard ceilings stay owned by the existing Product Agent configuration/catalog composition;
+Slice D does **not** create a database budget authority, consensus service or second policy
+store. Because those ceilings are process-local inputs today, a tightening uses an explicit
+deployment fence instead of pretending rolling replacement is atomic:
+
+```text
+current generation G1 serving Start/Resume
+  → close Product Agent Start/Resume admission at routing/rollout gate
+  → wait until G1 receives no new Start/Resume traffic
+  → terminate/drain G1 execution-serving processes
+  → deploy G2 carrying tighter ceilings
+  → verify every process eligible for execution traffic is G2
+  → reopen Start/Resume admission
+  → tighter ceiling is now effective
+```
+
+Already-claimed work from G1 is not reclassified as newly admitted work and may converge under
+its frozen limits/UNKNOWN rules; the fence only prevents new Start/Resume acquisition during
+the transition. Read-only receipts and existing Review/Apply may stay available if their
+current routes can be served without exposing an unguarded execution path.
+
+If the platform cannot prove that all old execution-serving processes are drained, reopening
+Start/Resume is forbidden. A partial rollout is therefore availability loss, not permission to
+run with inconsistent ceilings. Rollback from G2 to G1 likewise closes admission first; after
+rollback, operators may only claim G1 ceilings as effective. No request, snapshot or run is
+rewritten as part of rollout. This is an operational rollout contract over the existing owner,
+not a new durable state machine.
 No actual environment mutation, migration or deletion is authorized by this document.
 
 Legacy decision: reuse qualified current owners; **RETIRE** any candidate parallel activation
@@ -599,7 +644,7 @@ risk-matched tests to the existing owners/isolated PostgreSQL/controlled-model f
 | Activation / admission ordering | Disable-first zero model work; Claim-first only already-admitted bounded work; disable/re-enable ABA; Resume ordering; tightened ceilings before Resume reject with checkpoint unchanged and zero dispatch; receipt/Review still independently authorized. |
 | Existing fences | Knowledge revoke/disable/permit, full-prompt quote, point/UNKNOWN non-redispatch and Review/Apply evidence separation retained, reusing unchanged valid evidence. |
 | Projection / UI | Optional Knowledge does not disable title generation; image/write NOT_SUPPORTED; no paid GET; org switch/late response isolation; real save/refetch and desktop/narrow path. |
-| Rollout | Empty install no implicit activation; missing schema/readiness fail closed; no unguarded alternate route or destructive fallback. |
+| Rollout | Empty install no implicit activation; missing schema/readiness fail closed; no unguarded alternate route or destructive fallback; mixed-version tightening test proves Start/Resume stays closed until every old execution-serving process is drained, then new ceilings reject stale snapshots with zero Claim/dispatch. |
 
 Architecture admission remains pending independent review of actual diff: new owner and pool
 boundary, atomic Claim ordering, permission composition, replay/snapshot identity and default
