@@ -75,6 +75,9 @@ func (s *Service) Create(ctx context.Context, key string, in CreateInput) (View,
 // CreateFromCandidate admits an already-generated candidate into the existing
 // pending review state. It cannot regenerate, approve, Apply or publish it.
 func (s *Service) CreateFromCandidate(ctx context.Context, key string, in CandidateInput) (View, error) {
+	if !in.ContextProvenance.Valid() {
+		return View{}, ErrInvalid
+	}
 	if ctx == nil || !ValidKey(in.PublicationID) || in.PolicyVersion != "title-review-v1" {
 		return View{}, ErrInvalid
 	}
@@ -95,6 +98,9 @@ func (s *Service) CreateFromCandidate(ctx context.Context, key string, in Candid
 // ValidateCandidate uses the same exact source and title policy as intake,
 // without generating or saving a proposal. Intake always repeats this check.
 func (s *Service) ValidateCandidate(ctx context.Context, in CandidateInput) (enrichment.Proposal, error) {
+	if !in.ContextProvenance.Valid() {
+		return enrichment.Proposal{}, ErrInvalid
+	}
 	if ctx == nil || in.PolicyVersion != "title-review-v1" || !ValidKey(in.PublicationID) {
 		return enrichment.Proposal{}, ErrInvalid
 	}
@@ -174,6 +180,9 @@ func (s *Service) create(ctx context.Context, key string, in CreateInput, suppli
 		return View{}, mapSourceReadError(err)
 	}
 	r := Record{ID: uuid.NewString(), Org: a.Org, Owner: a.Actor, Input: in, BasePublicationID: base.PublicationID, Policy: policy.Version, Before: base.Snapshot.Title, Title: proposal.Changes[0].Value, State: "pending", Revision: 1, Original: proposal}
+	if supplied != nil {
+		r.ContextProvenance = supplied.ContextProvenance.clone()
+	}
 	return s.store.Run(ctx, op, func(tx Tx) (View, error) {
 		if v, found, e := tx.Replay(); e != nil || found {
 			return v, e

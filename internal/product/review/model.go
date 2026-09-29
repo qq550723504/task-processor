@@ -30,6 +30,7 @@ type CreateInput struct {
 // CandidateInput is an internal caller contract, not an HTTP request body.
 // The owner re-reads the exact source and revalidates every proposed field.
 type CandidateInput struct {
+	ContextProvenance            *ContextProvenanceRef `json:",omitempty"`
 	Base                         CreateInput
 	PublicationID, PolicyVersion string
 	Candidate                    enrichment.Candidate
@@ -59,6 +60,7 @@ type Receipt struct {
 	At             time.Time `json:"at"`
 }
 type Record struct {
+	ContextProvenance                               *ContextProvenanceRef `json:",omitempty"`
 	ID, Org, Owner                                  string
 	Input                                           CreateInput
 	BasePublicationID, Policy, Before, Title, State string
@@ -70,20 +72,21 @@ type Record struct {
 
 // View intentionally excludes provider metadata, complete Product and raw output.
 type View struct {
-	ID            string                  `json:"proposal_id"`
-	Owner         string                  `json:"owner"`
-	Input         CreateInput             `json:"input"`
-	Before        string                  `json:"before"`
-	Title         string                  `json:"after"`
-	OriginalTitle string                  `json:"original_title"`
-	Policy        string                  `json:"policy"`
-	State         string                  `json:"state"`
-	Revision      uint64                  `json:"revision"`
-	Evidence      []Evidence              `json:"evidence"`
-	Quality       enrichment.QualityScore `json:"quality"`
-	Unresolved    []string                `json:"unresolved"`
-	History       []Decision              `json:"decisions"`
-	Receipt       *Receipt                `json:"apply_receipt,omitempty"`
+	ContextProvenance *ContextProvenanceRef   `json:"context_provenance,omitempty"`
+	ID                string                  `json:"proposal_id"`
+	Owner             string                  `json:"owner"`
+	Input             CreateInput             `json:"input"`
+	Before            string                  `json:"before"`
+	Title             string                  `json:"after"`
+	OriginalTitle     string                  `json:"original_title"`
+	Policy            string                  `json:"policy"`
+	State             string                  `json:"state"`
+	Revision          uint64                  `json:"revision"`
+	Evidence          []Evidence              `json:"evidence"`
+	Quality           enrichment.QualityScore `json:"quality"`
+	Unresolved        []string                `json:"unresolved"`
+	History           []Decision              `json:"decisions"`
+	Receipt           *Receipt                `json:"apply_receipt,omitempty"`
 }
 type Evidence struct {
 	ID            string `json:"id"`
@@ -95,6 +98,7 @@ type Evidence struct {
 
 func (r Record) View() View {
 	v := View{ID: r.ID, Owner: r.Owner, Input: r.Input, Before: r.Before, Title: r.Title, Policy: r.Policy, State: r.State, Revision: r.Revision, Quality: r.Original.Quality, History: r.History, Receipt: r.Receipt}
+	v.ContextProvenance = r.ContextProvenance.clone()
 	if len(r.Original.Changes) == 1 {
 		v.OriginalTitle = r.Original.Changes[0].Value
 	}
@@ -120,6 +124,9 @@ func validState(state string) bool {
 // ValidateStoredRecord rejects persistence corruption before it can be
 // projected as an authoritative review state.
 func ValidateStoredRecord(r Record) error {
+	if !r.ContextProvenance.Valid() {
+		return ErrUnavailable
+	}
 	if !validID(r.ID) || !ValidKey(r.Org) || !ValidKey(r.Owner) || !ValidKey(r.Input.ProductKey) || r.Input.BaseVersion == 0 || r.Input.BaseVersion > 1<<63-1 || r.Revision == 0 || r.Revision > 1<<63-1 || !validState(r.State) {
 		return ErrUnavailable
 	}
@@ -143,6 +150,9 @@ func ValidateStoredRecord(r Record) error {
 // ValidateView applies the persistence-independent invariants required before
 // an operation replay or record view is emitted on the HTTP wire.
 func ValidateView(v View) error {
+	if !v.ContextProvenance.Valid() {
+		return ErrUnavailable
+	}
 	if !validID(v.ID) || !ValidKey(v.Owner) || !ValidKey(v.Input.ProductKey) || v.Input.BaseVersion == 0 || v.Input.BaseVersion > 1<<63-1 || v.Revision == 0 || v.Revision > 1<<63-1 || !validState(v.State) || v.Policy != "title-review-v1" {
 		return ErrUnavailable
 	}

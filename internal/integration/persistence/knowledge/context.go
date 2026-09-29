@@ -26,6 +26,24 @@ type storedEntry struct {
 	SourceFenceVersion                                                                int64
 }
 
+// No payload, lifecycle lock or write participates in opaque claimed-run replay.
+// Active content use remains guarded by Materialize/ReadContext/dispatch permits.
+func (r *Repository) ValidateMaterializedRequest(ctx context.Context, req k.ContextRequest, ref k.ContextSnapshotRef) error {
+	fingerprint, err := k.MaterializationFingerprint(req)
+	if err != nil || !ref.Valid() {
+		return k.ErrInvalid
+	}
+	var metadata struct{ ID, Digest, Fingerprint string }
+	row := r.db.WithContext(ctx).Raw("SELECT id,digest,fingerprint FROM public.knowledge_context_bundles WHERE organization_id=? AND actor_id=? AND context_kind=? AND context_id=? AND request_key=? AND id=?", req.Scope.OrganizationID, req.Scope.ActorID, req.Binding.ContextKind, req.Binding.ContextID, req.Key, ref.ID).Scan(&metadata)
+	if row.Error != nil {
+		return safe(row.Error)
+	}
+	if row.RowsAffected != 1 || metadata.ID != ref.ID || metadata.Digest != ref.Digest || metadata.Fingerprint != fingerprint {
+		return k.ErrConflict
+	}
+	return nil
+}
+
 func readBundle(tx *gorm.DB, org string, ref k.ContextSnapshotRef) (b storedBundle, err error) {
 	err = one(tx, "SELECT * FROM public.knowledge_context_bundles WHERE organization_id=? AND id=?", &b, org, ref.ID)
 	if err == nil && (ref.Kind != k.ContextKind || ref.Digest != b.Digest || k.Digest(b.Payload) != b.Digest) {

@@ -1,10 +1,10 @@
-# Knowledge execution context local ports (#558)
+# Knowledge execution context and Product Agent consumer (#558 / #559)
 
 Design Basis: Reuse Existing Architecture, [approved contract](../architecture/agent-knowledge-context-v1.md) / [#558](https://github.com/qq550723504/task-processor/issues/558).
 
-This slice supplies the current Knowledge owner with immutable execution context,
-exact revision citations and a local dispatch fence. Product Agent prompt/Request,
-Human Review and browser integration belong to #559. Uploading a document still
+The Knowledge owner supplies immutable execution context, exact revision citations
+and a local dispatch fence. #559 connects these existing ports to Product Agent,
+Human Review and the browser confirmation. Uploading a document still
 does not send it to a model. There is no public retrieval endpoint or Commerce Tool.
 
 ## Assembly and calling sequence
@@ -99,3 +99,87 @@ PostgreSQL tests use isolated containers and synthetic documents. Reconstructing
 repository tests durable adoption; controlled expiry tests recovery. These do not
 claim an actual OS process crash, real enterprise document acceptance, paid model
 calls, full browser use, or production deployment. Those remain NOT_RUN here.
+
+## Product title consumer (#559)
+
+Use the normal [Product Agent startup and Console entry](../operations/product-agent-trial.md).
+The current application borrows its already supplied `knowledge.Service`; no new
+pool, public retrieval route, schema, provider or retry owner is introduced.
+Knowledge content remains in its dedicated database. Product Agent and Review
+store only bounded opaque references. Knowledge can be omitted even when its
+feature is unavailable; the original Product evidence path still works.
+
+The existing 8 KiB Start body admits only this optional selection:
+
+```json
+{"targetPlatform":"shein","knowledgeSelection":{"knowledgeBaseId":"11111111-1111-4111-8111-111111111111"}}
+```
+
+Source/version IDs, bundle IDs, citations, raw text and summaries are not accepted
+from the browser. Explicit null, empty selection and unknown fields are rejected.
+Materialization precedes Agent Claim; same-key retries adopt the committed bundle
+even if a source has a newer readable revision. Different selection or binding
+conflicts. A materialized but unclaimed bundle cannot send a model request.
+
+Before a new Knowledge-backed run is claimed, the application quotes the same
+complete initial input with the existing text adapter, including JSON re-escaping
+inside the provider prompt envelope. It uses UUID-width run metadata without
+creating a run, reserving points or sending a model request. Input overflow returns
+the explicit Knowledge context size error; all frozen Knowledge/provider limits
+remain unchanged. The unclaimed immutable bundle follows the existing retry
+contract. Other quote failures keep their original authorization/config errors.
+
+For a successfully scoped existing Agent record, Start first validates the original
+Knowledge command fingerprint and ref through the Knowledge owner's fresh
+authorizer. This metadata-only lookup reads ID/digest/fingerprint, without payload,
+new materialization or lifecycle mutation. It lets an identical claimed Start replay
+after content disablement; Runtime.Start/Claim still compares the full saved request.
+Changed selection/binding or missing/mismatched metadata conflicts. An unclaimed
+bundle still requires ordinary active Materialize admission. Content reads, quote,
+citations and dispatch permits retain their live active-state checks.
+
+The browser keeps only the stable request key and the normalized public Start
+command (platform and optional KnowledgeBase ID), scoped to the actor and
+Organization, in the current operation URL. It stores no protected label, excerpt,
+revision, bundle payload or credentials there. Refresh never dispatches. If the
+run has not been observed, an explicit "使用原请求核实启动" action repeats that exact
+command and key; the existing materialization fingerprint and Agent Claim remain
+the only execution owners. A Knowledge failure during this recovery retains the
+uncertain key. Once a run is observed, recovery uses read/resume, including the
+existing prohibition on redispatch after provider UNKNOWN. Same-Organization role
+changes clear protected display, including late responses; regrant cannot revive
+cached names or excerpts without a new authorized read.
+
+The optional Knowledge selector uses the existing list API's pagination to reach
+active bases beyond the first page, with bounded reads on explicit navigation.
+Changing pages clears the previous selection and readable-version preview; a
+failed/denied page read clears protected names and cannot authorize generation.
+
+The governed text adapter reads the exact bundle at Quote, Decide and the existing
+BeforeDispatch hook. Full protected content participates in prompt bounds, quote
+identity and prompt/input hashes. BeforeDispatch acquires the existing Knowledge
+permit; bounded cleanup after return/cancel leaves AI point reservation, observed
+usage and UNKNOWN with their current owners. Content limits fail explicitly.
+
+Only `ContextCitationIDs` from the exact bundle are accepted from a proposal.
+The adapter clears these untrusted IDs and returns validated opaque references;
+canonical Product `EvidenceIDs` remain separate. Review candidate fingerprints
+include its opaque provenance. Human edits retain the original AI origin.
+
+Agent results and Review detail use an additive `knowledge` display projection:
+`available`, `uncited` or `unavailable`. Labels/excerpts are resolved through fresh
+Knowledge authorization on every response, bounded to 512/320 characters. Any
+failed citation read hides all protected display content. The Review's canonical
+read/decision/Apply authorization is unchanged; revoked Organization access may
+reject the entire response. A disabled source leaves safe unavailable provenance.
+Apply does not require Knowledge to remain readable. No labels/excerpts are copied
+into Agent checkpoints or Review receipts.
+
+Developer checks use synthetic localhost PostgreSQL and an HTTP model fixture.
+`TestProductAgentKnowledgeRealOwnersFreezeRetryClaimAndReview` covers materialize
+then failed Claim, pre-claim escaped-envelope rejection with no run/model accounting
+or dispatch, concurrent retry, exact version adoption after update, restart
+of handlers, Review handoff, revoked access and disabled content. Existing
+`TestProductAgentAcquisitionToReviewUsesRealOwners` covers the ordinary path.
+Real process crash, complete logged-in browser use, real documents, paid provider
+calls and deployment remain NOT_RUN. Keep the original #557 trial untouched.

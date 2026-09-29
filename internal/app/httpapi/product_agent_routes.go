@@ -15,6 +15,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
+	"task-processor/internal/knowledge"
 	"task-processor/internal/product/enrichment"
 	"task-processor/internal/product/review"
 
@@ -64,7 +65,7 @@ func buildProductAgentModule(ctx context.Context, productDB *gorm.DB, deps route
 	// Candidate intake returns an ID understood by the existing review UI.
 	// Its original decision/Apply handlers retain their current permission checks.
 	binder := productReviewCapabilityBinder{now: time.Now}
-	for _, route := range productReviewRoutes(a.reviews, binder.Bind) {
+	for _, route := range productReviewRoutes(a.reviews, binder.Bind, a.projectKnowledge) {
 		// A missing fixed generator is an unavailable capability, never a fake
 		// model. Keep this existing POST unmounted in the candidate-only module.
 		if route.Method == http.MethodPost && route.Path == "/api/product/text-proposals" {
@@ -83,6 +84,7 @@ type productAgentStepDTO struct {
 	AuditStatus  string `json:"auditStatus,omitempty"`
 }
 type productAgentResultDTO struct {
+	Knowledge           *productKnowledgeDTO    `json:"knowledge,omitempty"`
 	RunID               string                  `json:"runId"`
 	RequestKey          string                  `json:"requestKey"`
 	OperationID         string                  `json:"operationId"`
@@ -140,11 +142,12 @@ func productAgentRoutes(a *productAgentApplication) []httproute.Descriptor {
 				return
 			}
 			ctx = authidentity.WithAuthenticatedIdentity(ctx, i)
-			var body struct {
-				Revision       string `json:"revision,omitempty"`
-				Feedback       string `json:"feedback,omitempty"`
-				TargetPlatform string `json:"targetPlatform,omitempty"`
+			ctx, err = knowledgeRequestContext(ctx)
+			if err != nil {
+				writeProductAgentError(c, err)
+				return
 			}
+			var body productAgentRequestBody
 			if spec.action == "read" {
 				if err = readProductReviewGETBody(c); err != nil {
 					writeProductAgentError(c, err)
@@ -156,13 +159,21 @@ func productAgentRoutes(a *productAgentApplication) []httproute.Descriptor {
 					return
 				}
 			}
+			selection, selectionErr := body.knowledgeSelection(spec.action)
+			if selectionErr != nil {
+				writeProductAgentError(c, selectionErr)
+				return
+			}
 			var record agent.Record
 			var binding agent.Binding
 			if spec.action == "start" {
 				binding, err = a.binding(ctx, operationID, body.TargetPlatform)
 				if err == nil {
-					request := agent.Request{Key: key, Binding: binding, PolicyVersion: "title-review-v1", PromptVersion: "product-title-agent-v1", Limits: a.config.Limits}
-					record, err = a.runtime.Start(ctx, request)
+					var request agent.Request
+					request, err = a.startRequest(ctx, binding, key, selection)
+					if err == nil {
+						record, err = a.runtime.Start(ctx, request)
+					}
 				}
 			} else {
 				record, err = a.store.Read(ctx, agent.Scope{OrganizationID: i.TenantID, ActorID: i.UserID}, operationID, key)
@@ -190,7 +201,13 @@ func productAgentRoutes(a *productAgentApplication) []httproute.Descriptor {
 					writeProductAgentError(c, agent.ErrConflict)
 					return
 				}
-				view, e := a.reviews.CreateFromCandidate(ctx, "agent:"+record.State.RunID, agentReviewInput(binding, record.State.Request.PolicyVersion, record.State.Candidate))
+				input := agentReviewInput(binding, record.State.Request.PolicyVersion, record.State.Candidate)
+				input.ContextProvenance, err = agentContextProvenance(record.State)
+				if err != nil {
+					writeProductAgentError(c, err)
+					return
+				}
+				view, e := a.reviews.CreateFromCandidate(ctx, "agent:"+record.State.RunID, input)
 				if e != nil {
 					writeProductAgentError(c, e)
 					return
@@ -200,10 +217,16 @@ func productAgentRoutes(a *productAgentApplication) []httproute.Descriptor {
 				return
 			}
 			state := record.State
+			provenance, provenanceErr := agentContextProvenance(state)
+			if provenanceErr != nil {
+				writeProductAgentError(c, provenanceErr)
+				return
+			}
 			result := productAgentResultDTO{RunID: state.RunID, RequestKey: key, OperationID: operationID, ProductKey: binding.ProductKey, CatalogVersion: binding.CatalogVersion, PublicationID: binding.PublicationID, TargetPlatform: binding.TargetPlatform, Phase: state.Phase, Revision: strconv.FormatUint(state.Revision, 10), StopReason: state.StopReason, HumanReviewRequired: true, Candidate: state.Candidate, Confidence: state.Confidence, Unresolved: state.Unresolved, Steps: []productAgentStepDTO{}, Tokens: state.Usage.Tokens, EstimatedCostMicros: state.Usage.CostMicros, Currency: state.Request.Limits.Currency, UsageStatus: "observed", CanSubmitReview: agentRunReviewable(state)}
 			if state.PendingInvocationID != "" || state.StopReason == agent.StopUsageUnknown || state.StopReason == agent.StopModelUnknown || state.Phase == agent.Running {
 				result.UsageStatus = "unknown_reserved"
 			}
+			result.Knowledge = a.projectKnowledge(ctx, provenance)
 			for _, step := range state.History {
 				result.Steps = append(result.Steps, productAgentStepDTO{Step: step.Step, Tool: step.Tool.ID, CallID: step.CallID, InvocationID: step.InvocationID, AuditStatus: string(step.AuditStatus)})
 			}
@@ -220,12 +243,20 @@ func productAgentRoutes(a *productAgentApplication) []httproute.Descriptor {
 }
 
 func agentRunReviewable(s agent.State) bool {
-	return s.Phase == agent.HumanReviewRequired && s.Validation != nil && s.Validation.Valid && len(s.Candidate.Changes) == 1 && s.StopReason == "" && agentCandidateEvidenceObserved(s.Request.Binding, s.Candidate, s.History)
+	return agent.ValidContextCitations(s.Request.ContextSnapshotRef, s.ContextCitationRefs) && s.Phase == agent.HumanReviewRequired && s.Validation != nil && s.Validation.Valid && len(s.Candidate.Changes) == 1 && s.StopReason == "" && agentCandidateEvidenceObserved(s.Request.Binding, s.Candidate, s.History)
 }
 
 func writeProductAgentError(c *gin.Context, err error) {
 	status, code := http.StatusServiceUnavailable, "PRODUCT_AGENT_UNAVAILABLE"
 	switch {
+	case errors.Is(err, knowledge.ErrContextTooLarge):
+		status, code = 409, knowledge.ErrContextTooLarge.Error()
+	case errors.Is(err, knowledge.ErrForbidden):
+		status, code = 403, knowledge.ErrForbidden.Error()
+	case errors.Is(err, knowledge.ErrInactive), errors.Is(err, knowledge.ErrNotReadable), errors.Is(err, knowledge.ErrNotFound):
+		status, code = 409, err.Error()
+	case errors.Is(err, knowledge.ErrConflict), errors.Is(err, knowledge.ErrIntegrity):
+		status, code = 409, "AGENT_CONFLICT"
 	case errors.Is(err, agent.ErrInvalid):
 		status, code = 400, "INVALID_AGENT_REQUEST"
 	case errors.Is(err, review.ErrForbidden):

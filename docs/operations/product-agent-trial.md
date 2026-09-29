@@ -49,6 +49,9 @@ credential SELECT、invocation SELECT/INSERT/UPDATE；Review 连接需要既有 
   对应 `grsai` / `gemini-2.5-flash`；不可猜测 version，也不能把其他组织的结果照搬。
 - `boundEvidence`：已复核的该 GRSAI route 完整计量/输入输出上界依据标识。上游 Google
   窗口说明和 GRSAI 价格页不能自行当成该 route 已被验证的证据。
+- `pointPricing`：沿用 #564 冻结积分计费，显式设置获准 `priceVersion` 和正整数
+  `inputPointsPerMillionTokens` / `outputPointsPerMillionTokens`。不默认费率；预留企业积分
+  和成员月限额，实际按 provider 观测输入/输出结算，UNKNOWN 保留原预留。
 
 前置报价保守预留整个模型窗口 1,114,112 tokens / 次；剩余运行预算或现有成员额度不足
 便停止，事后仅结算 provider 完整报告的实际 tokens。估价用于预算，不声称是真实账单。
@@ -68,9 +71,19 @@ Console 的现有 `LISTINGKIT_API_BASE` 指向上述当前 application；
 使用正常 `pnpm dev`，生产构建则沿原 `pnpm build` / `pnpm start`。这里只给正常启动命令，
 不授权部署或操作共享实例。
 
+可选企业知识（#559）复用同一 manifest 中当前 Knowledge owner 的已有配置与专用池；
+Console 设置 `LISTINGKIT_KNOWLEDGE_ENABLED=true` 仅显示选择入口，不授予读取或执行权限。
+新空环境按 [Knowledge 启动说明](../../deployments/docker/account-compose/KNOWLEDGE.md)
+准备完整当前 schema；已有 #557 保留实例继续使用匹配镜像，不能就地重建或追加 schema。
+已打开标题诊断的用户在确认框主动勾选知识、查看每份实际可读版本后确认生成。
+完整内容超限或不可读时明确拒绝，本次不启动；不自动截断或换库。
+生成结果与标题审核单独显示知识出处和 exact revision 标识。人工编辑后出处仅属于原 AI
+建议，停用/失权后隐藏名称与摘录。字段合同、开发证据和限制见
+[Knowledge consumer 说明](../engineering/knowledge-context-consumption.md)。
+
 1. 正常登录并选择获准企业，使用拥有当前操作权限及成员额度的身份。
 2. 在 1688 采集页打开已成功发布并保存的商品详情，显式选择“素材查询平台”，再点击
-   “生成标题建议”。SHEIN/Temu/Amazon 仅选择对应已批准素材，不代表已评估平台发布规则；
+   “生成标题建议”，检查确认框后“确认生成”。SHEIN/Temu/Amazon 仅选择对应已批准素材，不代表已评估平台发布规则；
    缺失平台不可开始，同一运行编号不得更改平台。刷新和续跑保留服务器已保存的平台。
 3. 检查建议、来源证据、模型自报置信度、未解决项、已观测用量和调用记录。
 4. 若状态是“需要补充说明”，在原运行截止时间内补充说明并继续。校验失败或预算停止

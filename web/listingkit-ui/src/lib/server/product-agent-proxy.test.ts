@@ -25,3 +25,17 @@ it("does not turn a mismatched result or unmounted Agent into successful generat
     expect(wrong.status).toBe(503);
     expect((await wrong.json()).code).toBe("OUTCOME_UNKNOWN");
 });
+
+it("passes only normalized optional Knowledge selection and rejects context authority", async () => {
+ vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL", "http://localhost:3000");
+ const body=JSON.stringify({targetPlatform:"shein",knowledgeSelection:{knowledgeBaseId:key}});
+ const result=await buildWorkbenchUpstreamRequest(req(body),path,"token","actor");
+ expect(result).not.toBeInstanceOf(Response);
+ if(!(result instanceof Response)) expect(result.init.body).toBe(body);
+ for(const knowledgeSelection of [null,{}, {knowledgeBaseId:key,revisionId:op},{knowledgeBaseId:key,text:"secret"},{bundleId:key}, {knowledgeBaseId:"bad"}]) {
+  const denied=await buildWorkbenchUpstreamRequest(req(JSON.stringify({targetPlatform:"shein",knowledgeSelection})),path,"token","actor");
+  expect(denied).toBeInstanceOf(Response);
+ }
+ const unavailable=await buildWorkbenchBrowserResponse(Response.json({code:"KNOWLEDGE_CONTEXT_TOO_LARGE"},{status:409}),"product-agent-result",key,{sourceMutation:true});
+ expect(unavailable.status).toBe(409);expect((await unavailable.json()).code).toBe("KNOWLEDGE_CONTEXT_TOO_LARGE");
+});

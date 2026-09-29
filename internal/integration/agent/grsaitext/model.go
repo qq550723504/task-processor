@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"time"
 
 	"task-processor/internal/agent"
@@ -13,6 +14,7 @@ import (
 	"task-processor/internal/authidentity"
 	"task-processor/internal/commercetool"
 	"task-processor/internal/integration/openai"
+	k "task-processor/internal/knowledge"
 
 	sigjson "sigs.k8s.io/json"
 )
@@ -48,6 +50,7 @@ type AgentInvocationLedger interface {
 }
 
 type AgentTextModel struct {
+	knowledge     KnowledgeContext
 	manager       *openai.Manager
 	ledger        AgentInvocationLedger
 	policy        AgentTextPolicy
@@ -55,7 +58,7 @@ type AgentTextModel struct {
 	freshIdentity func(context.Context) (authidentity.AuthenticatedIdentity, error)
 }
 
-func NewAgentTextModel(manager *openai.Manager, ledger AgentInvocationLedger, policy AgentTextPolicy, tools []commercetool.ToolRef, freshIdentity func(context.Context) (authidentity.AuthenticatedIdentity, error)) (*AgentTextModel, error) {
+func NewAgentTextModel(manager *openai.Manager, ledger AgentInvocationLedger, policy AgentTextPolicy, tools []commercetool.ToolRef, freshIdentity func(context.Context) (authidentity.AuthenticatedIdentity, error), contexts ...KnowledgeContext) (*AgentTextModel, error) {
 	if manager == nil || ledger == nil || freshIdentity == nil || len(tools) == 0 {
 		return nil, agent.ErrUnavailable
 	}
@@ -71,7 +74,17 @@ func NewAgentTextModel(manager *openai.Manager, ledger AgentInvocationLedger, po
 		frozen := *policy.PointPricing
 		policy.PointPricing = &frozen
 	}
-	return &AgentTextModel{manager: manager, ledger: ledger, policy: policy, tools: append([]commercetool.ToolRef(nil), tools...), freshIdentity: freshIdentity}, nil
+	model := &AgentTextModel{manager: manager, ledger: ledger, policy: policy, tools: append([]commercetool.ToolRef(nil), tools...), freshIdentity: freshIdentity}
+	if len(contexts) > 1 {
+		return nil, agent.ErrUnavailable
+	}
+	if len(contexts) == 1 {
+		if contexts[0] == nil || reflect.ValueOf(contexts[0]).Kind() == reflect.Pointer && reflect.ValueOf(contexts[0]).IsNil() {
+			return nil, agent.ErrUnavailable
+		}
+		model.knowledge = contexts[0]
+	}
+	return model, nil
 }
 
 const agentInputWindow int64 = 1048576
@@ -85,15 +98,19 @@ Large tool outputs use a title-evidence-v1 view: evidence contains exact whole f
 Use Kind=interrupt when required evidence is absent. A proposal never applies changes. Address deterministic Validation failures with at most two repairs. Report uncertainty honestly.`
 
 type preparedAgentText struct {
-	ctx      context.Context
-	identity authidentity.AuthenticatedIdentity
-	route    openai.EffectiveClientRoute
-	request  openai.TextCompletionRequest
-	quote    agent.Quote
+	knowledge *k.ContextBundle
+	ctx       context.Context
+	identity  authidentity.AuthenticatedIdentity
+	route     openai.EffectiveClientRoute
+	request   openai.TextCompletionRequest
+	quote     agent.Quote
 }
 
 func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (preparedAgentText, error) {
 	var p preparedAgentText
+	if !in.ContextSnapshotRef.ValidOrAbsent() {
+		return p, agent.ErrInvalid
+	}
 	if m == nil || !m.manager.UsesOrganizationCredentials() || ctx == nil || ctx.Err() != nil || !in.Binding.Valid() || in.PolicyVersion != m.policy.PolicyVersion || !agent.ValidID(in.AgentRunID) || !agent.ValidID(in.PromptVersion) {
 		return p, agent.ErrInvalid
 	}
@@ -133,14 +150,22 @@ func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (prep
 			return p, err
 		}
 	}
+	p.knowledge, err = m.readKnowledge(p, in)
+	if err != nil {
+		return p, err
+	}
 	wire, err := json.Marshal(struct {
 		Input        agent.ModelInput
 		AllowedTools []commercetool.ToolRef
-	}{in, m.tools})
+		Knowledge    *k.ContextBundle `json:",omitempty"`
+	}{in, m.tools, p.knowledge})
 	if err != nil {
 		return p, agent.ErrInvalid
 	}
 	p.request = openai.TextCompletionRequest{System: agentTextSystem, Prompt: string(wire), MaximumOutputTokens: 8192}
+	if p.knowledge != nil {
+		p.request.System += "\n" + knowledgeTextSystem
+	}
 	encoded, err := json.Marshal(p.request)
 	// Leave room for the SDK envelope; the transport checks the actual wire too.
 	if err != nil || len(encoded) > openai.MaxTextPromptBytes-4096 {
@@ -189,14 +214,25 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 		// can safely be released by recording that fact; never retry the model.
 		return m.notDispatched(ctx, record, "reservation_failed_before_dispatch")
 	}
+	var permit k.DispatchPermit
+	defer func() { m.releaseKnowledge(ctx, permit) }()
 	p.request.BeforeDispatch = func() error {
 		fresh, resolveErr := m.prepare(ctx, in)
 		if resolveErr != nil || fresh.quote != p.quote {
 			return agent.ErrUnavailable
 		}
+		if p.knowledge != nil {
+			var acquireErr error
+			permit, acquireErr = m.knowledge.AcquireDispatchPermit(fresh.ctx, k.Scope{OrganizationID: fresh.identity.TenantID, ActorID: fresh.identity.UserID}, knowledgeRef(in.ContextSnapshotRef), in.InvocationID)
+			if acquireErr != nil {
+				return acquireErr
+			}
+		}
 		return nil
 	}
 	response, err := m.manager.CompleteText(p.ctx, m.policy.ClientName, p.route, p.request)
+	m.releaseKnowledge(ctx, permit)
+	permit = k.DispatchPermit{}
 	if errors.Is(err, openai.ErrTextNotDispatched) {
 		return m.notDispatched(ctx, record, "rejected_before_dispatch")
 	}
@@ -214,14 +250,22 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 	record.Outcome = aicapability.InvocationUsageObservedFailed
 	record.ErrorCategory = aicapability.ErrorStructuredOutputInvalid
 	var action agent.Action
+	var citations []agent.ContextCitationRef
 	if len(response.Choices) == 1 && response.Choices[0].FinishReason == "stop" {
 		content := []byte(response.Choices[0].Message.Content)
 		record.OutputHash = agentTextHash(content)
 		if len(content) <= agent.MaxModelOutputBytes {
 			strict, decodeErr := sigjson.UnmarshalStrict(content, &action)
 			if decodeErr == nil && len(strict) == 0 && (action.Kind == "tool" || action.Kind == "propose" || action.Kind == "interrupt") {
-				record.Outcome = aicapability.InvocationSucceeded
-				record.ErrorCategory = ""
+				var valid bool
+				citations, valid = validatedKnowledgeCitations(p.knowledge, in.ContextSnapshotRef, action)
+				if valid {
+					action.ContextCitationIDs = nil
+					record.Outcome = aicapability.InvocationSucceeded
+					record.ErrorCategory = ""
+				} else {
+					action = agent.Action{}
+				}
 			} else {
 				action = agent.Action{}
 			}
@@ -231,6 +275,7 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 		return result, openai.ErrTextOutcomeUnknown
 	}
 	result.Action = action
+	result.ContextCitationRefs = citations
 	result.Usage = agent.ObservedUsage{Tokens: int64(record.TotalTokens), CostMicros: record.EstimatedCostMicros, Currency: record.Currency, Known: true}
 	return result, nil
 }
