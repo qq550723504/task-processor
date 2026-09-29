@@ -122,6 +122,14 @@ source of truth for long-lived rules.
 
 ## Supporting Context
 
+- [`ai-workbench-chat-business-task-v1.md`](./ai-workbench-chat-business-task-v1.md)
+  - DRAFT / NOT_IMPLEMENTATION_READY #576 Slice E: owner-scoped Conversation,
+    no-tool Chat planning, immutable execution proposals, BusinessTask intent/handoff,
+    deterministic AgentRun + Product Review task projection, and truthful Task Center cutover.
+    Production Writer waits for independent architecture admission and merge; no legacy Task
+    migration/sync, deployment, real customer data or paid provider use is authorized.
+
+
 - [`organization-agent-configuration-v1.md`](./organization-agent-configuration-v1.md)
   - APPROVED / IMPLEMENTATION_READY #570 Slice D: enterprise Agent enablement,
     immutable templates/defaults and start snapshots, capability projections,
