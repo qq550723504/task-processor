@@ -43,6 +43,7 @@ export async function proxyCommercialBilling(request: Request, accessToken: stri
   const resourceRead = incomingURL.pathname === "/api/workbench/commercial/resources";
   if ((resourceRead || offerRead) && (request.method !== "GET" || incomingURL.href.includes("?"))) return failure(400, "INVALID_REQUEST");
   const paymentWrite = request.method === "POST";
+  const orderCreation = paymentWrite && incomingURL.pathname === "/api/workbench/commercial/orders";
   if (paymentWrite && !hasTrustedSameOriginWrite(request)) return failure(403, "PERMISSION_DENIED");
   if (request.signal.aborted) return failure(504, "DEADLINE_EXCEEDED");
   const organization = selectedOrganization(request);
@@ -92,7 +93,7 @@ export async function proxyCommercialBilling(request: Request, accessToken: stri
     }
     let payload: unknown;
     try {
-      payload = await readBoundedStrictJSON(upstream, upstream.status >= 200 && upstream.status < 300 ? (resourceRead ? COMMERCIAL_RESOURCE_MAX_BYTES : eventRead ? RESOURCE_EVENTS_MAX_BYTES : MAX_RESPONSE_BYTES) : 8192, controller.signal);
+      payload = await readBoundedStrictJSON(upstream, (upstream.status >= 200 && upstream.status < 300 || orderCreation && upstream.status === 409) ? (resourceRead ? COMMERCIAL_RESOURCE_MAX_BYTES : eventRead ? RESOURCE_EVENTS_MAX_BYTES : MAX_RESPONSE_BYTES) : 8192, controller.signal);
     } catch {
       return controller.signal.aborted ? failure(504, "DEADLINE_EXCEEDED") : failure(502, "INVALID_UPSTREAM_RESPONSE");
     }

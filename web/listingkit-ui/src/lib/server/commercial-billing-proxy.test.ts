@@ -89,3 +89,14 @@ it("rejects a stale user assertion before forwarding billing requests", async ()
   expect(await response.json()).toMatchObject({ code: "IDENTITY_CONTEXT_CHANGED" });
   expect(fetchMock).not.toHaveBeenCalled();
 });
+
+it("preserves persisted 409 orders within the normal order response bound", async () => {
+  vi.stubEnv("COMMERCIAL_API_ORIGIN", "http://localhost:8888");
+  const order = { order_id: "original-order", organization_id: "org-a", kind: "RESOURCE_PURCHASE", status: "RECONCILIATION_REQUIRED", items: Array.from({ length: 64 }, (_, i) => ({ order_item_id: `item-${i}-${"x".repeat(16)}`, product_kind: "AI_POINT", resource_type: "ai_point", resource_quantity: "1", amount_minor: "1" })) };
+  expect(JSON.stringify(order).length).toBeGreaterThan(8192);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(order, { status: 409 })));
+  const request = postRequest(new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode('{"quote_id":"quote-1"}')); c.close(); } }));
+  const response = await proxyCommercialBilling(request, "fixture-token", "user-a");
+  expect(response.status).toBe(409);
+  expect(await response.json()).toEqual(order);
+});

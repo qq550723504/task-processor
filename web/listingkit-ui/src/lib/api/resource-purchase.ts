@@ -192,16 +192,22 @@ async function request<T>(
       signal: controller.signal,
     });
     const success = response.status === (init.body ? 201 : 200);
+    // Order conflicts may carry the original durable order, not an error envelope.
+    const persistedOrder =
+      init.body !== undefined &&
+      path === "/api/workbench/commercial/orders" &&
+      response.status === 409;
     const payload = await readBoundedStrictJSON(
       response,
-      success ? 64 * 1024 : 8192,
+      success || persistedOrder ? 64 * 1024 : 8192,
       controller.signal,
     );
     controller.signal.throwIfAborted();
-    if (success) {
+    if (success || persistedOrder) {
       const parsed = parse(payload);
       if (parsed) return parsed;
-    } else {
+    }
+    if (!success) {
       const failure = parseWorkbenchErrorEnvelopePayload(payload);
       if (
         failure.success &&

@@ -30,7 +30,7 @@ func (r *GormStoreRepository) DeleteRecord(ctx context.Context, request DeleteSt
 		audit := &GormAuditRepository{db: tx}
 		if record.DeletedAt.Valid {
 			event, err := audit.Get(ctx, request.OrganizationID, request.OperationKey, AuditActionDeleteComplete)
-			if err != nil || event.StoreID != request.StoreID || event.PayloadFingerprint != fingerprint || record.DeleteOperationKey != request.OperationKey {
+			if err != nil || event.StoreID != request.StoreID || event.ActorSubject != request.ActorSubject || event.PayloadFingerprint != fingerprint || record.DeleteOperationKey != request.OperationKey {
 				return ErrInvalidTransition
 			}
 			result = DeleteStoreResult{StoreID: record.ID, Version: event.StoreVersion, Replayed: true}
@@ -89,10 +89,23 @@ func (r *MemberScopedStoreRepository) DeleteRecord(ctx context.Context, request 
 			}
 			return err
 		}
+		base := &GormStoreRepository{db: tx}
+		if record.DeletedAt.Valid {
+			// Only read the original actor's durable receipt after live organization
+			// authorization. Deletion revoked the grant in the original transaction.
+			if !access.Administrator {
+				event, receiptErr := (&GormAuditRepository{db: tx}).Get(ctx, request.OrganizationID, request.OperationKey, AuditActionDeleteComplete)
+				if receiptErr != nil || event.ActorSubject != access.ActorID {
+					return ErrNotFound
+				}
+			}
+			var replayErr error
+			result, replayErr = base.DeleteRecord(ctx, request, at)
+			return replayErr
+		}
 		if err := requireMemberGrant(tx, access, request.StoreID); err != nil {
 			return err
 		}
-		base := &GormStoreRepository{db: tx}
 		var err error
 		result, err = base.DeleteRecord(ctx, request, at)
 		if err != nil || result.Replayed {

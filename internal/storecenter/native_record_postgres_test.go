@@ -122,6 +122,10 @@ func TestNativeRecordPostgresConcurrencyRollbackAndDeleteReceipt(t *testing.T) {
 	request := storecenter.DeleteStoreRequest{OrganizationID: "org-a", ActorSubject: "subject-create", StoreID: original.ID(), OperationKey: uuid.NewString(), ExpectedVersion: original.Version()}
 	deleted, err := admin.DeleteRecord(ctx, request, time.Now().UTC())
 	require.NoError(t, err)
+	memberReplay, err := repo.DeleteRecord(ctx, request, time.Now().UTC())
+	require.NoError(t, err)
+	require.True(t, memberReplay.Replayed)
+	require.Equal(t, deleted.Version, memberReplay.Version)
 	replay, err := admin.DeleteRecord(ctx, request, time.Now().UTC())
 	require.NoError(t, err)
 	require.True(t, replay.Replayed)

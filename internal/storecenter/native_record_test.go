@@ -72,3 +72,73 @@ func TestNativeStoreCreateRollsBackStoreGrantAndReceiptWhenAuditFails(t *testing
 		}
 	}
 }
+
+type nativeDeleteAccess struct {
+	value storecenter.StoreMemberAccess
+	err   error
+}
+
+func (a *nativeDeleteAccess) AuthorizeStoreMember(context.Context, string) (storecenter.StoreMemberAccess, error) {
+	return a.value, a.err
+}
+
+func TestNativeMemberDeleteReplaysOriginalReceiptWithoutRestoringGrant(t *testing.T) {
+	db := openStoreDB(t)
+	if err := storecenter.AutoMigrateAuditRepository(db); err != nil {
+		t.Fatal(err)
+	}
+	access := &nativeDeleteAccess{value: storecenter.StoreMemberAccess{OrganizationID: "org-a", ActorID: "subject-create", MemberID: "membership-a", CanWrite: true}}
+	repo, _ := storecenter.NewMemberScopedStoreRepository(db, access)
+	ctx := context.Background()
+	created, _, err := repo.CreateOrReplay(ctx, "org-a", nativeCandidate(t, uuid.NewString(), "subject-create"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := storecenter.DeleteStoreRequest{OrganizationID: "org-a", ActorSubject: "subject-create", StoreID: created.ID(), OperationKey: uuid.NewString(), ExpectedVersion: created.Version()}
+	deleted, err := repo.DeleteRecord(ctx, request, time.Now().UTC())
+	if err != nil || deleted.Replayed {
+		t.Fatalf("delete=%+v err=%v", deleted, err)
+	}
+	restarted, _ := storecenter.NewMemberScopedStoreRepository(db, access)
+	replay, err := restarted.DeleteRecord(ctx, request, time.Now().UTC())
+	if err != nil || !replay.Replayed || replay.Version != deleted.Version {
+		t.Fatalf("lost-response replay=%+v err=%v", replay, err)
+	}
+	for _, changed := range []storecenter.DeleteStoreRequest{
+		func() storecenter.DeleteStoreRequest { v := request; v.OperationKey = uuid.NewString(); return v }(),
+		func() storecenter.DeleteStoreRequest { v := request; v.ExpectedVersion++; return v }(),
+		func() storecenter.DeleteStoreRequest { v := request; v.OrganizationID = "org-other"; return v }(),
+		func() storecenter.DeleteStoreRequest { v := request; v.StoreID = uuid.NewString(); return v }(),
+	} {
+		if _, err := restarted.DeleteRecord(ctx, changed, time.Now().UTC()); err == nil {
+			t.Fatal("mismatched delete receipt accepted")
+		}
+	}
+	access.value.ActorID = "other-member"
+	other := request
+	other.ActorSubject = access.value.ActorID
+	if _, err := restarted.DeleteRecord(ctx, other, time.Now().UTC()); err == nil {
+		t.Fatal("another actor read delete receipt")
+	}
+	base, _ := storecenter.NewGormStoreRepository(db)
+	if _, err := base.DeleteRecord(ctx, other, time.Now().UTC()); err == nil {
+		t.Fatal("native receipt did not bind original actor")
+	}
+	access.value.ActorID = request.ActorSubject
+	access.value.CanWrite = false
+	if _, err := restarted.DeleteRecord(ctx, request, time.Now().UTC()); err == nil {
+		t.Fatal("downgraded actor read receipt")
+	}
+	access.value.CanWrite = true
+	access.err = storecenter.ErrNotFound
+	if _, err := restarted.DeleteRecord(ctx, request, time.Now().UTC()); err == nil {
+		t.Fatal("revoked organization read receipt")
+	}
+	var active, receipts int64
+	if err := db.Table("workbench_store_member_grants").Where("active=?", true).Count(&active).Error; err != nil || active != 0 {
+		t.Fatalf("active grants=%d err=%v", active, err)
+	}
+	if err := db.Table("workbench_store_audit_logs").Where("action=?", storecenter.AuditActionDeleteComplete).Count(&receipts).Error; err != nil || receipts != 1 {
+		t.Fatalf("delete receipts=%d err=%v", receipts, err)
+	}
+}

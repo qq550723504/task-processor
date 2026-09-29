@@ -87,3 +87,70 @@ it("exposes unconfigured offers as an empty catalog and rejects cross-tenant res
     code: "INVALID_UPSTREAM_RESPONSE",
   });
 });
+
+const savedOrder = {
+  order_id: "order-1",
+  organization_id: "org-B",
+  kind: "RESOURCE_PURCHASE",
+  description: "Saved resource purchase",
+  quote_id: "quote-1",
+  currency: "CNY",
+  total_minor: "70",
+  status: "CANCELLED",
+  items: [],
+  product_kind: "AI_POINT",
+  created_at: quote.created_at,
+  updated_at: quote.created_at,
+};
+it.each([
+  { ...savedOrder, failure_code: "INSUFFICIENT_FUNDS" },
+  { ...savedOrder, failure_code: "RESOURCE_GRANT_REJECTED" },
+  { ...savedOrder, status: "RECONCILIATION_REQUIRED" },
+])(
+  "returns the original persisted 409 order: $status $failure_code",
+  async (order) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(Response.json(order, { status: 409 })),
+    );
+    await expect(
+      createResourceOrder("user-B", "org-B", "quote-1", "original-key"),
+    ).resolves.toEqual(order);
+  },
+);
+it.each([
+  { ...savedOrder, organization_id: "other-org" },
+  { ...savedOrder, quote_id: "other-quote" },
+  { ...savedOrder, kind: "WALLET_TOP_UP", product_kind: undefined },
+])("rejects a 409 order outside the original scope", async (order) => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(Response.json(order, { status: 409 })),
+  );
+  await expect(
+    createResourceOrder("user-B", "org-B", "quote-1", "original-key"),
+  ).rejects.toMatchObject({ code: "INVALID_UPSTREAM_RESPONSE" });
+});
+it("keeps 409 error envelopes and quote conflicts as failures", async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValue(
+      Response.json(
+        {
+          code: "QUOTE_EXPIRED",
+          message: "Expired",
+          requestId: "",
+          fieldErrors: [],
+        },
+        { status: 409 },
+      ),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  await expect(
+    createResourceOrder("user-B", "org-B", "quote-1", "original-key"),
+  ).rejects.toMatchObject({ code: "QUOTE_EXPIRED" });
+  fetcher.mockResolvedValue(Response.json(quote, { status: 409 }));
+  await expect(
+    createResourceQuote("user-B", "org-B", "offer-1", { amountMinor: "73" }),
+  ).rejects.toMatchObject({ code: "INVALID_UPSTREAM_RESPONSE" });
+});
