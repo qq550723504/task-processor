@@ -19,7 +19,6 @@ import (
 	moneystore "task-processor/internal/integration/persistence/money"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/ledger/orgresource"
-	"task-processor/internal/listingsubscription"
 )
 
 func buildCommercialBillingModule(ctx context.Context, commercialDB, moneyDB *gorm.DB, authorizer *authz.ListingKitAuthorizer, cfg *config.Config) (kernelmodule.Module, error) {
@@ -53,18 +52,11 @@ func buildCommercialBillingModule(ctx context.Context, commercialDB, moneyDB *go
 	}
 	module := commercialBillingModule{handler: billinghttp.NewHandler(service)}
 	zitadel := cfg.ListingKit.Zitadel
-	if strings.TrimSpace(zitadel.TenantDirectoryToken) == "" || strings.TrimSpace(zitadel.AuthorizationAPIURL) == "" || strings.TrimSpace(zitadel.ProjectID) == "" {
-		return nil, errors.New("subscription purchase directory authorization configuration unavailable")
+	if (cfg.WalletTopUp.Alipay.Enabled || cfg.WalletTopUp.WeChat.Enabled) && (strings.TrimSpace(zitadel.TenantDirectoryToken) == "" || strings.TrimSpace(zitadel.AuthorizationAPIURL) == "" || strings.TrimSpace(zitadel.ProjectID) == "") {
+		return nil, errors.New("financial recovery directory authorization configuration unavailable")
 	}
-	subscriptionOwner, ownerErr := listingsubscription.NewRuntimeService(listingsubscription.NewGormRepository(commercialDB))
-	if ownerErr != nil {
-		return nil, ownerErr
-	}
-	recoveryAuthorizer := subscriptionPurchaseRecoveryAuthorizer{reader: zitadelruntime.NewAuthorizationClient(zitadel.AuthorizationAPIURL, &http.Client{Timeout: 5 * time.Second}), serviceToken: zitadel.TenantDirectoryToken, projectID: zitadel.ProjectID, authorizer: authorizer}
-	if enableErr := service.EnableSubscriptionPurchases(purchasedSubscriptionOwnerAdapter{owner: subscriptionOwner}, recoveryAuthorizer); enableErr != nil {
-		return nil, enableErr
-	}
-	module.reconcileSubscriptions = func(run context.Context) error { return service.ReconcileRecoverableSubscriptionOrders(run, 50) }
+	recoveryAuthorizer := financialRecoveryAuthorizer{reader: zitadelruntime.NewAuthorizationClient(zitadel.AuthorizationAPIURL, &http.Client{Timeout: 5 * time.Second}), serviceToken: zitadel.TenantDirectoryToken, projectID: zitadel.ProjectID, authorizer: authorizer}
+	module.reconcileResources = func(run context.Context) error { return service.ReconcileRecoverableResourceOrders(run, 50) }
 	if err := configureWalletTopUps(ctx, service, module.handler, commercial, wallet, cfg.WalletTopUp, topUpRuntimeAuthorizer{directory: recoveryAuthorizer}); err != nil {
 		return nil, err
 	}
@@ -73,9 +65,9 @@ func buildCommercialBillingModule(ctx context.Context, commercialDB, moneyDB *go
 }
 
 type commercialBillingModule struct {
-	handler                *billinghttp.Handler
-	reconcileSubscriptions func(context.Context) error
-	reconcileTopUps        func(context.Context) error
+	handler            *billinghttp.Handler
+	reconcileResources func(context.Context) error
+	reconcileTopUps    func(context.Context) error
 }
 
 func (commercialBillingModule) Name() string { return "commercial-billing" }

@@ -1,5 +1,10 @@
 # Commercial Wallet / Billing Owner Contract
 
+> 2026-09-29 用户采用 [统一基础方案与预付资源 V1](unified-base-prepaid-resources-v1.md)。
+> 本文的报价、RESOURCE_PURCHASE、钱包/资源 owner 与安全合同继续复用；
+> subscription/entitlement 产品选择、旧订阅商业 overview 与 Token/store_count 额度由新决定替代。
+> 新设计准入和实际切换状态见 #478，不把历史订阅证据当作新模型验收。
+
 **Status:** IMPLEMENTATION_READY / DB1 owner contract  
 **Date:** 2026-09-22  
 **Issue:** #457  

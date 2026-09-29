@@ -1,0 +1,55 @@
+package httpapi
+
+import (
+	"context"
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"path/filepath"
+	"task-processor/internal/aicapability"
+	aistore "task-processor/internal/aicapability/store"
+	"testing"
+	"time"
+)
+
+func TestNativeUsageAuditMergesIndependentOwnersWithStableScopedPages(t *testing.T) {
+	sources := invocationAuditSources{}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	for _, namespace := range []string{"image", "product"} {
+		db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), namespace+".db")), &gorm.Config{})
+		require.NoError(t, err)
+		pool, err := db.DB()
+		require.NoError(t, err)
+		t.Cleanup(func() { pool.Close() })
+		require.NoError(t, aistore.AutoMigrateInvocationLedger(db))
+		sources[namespace] = db
+		recorder := aistore.NewGormInvocationRecorder(db)
+		for _, id := range []string{"a", "z", "other"} {
+			org := "org"
+			if id == "other" {
+				org = "other"
+			}
+			fact := aicapability.InvocationRecord{InvocationID: id, TenantID: org, UserID: "actor", MemberID: "member", InputHash: "input", StartedAt: now.Add(-time.Second), FinishedAt: now, Operation: aicapability.OperationProductAgentDecision, Outcome: aicapability.InvocationSucceeded, UsageKnown: true, PromptTokens: 2, CompletionTokens: 3, TotalTokens: 5}
+			require.NoError(t, recorder.RecordInvocation(context.Background(), fact))
+		}
+	}
+	reader := aiUsageAuditReader{sources: sources}
+	first, err := reader.ListObservedAIUsageAudit(context.Background(), "org", 2, nil)
+	require.NoError(t, err)
+	require.Len(t, first.Items, 2)
+	require.Equal(t, "product:z", first.Items[0].EventID)
+	require.Equal(t, "product:a", first.Items[1].EventID)
+	require.NotNil(t, first.Next)
+	second, err := reader.ListObservedAIUsageAudit(context.Background(), "org", 2, first.Next)
+	require.NoError(t, err)
+	require.Len(t, second.Items, 2)
+	require.Equal(t, "image:z", second.Items[0].EventID)
+	require.Equal(t, "image:a", second.Items[1].EventID)
+	require.Nil(t, second.Next)
+	for _, page := range [][]string{{first.Items[0].OrganizationID, first.Items[1].OrganizationID}, {second.Items[0].OrganizationID, second.Items[1].OrganizationID}} {
+		require.Equal(t, []string{"org", "org"}, page)
+	}
+	empty, err := reader.ListObservedAIUsageAudit(context.Background(), "empty", 2, nil)
+	require.NoError(t, err)
+	require.Empty(t, empty.Items)
+}

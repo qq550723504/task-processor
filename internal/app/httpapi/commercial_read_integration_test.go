@@ -37,7 +37,7 @@ import (
 	commercialstore "task-processor/internal/integration/persistence/commercialbilling"
 	moneystore "task-processor/internal/integration/persistence/money"
 	kernelmodule "task-processor/internal/kernel/module"
-	"task-processor/internal/listingsubscription"
+	"task-processor/internal/storecenter"
 	"task-processor/internal/workbenchcontext"
 	contextapi "task-processor/internal/workbenchcontext/httpapi"
 )
@@ -182,55 +182,15 @@ func openCommercialFixtureReader(t *testing.T, cfg *config.DatabaseConfig) *gorm
 
 func TestCommercialHTTPPostgresBFFClientZeroWrites(t *testing.T) {
 	db, dbConfig := commercialPostgres(t)
-	repo := listingsubscription.NewGormRepository(db)
-	require.NoError(t, listingsubscription.AutoMigrateRepository(db))
 	require.NoError(t, orgresourceadapter.AutoMigrate(db))
-	service, err := listingsubscription.NewService(repo)
-	require.NoError(t, err)
 	ctx := context.Background()
 	now := time.Now().UTC()
-	_, err = service.UpsertPlan(ctx, listingsubscription.PlanInput{Code: "paid_pilot", Name: "受邀试点", Active: true, Modules: []listingsubscription.PlanModuleInput{{ModuleCode: listingsubscription.ModuleListingKit, Limits: map[string]int{"listingkit_generations_succeeded": 0, "product_image_jobs_succeeded": 0, "product_image_jobs": 100}}, {ModuleCode: listingsubscription.ModuleOSSStorage, Limits: map[string]int{"storage_bytes_current": 0}}}}, "fixture-platform-admin")
-	require.NoError(t, err)
-	for _, org := range []string{"org-B", "org-C", "org-expired", "org-disabled", "org-future"} {
-		input := listingsubscription.PlanApplyInput{PlanCode: "paid_pilot", Status: listingsubscription.StatusActive}
-		if org == "org-expired" {
-			expires := now.Add(-time.Hour)
-			input.ExpiresAt = &expires
-		}
-		if org == "org-disabled" {
-			input.Status = listingsubscription.StatusDisabled
-		}
-		if org == "org-future" {
-			starts := now.Add(time.Hour)
-			input.StartsAt = &starts
-		}
-		_, err = service.ApplyPlan(ctx, org, input, "fixture-platform-admin")
-		require.NoError(t, err)
+	for _, seed := range []struct {
+		org      string
+		quantity int64
+	}{{"org-B", 9007199254740993}, {"org-C", 2}} {
+		require.NoError(t, db.Exec("INSERT INTO saas_organization_resource_buckets (organization_id,resource_type,available,allocated,reserved,consumed,created_at,updated_at) VALUES (?, 'ai_point', ?,0,0,0,?,?)", seed.org, seed.quantity, now, now).Error)
 	}
-	ledger := listingsubscription.NewGormUsageLedger(repo)
-	_, err = service.UpsertPlan(ctx, listingsubscription.PlanInput{Code: "定制 plan", Name: "Existing paid contract", Active: true}, "fixture-platform-admin")
-	require.NoError(t, err)
-	_, err = service.ApplyPlan(ctx, "org-custom", listingsubscription.PlanApplyInput{PlanCode: "定制 plan", Status: listingsubscription.StatusActive}, "fixture-platform-admin")
-	require.NoError(t, err)
-	seed := func(org, metric string, q int64, month time.Time, commit bool) {
-		module := listingsubscription.ModuleListingKit
-		if metric == "storage_bytes_current" {
-			module = listingsubscription.ModuleOSSStorage
-		}
-		key := uuid.NewString()
-		reserved, reserveErr := ledger.Reserve(ctx, listingsubscription.ReserveUsageInput{TenantID: org, ModuleCode: module, Metric: metric, Quantity: q, PeriodKey: month.Format("2006-01"), SourceType: "commercial_fixture", SourceID: key, IdempotencyKey: key, OccurredAt: month})
-		require.NoError(t, reserveErr)
-		if commit {
-			_, commitErr := ledger.Commit(ctx, reserved.Event.EventID)
-			require.NoError(t, commitErr)
-		}
-	}
-	seed("org-B", "listingkit_generations_succeeded", 1, now, true)
-	seed("org-B", "listingkit_generations_succeeded", 1, now.AddDate(0, -1, 0), true)
-	seed("org-C", "listingkit_generations_succeeded", 1, now, true)
-	seed("org-C", "listingkit_generations_succeeded", 1, now, true)
-	seed("org-B", "storage_bytes_current", 9007199254740993, now, true)
-	seed("org-B", "storage_bytes_current", -1, now, false)
 	// This role cannot perform any business write, even if the GET accidentally
 	// invokes a mutation. Only the fixture setup connection has write authority.
 	require.NoError(t, db.Exec("CREATE ROLE commercial_reader LOGIN PASSWORD 'issue347-reader-fixture'").Error)
@@ -249,11 +209,26 @@ func TestCommercialHTTPPostgresBFFClientZeroWrites(t *testing.T) {
 	appCfg := &config.Config{Database: dbConfig, Workbench: config.WorkbenchConfig{Enabled: true}}
 	log := logrus.New()
 	log.SetOutput(io.Discard)
-	result, err := buildCommercialReadModule(appCfg, log)
+	storeOwner, storeConfig := commercialOwnerFixtureDB(t, db, dbConfig, "stores", "commercial_store_reader", "unified-store-fixture", func(owner *gorm.DB) error {
+		sqlDB, err := owner.DB()
+		if err != nil {
+			return err
+		}
+		tx, err := sqlDB.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if err = storecenter.InstallCurrentSchemaTx(ctx, tx); err != nil {
+			return err
+		}
+		return tx.Commit()
+	})
+	storeBefore := commercialOwnerTableSnapshot(t, storeOwner)
+	module, err := buildUnifiedCommercialRead(ctx, openCommercialFixtureReader(t, dbConfig), openCommercialFixtureReader(t, storeConfig), authz.DefaultListingKitAuthorizer())
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, result.closer()) })
 	registry := kernelmodule.NewRegistry()
-	require.NoError(t, result.module.Register(registry))
+	require.NoError(t, module.Register(registry))
 	billingModule, err := buildCommercialBillingModule(ctx, openCommercialFixtureReader(t, billingConfig), openCommercialFixtureReader(t, moneyConfig), authz.DefaultListingKitAuthorizer(), appCfg)
 	require.NoError(t, err)
 	require.NoError(t, billingModule.Register(registry))
@@ -261,29 +236,11 @@ func TestCommercialHTTPPostgresBFFClientZeroWrites(t *testing.T) {
 	require.NoError(t, contextapi.NewModule(contextapi.NewHandlerWithWorkbenchAuthorizer(authz.DefaultListingKitAuthorizer())).Register(registry))
 	grants := &commercialGrantFixture{}
 	var verifier zitadel.Verifier = mountedVerifierStub{identity: authidentity.AuthenticatedIdentity{UserID: "fixture-user", HomeOrganizationID: "home-A", TokenExpiresAt: now.Add(time.Hour)}}
-	browser := newCommercialBrowserFixture(t)
-	var suspension workbenchcontext.OrganizationBusinessStatusChecker
-	if browser != nil {
-		verifier = browser
-		suspension = browser
-	}
-	resolver := workbenchcontext.NewResolver(workbenchcontext.NewGrantResolver(grants, workbenchcontext.NewGrantCache(nil)), "fixture-project", "fixture-contract", suspension)
+	resolver := workbenchcontext.NewResolver(workbenchcontext.NewGrantResolver(grants, workbenchcontext.NewGrantCache(nil)), "fixture-project", "fixture-contract", nil)
 	auth := routeAuthDependencies{workbenchVerifier: verifier, organizationResolver: resolver, authorizer: authz.DefaultListingKitAuthorizer(), auditRecorder: workbenchcontext.NewStructuredAuditRecorder(log), auditNow: time.Now}
 	appServer := buildHTTPServerFromRoutes(0, registry.Routes(), auth)
 	mux := http.NewServeMux()
-	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if browser != nil && browser.slow.Load() && r.URL.Path == "/api/v1/workbench/commercial/overview" {
-			select {
-			case <-r.Context().Done():
-				return
-			case <-time.After(2 * time.Second):
-			}
-		}
-		appServer.Handler.ServeHTTP(w, r)
-	}))
-	if browser != nil {
-		mux.HandleFunc("/fixture/scenario", browser.control(db, grants))
-	}
+	mux.Handle("/", appServer.Handler)
 	mux.HandleFunc("/fixture/mode", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			w.WriteHeader(405)
@@ -299,14 +256,6 @@ func TestCommercialHTTPPostgresBFFClientZeroWrites(t *testing.T) {
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
-	if browser != nil {
-		browser.serve(t, server.URL)
-		require.Equal(t, before, commercialTableSnapshot(t, db), "browser fixture changed commercial business rows")
-		require.Equal(t, billingBefore, commercialOwnerTableSnapshot(t, billingOwner), "browser fixture changed commercial billing owner rows")
-		require.Equal(t, moneyBefore, commercialOwnerTableSnapshot(t, moneyOwner), "browser fixture changed canonical money owner rows")
-		t.Logf("ZERO_WRITE browser: all saas table values/xmin unchanged: %s", before)
-		return
-	}
 	// Node starts an HTTP BFF around the actual Next route export. Auth.js token
 	// retrieval is explicitly substituted; API/Resolver/Casbin/owner/PG are real.
 	webDir, err := filepath.Abs(filepath.Join("..", "..", "..", "web", "listingkit-ui"))
@@ -323,11 +272,11 @@ func TestCommercialHTTPPostgresBFFClientZeroWrites(t *testing.T) {
 	t.Log(string(output))
 	require.NoError(t, err)
 	require.Greater(t, grants.calls.Load(), int32(5), "actual live grants executed")
-	require.Equal(t, before, commercialTableSnapshot(t, db), "all subscription, usage, resource tables and xmin unchanged")
+	require.Equal(t, before, commercialTableSnapshot(t, db), "all resource tables and xmin unchanged")
 	require.Equal(t, billingBefore, commercialOwnerTableSnapshot(t, billingOwner), "GET routes changed commercial billing owner rows")
 	require.Equal(t, moneyBefore, commercialOwnerTableSnapshot(t, moneyOwner), "GET routes changed canonical money owner rows")
 	// An actual PostgreSQL permission failure is not converted to an empty/zero.
-	require.NoError(t, db.Exec("REVOKE SELECT ON saas_usage_buckets FROM commercial_reader").Error)
+	require.NoError(t, db.Exec("REVOKE SELECT ON saas_organization_resource_buckets FROM commercial_reader").Error)
 	request, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/workbench/commercial/overview", nil)
 	require.NoError(t, err)
 	request.Header.Set("Authorization", "Bearer fixture-token")
@@ -335,7 +284,17 @@ func TestCommercialHTTPPostgresBFFClientZeroWrites(t *testing.T) {
 	response, err := http.DefaultClient.Do(request)
 	require.NoError(t, err)
 	defer response.Body.Close()
-	require.Equal(t, 503, response.StatusCode)
+	require.Equal(t, 200, response.StatusCode)
+	var payload struct {
+		Resources struct {
+			State string `json:"state"`
+			Value any    `json:"value"`
+		} `json:"resources"`
+	}
+	require.NoError(t, json.NewDecoder(response.Body).Decode(&payload))
+	require.Equal(t, "unavailable", payload.Resources.State)
+	require.Nil(t, payload.Resources.Value)
+	require.Equal(t, storeBefore, commercialOwnerTableSnapshot(t, storeOwner))
 	require.Equal(t, before, commercialTableSnapshot(t, db))
-	t.Logf("ZERO_WRITE: SELECT-only role + default_transaction_read_only + repeatable-read/read-only transaction + all saas table values/xmin SHA256 unchanged: %s", before)
+	t.Logf("ZERO_WRITE: SELECT-only role + default_transaction_read_only + all native owner table values/xmin SHA256 unchanged: %s", before)
 }

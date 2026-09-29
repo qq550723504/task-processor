@@ -12,7 +12,6 @@ import (
 	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
 	kernelmodule "task-processor/internal/kernel/module"
-	"task-processor/internal/listingsubscription"
 	platformdatabase "task-processor/internal/platform/database"
 	"task-processor/internal/storecenter"
 	storecenterhttpapi "task-processor/internal/storecenter/httpapi"
@@ -26,17 +25,15 @@ type storeCenterBuildResult struct {
 type storeCenterModuleBuilder func(*config.Config, *logrus.Logger) (storeCenterBuildResult, error)
 
 type storeCenterFactories struct {
-	openDatabase              func(*config.DatabaseConfig) (*gorm.DB, error)
-	closeDatabase             func(*config.DatabaseConfig, *gorm.DB) error
-	newStoreRepository        func(*gorm.DB) (storecenter.Repository, error)
-	newSubscriptionRepository func(*gorm.DB) *listingsubscription.GormRepository
-	newQuotaLedger            func(*listingsubscription.GormRepository) listingsubscription.StoreQuotaLedger
-	newAuditRepository        func(*gorm.DB) (storecenter.AuditRepository, error)
-	newConnectionProvider     func() storecenter.ConnectionStatusProvider
-	newService                func(storecenter.Repository, listingsubscription.StoreQuotaLedger, storecenter.AuditRepository, storecenter.ConnectionStatusProvider, func() time.Time) (storecenterhttpapi.StoreService, error)
-	newHandler                func(storecenterhttpapi.StoreService) (*storecenterhttpapi.Handler, error)
-	newModule                 func(*storecenterhttpapi.Handler) (kernelmodule.Module, error)
-	now                       func() time.Time
+	openDatabase          func(*config.DatabaseConfig) (*gorm.DB, error)
+	closeDatabase         func(*config.DatabaseConfig, *gorm.DB) error
+	newStoreRepository    func(*gorm.DB) (storecenter.Repository, error)
+	newAuditRepository    func(*gorm.DB) (storecenter.AuditRepository, error)
+	newConnectionProvider func() storecenter.ConnectionStatusProvider
+	newService            func(storecenter.Repository, storecenter.AuditRepository, storecenter.ConnectionStatusProvider, func() time.Time) (storecenterhttpapi.StoreService, error)
+	newHandler            func(storecenterhttpapi.StoreService) (*storecenterhttpapi.Handler, error)
+	newModule             func(*storecenterhttpapi.Handler) (kernelmodule.Module, error)
+	now                   func() time.Time
 }
 
 func defaultStoreCenterFactories() storeCenterFactories {
@@ -50,16 +47,14 @@ func defaultStoreCenterFactories() storeCenterFactories {
 		newStoreRepository: func(db *gorm.DB) (storecenter.Repository, error) {
 			return storecenter.NewGormStoreRepository(db)
 		},
-		newSubscriptionRepository: listingsubscription.NewGormRepository,
-		newQuotaLedger:            listingsubscription.NewGormStoreQuotaLedger,
 		newAuditRepository: func(db *gorm.DB) (storecenter.AuditRepository, error) {
 			return storecenter.NewGormAuditRepository(db)
 		},
 		newConnectionProvider: func() storecenter.ConnectionStatusProvider {
 			return unavailableConnectionStatusProvider{}
 		},
-		newService: func(repository storecenter.Repository, quota listingsubscription.StoreQuotaLedger, audit storecenter.AuditRepository, provider storecenter.ConnectionStatusProvider, now func() time.Time) (storecenterhttpapi.StoreService, error) {
-			return storecenter.NewService(repository, quota, audit, provider, now)
+		newService: func(repository storecenter.Repository, audit storecenter.AuditRepository, provider storecenter.ConnectionStatusProvider, now func() time.Time) (storecenterhttpapi.StoreService, error) {
+			return storecenter.NewService(repository, audit, provider, now)
 		},
 		newHandler: storecenterhttpapi.NewHandler,
 		newModule: func(handler *storecenterhttpapi.Handler) (kernelmodule.Module, error) {
@@ -101,17 +96,12 @@ func buildStoreCenterModule(cfg *config.Config, logger *logrus.Logger, factories
 	if constructorErr != nil {
 		return storeCenterBuildResult{}, newStoreCenterStartupError("construct Store repository", constructorErr)
 	}
-	subscriptionRepository := factories.newSubscriptionRepository(db)
-	if subscriptionRepository == nil {
-		return storeCenterBuildResult{}, errors.New("build Store Center: construct Subscription repository failed")
-	}
-	quota := factories.newQuotaLedger(subscriptionRepository)
 	audit, constructorErr := factories.newAuditRepository(db)
 	if constructorErr != nil {
 		return storeCenterBuildResult{}, newStoreCenterStartupError("construct audit repository", constructorErr)
 	}
 	provider := factories.newConnectionProvider()
-	service, constructorErr := factories.newService(repository, quota, audit, provider, factories.now)
+	service, constructorErr := factories.newService(repository, audit, provider, factories.now)
 	if constructorErr != nil {
 		return storeCenterBuildResult{}, newStoreCenterStartupError("construct service", constructorErr)
 	}

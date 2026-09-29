@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"task-processor/internal/ledger/money"
@@ -20,6 +21,8 @@ type OrderStore interface {
 }
 
 type Service struct {
+	resourceRecoveryLock   sync.Mutex
+	resourceRecoveryAfter  *ResourceRecoveryPosition
 	topups                 *walletTopUps
 	offers                 OfferCatalog
 	quotes                 QuoteEngine
@@ -74,7 +77,7 @@ func (s *Service) CreateResourceOrder(ctx context.Context, request CreateResourc
 	request.OrganizationID = strings.TrimSpace(request.OrganizationID)
 	request.QuoteID = strings.TrimSpace(request.QuoteID)
 	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
-	if request.OrganizationID == "" || request.QuoteID == "" || request.IdempotencyKey == "" {
+	if !isCanonicalIdentifier(request.ActorID) || request.OrganizationID == "" || request.QuoteID == "" || request.IdempotencyKey == "" {
 		return Order{}, ErrInvalid
 	}
 	order, found, err := s.orders.FindResourceOrderByIdempotency(ctx, request.OrganizationID, request.IdempotencyKey)
@@ -82,7 +85,7 @@ func (s *Service) CreateResourceOrder(ctx context.Context, request CreateResourc
 		return Order{}, err
 	}
 	if found {
-		if order.QuoteID != request.QuoteID {
+		if order.QuoteID != request.QuoteID || order.ActorID != request.ActorID {
 			return Order{}, ErrConflict
 		}
 		if order.Status == OrderCancelled {
@@ -90,6 +93,15 @@ func (s *Service) CreateResourceOrder(ctx context.Context, request CreateResourc
 		}
 		if order.Status == OrderReconciliationRequired || order.Status == OrderFundsReserved || order.Status == OrderFulfilling {
 			return s.ReconcileResourceOrder(ctx, order.OrganizationID, order.OrderID)
+		}
+		if order.Status == OrderPending {
+			_, decisionErr := s.wallet.ReadCommercialPurchaseReserveDecision(ctx, order.OrganizationID, order.OrderID, order.OrderID)
+			if decisionErr == nil {
+				return s.ReconcileResourceOrder(ctx, order.OrganizationID, order.OrderID)
+			}
+			if !errors.Is(decisionErr, money.ErrWalletReserveDecisionNotFound) {
+				return order, ErrReconciliationRequired
+			}
 		}
 	} else {
 		quote, quoteErr := s.quotes.ReadQuote(ctx, request.OrganizationID, request.QuoteID)
@@ -115,9 +127,9 @@ func (s *Service) CreateResourceOrder(ctx context.Context, request CreateResourc
 			}
 			return order, ErrInsufficientFunds
 		}
-		order.Status = OrderReconciliationRequired
-		order.UpdatedAt = s.now().UTC()
-		_ = s.updateOrder(ctx, &order)
+		// Without a reservation identity the durable order must remain
+		// PENDING. The error conveys uncertainty; recovery reads money's
+		// original reserve decision instead of persisting an invalid shape.
 		return order, ErrReconciliationRequired
 	}
 	order.WalletReservationID = reservation.ReservationID
@@ -193,8 +205,32 @@ func (s *Service) ReconcileResourceOrder(ctx context.Context, organizationID, or
 	if err != nil {
 		return Order{}, err
 	}
-	if order.Status != OrderReconciliationRequired && order.Status != OrderFundsReserved && order.Status != OrderFulfilling {
+	if order.Kind != OrderResourcePurchase {
+		return Order{}, ErrInvalid
+	}
+	if order.Status != OrderPending && order.Status != OrderReconciliationRequired && order.Status != OrderFundsReserved && order.Status != OrderFulfilling {
 		return order, nil
+	}
+	if order.WalletReservationID == "" {
+		decision, readErr := s.wallet.ReadCommercialPurchaseReserveDecision(ctx, order.OrganizationID, order.OrderID, order.OrderID)
+		if readErr != nil || decision.Validate() != nil || decision.OrganizationID != order.OrganizationID || decision.OperationID != order.OrderID || decision.CommercialOrderID != order.OrderID || decision.Currency != order.Currency || decision.AmountMinor != order.AmountMinor {
+			// No durable decision is not proof of a failed reserve. Keep the
+			// original order and never reserve from background reconciliation.
+			return order, ErrReconciliationRequired
+		}
+		if decision.Outcome == money.WalletReserveDecisionRejectedInsufficientFunds {
+			order.Status = OrderCancelled
+			order.FailureCode = OrderFailureInsufficientFunds
+			order.UpdatedAt = s.now().UTC()
+			if s.updateOrder(ctx, &order) != nil {
+				return order, ErrReconciliationRequired
+			}
+			return order, ErrInsufficientFunds
+		}
+		if decision.Outcome != money.WalletReserveDecisionReserved || hasResourceGrantEvidence(order) {
+			return order, ErrReconciliationRequired
+		}
+		order.WalletReservationID = decision.ReservationID
 	}
 	if order.WalletReservationID == "" || len(order.Items) != 1 {
 		return order, ErrReconciliationRequired
@@ -231,6 +267,13 @@ func (s *Service) ReconcileResourceOrder(ctx context.Context, organizationID, or
 	}
 	if order.WalletReservationState != money.WalletReservationReserved {
 		return order, ErrReconciliationRequired
+	}
+	if order.Status == OrderPending {
+		order.Status = OrderFundsReserved
+		order.UpdatedAt = s.now().UTC()
+		if s.updateOrder(ctx, &order) != nil {
+			return order, ErrReconciliationRequired
+		}
 	}
 	item := order.Items[0]
 	grant, err := s.grants.GrantPurchasedResource(ctx, orgresource.PurchasedResourceGrantInput{OrganizationID: order.OrganizationID, OperationID: "grant:" + order.OrderID, CommercialOrderID: order.OrderID, CommercialOrderItemID: item.OrderItemID, ResourceType: item.ResourceType, Quantity: item.ResourceQuantity, Principal: orgresource.Principal{ID: "commercial-billing", Kind: orgresource.PrincipalTrustedCommercial}})

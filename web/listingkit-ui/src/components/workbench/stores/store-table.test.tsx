@@ -29,7 +29,7 @@ describe("StoreTable", () => {
             ...STORE,
             id: "22222222-2222-4222-8222-222222222222",
             name: "欧洲店",
-            recordStatus: "provisioning", serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null,
+            recordStatus: "active", serviceStatus: "pending_activation", serviceStartedAt: null, serviceExpiresAt: null,
             connectionStatus: "connected",
             externalStoreId: "eu-1",
           },
@@ -56,8 +56,7 @@ describe("StoreTable", () => {
     expect(within(table).getAllByRole("listitem")).toHaveLength(4);
     expect(within(table).getAllByText("未设置")).toHaveLength(3);
     expect(within(table).getAllByText("SHEIN")).toHaveLength(4);
-    expect(within(table).getByText("已启用")).toBeInTheDocument();
-    expect(within(table).getByText("开通中")).toBeInTheDocument();
+    expect(within(table).getAllByText("已启用")).toHaveLength(2);
     expect(within(table).getByText("已停用")).toBeInTheDocument();
     expect(within(table).getByText("删除中")).toBeInTheDocument();
     expect(within(table).getByText("未连接")).toBeInTheDocument();

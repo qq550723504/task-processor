@@ -21,13 +21,7 @@ func TestStoreServiceProofAndDatesCommitOnceAndRevocationFencesPendingCommand(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := created.TransitionTo(storecenter.RecordStatusActive, "subject-create", created.UpdatedAt().Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", created, 1); err != nil {
-		t.Fatal(err)
-	}
-	intent := storecenter.ServiceChargeIntent{MemberID: access.member, Funding: "member_allocated", Execution: storecenter.ServiceExecution{OrganizationID: "org-a", StoreID: created.ID(), OperationID: uuid.NewString(), Command: storecenter.ServiceCommandActivate, Quantity: 1, MaxQuantity: 1, ExpectedStoreVersion: 2, ActorSubject: "subject-create", OccurredAt: time.Now().UTC(), RequestFingerprint: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ConnectionStatus: storecenter.ConnectionStatusConnected}}
+	intent := storecenter.ServiceChargeIntent{MemberID: access.member, Funding: "member_allocated", Execution: storecenter.ServiceExecution{OrganizationID: "org-a", StoreID: created.ID(), OperationID: uuid.NewString(), Command: storecenter.ServiceCommandActivate, Quantity: 1, MaxQuantity: 1, ExpectedStoreVersion: 1, ActorSubject: "subject-create", OccurredAt: time.Now().UTC(), RequestFingerprint: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ConnectionStatus: storecenter.ConnectionStatusConnected}}
 	if _, err := repo.AdmitServiceCharge(context.Background(), intent); err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +30,7 @@ func TestStoreServiceProofAndDatesCommitOnceAndRevocationFencesPendingCommand(t 
 		t.Fatal(err)
 	}
 	proof, err := repo.ApplyServiceCharge(context.Background(), intent, storecenter.ConnectionStatusConnected)
-	if err != nil || proof.State != "succeeded" || proof.Snapshot.StoreVersion != 3 {
+	if err != nil || proof.State != "succeeded" || proof.Snapshot.StoreVersion != 2 {
 		t.Fatalf("service effect/proof: %+v %v", proof, err)
 	}
 	firstExpiry := *proof.Snapshot.ServiceState.ExpiresAt
@@ -48,7 +42,7 @@ func TestStoreServiceProofAndDatesCommitOnceAndRevocationFencesPendingCommand(t 
 	intent.Execution.Command = storecenter.ServiceCommandRenew
 	intent.Execution.Quantity = 2
 	intent.Execution.MaxQuantity = 12
-	intent.Execution.ExpectedStoreVersion = 3
+	intent.Execution.ExpectedStoreVersion = 2
 	intent.Execution.RequestFingerprint = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	if _, err := repo.AdmitServiceCharge(context.Background(), intent); err != nil {
 		t.Fatal(err)
@@ -75,7 +69,7 @@ func TestStoreServiceProofAndDatesCommitOnceAndRevocationFencesPendingCommand(t 
 		t.Fatalf("late command revived a failed reservation: %+v %v", late, err)
 	}
 	actual, err := repo.Get(context.Background(), "org-a", created.ID())
-	if err != nil || actual.Version() != 3 || !actual.Snapshot().ServiceExpiresAt.Equal(firstExpiry) {
+	if err != nil || actual.Version() != 2 || !actual.Snapshot().ServiceExpiresAt.Equal(firstExpiry) {
 		t.Fatalf("revoked command changed dates: %+v %v", actual, err)
 	}
 }

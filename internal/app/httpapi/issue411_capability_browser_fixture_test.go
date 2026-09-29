@@ -56,14 +56,14 @@ func TestIssue411CapabilityBrowserFixture(t *testing.T) {
 		t.Cleanup(func() { require.NoError(t, pool.Close()) })
 		return db
 	}
-	source, commercial := open(cfg.SourceAccountDatabase), open(cfg.CommercialDatabase)
+	source := open(cfg.SourceAccountDatabase)
 	core := cfg.CoreConfig()
 	core.ListingKit.PlatformAdminUsers = []string{manifest.Users["viewer"].ID}
 	core.ListingKit.PlatformAdminRoles = []string{"issue411_support_admin"}
 	log := logrus.New()
 	log.SetOutput(io.Discard)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	server, err := NewCurrentApplication(ctx, source, commercial, core, log)
+	server, err := NewCurrentApplication(ctx, source, core, log)
 	cancel()
 	require.NoError(t, err)
 	listener := httptest.NewServer(server.Handler)

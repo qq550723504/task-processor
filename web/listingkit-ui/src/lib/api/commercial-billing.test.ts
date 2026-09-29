@@ -31,7 +31,7 @@ describe("commercial billing read contracts", () => {
     expect(parseCommercialWalletEntries({ ...walletEntries, extra: true })).toBeNull();
     expect(parseCommercialOrderPage(orders)?.items[0].status).toBe("FULFILLED");
     expect(parseCommercialOrderPage({ ...orders, items: [{ ...order, product_kind: "SUBSCRIPTION_PLAN" }] })).toBeNull();
-    expect(parseCommercialOrderPage({ ...orders, items: [subscriptionOrder] })?.items[0]).toMatchObject({ kind: "SUBSCRIPTION_PURCHASE", plan_code: "professional", settlement_mode: "WALLET" });
+    expect(parseCommercialOrderPage({ ...orders, items: [subscriptionOrder] })).toBeNull();
     expect(parseCommercialOrderPage({ ...orders, items: [{ ...order, total_minor: "-1" }] })).toBeNull();
     expect(parseCommercialOrderPage({ ...orders, items: [{ ...order, organization_id: "org-B" }] })).toBeNull();
     expect(parseCommercialOrderSummary(summary)?.spend_minor).toBe("3000");
@@ -44,15 +44,7 @@ describe("commercial billing read contracts", () => {
     await expect(getCommercialOrder("user-A", "org-A", "order-1")).resolves.toMatchObject({ product_kind: "AI_POINT" });
   });
 
-  it("reads bounded owner plan codes without treating them as ASCII identifiers", async () => {
-    const customized = { ...subscriptionOrder, plan_code: "定制 plan" };
-    expect(parseCommercialOrderPage({ ...orders, items: [customized] })?.items[0]).toMatchObject({ plan_code: "定制 plan" });
-    expect(parseCommercialOrderPage({ ...orders, items: [{ ...customized, plan_code: "界".repeat(21) }] })?.items[0]).toMatchObject({ plan_code: "界".repeat(21) });
-    expect(parseCommercialOrderPage({ ...orders, items: [{ ...customized, plan_code: " 定制 plan" }] })).toBeNull();
-    expect(parseCommercialOrderPage({ ...orders, items: [{ ...customized, plan_code: "界".repeat(22) }] })).toBeNull();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(customized)));
-    await expect(getCommercialOrder("user-A", "org-A", customized.order_id)).resolves.toMatchObject({ plan_code: "定制 plan" });
-  });
+  it("rejects malformed money without throwing from later refinements",()=>{for(const value of ["bad","", "-0", "9223372036854775808"]){expect(()=>parseCommercialWallet({...wallet,available_minor:value})).not.toThrow();expect(parseCommercialWallet({...wallet,available_minor:value})).toBeNull();}});
 
   it("binds every read to both the expected identity and organization", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(Response.json(wallet)).mockResolvedValueOnce(Response.json(orders)).mockResolvedValueOnce(Response.json(summary)).mockResolvedValueOnce(Response.json(walletEntries)).mockResolvedValueOnce(Response.json({ ...wallet, organization_id: "org-B" })).mockResolvedValueOnce(Response.json({ ...order, order_id: "order-other" }));

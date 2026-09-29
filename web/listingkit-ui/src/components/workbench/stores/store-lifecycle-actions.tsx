@@ -6,12 +6,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import { Button } from "@/components/ui/button";
 import type { WorkbenchStore } from "@/lib/api/workbench-stores";
-import { canCreateWorkbenchStore, canDeleteWorkbenchStore, canUpdateWorkbenchStore } from "@/lib/workbench/permissions";
+import { canDeleteWorkbenchStore, canUpdateWorkbenchStore } from "@/lib/workbench/permissions";
 import {
 	useDeleteWorkbenchStore,
 	useDisableWorkbenchStore,
 	useEnableWorkbenchStore,
-	useResumeWorkbenchStore,
 	workbenchStoreKeys,
 } from "@/lib/query/use-workbench-stores";
 
@@ -69,7 +68,6 @@ export function StoreLifecycleActions({
   return (
     <ScopedStoreLifecycleActions
       canDelete={canDelete}
-      canCreate={canCreateWorkbenchStore(context.roles)}
       canUpdate={canUpdate}
       confirmationScopeKey={confirmationScopeKey}
       context={context}
@@ -87,7 +85,6 @@ export function StoreLifecycleActions({
 
 function ScopedStoreLifecycleActions({
   canDelete,
-  canCreate,
   canUpdate,
   confirmationScopeKey,
   context,
@@ -100,7 +97,6 @@ function ScopedStoreLifecycleActions({
   onDeleted,
 }: Props & {
   canDelete: boolean;
-  canCreate: boolean;
   canUpdate: boolean;
   confirmationScopeKey: string;
   context: ReturnType<typeof useWorkbenchContext>;
@@ -112,7 +108,6 @@ function ScopedStoreLifecycleActions({
   const enable = useEnableWorkbenchStore();
   const disable = useDisableWorkbenchStore();
   const remove = useDeleteWorkbenchStore();
-  const resumeCreate = useResumeWorkbenchStore();
   const phrase = `删除 ${organizationName} 的店铺 ${store.name}`;
   const [action, setAction] = useState<ActionState>({
     kind: "idle",
@@ -136,8 +131,7 @@ function ScopedStoreLifecycleActions({
     (currentAction.kind === "delete-interrupted" && currentAction.refreshing) ||
     enable.isPending ||
     disable.isPending ||
-    remove.isPending ||
-    resumeCreate.isPending;
+    remove.isPending;
 
   const setIdle = (operationScope = scopeKey) => {
     actionRef.current = false;
@@ -225,39 +219,7 @@ function ScopedStoreLifecycleActions({
       },
     );
   };
-  const resumeCreateAction = () => {
-    if (
-      actionRef.current ||
-      isBusy ||
-      currentAction.kind !== "idle" ||
-      !canCreate
-    ) {
-      return;
-    }
-    const operationScope = scopeKey;
-    const operationOrganizationId = organizationId;
-    const baselineVersion = store.version;
-    actionRef.current = true;
-    setAction({ kind: "pending", scopeKey: operationScope });
-    resumeCreate.mutate(
-      { id: store.id, version: baselineVersion },
-      {
-        onSuccess: (next) => {
-          setIdle(operationScope);
-          if (mountedRef.current && organizationId === operationOrganizationId) {
-            onStoreUpdated?.(next);
-          }
-        },
-        onError: (error) =>
-          handleLifecycleError(
-            error,
-            baselineVersion,
-            operationScope,
-            operationOrganizationId,
-          ),
-      },
-    );
-  };
+
   const refreshAfterConflict = () => {
     if (
       !onRefreshStore ||
@@ -479,25 +441,6 @@ function ScopedStoreLifecycleActions({
             variant="outline"
           >
             刷新店铺信息
-          </Button>
-        ) : null}
-      </div>
-    );
-  }
-  if (store.recordStatus === "provisioning") {
-    return (
-      <div className="space-y-2">
-        <p className="text-sm text-muted-foreground">
-          店铺创建尚未完成，暂不能编辑或更改店铺状态。
-        </p>
-        {canCreate && currentAction.kind === "idle" ? (
-          <Button
-            disabled={isBusy}
-            onClick={resumeCreateAction}
-            size="sm"
-            variant="outline"
-          >
-            恢复创建
           </Button>
         ) : null}
       </div>

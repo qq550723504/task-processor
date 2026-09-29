@@ -188,7 +188,7 @@ func TestAuditEventRejectsCredentialShapedFields(t *testing.T) {
 	for _, typ := range []reflect.Type{
 		reflect.TypeOf(storecenter.AuditEvent{}), reflect.TypeOf(storecenter.CreateStoreRequest{}), reflect.TypeOf(storecenter.CreateStoreResult{}),
 		reflect.TypeOf(storecenter.ListStoresRequest{}), reflect.TypeOf(storecenter.GetStoreRequest{}), reflect.TypeOf(storecenter.StoreProjection{}),
-		reflect.TypeOf(storecenter.StoreQuotaProjection{}), reflect.TypeOf(storecenter.ListStoresResult{}), reflect.TypeOf(storecenter.UpdateStoreRequest{}),
+		reflect.TypeOf(storecenter.ListStoresResult{}), reflect.TypeOf(storecenter.UpdateStoreRequest{}),
 		reflect.TypeOf(storecenter.StoreLifecycleRequest{}), reflect.TypeOf(storecenter.StoreMutationResult{}), reflect.TypeOf(storecenter.DeleteStoreRequest{}),
 		reflect.TypeOf(storecenter.DeleteStoreResult{}), reflect.TypeOf(storecenter.ConnectionStatusInput{}),
 	} {
@@ -221,7 +221,7 @@ func TestAuditRepositoryAcceptsOnlyTaskFiveLifecycleActions(t *testing.T) {
 	}
 	for _, action := range []storecenter.AuditAction{
 		storecenter.AuditActionStoreUpdateStarted, storecenter.AuditActionStoreUpdated, storecenter.AuditActionStoreUpdateNoOp, storecenter.AuditActionStoreLifecycleStarted, storecenter.AuditActionStoreDisabled, storecenter.AuditActionStoreEnabled,
-		storecenter.AuditActionDeleteStarted, storecenter.AuditActionStoreMarkedDeleting, storecenter.AuditActionQuotaDeallocated, storecenter.AuditActionDeleteComplete,
+		storecenter.AuditActionDeleteStarted, storecenter.AuditActionDeleteComplete,
 	} {
 		event := taskFiveAuditEvent(action)
 		if _, _, err := repository.Record(context.Background(), event); err != nil {
@@ -258,9 +258,7 @@ func TestAuditRepositoryRejectsInvalidTaskFiveActionCombinations(t *testing.T) {
 		{"disable requires active origin", storecenter.AuditActionStoreDisabled, func(event *storecenter.AuditEvent) { event.PreviousState = storecenter.RecordStatusDisabled }},
 		{"enable requires disabled origin", storecenter.AuditActionStoreEnabled, func(event *storecenter.AuditEvent) { event.PreviousState = storecenter.RecordStatusActive }},
 		{"delete intent cannot claim success", storecenter.AuditActionDeleteStarted, func(event *storecenter.AuditEvent) { event.Outcome = storecenter.AuditOutcomeSucceeded }},
-		{"marked deleting must be success", storecenter.AuditActionStoreMarkedDeleting, func(event *storecenter.AuditEvent) { event.Outcome = storecenter.AuditOutcomeUnknown }},
-		{"deallocation changes quota only", storecenter.AuditActionQuotaDeallocated, func(event *storecenter.AuditEvent) { event.SafeFieldNames = []string{"record_status"} }},
-		{"complete begins from deleting", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.PreviousState = storecenter.RecordStatusActive }},
+		{"complete begins from mutable record", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.PreviousState = storecenter.RecordStatusDeleting }},
 		{"task five events require positive version", storecenter.AuditActionDeleteComplete, func(event *storecenter.AuditEvent) { event.StoreVersion = 0 }},
 	}
 	for _, test := range tests {
@@ -275,7 +273,7 @@ func TestAuditRepositoryRejectsInvalidTaskFiveActionCombinations(t *testing.T) {
 }
 
 func safeAuditEvent(organizationID, storeID, allocationID, requestKey string, occurredAt time.Time) storecenter.AuditEvent {
-	return storecenter.AuditEvent{EventID: uuid.NewString(), OrganizationID: organizationID, StoreID: storeID, AllocationID: allocationID, RequestKey: requestKey, Action: storecenter.AuditActionQuotaReserved, Outcome: storecenter.AuditOutcomeSucceeded, ActorSubject: "actor-1", SafeFieldNames: []string{"name", "record_status", "name"}, NewState: storecenter.RecordStatusProvisioning, OccurredAt: occurredAt}
+	return storecenter.AuditEvent{EventID: uuid.NewString(), OrganizationID: organizationID, StoreID: storeID, RequestKey: requestKey, Action: storecenter.AuditActionStoreCreated, Outcome: storecenter.AuditOutcomeSucceeded, ActorSubject: "actor-1", SafeFieldNames: []string{"name", "record_status", "name"}, NewState: storecenter.RecordStatusActive, StoreVersion: 1, OccurredAt: occurredAt}
 }
 
 func taskFiveAuditEvent(action storecenter.AuditAction) storecenter.AuditEvent {
@@ -299,12 +297,8 @@ func taskFiveAuditEvent(action storecenter.AuditAction) storecenter.AuditEvent {
 		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"record_status"}, storecenter.RecordStatusDisabled, storecenter.RecordStatusActive
 	case storecenter.AuditActionDeleteStarted:
 		event.Outcome, event.SafeFieldNames, event.PreviousState, event.NewState = storecenter.AuditOutcomeUnknown, []string{"record_status"}, storecenter.RecordStatusActive, storecenter.RecordStatusDeleting
-	case storecenter.AuditActionStoreMarkedDeleting:
-		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"record_status"}, storecenter.RecordStatusActive, storecenter.RecordStatusDeleting
-	case storecenter.AuditActionQuotaDeallocated:
-		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"quota_allocation_id"}, storecenter.RecordStatusDeleting, storecenter.RecordStatusDeleting
 	case storecenter.AuditActionDeleteComplete:
-		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"record_status"}, storecenter.RecordStatusDeleting, ""
+		event.SafeFieldNames, event.PreviousState, event.NewState = []string{"record_status"}, storecenter.RecordStatusActive, storecenter.RecordStatusDeleted
 	}
 	return event
 }

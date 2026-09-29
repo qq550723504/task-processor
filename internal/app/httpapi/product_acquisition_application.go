@@ -51,11 +51,11 @@ const acquisitionBodyReadTimeout = 5 * time.Second
 
 // NewCurrentApplicationWithAcquisition adds only the explicitly enabled current
 // Product module. All three pools remain caller-owned; construction is read-only.
-func NewCurrentApplicationWithAcquisition(ctx context.Context, sourceAccountDB, commercialDB, productDB, resourceDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {
+func NewCurrentApplicationWithAcquisition(ctx context.Context, sourceAccountDB, productDB, resourceDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {
 	if ctx == nil || productDB == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
-	return NewCurrentApplicationWithOptions(ctx, sourceAccountDB, commercialDB, cfg, logger, WithProductAcquisition(productDB), WithCommercialOwnerDatabase(resourceDB))
+	return NewCurrentApplicationWithOptions(ctx, sourceAccountDB, cfg, logger, WithProductAcquisition(productDB), WithCommercialOwnerDatabase(resourceDB))
 }
 
 // Browser construction stays in the existing admitted Product composition owner.
@@ -78,11 +78,11 @@ func buildBrowserCaptureModule(ctx context.Context, db *gorm.DB, dependencies ro
 
 // NewCurrentApplicationWithAcquisitionAndReferrals composes the two explicitly
 // enabled current modules while keeping all caller-owned pools independent.
-func NewCurrentApplicationWithAcquisitionAndReferrals(ctx context.Context, sourceAccountDB, commercialDB, productDB, referralDB, resourceDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {
+func NewCurrentApplicationWithAcquisitionAndReferrals(ctx context.Context, sourceAccountDB, productDB, referralDB, resourceDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {
 	if ctx == nil || productDB == nil || referralDB == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
-	return NewCurrentApplicationWithOptions(ctx, sourceAccountDB, commercialDB, cfg, logger, WithProductAcquisition(productDB), WithReferrals(referralDB), WithCommercialOwnerDatabase(resourceDB))
+	return NewCurrentApplicationWithOptions(ctx, sourceAccountDB, cfg, logger, WithProductAcquisition(productDB), WithReferrals(referralDB), WithCommercialOwnerDatabase(resourceDB))
 }
 
 type productAcquisitionService interface {

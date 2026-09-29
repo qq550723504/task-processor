@@ -35,7 +35,6 @@ const (
 type storeServiceStub struct {
 	listResult     storecenter.ListStoresResult
 	createResult   storecenter.CreateStoreResult
-	resumeResult   storecenter.CreateStoreResult
 	getResult      storecenter.StoreProjection
 	mutationResult storecenter.StoreMutationResult
 	deleteResult   storecenter.DeleteStoreResult
@@ -43,7 +42,6 @@ type storeServiceStub struct {
 	calls          []string
 	listRequest    storecenter.ListStoresRequest
 	createRequest  storecenter.CreateStoreRequest
-	resumeRequest  storecenter.ResumeCreateStoreRequest
 	getRequest     storecenter.GetStoreRequest
 	updateRequest  storecenter.UpdateStoreRequest
 	disableRequest storecenter.StoreLifecycleRequest
@@ -60,11 +58,6 @@ func (s *storeServiceStub) Create(_ context.Context, request storecenter.CreateS
 	s.calls = append(s.calls, "create")
 	s.createRequest = request
 	return s.createResult, s.err
-}
-func (s *storeServiceStub) ResumeCreate(_ context.Context, request storecenter.ResumeCreateStoreRequest) (storecenter.CreateStoreResult, error) {
-	s.calls = append(s.calls, "resume-create")
-	s.resumeRequest = request
-	return s.resumeResult, s.err
 }
 func (s *storeServiceStub) Get(_ context.Context, request storecenter.GetStoreRequest) (storecenter.StoreProjection, error) {
 	s.calls = append(s.calls, "get")
@@ -104,14 +97,13 @@ func TestModuleRegistersExactScopedStoreRoutes(t *testing.T) {
 	registry := kernelmodule.NewRegistry()
 	require.NoError(t, module.Register(registry))
 	routes := registry.Routes()
-	require.Len(t, routes, 8)
+	require.Len(t, routes, 7)
 	want := []struct {
 		method, path, permission string
 		access                   httproute.OrganizationAccessPolicy
 	}{
 		{http.MethodGet, "/api/v1/workbench/stores", authz.PermissionWorkbenchStoreRead, httproute.OrganizationAccessPolicyLiveWrite},
 		{http.MethodPost, "/api/v1/workbench/stores", authz.PermissionWorkbenchStoreCreate, httproute.OrganizationAccessPolicyLiveWrite},
-		{http.MethodPost, "/api/v1/workbench/stores/:store_id/resume", authz.PermissionWorkbenchStoreCreate, httproute.OrganizationAccessPolicyLiveWrite},
 		{http.MethodGet, "/api/v1/workbench/stores/:store_id", authz.PermissionWorkbenchStoreRead, httproute.OrganizationAccessPolicyLiveWrite},
 		{http.MethodPut, "/api/v1/workbench/stores/:store_id", authz.PermissionWorkbenchStoreUpdate, httproute.OrganizationAccessPolicyLiveWrite},
 		{http.MethodPost, "/api/v1/workbench/stores/:store_id/disable", authz.PermissionWorkbenchStoreLifecycle, httproute.OrganizationAccessPolicyLiveWrite},
@@ -178,7 +170,6 @@ func TestHandlerDerivesEveryServiceRequestOnlyFromEffectiveOrganizationIdentity(
 	}{
 		{http.MethodGet, "/api/v1/workbench/stores?page=2&pageSize=5&platform=shein&status=active", "", nil},
 		{http.MethodPost, "/api/v1/workbench/stores", `{"name":" Store ","platform":"shein","region":" SG ","externalStoreId":" ext "}`, map[string][]string{"Idempotency-Key": {testCreateKey}}},
-		{http.MethodPost, "/api/v1/workbench/stores/" + testStoreID + "/resume", "", map[string][]string{"If-Match": {`"1"`}}},
 		{http.MethodGet, "/api/v1/workbench/stores/" + testStoreID, "", nil},
 		{http.MethodPut, "/api/v1/workbench/stores/" + testStoreID, `{"name":" Renamed ","region":" US "}`, map[string][]string{"If-Match": {`"2"`}}},
 		{http.MethodPost, "/api/v1/workbench/stores/" + testStoreID + "/disable", "", map[string][]string{"If-Match": {`"2"`}}},
@@ -192,7 +183,6 @@ func TestHandlerDerivesEveryServiceRequestOnlyFromEffectiveOrganizationIdentity(
 	require.Equal(t, "org-effective", service.listRequest.OrganizationID)
 	require.Equal(t, storecenter.ListStoresRequest{OrganizationID: "org-effective", Page: 2, PageSize: 5, Platform: "shein", Status: storecenter.RecordStatusActive}, service.listRequest)
 	require.Equal(t, "org-effective", service.createRequest.OrganizationID)
-	require.Equal(t, storecenter.ResumeCreateStoreRequest{OrganizationID: "org-effective", ActorSubject: "user-1", StoreID: testStoreID, ExpectedVersion: 1}, service.resumeRequest)
 	require.Equal(t, "user-1", service.createRequest.ActorSubject)
 	require.Equal(t, "Store", service.createRequest.Name)
 	require.Equal(t, "SG", service.createRequest.Region)
@@ -375,7 +365,7 @@ func TestHandlerReturnsExactSuccessDTOsAndReplayStatuses(t *testing.T) {
 		status                   int
 		want                     string
 	}{
-		{name: "list", method: http.MethodGet, path: "/api/v1/workbench/stores", status: 200, want: `{"items":[` + wantStore + `],"quota":{"used":1,"reserved":0,"limit":3,"allowed":true,"reason":""},"pagination":{"page":1,"pageSize":20,"total":1}}`},
+		{name: "list", method: http.MethodGet, path: "/api/v1/workbench/stores", status: 200, want: `{"items":[` + wantStore + `],"pagination":{"page":1,"pageSize":20,"total":1}}`},
 		{name: "create replay", method: http.MethodPost, path: "/api/v1/workbench/stores", body: `{"name":"Store","platform":"shein","region":"SG","externalStoreId":"external-1"}`, headers: map[string][]string{"Idempotency-Key": {testCreateKey}}, status: 201, want: wantStore},
 		{name: "get", method: http.MethodGet, path: "/api/v1/workbench/stores/" + testStoreID, status: 200, want: wantStore},
 		{name: "update", method: http.MethodPut, path: "/api/v1/workbench/stores/" + testStoreID, body: `{"name":"Store","region":"SG"}`, headers: map[string][]string{"If-Match": {`"2"`}}, status: 200, want: wantStore},
@@ -396,7 +386,7 @@ func TestHandlerSerializesStoreTimestampsAsUTC(t *testing.T) {
 	location := time.FixedZone("acceptance-local", 8*60*60)
 	store, err := storecenter.RehydrateStore(storecenter.StoreSnapshot{
 		ID: testStoreID, OrganizationID: "org-effective", Name: "Store", Platform: storecenter.PlatformShein, Region: "SG", ExternalStoreID: "external-1",
-		RecordStatus: storecenter.RecordStatusActive, ServiceStatus: storecenter.ServiceStatusPendingActivation, ConnectionRef: "connection-private", QuotaAllocationID: testAllocationID, Version: 2,
+		RecordStatus: storecenter.RecordStatusActive, ServiceStatus: storecenter.ServiceStatusPendingActivation, ConnectionRef: "connection-private", Version: 2,
 		CreatedBy: "creator-private", UpdatedBy: "updater-private", CreatedAt: time.Date(2026, 8, 30, 9, 2, 3, 0, location), UpdatedAt: time.Date(2026, 8, 30, 10, 3, 4, 0, location), CreateIdempotencyKey: testCreateKey,
 	})
 	require.NoError(t, err)
@@ -440,13 +430,12 @@ func TestHandlerDefaultsListPaginationAndReturnsNonNullItems(t *testing.T) {
 	router := mountedRouter(t, mustHandler(t, service))
 	response := serve(t, router, validIdentity(), http.MethodGet, "/api/v1/workbench/stores", "", nil)
 	require.Equal(t, http.StatusOK, response.Code)
-	require.JSONEq(t, `{"items":[],"quota":{"used":1,"reserved":0,"limit":3,"allowed":true,"reason":""},"pagination":{"page":1,"pageSize":20,"total":1}}`, response.Body.String())
+	require.JSONEq(t, `{"items":[],"pagination":{"page":1,"pageSize":20,"total":1}}`, response.Body.String())
 	require.Equal(t, 1, service.listRequest.Page)
 	require.Equal(t, 20, service.listRequest.PageSize)
 }
 
 func TestHandlerRejectsCorruptListProducerContractWithoutLeakingReason(t *testing.T) {
-	zero, negative := int64(0), int64(-1)
 	tests := []struct {
 		name   string
 		mutate func(*storecenter.ListStoresResult)
@@ -457,51 +446,6 @@ func TestHandlerRejectsCorruptListProducerContractWithoutLeakingReason(t *testin
 			result.Items = append(result.Items, result.Items...)
 			result.PageSize = 1
 			result.Total = 2
-		}},
-		{name: "used is negative", mutate: func(result *storecenter.ListStoresResult) { result.Quota.Used = -1 }},
-		{name: "reserved is negative", mutate: func(result *storecenter.ListStoresResult) { result.Quota.Reserved = -1 }},
-		{name: "nil limit claims allowed", mutate: func(result *storecenter.ListStoresResult) {
-			result.Quota.Limit = nil
-			result.Quota.Allowed = true
-			result.Quota.Reason = "subscription_required"
-		}},
-		{name: "nil limit omits subscription reason", mutate: func(result *storecenter.ListStoresResult) {
-			result.Quota.Limit = nil
-			result.Quota.Allowed = false
-			result.Quota.Reason = ""
-		}},
-		{name: "nil limit has arbitrary secret reason", mutate: func(result *storecenter.ListStoresResult) {
-			result.Quota.Limit = nil
-			result.Quota.Allowed = false
-			result.Quota.Reason = "provider-token-secret"
-		}},
-		{name: "zero limit", mutate: func(result *storecenter.ListStoresResult) { result.Quota.Limit = &zero }},
-		{name: "negative limit", mutate: func(result *storecenter.ListStoresResult) { result.Quota.Limit = &negative }},
-		{name: "available quota claims disallowed", mutate: func(result *storecenter.ListStoresResult) {
-			result.Quota.Allowed = false
-			result.Quota.Reason = "store_limit_reached"
-		}},
-		{name: "used limit claims allowed", mutate: func(result *storecenter.ListStoresResult) {
-			result.Quota.Used = 3
-			result.Quota.Allowed = true
-			result.Quota.Reason = ""
-		}},
-		{name: "reserved capacity claims allowed", mutate: func(result *storecenter.ListStoresResult) {
-			result.Quota.Used = 2
-			result.Quota.Reserved = 1
-			result.Quota.Allowed = true
-			result.Quota.Reason = ""
-		}},
-		{name: "allowed quota has reason", mutate: func(result *storecenter.ListStoresResult) { result.Quota.Reason = "store_limit_reached" }},
-		{name: "disallowed quota omits reason", mutate: func(result *storecenter.ListStoresResult) {
-			result.Quota.Used = 3
-			result.Quota.Allowed = false
-			result.Quota.Reason = ""
-		}},
-		{name: "disallowed quota has arbitrary secret reason", mutate: func(result *storecenter.ListStoresResult) {
-			result.Quota.Used = 3
-			result.Quota.Allowed = false
-			result.Quota.Reason = "sql-password-secret"
 		}},
 	}
 	for _, tt := range tests {
@@ -520,33 +464,6 @@ func TestHandlerRejectsCorruptListProducerContractWithoutLeakingReason(t *testin
 		})
 	}
 }
-
-func TestHandlerPreservesEveryValidQuotaProjection(t *testing.T) {
-	tests := []struct {
-		name  string
-		quota storecenter.StoreQuotaProjection
-		want  string
-	}{
-		{name: "subscription required", quota: storecenter.StoreQuotaProjection{Allowed: false, Reason: "subscription_required"}, want: `{"used":0,"reserved":0,"limit":null,"allowed":false,"reason":"subscription_required"}`},
-		{name: "capacity available", quota: storecenter.StoreQuotaProjection{Used: 1, Reserved: 0, Limit: int64Pointer(3), Allowed: true}, want: `{"used":1,"reserved":0,"limit":3,"allowed":true,"reason":""}`},
-		{name: "capacity reached", quota: storecenter.StoreQuotaProjection{Used: 2, Reserved: 1, Limit: int64Pointer(3), Allowed: false, Reason: "store_limit_reached"}, want: `{"used":2,"reserved":1,"limit":3,"allowed":false,"reason":"store_limit_reached"}`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			service := newStoreServiceStub(t)
-			service.listResult.Quota = tt.quota
-			response := serve(t, mountedRouter(t, mustHandler(t, service)), validIdentity(), http.MethodGet, "/api/v1/workbench/stores", "", nil)
-			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-			var payload struct {
-				Quota json.RawMessage `json:"quota"`
-			}
-			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload))
-			require.JSONEq(t, tt.want, string(payload.Quota))
-		})
-	}
-}
-
-func int64Pointer(value int64) *int64 { return &value }
 
 func TestHandlerFailsClosedOnCrossOrganizationOrWrongStoreProducerOutput(t *testing.T) {
 	tests := []struct {
@@ -601,11 +518,9 @@ func TestNewHandlerRejectsNilAndTypedNilServices(t *testing.T) {
 func newStoreServiceStub(t *testing.T) *storeServiceStub {
 	t.Helper()
 	projection := testProjection(t)
-	limit := int64(3)
 	return &storeServiceStub{
-		listResult:     storecenter.ListStoresResult{Items: []storecenter.StoreProjection{projection}, Total: 1, Page: 1, PageSize: 20, Quota: storecenter.StoreQuotaProjection{Used: 1, Limit: &limit, Allowed: true}},
+		listResult:     storecenter.ListStoresResult{Items: []storecenter.StoreProjection{projection}, Total: 1, Page: 1, PageSize: 20},
 		createResult:   storecenter.CreateStoreResult{Store: &projection.Store, Replayed: true},
-		resumeResult:   storecenter.CreateStoreResult{Store: &projection.Store, Replayed: true},
 		getResult:      projection,
 		mutationResult: storecenter.StoreMutationResult{Store: projection, Replayed: true},
 		deleteResult:   storecenter.DeleteStoreResult{StoreID: testStoreID, Version: 3, Replayed: true},
@@ -621,7 +536,7 @@ func projectionFor(t *testing.T, organizationID, storeID string) storecenter.Sto
 	t.Helper()
 	store, err := storecenter.RehydrateStore(storecenter.StoreSnapshot{
 		ID: storeID, OrganizationID: organizationID, Name: "Store", Platform: storecenter.PlatformShein, Region: "SG", ExternalStoreID: "external-1",
-		RecordStatus: storecenter.RecordStatusActive, ServiceStatus: storecenter.ServiceStatusPendingActivation, ConnectionRef: "connection-private", QuotaAllocationID: testAllocationID, Version: 2,
+		RecordStatus: storecenter.RecordStatusActive, ServiceStatus: storecenter.ServiceStatusPendingActivation, ConnectionRef: "connection-private", Version: 2,
 		CreatedBy: "creator-private", UpdatedBy: "updater-private", CreatedAt: time.Date(2026, 8, 30, 1, 2, 3, 0, time.UTC), UpdatedAt: time.Date(2026, 8, 30, 2, 3, 4, 0, time.UTC), CreateIdempotencyKey: testCreateKey,
 	})
 	require.NoError(t, err)
@@ -697,7 +612,6 @@ func TestStoreResponseTypesHaveOnlyExactSafeJSONFields(t *testing.T) {
 	}{
 		{StoreResponse{}, []string{"id", "name", "platform", "region", "externalStoreId", "recordStatus", "serviceStatus", "serviceStartedAt", "serviceExpiresAt", "connectionStatus", "version", "createdAt", "updatedAt"}},
 		{DeleteStoreResponse{}, []string{"id", "deleted", "version"}},
-		{QuotaResponse{}, []string{"used", "reserved", "limit", "allowed", "reason"}},
 		{PaginationResponse{}, []string{"page", "pageSize", "total"}},
 	}
 	for _, tt := range tests {

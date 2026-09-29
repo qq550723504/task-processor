@@ -45,13 +45,13 @@ func TestServiceLifecycleRoutesRemainAbsentUntilLifecycleHandlerIsExplicitlySupp
 	baseHandler := mustHandler(t, newStoreServiceStub(t))
 	baseRegistry := kernelmodule.NewRegistry()
 	require.NoError(t, NewModule(baseHandler).Register(baseRegistry))
-	require.Len(t, baseRegistry.Routes(), 8)
+	require.Len(t, baseRegistry.Routes(), 7)
 
 	handler, err := NewHandlerWithServiceLifecycle(newStoreServiceStub(t), &lifecycleServiceStub{})
 	require.NoError(t, err)
 	registry := kernelmodule.NewRegistry()
 	require.NoError(t, NewModule(handler).Register(registry))
-	require.Len(t, registry.Routes(), 11)
+	require.Len(t, registry.Routes(), 10)
 
 	want := []struct {
 		path       string
@@ -63,7 +63,7 @@ func TestServiceLifecycleRoutesRemainAbsentUntilLifecycleHandlerIsExplicitlySupp
 		{path: "/api/v1/workbench/stores/:store_id/reactivate", permission: authz.PermissionWorkbenchStoreLifecycle, access: httproute.OrganizationAccessPolicyLiveWrite},
 	}
 	for index, expected := range want {
-		route := registry.Routes()[8+index]
+		route := registry.Routes()[7+index]
 		require.Equal(t, http.MethodPost, route.Method)
 		require.Equal(t, expected.path, route.Path)
 		require.Equal(t, expected.permission, route.Permission)
@@ -169,7 +169,7 @@ func TestServiceLifecycleHandlerRejectsMismatchedApplicationResult(t *testing.T)
 			snapshot.ServiceState = storecenter.StoreServiceState{RecordStatus: storecenter.RecordStatusActive, ServiceStatus: storecenter.ServiceStatusPendingActivation}
 		}},
 		{name: "provisioning postcondition", mutate: func(snapshot *storecenter.ServiceOperationSnapshot) {
-			snapshot.ServiceState = storecenter.StoreServiceState{RecordStatus: storecenter.RecordStatusProvisioning}
+			snapshot.ServiceState = storecenter.StoreServiceState{RecordStatus: storecenter.RecordStatus("provisioning")}
 		}},
 		{name: "event", mutate: func(snapshot *storecenter.ServiceOperationSnapshot) { snapshot.EventID = "not-a-uuid" }},
 	}

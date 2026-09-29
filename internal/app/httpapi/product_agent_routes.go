@@ -35,7 +35,10 @@ func isProductAgentHTTPPath(path string) bool {
 	return len(parts) == 3 || len(parts) == 4 && acquisitionHTTPUUID(parts[3]) || len(parts) == 5 && acquisitionHTTPUUID(parts[3]) && (parts[4] == "resume" || parts[4] == "review")
 }
 
-type productAgentModule struct{ routes []httproute.Descriptor }
+type productAgentModule struct {
+	routes        []httproute.Descriptor
+	recoverPoints func(context.Context) (int, error)
+}
 
 func (productAgentModule) Name() string                { return "product-agent" }
 func (productAgentModule) Enabled(*config.Config) bool { return true }
@@ -53,7 +56,7 @@ func buildProductAgentModule(ctx context.Context, productDB *gorm.DB, deps route
 	if err != nil {
 		return nil, err
 	}
-	a, err := buildProductAgentApplication(agentCfg.ReviewDB, receipts, deps.organizationResolver, auth, agentCfg)
+	a, err := buildProductAgentApplication(ctx, agentCfg.ReviewDB, receipts, deps.organizationResolver, auth, agentCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +72,7 @@ func buildProductAgentModule(ctx context.Context, productDB *gorm.DB, deps route
 		}
 		routes = append(routes, route)
 	}
-	return productAgentModule{routes: routes}, nil
+	return productAgentModule{routes: routes, recoverPoints: a.points.RecoverDue}, nil
 }
 
 type productAgentStepDTO struct {

@@ -14,8 +14,8 @@ import (
 
 func acquisitionRuntimeConfig() *Config {
 	return &Config{SchemaVersion: 1, Listen: ListenConfig{Host: "127.0.0.1", Port: 18081}, Identity: IdentityConfig{IssuerURL: "http://127.0.0.1:18080", AuthorizationAPIURL: "http://127.0.0.1:18080", ClientID: "fixture-client", ClientSecret: "fixture-secret", ProjectID: "fixture-project"},
-		SourceAccountDatabase:      DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "source_account_runtime", Password: "fixture-password", Database: "source_account", MaxConnections: 2},
-		CommercialDatabase:         DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "commercial_runtime", Password: "fixture-password", Database: "commercial", MaxConnections: 2},
+		SourceAccountDatabase: DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "source_account_runtime", Password: "fixture-password", Database: "source_account", MaxConnections: 2},
+
 		ProductAcquisitionDatabase: &DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "source_acquisition_runtime", Password: "fixture-password", Database: "product", MaxConnections: 8},
 		CommercialOwnerDatabase:    &DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "commercial_owner_runtime", Password: "fixture-password", Database: "commercial", MaxConnections: 2}}
 }
@@ -27,7 +27,7 @@ func TestAcquisitionRuntimeConfigRequiresDedicatedBoundedRole(t *testing.T) {
 		func(c *Config) { c.ProductAcquisitionDatabase.MaxConnections = 9 },
 		func(c *Config) { c.ProductAcquisitionDatabase.User = "source_account_runtime" },
 		func(c *Config) { c.ProductAcquisitionDatabase.Database = c.SourceAccountDatabase.Database },
-		func(c *Config) { c.ProductAcquisitionDatabase.Database = c.CommercialDatabase.Database },
+		func(c *Config) { c.ProductAcquisitionDatabase.Database = c.SourceAccountDatabase.Database },
 	} {
 		cfg := acquisitionRuntimeConfig()
 		mutate(cfg)
@@ -44,25 +44,24 @@ func TestAcquisitionRuntimeConfigRequiresCanonicalResourceOwner(t *testing.T) {
 
 func TestAcquisitionRuntimeOwnsThirdPoolWithoutLegacyFallback(t *testing.T) {
 	cfg := acquisitionRuntimeConfig()
-	source, commercial, product, owner := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
+	source, product, owner := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
 	var closed []*gorm.DB
 	newCalled, oldCalled := false, false
 	dependencies := Dependencies{
-		IdentityPreflight:   func(context.Context, IdentityConfig) error { return nil },
-		OpenSourceAccount:   func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
-		OpenCommercial:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
+		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
+		OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+
 		OpenCommercialOwner: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return owner, nil },
 		OpenProductAcquisition: func(_ context.Context, db DatabaseConfig) (*gorm.DB, error) {
 			require.Equal(t, *cfg.ProductAcquisitionDatabase, db)
 			return product, nil
 		},
-		NewApplication: func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error) {
+		NewApplication: func(context.Context, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error) {
 			oldCalled = true
 			return nil, errors.New("unexpected base constructor")
 		},
-		NewApplicationWithFeatures: func(_ context.Context, a, b *gorm.DB, f ApplicationFeatures, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+		NewApplicationWithFeatures: func(_ context.Context, a *gorm.DB, f ApplicationFeatures, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
 			require.Same(t, source, a)
-			require.Same(t, commercial, b)
 			require.Same(t, product, f.ProductAcquisitionDB)
 			require.Same(t, owner, f.CommercialOwnerDB)
 			newCalled = true
@@ -74,7 +73,7 @@ func TestAcquisitionRuntimeOwnsThirdPoolWithoutLegacyFallback(t *testing.T) {
 	require.ErrorContains(t, err, "stop acquisition before listener")
 	require.True(t, newCalled)
 	require.False(t, oldCalled)
-	require.Equal(t, []*gorm.DB{product, owner, commercial, source}, closed)
+	require.Equal(t, []*gorm.DB{product, owner, source}, closed)
 	dependencies.OpenProductAcquisition = nil
 	err = Run(context.Background(), cfg, logrus.New(), dependencies)
 	require.Error(t, err)
@@ -85,20 +84,19 @@ func TestRuntimeComposesMembershipAndAcquisitionThroughOneFeatureBoundary(t *tes
 	cfg := acquisitionRuntimeConfig()
 	cfg.Membership = &MembershipConfig{ProviderOrigin: cfg.Identity.IssuerURL, ReadToken: "directory-read", WriteToken: "membership-write", Database: DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "organization_membership_runtime", Password: "fixture-password", Database: "membership", MaxConnections: 2}}
 	require.NoError(t, cfg.validate())
-	source, commercial, product, member, owner := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
+	source, product, member, owner := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
 	var closed []*gorm.DB
 	stop := errors.New("stop after feature composition")
 	err := Run(context.Background(), cfg, logrus.New(), Dependencies{
-		IdentityPreflight:      func(context.Context, IdentityConfig) error { return nil },
-		OpenSourceAccount:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
-		OpenCommercial:         func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
+		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
+		OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+
 		OpenCommercialOwner:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return owner, nil },
 		OpenProductAcquisition: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return product, nil },
 		OpenMembership:         func(context.Context, DatabaseConfig) (*gorm.DB, error) { return member, nil },
 		CloseDatabase:          func(db *gorm.DB) error { closed = append(closed, db); return nil },
-		NewApplicationWithFeatures: func(_ context.Context, gotSource, gotCommercial *gorm.DB, features ApplicationFeatures, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+		NewApplicationWithFeatures: func(_ context.Context, gotSource *gorm.DB, features ApplicationFeatures, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
 			require.Same(t, source, gotSource)
-			require.Same(t, commercial, gotCommercial)
 			require.Same(t, product, features.ProductAcquisitionDB)
 			require.Same(t, member, features.MembershipDB)
 			require.Same(t, owner, features.CommercialOwnerDB)
@@ -107,5 +105,5 @@ func TestRuntimeComposesMembershipAndAcquisitionThroughOneFeatureBoundary(t *tes
 		},
 	})
 	require.ErrorIs(t, err, stop)
-	require.Equal(t, []*gorm.DB{member, product, owner, commercial, source}, closed)
+	require.Equal(t, []*gorm.DB{member, product, owner, source}, closed)
 }

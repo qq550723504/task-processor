@@ -224,7 +224,7 @@ func TestCommercialReadVerifiedPublicSchemaPostgres(t *testing.T) {
 		config := currentapplication.DatabaseConfig{Host: connection.Host, Port: connection.Port, User: "commercial_runtime", Password: "synthetic-run1-password", Database: connection.Database, MaxConnections: 4}
 		source := config
 		source.User = "source_account_runtime"
-		run1PermissionBinary(t, owner, &currentapplication.Config{SchemaVersion: 1, Listen: currentapplication.ListenConfig{Host: "127.0.0.1", Port: 18443}, Identity: currentapplication.IdentityConfig{IssuerURL: "http://127.0.0.1:18080", AuthorizationAPIURL: "http://127.0.0.1:18080", ClientID: "run1", ClientSecret: "synthetic-identity", ProjectID: "run1"}, CommercialDatabase: config, SourceAccountDatabase: source})
+		run1PermissionBinary(t, owner, &currentapplication.Config{SchemaVersion: 1, Listen: currentapplication.ListenConfig{Host: "127.0.0.1", Port: 18443}, Identity: currentapplication.IdentityConfig{IssuerURL: "http://127.0.0.1:18080", AuthorizationAPIURL: "http://127.0.0.1:18080", ClientID: "run1", ClientSecret: "synthetic-identity", ProjectID: "run1"}, SourceAccountDatabase: source})
 	})
 	require.Equal(t, beforePublic, run1PermissionFacts(t, owner, publicTables))
 	require.Equal(t, beforeShadow, snapshot(), "reads or preflight changed shadow facts")

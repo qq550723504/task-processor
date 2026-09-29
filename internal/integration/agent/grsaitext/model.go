@@ -22,9 +22,23 @@ import (
 // metering and upper bound. Upstream model documentation alone is insufficient.
 // Prices are versioned budget estimates in currency micros per MILLION tokens.
 type AgentTextPolicy struct {
+	PointPricing                                                       *aicapability.ModelPointTariff `json:"pointPricing,omitempty"`
 	ClientName, PolicyVersion, PricingVersion, BoundEvidence, Currency string
 	InputMicrosPerMillion, OutputMicrosPerMillion                      int64
 	AdmittedRoute                                                      openai.EffectiveClientRoute
+}
+
+// Omitted pricing leaves this capability unavailable until an operator prices it.
+// Partial or overflowing pricing is a configuration error, never a free call.
+func (p AgentTextPolicy) ValidatePointPricing() error {
+	if p.PointPricing == nil {
+		return nil
+	}
+	if !p.PointPricing.Valid() {
+		return agent.ErrUnavailable
+	}
+	_, err := p.PointPricing.Points(agentInputWindow, agentOutputWindow)
+	return err
 }
 
 type AgentInvocationLedger interface {
@@ -49,6 +63,13 @@ func NewAgentTextModel(manager *openai.Manager, ledger AgentInvocationLedger, po
 	// credential fallback. Unit tests also use the real scoped resolver.
 	if !manager.UsesOrganizationCredentials() {
 		return nil, agent.ErrUnavailable
+	}
+	if policy.PointPricing != nil {
+		if policy.ValidatePointPricing() != nil {
+			return nil, agent.ErrUnavailable
+		}
+		frozen := *policy.PointPricing
+		policy.PointPricing = &frozen
 	}
 	return &AgentTextModel{manager: manager, ledger: ledger, policy: policy, tools: append([]commercetool.ToolRef(nil), tools...), freshIdentity: freshIdentity}, nil
 }
@@ -75,6 +96,12 @@ func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (prep
 	var p preparedAgentText
 	if m == nil || !m.manager.UsesOrganizationCredentials() || ctx == nil || ctx.Err() != nil || !in.Binding.Valid() || in.PolicyVersion != m.policy.PolicyVersion || !agent.ValidID(in.AgentRunID) || !agent.ValidID(in.PromptVersion) {
 		return p, agent.ErrInvalid
+	}
+	if m.policy.PointPricing == nil || !m.policy.PointPricing.Valid() {
+		return p, agent.ErrUnavailable
+	}
+	if _, err := m.policy.PointPricing.Points(agentInputWindow, agentOutputWindow); err != nil {
+		return p, agent.ErrUnavailable
 	}
 	for _, s := range []string{m.policy.ClientName, m.policy.PolicyVersion, m.policy.PricingVersion, m.policy.BoundEvidence} {
 		if !agent.ValidID(s) {
@@ -150,6 +177,7 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 	}
 	now := time.Now().UTC()
 	record := aicapability.InvocationRecord{InvocationID: in.InvocationID, AgentRunID: in.AgentRunID, TenantID: p.identity.TenantID, UserID: p.identity.UserID, MemberID: p.identity.EffectiveMemberID, BusinessTaskID: in.Binding.ContextID, TraceID: in.TraceID,
+		PointTariff: *m.policy.PointPricing, MaximumPromptTokens: agentInputWindow, MaximumCompletionTokens: agentOutputWindow,
 		Capability: aicapability.CapabilityProductEnrichText, Operation: aicapability.OperationProductAgentDecision, ProviderID: p.route.ProviderID, ModelID: p.route.ModelID, CredentialReference: p.route.CredentialReference, ConfigurationVersion: p.route.ConfigurationVersion,
 		PolicyVersion: m.policy.PricingVersion, PromptKey: in.AgentID, PromptVersion: in.PromptVersion, PromptHash: agentTextHash([]byte(p.request.System + p.request.Prompt)), InputHash: p.quote.Reference, StartedAt: now, Attempt: 1, Outcome: aicapability.InvocationDispatched, Currency: m.policy.Currency}
 	acquired, err := m.ledger.ClaimInvocation(p.ctx, record)

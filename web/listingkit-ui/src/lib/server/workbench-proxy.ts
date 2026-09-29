@@ -95,7 +95,6 @@ type WorkbenchRequestContract =
   | "store-delete"
   | "store-enable"
   | "store-disable"
-  | "store-resume"
   | "store-service-activate"
   | "store-service-renew"
   | "store-service-reactivate"
@@ -169,7 +168,6 @@ const storeResponseSchema = z
     region: normalizedPublicString(1, 64),
     externalStoreId: normalizedPublicString(0, 128),
     recordStatus: z.enum([
-      "provisioning",
       "active",
       "disabled",
       "deleting",
@@ -188,38 +186,9 @@ const storeResponseSchema = z
     updatedAt: utcRFC3339Schema,
   })
   .strict().refine(hasValidStoreServiceFacts, "Inconsistent record/service facts");
-const quotaResponseSchema = z
-  .object({
-    used: nonnegativeSafeIntegerSchema,
-    reserved: nonnegativeSafeIntegerSchema,
-    limit: positiveSafeIntegerSchema.nullable(),
-    allowed: z.boolean(),
-    reason: z.enum(["", "subscription_required", "store_limit_reached"]),
-  })
-  .strict()
-  .superRefine((quota, refinement) => {
-    const consumed = quota.used + quota.reserved;
-    const valid =
-      Number.isSafeInteger(consumed) && quota.limit === null
-        ? !quota.allowed && quota.reason === "subscription_required"
-        : quota.limit !== null &&
-          Number.isSafeInteger(consumed) &&
-          quota.allowed === consumed < quota.limit &&
-          quota.reason ===
-            (consumed < quota.limit
-              ? ""
-              : "store_limit_reached");
-    if (!valid) {
-      refinement.addIssue({
-        code: "custom",
-        message: "Quota state is inconsistent",
-      });
-    }
-  });
 const listStoresResponseSchema = z
   .object({
     items: z.array(storeResponseSchema).max(100),
-    quota: quotaResponseSchema,
     pagination: z
       .object({
         page: positiveSafeIntegerSchema,
@@ -386,9 +355,6 @@ const workbenchRouteAllowlist = [
   ),
   routeDefinition("POST", "store-disable", "store-item", (path) =>
     storeActionPath(path, "disable"),
-  ),
-  routeDefinition("POST", "store-resume", "store-item", (path) =>
-    storeActionPath(path, "resume"),
   ),
   routeDefinition("POST","store-service-activate","store-service-lifecycle",path=>storeActionPath(path,"activate")),
   routeDefinition("POST","store-service-renew","store-service-lifecycle",path=>storeActionPath(path,"renew")),
@@ -676,7 +642,7 @@ export async function buildWorkbenchUpstreamRequest(
       }
       case "store-enable":
       case "store-disable":
-      case "store-resume": {
+      {
         if (!hasNoQuery(request) || !(await requestHasNoBody(request))) {
           return protocolError(400, "INVALID_REQUEST", "Request is invalid");
         }
@@ -1069,7 +1035,6 @@ function storeActionPath(
   action:
     | "enable"
     | "disable"
-    | "resume"
     | "activate"
     | "renew"
     | "reactivate",
@@ -1334,7 +1299,7 @@ function parseStoreListQuery(search: URLSearchParams) {
   const status = values.get("status");
   if (
     status !== undefined &&
-    !["provisioning", "active", "disabled", "deleting"].includes(status)
+    !["active", "disabled", "deleting"].includes(status)
   ) {
     return null;
   }
@@ -1693,21 +1658,6 @@ function hasCanonicalStoreIntegerTokens(
     }
   }
   return (
-    hasCanonicalIntegerNode(
-      findNodeAtLocation(body.root, ["quota", "used"]),
-      body.text,
-      true,
-    ) &&
-    hasCanonicalIntegerNode(
-      findNodeAtLocation(body.root, ["quota", "reserved"]),
-      body.text,
-      true,
-    ) &&
-    hasCanonicalIntegerNode(
-      findNodeAtLocation(body.root, ["quota", "limit"]),
-      body.text,
-      false,
-    ) &&
     hasCanonicalIntegerNode(
       findNodeAtLocation(body.root, ["pagination", "page"]),
       body.text,

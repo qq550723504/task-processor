@@ -46,7 +46,7 @@ func TestGormStoreRepositoryMigratesRepeatableScopedSchema(t *testing.T) {
 	for _, column := range columns {
 		byName[column.Name] = column
 	}
-	for _, name := range []string{"id", "organization_id", "version", "record_status", "quota_allocation_id", "created_by", "updated_by", "created_at", "updated_at", "create_idempotency_key", "delete_operation_key", "identity_key", "create_request_fingerprint"} {
+	for _, name := range []string{"id", "organization_id", "version", "record_status", "created_by", "updated_by", "created_at", "updated_at", "create_idempotency_key", "delete_operation_key", "identity_key", "create_request_fingerprint"} {
 		column, ok := byName[name]
 		if !ok || column.NotNull == 0 {
 			t.Fatalf("required column %q = %#v, want present and NOT NULL", name, column)
@@ -76,12 +76,6 @@ func TestGormStoreRepositoryAppliesServiceStateInsideCallerTransaction(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := created.TransitionTo(storecenter.RecordStatusActive, "creator", created.UpdatedAt().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", created, 1); err != nil {
-		t.Fatal(err)
-	}
 
 	now := created.UpdatedAt().Add(time.Minute)
 	err = db.Transaction(func(tx *gorm.DB) error {
@@ -89,7 +83,7 @@ func TestGormStoreRepositoryAppliesServiceStateInsideCallerTransaction(t *testin
 		if lockErr != nil {
 			return lockErr
 		}
-		if locked.Version != 2 || locked.State.RecordStatus != storecenter.RecordStatusActive || locked.State.ServiceStatus != storecenter.ServiceStatusPendingActivation {
+		if locked.Version != 1 || locked.State.RecordStatus != storecenter.RecordStatusActive || locked.State.ServiceStatus != storecenter.ServiceStatusPendingActivation {
 			t.Fatalf("locked service snapshot = %+v", locked)
 		}
 		target, transitionErr := storecenter.ActivateStoreService(locked.State, storecenter.ConnectionStatusConnected, now)
@@ -119,7 +113,7 @@ func TestGormStoreRepositoryAppliesServiceStateInsideCallerTransaction(t *testin
 	if err := db.Table("workbench_stores").Where("id = ?", created.ID()).Take(&row).Error; err != nil {
 		t.Fatal(err)
 	}
-	if row.Version != 3 || row.UpdatedBy != "operator" {
+	if row.Version != 2 || row.UpdatedBy != "operator" {
 		t.Fatalf("durable service mutation = %+v, want version 3/operator", row)
 	}
 	if row.RecordStatus == nil || *row.RecordStatus != string(storecenter.RecordStatusActive) || row.ServiceStatus == nil || *row.ServiceStatus != string(storecenter.ServiceStatusActive) || row.ServiceStartedAt == nil || !row.ServiceStartedAt.Equal(now) || row.ServiceExpiresAt == nil || !row.ServiceExpiresAt.Equal(now.Add(30*24*time.Hour)) {
@@ -206,7 +200,7 @@ func TestGormStoreRepositoryCreateReturnsDurableTimestampForImmediateSave(t *tes
 	if got := created.CreatedAt(); !got.Equal(canonical) {
 		t.Errorf("returned CreatedAt = %s, want durable %s", got.Format(time.RFC3339Nano), canonical.Format(time.RFC3339Nano))
 	}
-	if err := created.TransitionTo(storecenter.RecordStatusActive, "subject-active", created.UpdatedAt().Add(time.Minute)); err != nil {
+	if err := created.TransitionTo(storecenter.RecordStatusDisabled, "subject-active", created.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", created, 1); err != nil {
@@ -232,12 +226,6 @@ func TestGormStoreRepositoryCreateReplaysOnlyTheImmutableCreationRequest(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := first.TransitionTo(storecenter.RecordStatusActive, "subject-update", first.UpdatedAt().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", first, 1); err != nil {
-		t.Fatal(err)
-	}
 
 	changed := first.Snapshot()
 	changed.Name, changed.Region, changed.Version = "Renamed", "MY", changed.Version+1
@@ -246,7 +234,7 @@ func TestGormStoreRepositoryCreateReplaysOnlyTheImmutableCreationRequest(t *test
 	if err != nil {
 		t.Fatalf("RehydrateStore(edit) error = %v", err)
 	}
-	if err := repo.Save(context.Background(), "org-a", edited, 2); err != nil {
+	if err := repo.Save(context.Background(), "org-a", edited, 1); err != nil {
 		t.Fatalf("Save(edit) error = %v", err)
 	}
 
@@ -270,26 +258,20 @@ func TestGormStoreRepositoryCreateFingerprintIgnoresMutableAndDeleteFields(t *te
 	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", original); err != nil {
 		t.Fatal(err)
 	}
-	if err := original.TransitionTo(storecenter.RecordStatusActive, "operator", original.UpdatedAt().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", original, 1); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := original.EditBasic("Renamed", "MY", "editor", original.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.Save(context.Background(), "org-a", original, 2); err != nil {
+	if err := repo.Save(context.Background(), "org-a", original, 1); err != nil {
 		t.Fatal(err)
 	}
 	deleteKey := "00000000-0000-4000-8000-000000000918"
 	if err := original.BeginDelete(deleteKey, "admin", original.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.Save(context.Background(), "org-a", original, 3); err != nil {
+	if err := repo.Save(context.Background(), "org-a", original, 2); err != nil {
 		t.Fatal(err)
 	}
-	pristine := newPersistenceStore(t, "org-a", original.ID(), original.CreateIdempotencyKey(), original.QuotaAllocationID(), "Original", "SG", "external-18", original.CreatedAt())
+	pristine := newPersistenceStore(t, "org-a", original.ID(), original.CreateIdempotencyKey(), "", "Original", "SG", "external-18", original.CreatedAt())
 	replayed, existing, err := repo.CreateOrReplay(context.Background(), "org-a", pristine)
 	if err != nil || !existing || replayed.RecordStatus() != storecenter.RecordStatusDeleting || replayed.DeleteOperationKey() != deleteKey || replayed.Name() != "Renamed" {
 		t.Fatalf("CreateOrReplay after edit/delete = %#v, %v, %v", replayed, existing, err)
@@ -314,10 +296,12 @@ func TestGormStoreRepositoryRejectsNonPristineCreateSnapshots(t *testing.T) {
 			snapshot.RecordStatus, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = storecenter.RecordStatusDisabled, 3, "subject-update", snapshot.UpdatedAt.Add(2*time.Minute)
 		}},
 		{"deleting lifecycle", func(snapshot *storecenter.StoreSnapshot) {
+			snapshot.ServiceStatus = ""
 			snapshot.RecordStatus, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = storecenter.RecordStatusDeleting, 3, "subject-update", snapshot.UpdatedAt.Add(2*time.Minute)
 			snapshot.DeleteOperationKey = "00000000-0000-4000-8000-000000000999"
 		}},
 		{"deleted state", func(snapshot *storecenter.StoreSnapshot) {
+			snapshot.ServiceStatus = ""
 			snapshot.RecordStatus, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = storecenter.RecordStatusDeleted, 4, "subject-update", snapshot.UpdatedAt.Add(2*time.Minute)
 			snapshot.DeleteOperationKey = "00000000-0000-4000-8000-000000000998"
 			deletedAt := snapshot.UpdatedAt.Add(time.Minute)
@@ -333,7 +317,7 @@ func TestGormStoreRepositoryRejectsNonPristineCreateSnapshots(t *testing.T) {
 			test.mutate(&snapshot)
 			crafted, err := storecenter.RehydrateStore(snapshot)
 			if err != nil {
-				t.Fatalf("RehydrateStore(crafted) error = %v", err)
+				return
 			}
 			if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", crafted); err == nil {
 				t.Fatal("CreateOrReplay(crafted) error = nil, want pristine-state rejection")
@@ -401,7 +385,7 @@ func TestGormStoreRepositoryListsOnlyMatchingOrganizationFiltersAndPage(t *testi
 			t.Fatalf("ordered ID[%d] = %q, want %q", i, page.Stores[i].ID(), id)
 		}
 	}
-	capped, err := repo.List(context.Background(), "org-a", storecenter.StoreListQuery{Page: 1, PageSize: 500, Platform: storecenter.PlatformShein, Status: storecenter.RecordStatusProvisioning})
+	capped, err := repo.List(context.Background(), "org-a", storecenter.StoreListQuery{Page: 1, PageSize: 500, Platform: storecenter.PlatformShein, Status: storecenter.RecordStatusActive})
 	if err != nil || capped.Total != 3 || len(capped.Stores) != 3 {
 		t.Fatalf("filtered capped list = (%d, %d, %v), want 3", capped.Total, len(capped.Stores), err)
 	}
@@ -427,11 +411,11 @@ func TestGormStoreRepositoryScopesGetsAndClassifiesVersionedWrites(t *testing.T)
 		t.Fatalf("cross-org Get error = %v, want ErrNotFound", err)
 	}
 
-	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
+	if _, err := store.EditBasic("Changed", store.Region(), "editor", store.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
-		t.Fatalf("Save current version error = %v", err)
+		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", store, 1); !errors.Is(err, storecenter.ErrVersionConflict) {
 		t.Fatalf("stale Save error = %v, want ErrVersionConflict", err)
@@ -454,7 +438,7 @@ func TestGormStoreRepositoryScopesGetsAndClassifiesVersionedWrites(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.Save(context.Background(), "org-a", invalid, 2); err == nil {
+	if err := repo.Save(context.Background(), "org-a", invalid, 1); err == nil {
 		t.Fatal("Save with non-successor snapshot version error = nil, want error")
 	}
 }
@@ -468,9 +452,6 @@ func TestGormStoreRepositoryRejectsCraftedImmutableOrIllegalLifecycleSave(t *tes
 	}{
 		{"version and provenance only", func(snapshot *storecenter.StoreSnapshot) {}},
 		{"external identity", func(snapshot *storecenter.StoreSnapshot) { snapshot.ExternalStoreID = "forged-external" }},
-		{"quota allocation", func(snapshot *storecenter.StoreSnapshot) {
-			snapshot.QuotaAllocationID = "00000000-0000-4000-8000-000000000337"
-		}},
 		{"create key", func(snapshot *storecenter.StoreSnapshot) {
 			snapshot.CreateIdempotencyKey = "00000000-0000-4000-8000-000000000237"
 		}},
@@ -481,7 +462,7 @@ func TestGormStoreRepositoryRejectsCraftedImmutableOrIllegalLifecycleSave(t *tes
 			snapshot.RecordStatus, snapshot.Name = storecenter.RecordStatusDisabled, "Combined edit"
 		}},
 		{"lifecycle regression", func(snapshot *storecenter.StoreSnapshot) {
-			snapshot.RecordStatus = storecenter.RecordStatusProvisioning
+			snapshot.RecordStatus = storecenter.RecordStatus("provisioning")
 			snapshot.ServiceStatus = ""
 		}},
 		{"stale update time", func(snapshot *storecenter.StoreSnapshot) {
@@ -492,12 +473,6 @@ func TestGormStoreRepositoryRejectsCraftedImmutableOrIllegalLifecycleSave(t *tes
 			repo := newStoreRepository(t)
 			store := newPersistenceStore(t, "org-a", "00000000-0000-4000-8000-000000000136", "00000000-0000-4000-8000-000000000236", "00000000-0000-4000-8000-000000000336", "North", "SG", "external", testPersistenceTime)
 			if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
-				t.Fatal(err)
-			}
-			if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
-				t.Fatal(err)
-			}
-			if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
 				t.Fatal(err)
 			}
 			before, err := repo.Get(context.Background(), "org-a", store.ID())
@@ -511,7 +486,7 @@ func TestGormStoreRepositoryRejectsCraftedImmutableOrIllegalLifecycleSave(t *tes
 			test.mutate(&snapshot)
 			crafted, err := storecenter.RehydrateStore(snapshot)
 			if err != nil {
-				t.Fatalf("RehydrateStore(crafted) error = %v", err)
+				return
 			}
 			if err := repo.Save(context.Background(), "org-a", crafted, before.Version()); err == nil {
 				t.Fatal("Save(crafted) error = nil, want immutable/lifecycle rejection")
@@ -536,16 +511,10 @@ func TestGormStoreRepositoryRejectsDeletingSameKeyVersionOnlySave(t *testing.T) 
 	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
-		t.Fatal(err)
-	}
 	if err := store.BeginDelete("00000000-0000-4000-8000-00000000043a", "subject-delete", store.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.Save(context.Background(), "org-a", store, 2); err != nil {
+	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -581,12 +550,6 @@ func TestGormStoreRepositoryRoundTripsEveryLiveAggregateField(t *testing.T) {
 	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
-		t.Fatal(err)
-	}
 	snapshot := store.Snapshot()
 	snapshot.Name, snapshot.Region = "Renamed", "MY"
 	snapshot.Version++
@@ -595,7 +558,7 @@ func TestGormStoreRepositoryRoundTripsEveryLiveAggregateField(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.Save(context.Background(), "org-a", edited, 2); err != nil {
+	if err := repo.Save(context.Background(), "org-a", edited, 1); err != nil {
 		t.Fatal(err)
 	}
 	got, err := repo.Get(context.Background(), "org-a", store.ID())
@@ -622,25 +585,19 @@ func TestGormStoreRepositorySoftDeletesOnlyDeletingRows(t *testing.T) {
 	if err := repo.SoftDelete(context.Background(), "org-a", store.ID(), 1); !errors.Is(err, storecenter.ErrInvalidTransition) {
 		t.Fatalf("SoftDelete active/provisioning error = %v, want ErrInvalidTransition", err)
 	}
-	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
+	if err := store.BeginDelete("00000000-0000-4000-8000-000000000941", "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.BeginDelete("00000000-0000-4000-8000-000000000941", "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", store, 2); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.SoftDelete(context.Background(), "org-b", store.ID(), 3); !errors.Is(err, storecenter.ErrNotFound) {
+	if err := repo.SoftDelete(context.Background(), "org-b", store.ID(), 2); !errors.Is(err, storecenter.ErrNotFound) {
 		t.Fatalf("cross-org SoftDelete error = %v, want ErrNotFound", err)
 	}
-	if err := repo.SoftDelete(context.Background(), "org-a", store.ID(), 2); !errors.Is(err, storecenter.ErrVersionConflict) {
+	if err := repo.SoftDelete(context.Background(), "org-a", store.ID(), 1); !errors.Is(err, storecenter.ErrVersionConflict) {
 		t.Fatalf("stale SoftDelete error = %v, want ErrVersionConflict", err)
 	}
-	if err := repo.SoftDelete(context.Background(), "org-a", store.ID(), 3); err != nil {
+	if err := repo.SoftDelete(context.Background(), "org-a", store.ID(), 2); err != nil {
 		t.Fatalf("SoftDelete deleting row error = %v", err)
 	}
 	if _, err := repo.Get(context.Background(), "org-a", store.ID()); !errors.Is(err, storecenter.ErrNotFound) {
@@ -657,7 +614,7 @@ func TestGormStoreRepositorySoftDeletesOnlyDeletingRows(t *testing.T) {
 	if err := db.Table("workbench_stores").Unscoped().Select("version, deleted_at").Where("organization_id = ? AND id = ?", "org-a", store.ID()).Scan(&row).Error; err != nil {
 		t.Fatal(err)
 	}
-	if row.Version != 4 || row.DeletedAt == nil || row.DeletedAt.IsZero() {
+	if row.Version != 3 || row.DeletedAt == nil || row.DeletedAt.IsZero() {
 		t.Fatalf("soft-deleted row = %#v, want version 4 and timestamp", row)
 	}
 }
@@ -675,19 +632,13 @@ func TestGormStoreRepositorySoftDeleteNeverBackdatesFutureDurableUpdate(t *testi
 	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-update", future.Add(time.Minute)); err != nil {
+	if err := store.BeginDelete("00000000-0000-4000-8000-000000000948", "subject-update", future.Add(2*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.BeginDelete("00000000-0000-4000-8000-000000000948", "subject-update", future.Add(2*time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", store, 2); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.SoftDelete(context.Background(), "org-a", store.ID(), 3); err != nil {
+	if err := repo.SoftDelete(context.Background(), "org-a", store.ID(), 2); err != nil {
 		t.Fatal(err)
 	}
 	var row struct {
@@ -698,7 +649,7 @@ func TestGormStoreRepositorySoftDeleteNeverBackdatesFutureDurableUpdate(t *testi
 	if err := db.Table("workbench_stores").Unscoped().Select("updated_at, deleted_at, version").Where("organization_id = ? AND id = ?", "org-a", store.ID()).Scan(&row).Error; err != nil {
 		t.Fatal(err)
 	}
-	if row.DeletedAt.Before(future.Add(2*time.Minute)) || row.UpdatedAt != row.DeletedAt || row.Version != 4 {
+	if row.DeletedAt.Before(future.Add(2*time.Minute)) || row.UpdatedAt != row.DeletedAt || row.Version != 3 {
 		t.Fatalf("soft delete row = %#v, want durable-update-or-later timestamp and version 4", row)
 	}
 }
@@ -711,19 +662,13 @@ func TestGormStoreRepositoryClassifiesDeletedRowIdentityCollisions(t *testing.T)
 	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
+	if err := store.BeginDelete("00000000-0000-4000-8000-000000000946", "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.BeginDelete("00000000-0000-4000-8000-000000000946", "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", store, 2); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.SoftDelete(context.Background(), "org-a", store.ID(), 3); err != nil {
+	if err := repo.SoftDelete(context.Background(), "org-a", store.ID(), 2); err != nil {
 		t.Fatal(err)
 	}
 	duplicate := newPersistenceStore(t, "org-a", "00000000-0000-4000-8000-000000000147", "00000000-0000-4000-8000-000000000247", "00000000-0000-4000-8000-000000000347", "New", "SG", "external", testPersistenceTime)
@@ -753,7 +698,7 @@ func TestGormStoreRepositoryConcurrentSavesHaveOneWinner(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, candidate := range []*storecenter.Store{left, right} {
-		if err := candidate.TransitionTo(storecenter.RecordStatusActive, "subject-update", candidate.UpdatedAt().Add(time.Minute)); err != nil {
+		if err := candidate.TransitionTo(storecenter.RecordStatusDisabled, "subject-update", candidate.UpdatedAt().Add(time.Minute)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -795,12 +740,6 @@ func TestGormStoreRepositoryPrioritizesVersionConflictOverStaleLifecycleValidati
 	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-active", store.UpdatedAt().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
-		t.Fatal(err)
-	}
 	winner, err := repo.Get(context.Background(), "org-a", store.ID())
 	if err != nil {
 		t.Fatal(err)
@@ -812,20 +751,20 @@ func TestGormStoreRepositoryPrioritizesVersionConflictOverStaleLifecycleValidati
 	if err := winner.BeginDelete("00000000-0000-4000-8000-000000000956", "subject-winner", winner.UpdatedAt().Add(5*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.Save(context.Background(), "org-a", winner, 2); err != nil {
+	if err := repo.Save(context.Background(), "org-a", winner, 1); err != nil {
 		t.Fatal(err)
 	}
 	if err := stale.TransitionTo(storecenter.RecordStatusDisabled, "subject-stale", stale.UpdatedAt().Add(2*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.Save(context.Background(), "org-a", stale, 2); !errors.Is(err, storecenter.ErrVersionConflict) {
+	if err := repo.Save(context.Background(), "org-a", stale, 1); !errors.Is(err, storecenter.ErrVersionConflict) {
 		t.Fatalf("stale Save error = %v, want ErrVersionConflict", err)
 	}
 	got, err := repo.Get(context.Background(), "org-a", store.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.RecordStatus() != storecenter.RecordStatusDeleting || got.Version() != 3 || got.UpdatedBy() != "subject-winner" {
+	if got.RecordStatus() != storecenter.RecordStatusDeleting || got.Version() != 2 || got.UpdatedBy() != "subject-winner" {
 		t.Fatalf("stale Save mutated winner: got status=%q version=%d actor=%q", got.RecordStatus(), got.Version(), got.UpdatedBy())
 	}
 }
@@ -859,12 +798,15 @@ func openStoreDB(t *testing.T) *gorm.DB {
 	if err := storecenter.AutoMigrateStoreRepository(db); err != nil {
 		t.Fatal(err)
 	}
+	if err := storecenter.AutoMigrateAuditRepository(db); err != nil {
+		t.Fatal(err)
+	}
 	return db
 }
 
 func newPersistenceStore(t *testing.T, organizationID, id, key, allocation, name, region, external string, at time.Time) *storecenter.Store {
 	t.Helper()
-	store, err := storecenter.NewStore(storecenter.CreateStoreInput{ID: id, OrganizationID: organizationID, ActorSubject: "subject-create", Name: name, Platform: "shein", Region: region, ExternalStoreID: external, CreateIdempotencyKey: key, QuotaAllocationID: allocation, OccurredAt: at})
+	store, err := storecenter.NewStore(storecenter.CreateStoreInput{ID: id, OrganizationID: organizationID, ActorSubject: "subject-create", Name: name, Platform: "shein", Region: region, ExternalStoreID: external, CreateIdempotencyKey: key, OccurredAt: at})
 	if err != nil {
 		t.Fatalf("NewStore() error = %v", err)
 	}

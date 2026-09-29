@@ -14,14 +14,13 @@ import (
 	"gorm.io/gorm"
 
 	sourceaccountstore "task-processor/internal/integration/persistence/sourceaccountregistry"
-	"task-processor/internal/listingsubscription"
 )
 
 // Reuse the task-owned PG17 fixture and actual Run/NewCurrentApplication chain.
 // Grants are only fault injections by the fixture owner; preflight never repairs.
-func run1ColumnPermissionMatrix(t *testing.T, owner, source, commercial *gorm.DB, tables []string, start func(*testing.T, bool)) {
+func run1ColumnPermissionMatrix(t *testing.T, owner, source *gorm.DB, tables []string, start func(*testing.T, bool)) {
 	t.Helper()
-	roles := []string{"source_account_runtime", "commercial_runtime"}
+	roles := []string{"source_account_runtime"}
 	privileges := []string{"SELECT", "INSERT", "UPDATE", "REFERENCES"}
 	columns := make(map[string][]string, len(tables))
 	for _, table := range tables {
@@ -35,9 +34,6 @@ func run1ColumnPermissionMatrix(t *testing.T, owner, source, commercial *gorm.DB
 	columnOnly := func(t *testing.T, role, table, privilege string) {
 		t.Helper()
 		db := source
-		if role == "commercial_runtime" {
-			db = commercial
-		}
 		var effective struct {
 			TablePrivilege  bool
 			ColumnPrivilege bool
@@ -118,7 +114,6 @@ func run1ColumnPermissionMatrix(t *testing.T, owner, source, commercial *gorm.DB
 			}
 			// Both direct verifiers are checked: source rejects first in Run.
 			assert.ErrorContains(t, sourceaccountstore.VerifyRuntimePermissions(context.Background(), source), "permissions do not match")
-			assert.ErrorContains(t, listingsubscription.VerifyCommercialReadSchema(context.Background(), commercial), "permissions do not match")
 			start(t, true)
 		})
 	}

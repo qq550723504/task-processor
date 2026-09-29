@@ -204,25 +204,7 @@ func (r *MemberScopedStoreRepository) SoftDelete(ctx context.Context, org, id st
 		if err := base.SoftDelete(ctx, org, id, version); err != nil {
 			return err
 		}
-		var grants []storeMemberGrantRow
-		if err := base.db.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id=? AND store_id=? AND active=?", org, id, true).Order("member_id").Find(&grants).Error; err != nil {
-			return err
-		}
-		for _, grant := range grants {
-			if grant.Version == math.MaxInt64 {
-				return ErrVersionConflict
-			}
-			at := time.Now().UTC()
-			if err := base.db.Model(&grant).Updates(map[string]any{"active": false, "version": grant.Version + 1, "updated_by": store.UpdatedBy(), "updated_at": at}).Error; err != nil {
-				return err
-			}
-			key := uuid.NewSHA1(uuid.NameSpaceOID, []byte(store.DeleteOperationKey()+":"+grant.MemberID)).String()
-			command := MemberStoreGrantCommand{OrganizationID: org, StoreID: id, MemberID: grant.MemberID, OperationID: key, ExpectedVersion: grant.Version}
-			if err := recordMemberGrantOperation(base.db, command, store.UpdatedBy(), grant.Version+1, at); err != nil {
-				return err
-			}
-		}
-		return nil
+		return revokeStoreGrants(base.db, org, id, store, time.Now().UTC())
 	})
 }
 
@@ -293,4 +275,25 @@ func memberGrantFingerprint(command MemberStoreGrantCommand) string {
 }
 func recordMemberGrantOperation(tx *gorm.DB, command MemberStoreGrantCommand, actor string, version int64, at time.Time) error {
 	return tx.Create(&storeMemberGrantOperation{OrganizationID: command.OrganizationID, OperationID: command.OperationID, StoreID: command.StoreID, MemberID: command.MemberID, Active: command.Active, ExpectedVersion: command.ExpectedVersion, ResultVersion: version, ActorID: actor, Fingerprint: memberGrantFingerprint(command), CreatedAt: at}).Error
+}
+
+func revokeStoreGrants(tx *gorm.DB, org, id string, store *Store, at time.Time) error {
+	var grants []storeMemberGrantRow
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id=? AND store_id=? AND active=?", org, id, true).Order("member_id").Find(&grants).Error; err != nil {
+		return err
+	}
+	for _, grant := range grants {
+		if grant.Version == math.MaxInt64 {
+			return ErrVersionConflict
+		}
+		if err := tx.Model(&grant).Updates(map[string]any{"active": false, "version": grant.Version + 1, "updated_by": store.UpdatedBy(), "updated_at": at}).Error; err != nil {
+			return err
+		}
+		key := uuid.NewSHA1(uuid.NameSpaceOID, []byte(store.DeleteOperationKey()+":"+grant.MemberID)).String()
+		command := MemberStoreGrantCommand{OrganizationID: org, StoreID: id, MemberID: grant.MemberID, OperationID: key, ExpectedVersion: grant.Version}
+		if err := recordMemberGrantOperation(tx, command, store.UpdatedBy(), grant.Version+1, at); err != nil {
+			return err
+		}
+	}
+	return nil
 }

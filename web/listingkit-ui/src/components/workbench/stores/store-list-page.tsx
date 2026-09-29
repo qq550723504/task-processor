@@ -51,7 +51,7 @@ export function StoreListPage() {
   return (
     <ConsolePage title="我的店铺" breadcrumbs={findConsoleRoute("/workbench/stores")?.trail} description={<>管理店铺记录并查看连接与服务状态。{context.effectiveOrganization ? `当前企业：${context.effectiveOrganization.name}` : ""}</>} actions={canCreate ? <Button asChild><Link href="/workbench/stores/new"><Plus aria-hidden="true" />新建店铺</Link></Button> : undefined}>
       {!stores.isPending && !stores.isError && data ? <div className="console-store-metrics">{[
-        ["当前筛选店铺", data.pagination.total], ["店铺额度已用", data.quota.used], ["预留额度", data.quota.reserved], ["额度上限", data.quota.limit ?? "未提供"],
+        ["当前筛选店铺", data.pagination.total],
       ].map(([label, value]) => <Card className="console-store-metric" key={label}><h2>{label}</h2><p>{value}</p></Card>)}</div> : null}
       <ConsoleToolbar>
         <label className="grid gap-1 text-sm font-medium">
@@ -63,7 +63,7 @@ export function StoreListPage() {
         <label className="grid gap-1 text-sm font-medium">
           店铺状态
           <Select aria-label="店铺状态" value={filters.status ?? ""} onChange={(event) => updateFilters({ ...filters, page: 1, status: isStoreStatus(event.target.value) ? event.target.value : undefined })}>
-            <option value="">全部状态</option><option value="provisioning">开通中</option><option value="active">已启用</option><option value="disabled">已停用</option><option value="deleting">删除中</option>
+            <option value="">全部状态</option><option value="active">已启用</option><option value="disabled">已停用</option><option value="deleting">删除中</option>
           </Select>
         </label>
         <label className="grid gap-1 text-sm font-medium">
@@ -75,13 +75,12 @@ export function StoreListPage() {
         {hasFilters && data?.items.length !== 0 ? <Button onClick={resetFilters} variant="ghost">清除筛选</Button> : null}
       </ConsoleToolbar>
 
-      {deletedNotice ? <p className="mt-4 rounded-md border p-3 text-sm" role="status">店铺已删除，店铺名额已释放。当前不提供恢复入口。</p> : null}
+      {deletedNotice ? <p className="mt-4 rounded-md border p-3 text-sm" role="status">店铺已删除。已购资源与历史消费记录保留。</p> : null}
 
       {stores.isPending ? <LoadingState /> : stores.isError ? (
         <ErrorState error={stores.error} retry={retryStores} />
       ) : data ? (
         <div className="mt-6 space-y-4">
-          <QuotaSummary quota={data.quota} />
           {data.items.length === 0 ? (
             <EmptyState filtered={hasFilters} clearFilters={resetFilters} />
           ) : (
@@ -112,11 +111,6 @@ function EmptyState({ filtered, clearFilters }: { filtered: boolean; clearFilter
   return <ConsoleState kind="empty" title={filtered ? "没有符合筛选条件的店铺" : "还没有店铺"}><p>{filtered ? "调整或清除筛选条件后再试。" : "新建店铺后会显示在这里。"}</p>{filtered ? <Button className="mt-4" onClick={clearFilters} variant="outline">清除筛选</Button> : null}</ConsoleState>;
 }
 
-function QuotaSummary({ quota }: { quota: { used: number; limit: number | null; allowed: boolean; reason: string } }) {
-  const hint = quota.reason === "subscription_required" ? "当前企业需要管理员配置有效订阅后才能新建店铺。" : quota.reason === "store_limit_reached" || (!quota.allowed && quota.limit !== null && quota.used >= quota.limit) ? "店铺额度已用尽，请联系管理员或升级套餐。" : null;
-  return <div className="flex flex-wrap items-center justify-between gap-2 text-sm"><p>已使用 {quota.used} / {quota.limit ?? "—"}</p><p className="text-muted-foreground">已停用店铺仍占用店铺额度。</p>{hint ? <p className="text-muted-foreground">{hint}</p> : null}</div>;
-}
-
 function Pagination({ filters, onChange, page, pageSize, total }: { filters: WorkbenchStoreListFilters; onChange: (filters: WorkbenchStoreListFilters) => void; page: number; pageSize: number; total: number }) {
   return <div className="flex items-center justify-between gap-3"><p className="text-sm text-muted-foreground">第 {page} 页，共 {total} 家店铺</p><div className="flex gap-2"><Button aria-label="上一页" disabled={page <= 1} onClick={() => onChange({ ...filters, page: page - 1 })} size="sm" variant="outline"><ChevronLeft aria-hidden="true" />上一页</Button><Button aria-label="下一页" disabled={page * pageSize >= total} onClick={() => onChange({ ...filters, page: page + 1 })} size="sm" variant="outline">下一页<ChevronRight aria-hidden="true" /></Button></div></div>;
 }
@@ -140,7 +134,7 @@ function parsePageSize(value: string) {
 }
 
 function isStoreStatus(value: string | null): value is NonNullable<WorkbenchStoreListFilters["status"]> {
-  return value === "provisioning" || value === "active" || value === "disabled" || value === "deleting";
+  return value === "active" || value === "disabled" || value === "deleting";
 }
 
 function buildStoreSearch(filters: WorkbenchStoreListFilters) {

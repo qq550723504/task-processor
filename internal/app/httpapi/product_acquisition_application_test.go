@@ -146,7 +146,7 @@ func TestCurrentApplicationMountsExplicitAcquisitionWithoutChangingDefaultRoutes
 		buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return currentApplicationTestModule{name: "source", routes: currentWorkbenchApplicationRoutes[5:]}, nil
 		},
-		buildCommercial: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+		buildCommercial: func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return currentApplicationTestModule{name: "commercial", routes: currentWorkbenchApplicationRoutes[4:5]}, nil
 		},
 		buildAcquisition: func(auth *authz.ListingKitAuthorizer, got routeAuthDependencies) (kernelmodule.Module, error) {
@@ -157,7 +157,7 @@ func TestCurrentApplicationMountsExplicitAcquisitionWithoutChangingDefaultRoutes
 			return productAcquisitionModule{routes: productAcquisitionRoutes(spy, binder.Bind)}, nil
 		},
 	}
-	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
+	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
 	require.NoError(t, err)
 	require.True(t, called)
 	w := httptest.NewRecorder()
@@ -167,7 +167,7 @@ func TestCurrentApplicationMountsExplicitAcquisitionWithoutChangingDefaultRoutes
 	require.Contains(t, w.Header().Get("Cache-Control"), "no-store")
 	require.Len(t, currentWorkbenchApplicationRoutes, 10, "the existing default contract is unchanged")
 	factories.buildAcquisition = nil
-	server, err = buildCurrentApplication(context.Background(), &gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
+	server, err = buildCurrentApplication(context.Background(), &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	server.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, productAcquisitionBase, nil))

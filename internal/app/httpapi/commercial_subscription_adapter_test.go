@@ -23,7 +23,7 @@ func (stub *exactAuthorizationReaderStub) ReadExactServiceProjectAuthorization(_
 
 func TestSubscriptionRecoveryAuthorizerUsesExactLiveAssignment(t *testing.T) {
 	reader := &exactAuthorizationReaderStub{result: zitadelruntime.ExactServiceProjectAuthorization{Found: true, State: "STATE_ACTIVE", Roles: []string{"listingkit_admin"}}}
-	adapter := subscriptionPurchaseRecoveryAuthorizer{reader: reader, serviceToken: "service-token", projectID: "project-1", authorizer: authz.DefaultListingKitAuthorizer()}
+	adapter := financialRecoveryAuthorizer{reader: reader, serviceToken: "service-token", projectID: "project-1", authorizer: authz.DefaultListingKitAuthorizer()}
 	decision, err := adapter.ReauthorizeCommercialPurchase(context.Background(), "org-1", "actor-1")
 	if err != nil || !decision.Allowed {
 		t.Fatalf("decision = %+v, err = %v", decision, err)

@@ -21,11 +21,9 @@ type Dependencies struct {
 	OpenKnowledge                func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	NewKnowledge                 func(context.Context, *gorm.DB, *KnowledgeConfig, *logrus.Logger) (*knowledge.Service, *knowledge.Processor, error)
 	OpenStoreCenter              func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenStoreQuota               func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenProductAgent             func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	IdentityPreflight            func(context.Context, IdentityConfig) error
 	OpenSourceAccount            func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenCommercial               func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenCommercialOwner          func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenMoneyOwner               func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenProductAcquisition       func(context.Context, DatabaseConfig) (*gorm.DB, error)
@@ -33,10 +31,10 @@ type Dependencies struct {
 	DialImageAgentWorkflow       func(context.Context, string, string) (imageagent.WorkflowClient, func() error, error)
 	OpenReferrals                func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenMembership               func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	NewApplicationWithFeatures   func(context.Context, *gorm.DB, *gorm.DB, ApplicationFeatures, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
-	NewReferralsApplication      func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
-	NewApplicationWithMembership func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *coreconfig.Config, *MembershipConfig, *logrus.Logger) (*http.Server, error)
-	NewApplication               func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	NewApplicationWithFeatures   func(context.Context, *gorm.DB, ApplicationFeatures, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	NewReferralsApplication      func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	NewApplicationWithMembership func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *MembershipConfig, *logrus.Logger) (*http.Server, error)
+	NewApplication               func(context.Context, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
 	Listen                       func(string, string) (net.Listener, error)
 	CloseDatabase                func(*gorm.DB) error
 	ShutdownTimeout              time.Duration
@@ -46,7 +44,7 @@ type Dependencies struct {
 // only at the serving composition boundary.
 type ApplicationFeatures struct {
 	Knowledge                                            *knowledge.Service
-	StoreCenterDB, StoreQuotaDB                          *gorm.DB
+	StoreCenterDB                                        *gorm.DB
 	OfficialStoreProvider                                storecenter.OfficialConnectionProvider
 	OfficialStoreProtection                              storecenter.OfficialCredentialProtection
 	ProductAgentDB, ProductReviewDB, ProductAgentAssetDB *gorm.DB
@@ -109,13 +107,13 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	if dependencies.ShutdownTimeout <= 0 {
 		dependencies.ShutdownTimeout = 10 * time.Second
 	}
-	if dependencies.IdentityPreflight == nil || dependencies.OpenSourceAccount == nil || dependencies.OpenCommercial == nil || dependencies.CloseDatabase == nil {
+	if dependencies.IdentityPreflight == nil || dependencies.OpenSourceAccount == nil || dependencies.CloseDatabase == nil {
 		return errors.New("current application database lifecycle unavailable")
 	}
 	if cfg.ProductAcquisitionDatabase != nil && dependencies.OpenProductAcquisition == nil {
 		return errors.New("current product acquisition lifecycle unavailable")
 	}
-	if cfg.StoreCenter != nil && cfg.StoreCenter.Enabled && (dependencies.OpenStoreCenter == nil || dependencies.OpenStoreQuota == nil || dependencies.NewApplicationWithFeatures == nil) {
+	if cfg.StoreCenter != nil && cfg.StoreCenter.Enabled && (dependencies.OpenStoreCenter == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("store center runtime lifecycle unavailable")
 	}
 	if cfg.Knowledge != nil && cfg.Knowledge.Enabled && (dependencies.OpenKnowledge == nil || dependencies.NewKnowledge == nil || dependencies.NewApplicationWithFeatures == nil) {
@@ -169,22 +167,13 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		return fmt.Errorf("current application startup canceled: %w", err)
 	}
 
-	commercialDB, err := dependencies.OpenCommercial(startupContext, cfg.CommercialDatabase)
-	if err != nil {
-		return fmt.Errorf("open existing commercial database: %w", err)
-	}
-	defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(commercialDB)) }()
-	if err := startupContext.Err(); err != nil {
-		return fmt.Errorf("current application startup canceled: %w", err)
-	}
-
 	var commercialOwnerDB *gorm.DB
 	if cfg.CommercialOwnerDatabase != nil {
 		commercialOwnerDB, err = dependencies.OpenCommercialOwner(startupContext, *cfg.CommercialOwnerDatabase)
 		if err != nil {
 			return fmt.Errorf("open existing commercial owner database: %w", err)
 		}
-		if commercialOwnerDB == nil || commercialOwnerDB == sourceAccountDB || commercialOwnerDB == commercialDB {
+		if commercialOwnerDB == nil || commercialOwnerDB == sourceAccountDB {
 			return errors.New("commercial owner database unavailable")
 		}
 		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(commercialOwnerDB)) }()
@@ -199,7 +188,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if err != nil {
 			return errors.New("open existing money owner database failed")
 		}
-		if moneyOwnerDB == nil || moneyOwnerDB == sourceAccountDB || moneyOwnerDB == commercialDB || moneyOwnerDB == commercialOwnerDB {
+		if moneyOwnerDB == nil || moneyOwnerDB == sourceAccountDB || moneyOwnerDB == commercialOwnerDB {
 			return errors.New("money owner database unavailable")
 		}
 		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(moneyOwnerDB)) }()
@@ -210,7 +199,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if err != nil {
 			return fmt.Errorf("open existing product acquisition database: %w", err)
 		}
-		if productDB == nil || productDB == sourceAccountDB || productDB == commercialDB || productDB == commercialOwnerDB {
+		if productDB == nil || productDB == sourceAccountDB || productDB == commercialOwnerDB {
 			return errors.New("current product acquisition database unavailable")
 		}
 		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(productDB)) }()
@@ -242,7 +231,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if err != nil {
 			return fmt.Errorf("open existing image agent owner database: %w", err)
 		}
-		if imageDB == nil || imageDB == sourceAccountDB || imageDB == commercialDB || imageDB == commercialOwnerDB || imageDB == productDB {
+		if imageDB == nil || imageDB == sourceAccountDB || imageDB == commercialOwnerDB || imageDB == productDB {
 			return errors.New("current image agent owner database unavailable")
 		}
 		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(imageDB)) }()
@@ -262,7 +251,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if err != nil {
 			return fmt.Errorf("open existing referral database: %w", err)
 		}
-		if referralDB == nil || referralDB == sourceAccountDB || referralDB == commercialDB || referralDB == commercialOwnerDB || referralDB == productDB {
+		if referralDB == nil || referralDB == sourceAccountDB || referralDB == commercialOwnerDB || referralDB == productDB {
 			return errors.New("current application referral database unavailable")
 		}
 		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(referralDB)) }()
@@ -276,7 +265,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if err != nil {
 			return fmt.Errorf("open existing membership database: %w", err)
 		}
-		if membershipDB == nil || membershipDB == sourceAccountDB || membershipDB == commercialDB || membershipDB == commercialOwnerDB || membershipDB == productDB || membershipDB == referralDB {
+		if membershipDB == nil || membershipDB == sourceAccountDB || membershipDB == commercialOwnerDB || membershipDB == productDB || membershipDB == referralDB {
 			return errors.New("membership requires an independent database pool")
 		}
 		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(membershipDB)) }()
@@ -285,7 +274,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		}
 	}
 
-	var storeDB, storeQuotaDB *gorm.DB
+	var storeDB *gorm.DB
 	if cfg.StoreCenter != nil && cfg.StoreCenter.Enabled {
 		for _, target := range []struct {
 			config DatabaseConfig
@@ -293,7 +282,6 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			dest   **gorm.DB
 		}{
 			{cfg.StoreCenter.Database, dependencies.OpenStoreCenter, &storeDB},
-			{cfg.StoreCenter.QuotaDatabase, dependencies.OpenStoreQuota, &storeQuotaDB},
 		} {
 			pool, openErr := target.open(startupContext, target.config)
 			if openErr != nil {
@@ -302,7 +290,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			if pool == nil {
 				return errors.New("store center database unavailable")
 			}
-			for _, existing := range []*gorm.DB{sourceAccountDB, commercialDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, imageDB, referralDB, membershipDB, storeDB} {
+			for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, imageDB, referralDB, membershipDB, storeDB} {
 				if pool == existing {
 					return errors.New("store center requires independently owned pools")
 				}
@@ -324,7 +312,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if openErr != nil || pool == nil {
 			return errors.New("knowledge database unavailable")
 		}
-		for _, existing := range []*gorm.DB{sourceAccountDB, commercialDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, imageDB, referralDB, membershipDB, storeDB, storeQuotaDB} {
+		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, imageDB, referralDB, membershipDB, storeDB} {
 			if existing == pool {
 				return errors.New("knowledge requires an independently owned pool")
 			}
@@ -340,13 +328,13 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, commercialDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreProvider: officialProvider, OfficialStoreProtection: officialProtection, StoreCenterDB: storeDB, StoreQuotaDB: storeQuotaDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreProvider: officialProvider, OfficialStoreProtection: officialProtection, StoreCenterDB: storeDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
-		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, commercialDB, membershipDB, core, cfg.Membership, logger)
+		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {
-		server, err = dependencies.NewReferralsApplication(startupContext, sourceAccountDB, commercialDB, referralDB, core, logger)
+		server, err = dependencies.NewReferralsApplication(startupContext, sourceAccountDB, referralDB, core, logger)
 	} else {
-		server, err = dependencies.NewApplication(startupContext, sourceAccountDB, commercialDB, core, logger)
+		server, err = dependencies.NewApplication(startupContext, sourceAccountDB, core, logger)
 	}
 	if err != nil {
 		return fmt.Errorf("construct current application: %w", err)

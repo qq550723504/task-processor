@@ -3,93 +3,73 @@ package currentapplication
 import (
 	"context"
 	"errors"
-	"net/http"
-	"testing"
-
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
-
+	"net/http"
 	coreconfig "task-processor/internal/core/config"
+	"testing"
 )
 
 func storeRuntimeConfig() *Config {
 	c := runtimeTestConfig()
-	owner := c.CommercialDatabase
+	owner := c.SourceAccountDatabase
 	owner.User = "commercial_owner_runtime"
 	c.CommercialOwnerDatabase = &owner
 	store := c.SourceAccountDatabase
 	store.User, store.Database = "store_center_runtime", "stores"
-	quota := owner
-	quota.User = "store_quota_runtime"
-	c.StoreCenter = &StoreCenterConfig{Enabled: true, Database: store, QuotaDatabase: quota}
+	c.StoreCenter = &StoreCenterConfig{Enabled: true, Database: store}
 	return c
 }
-
-func TestStoreCenterRequiresCanonicalOwnerAndNarrowIndependentPools(t *testing.T) {
+func TestStoreCenterRequiresResourceOwnerAndNarrowNativePool(t *testing.T) {
 	require.NoError(t, storeRuntimeConfig().validate())
 	for name, mutate := range map[string]func(*Config){
-		"missing owner":          func(c *Config) { c.CommercialOwnerDatabase = nil },
-		"wrong quota target":     func(c *Config) { c.StoreCenter.QuotaDatabase.Database = "other" },
-		"borrow wide quota role": func(c *Config) { c.StoreCenter.QuotaDatabase.User = "commercial_owner_runtime" },
-		"borrow wide store role": func(c *Config) { c.StoreCenter.Database.User = "commercial_runtime" },
+		"missing resource owner": func(c *Config) { c.CommercialOwnerDatabase = nil },
+		"wide record role":       func(c *Config) { c.StoreCenter.Database.User = "commercial_owner_runtime" },
 		"shared record database": func(c *Config) { c.StoreCenter.Database.Database = c.SourceAccountDatabase.Database },
-		"unbounded quota pool":   func(c *Config) { c.StoreCenter.QuotaDatabase.MaxConnections = 9 },
 		"unbounded record pool":  func(c *Config) { c.StoreCenter.Database.MaxConnections = 9 },
 	} {
 		t.Run(name, func(t *testing.T) { c := storeRuntimeConfig(); mutate(c); require.Error(t, c.validate()) })
 	}
 	c := runtimeTestConfig()
 	c.StoreCenter = &StoreCenterConfig{Enabled: false}
-	require.NoError(t, c.validate(), "disabled feature requires no databases")
+	require.NoError(t, c.validate())
 }
-
-func TestStoreCenterRuntimeClosesPoolsOnPartialStartup(t *testing.T) {
-	for failAt := 0; failAt <= 3; failAt++ {
+func TestStoreCenterRuntimeClosesCurrentPoolsOnPartialStartup(t *testing.T) {
+	for failAt := 0; failAt <= 2; failAt++ {
 		t.Run(string(rune('0'+failAt)), func(t *testing.T) {
-			c := storeRuntimeConfig()
-			c.StoreCenter.Enabled = failAt != 0
-			pools := []*gorm.DB{{}, {}, {}, {}, {}}
+			cfg := storeRuntimeConfig()
+			cfg.StoreCenter.Enabled = failAt != 0
+			source, resource, records := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
 			var closed []*gorm.DB
 			opened := 0
-			stop := errors.New("isolated stop before listener")
+			stop := errors.New("isolated startup stop")
 			deps := Dependencies{
 				IdentityPreflight:   func(context.Context, IdentityConfig) error { return nil },
-				OpenSourceAccount:   func(context.Context, DatabaseConfig) (*gorm.DB, error) { return pools[0], nil },
-				OpenCommercial:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return pools[1], nil },
-				OpenCommercialOwner: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return pools[2], nil },
-				OpenStoreCenter: func(_ context.Context, d DatabaseConfig) (*gorm.DB, error) {
+				OpenSourceAccount:   func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+				OpenCommercialOwner: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return resource, nil },
+				OpenStoreCenter: func(_ context.Context, c DatabaseConfig) (*gorm.DB, error) {
 					opened++
-					require.Equal(t, c.StoreCenter.Database, d)
+					require.Equal(t, cfg.StoreCenter.Database, c)
 					if failAt == 1 {
 						return nil, stop
 					}
-					return pools[3], nil
+					return records, nil
 				},
-				OpenStoreQuota: func(_ context.Context, d DatabaseConfig) (*gorm.DB, error) {
-					opened++
-					require.Equal(t, c.StoreCenter.QuotaDatabase, d)
+				CloseDatabase: func(db *gorm.DB) error { closed = append(closed, db); return nil },
+				NewApplicationWithFeatures: func(_ context.Context, s *gorm.DB, f ApplicationFeatures, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+					require.Same(t, source, s)
+					require.Same(t, resource, f.CommercialOwnerDB)
 					if failAt == 2 {
-						return nil, stop
-					}
-					return pools[4], nil
-				},
-				CloseDatabase: func(d *gorm.DB) error { closed = append(closed, d); return nil },
-				NewApplicationWithFeatures: func(_ context.Context, _, _ *gorm.DB, f ApplicationFeatures, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
-					if failAt == 3 {
-						require.Same(t, pools[3], f.StoreCenterDB)
-						require.Same(t, pools[4], f.StoreQuotaDB)
+						require.Same(t, records, f.StoreCenterDB)
 					}
 					return nil, stop
 				},
 			}
-			require.ErrorIs(t, Run(context.Background(), c, logrus.New(), deps), stop)
-			expected := []*gorm.DB{pools[2], pools[1], pools[0]}
+			require.ErrorIs(t, Run(context.Background(), cfg, logrus.New(), deps), stop)
+			expected := []*gorm.DB{resource, source}
 			if failAt == 2 {
-				expected = append([]*gorm.DB{pools[3]}, expected...)
-			}
-			if failAt == 3 {
-				expected = append([]*gorm.DB{pools[4], pools[3]}, expected...)
+				expected = append([]*gorm.DB{records}, expected...)
 			}
 			require.Equal(t, expected, closed)
 			if failAt == 0 {

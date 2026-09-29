@@ -147,7 +147,7 @@ func TestMembershipFactoryReceivesSharedAuthorityAndCurrentInvitationRoutes(t *t
 			shared = a
 			return nil, nil
 		},
-		buildCommercial: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
+		buildCommercial: func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
 		buildMembership: func(_ context.Context, a *authz.ListingKitAuthorizer, auth routeAuthDependencies) (kernelmodule.Module, error) {
 			if a != shared || auth.authorizer != shared {
 				t.Fatal("membership received another authority")
@@ -157,7 +157,7 @@ func TestMembershipFactoryReceivesSharedAuthorityAndCurrentInvitationRoutes(t *t
 			return memberhttp.NewModule(h), nil
 		},
 	}
-	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
+	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
 	if err != nil || server == nil {
 		t.Fatalf("membership assembly: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestCurrentApplicationAuditFactoryAdmission(t *testing.T) {
 	for _, mode := range []string{"enabled", "error", "nil", "missing-route", "wrong-permission"} {
 		t.Run(mode, func(t *testing.T) {
 			cfg := currentApplicationTestConfig()
-			sourceDB, commercialDB := &gorm.DB{}, &gorm.DB{}
+			sourceDB := &gorm.DB{}
 			resourceDB := &gorm.DB{}
 			factories := currentApplicationFactories{
 				buildWorkbench: func(*config.Config, *logrus.Logger) (workbenchContextBuildResult, error) {
@@ -179,11 +179,11 @@ func TestCurrentApplicationAuditFactoryAdmission(t *testing.T) {
 				buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 					return currentApplicationTestModule{name: "source", routes: currentWorkbenchApplicationRoutes[5:]}, nil
 				},
-				buildCommercial: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+				buildCommercial: func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 					return currentApplicationTestModule{name: "commercial", routes: currentWorkbenchApplicationRoutes[4:5]}, nil
 				},
-				buildAccountAudit: func(got, gotCommercial, gotResource *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-					if got != sourceDB || gotCommercial != commercialDB || gotResource != resourceDB || authorizer == nil {
+				buildAccountAudit: func(got, gotMembership, gotResource *gorm.DB, sources invocationAuditSources, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+					if got != sourceDB || gotMembership != nil || gotResource != resourceDB || authorizer == nil {
 						t.Fatal("audit did not reuse its distinct owner pools/authorizer")
 					}
 					if mode == "error" {
@@ -196,7 +196,7 @@ func TestCurrentApplicationAuditFactoryAdmission(t *testing.T) {
 					return currentAuditTestModule{inner: accountAuditModule{query: query}, mode: mode}, nil
 				},
 			}
-			server, err := buildCurrentApplication(context.Background(), sourceDB, commercialDB, cfg, logrus.New(), factories, WithCommercialOwnerDatabase(resourceDB))
+			server, err := buildCurrentApplication(context.Background(), sourceDB, cfg, logrus.New(), factories, WithCommercialOwnerDatabase(resourceDB))
 			if mode == "enabled" {
 				if err != nil || server == nil {
 					t.Fatalf("audit assembly: %v", err)
@@ -263,7 +263,7 @@ func TestCurrentApplicationAuditRequiresExactDescriptor(t *testing.T) {
 }
 
 func TestBuildCurrentApplicationAssemblesOnlyTenAdmittedRoutes(t *testing.T) {
-	sourceDB, commercialDB := &gorm.DB{}, &gorm.DB{}
+	sourceDB := &gorm.DB{}
 	cfg := currentApplicationTestConfig()
 	called := map[string]bool{}
 	factories := currentApplicationFactories{
@@ -282,16 +282,16 @@ func TestBuildCurrentApplicationAssemblesOnlyTenAdmittedRoutes(t *testing.T) {
 			called["source"] = true
 			return currentApplicationTestModule{name: "source", routes: currentWorkbenchApplicationRoutes[5:]}, nil
 		},
-		buildCommercial: func(got *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-			if got != commercialDB || authorizer == nil {
-				t.Fatal("commercial builder did not receive its read database and authorizer")
+		buildCommercial: func(got, gotStore *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+			if got != nil || gotStore != nil || authorizer == nil {
+				t.Fatal("optional owner pools should be absent while authorization remains wired")
 			}
 			called["commercial"] = true
 			return currentApplicationTestModule{name: "commercial", routes: currentWorkbenchApplicationRoutes[4:5]}, nil
 		},
 	}
 
-	server, err := buildCurrentApplication(context.Background(), sourceDB, commercialDB, cfg, logrus.New(), factories)
+	server, err := buildCurrentApplication(context.Background(), sourceDB, cfg, logrus.New(), factories)
 	if err != nil {
 		t.Fatalf("buildCurrentApplication() error = %v", err)
 	}
@@ -334,10 +334,10 @@ func TestBuildCurrentApplicationRejectsRouteDrift(t *testing.T) {
 			return workbenchContextBuildResult{module: currentApplicationTestModule{name: "drift", routes: []currentApplicationRoute{{Method: http.MethodGet, Path: "/api/v1/legacy"}}}, authDependencies: &dependencies}, nil
 		},
 		buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
-		buildCommercial:    func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
+		buildCommercial:    func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
 	}
 
-	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
+	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
 	if err == nil || server != nil {
 		t.Fatalf("route drift build = %#v, %v", server, err)
 	}
@@ -356,7 +356,7 @@ func TestCurrentApplicationRetiresPlatformSubscriptionOwnerRoutes(t *testing.T) 
 		buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return nil, nil
 		},
-		buildCommercial: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+		buildCommercial: func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return nil, nil
 		},
 		buildCommercialBilling: func(context.Context, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer, *config.Config) (kernelmodule.Module, error) {
@@ -365,7 +365,7 @@ func TestCurrentApplicationRetiresPlatformSubscriptionOwnerRoutes(t *testing.T) 
 		},
 	}
 
-	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories, WithCommercialOwnerDatabase(&gorm.DB{}))
+	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories, WithCommercialOwnerDatabase(&gorm.DB{}))
 	if err != nil {
 		t.Fatalf("buildCurrentApplication() error = %v", err)
 	}

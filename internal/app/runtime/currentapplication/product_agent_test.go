@@ -13,12 +13,13 @@ import (
 	"gorm.io/gorm"
 	coreconfig "task-processor/internal/core/config"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/integration/agent/grsaitext"
 )
 
 func agentRuntimeConfig() *Config {
 	cfg := runtimeTestConfig()
-	owner := cfg.CommercialDatabase
+	owner := cfg.SourceAccountDatabase
 	owner.User = "commercial_owner_runtime"
 	cfg.CommercialOwnerDatabase = &owner
 	product := cfg.SourceAccountDatabase
@@ -44,6 +45,12 @@ func TestProductAgentConfigRejectsUnboundedOrSplitProductOwner(t *testing.T) {
 		"unbounded pool":      func(c *Config) { c.ProductAgent.Database.MaxConnections = 9 },
 		"empty admission":     func(c *Config) { c.ProductAgent.AllowedOrganizationIDs = nil },
 		"duplicate admission": func(c *Config) { c.ProductAgent.AllowedOrganizationIDs = []string{"org", "org"} },
+		"invalid point tariff": func(c *Config) {
+			c.ProductAgent.TextPolicy.PointPricing = &aicapability.ModelPointTariff{PriceVersion: "synthetic", InputPointsPerMillionTokens: 1}
+		},
+		"overflow point tariff": func(c *Config) {
+			c.ProductAgent.TextPolicy.PointPricing = &aicapability.ModelPointTariff{PriceVersion: "synthetic", InputPointsPerMillionTokens: 9223372036854775807, OutputPointsPerMillionTokens: 9223372036854775807}
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			cfg := agentRuntimeConfig()
@@ -87,9 +94,9 @@ func TestProductAgentPoolsCloseOnPartialStartupAndStayClosedWhenDisabled(t *test
 			var closed []*gorm.DB
 			stop := errors.New("bounded fixture stop")
 			deps := Dependencies{
-				IdentityPreflight:      func(context.Context, IdentityConfig) error { return nil },
-				OpenSourceAccount:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return pools[0], nil },
-				OpenCommercial:         func(context.Context, DatabaseConfig) (*gorm.DB, error) { return pools[1], nil },
+				IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
+				OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return pools[0], nil },
+
 				OpenCommercialOwner:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return pools[2], nil },
 				OpenProductAcquisition: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return pools[3], nil },
 				OpenProductAgent: func(context.Context, DatabaseConfig) (*gorm.DB, error) {
@@ -99,7 +106,7 @@ func TestProductAgentPoolsCloseOnPartialStartupAndStayClosedWhenDisabled(t *test
 					}
 					return pools[3+openedAgent], nil
 				},
-				NewApplicationWithFeatures: func(_ context.Context, _, _ *gorm.DB, f ApplicationFeatures, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+				NewApplicationWithFeatures: func(_ context.Context, _ *gorm.DB, f ApplicationFeatures, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
 					if failAt == 4 && (f.ProductAgentDB != pools[4] || f.ProductReviewDB != pools[5] || f.ProductAgentAssetDB != pools[6]) {
 						t.Fatal("wrong owner pools")
 					}
@@ -110,13 +117,15 @@ func TestProductAgentPoolsCloseOnPartialStartupAndStayClosedWhenDisabled(t *test
 			if Run(context.Background(), cfg, logrus.New(), deps) == nil {
 				t.Fatal("expected startup stop")
 			}
-			count := 4
+			opened := []*gorm.DB{pools[0], pools[2], pools[3]}
 			if failAt > 0 {
-				count += failAt - 1
+				for i := 1; i < failAt; i++ {
+					opened = append(opened, pools[3+i])
+				}
 			}
 			var want []*gorm.DB
-			for i := count - 1; i >= 0; i-- {
-				want = append(want, pools[i])
+			for i := len(opened) - 1; i >= 0; i-- {
+				want = append(want, opened[i])
 			}
 			if !reflect.DeepEqual(closed, want) {
 				t.Fatalf("closed %d pools, want %d in reverse order", len(closed), len(want))

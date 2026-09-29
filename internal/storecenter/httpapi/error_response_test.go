@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/ledger/orgresource"
-	"task-processor/internal/listingsubscription"
 	"task-processor/internal/storecenter"
 )
 
@@ -33,8 +32,6 @@ func TestMapStoreErrorUsesStableRedactedProtocolContract(t *testing.T) {
 		{name: "idempotency", err: fmt.Errorf("operation secret: %w", orgresource.ErrIdempotencyKeyConflict), status: http.StatusConflict, code: "IDEMPOTENCY_KEY_CONFLICT"},
 		{name: "concurrency", err: fmt.Errorf("database secret: %w", orgresource.ErrConcurrencyRetry), status: http.StatusServiceUnavailable, code: "RESOURCE_CONCURRENCY_RETRY"},
 		{name: "lifecycle", err: fmt.Errorf("state secret: %w", storecenter.ErrInvalidTransition), status: http.StatusUnprocessableEntity, code: "STORE_INVALID_STATE"},
-		{name: "subscription", err: fmt.Errorf("entitlement secret: %w", listingsubscription.ErrSubscriptionRequired), status: http.StatusConflict, code: "SUBSCRIPTION_REQUIRED"},
-		{name: "limit", err: &storecenter.StoreLimitReachedError{Used: 3, Committed: 3, Limit: 3}, status: http.StatusConflict, code: "STORE_LIMIT_REACHED"},
 		{name: "dependency", err: fmt.Errorf("password=secret: %w", storecenter.ErrDependencyUnavailable), status: http.StatusServiceUnavailable, code: "DEPENDENCY_UNAVAILABLE"},
 		{name: "unknown", err: errors.New("token=secret"), status: http.StatusServiceUnavailable, code: "DEPENDENCY_UNAVAILABLE"},
 	}

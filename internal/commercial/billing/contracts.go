@@ -535,6 +535,7 @@ type QuoteRequest struct {
 
 type CreateResourceOrderRequest struct {
 	OrganizationID string
+	ActorID        string
 	QuoteID        string
 	IdempotencyKey string
 }

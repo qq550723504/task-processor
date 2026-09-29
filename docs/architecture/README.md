@@ -122,6 +122,9 @@ source of truth for long-lived rules.
 
 ## Supporting Context
 
+- [`unified-base-prepaid-resources-v1.md`](./unified-base-prepaid-resources-v1.md)
+  - IMPLEMENTATION_READY design basis for #478/#564: current Figma base plan, native Stores, prepaid purchases, real resource events and Product Agent point metering; supersedes subscription/quota/Token entry paths without changing repository package-boundary rules.
+
 These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 

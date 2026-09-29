@@ -5,9 +5,12 @@ import (
 	billing "task-processor/internal/commercial/billing"
 )
 
-func (r *Repository) ListDataRowOffers(ctx context.Context) ([]billing.Offer, error) {
+func (r *Repository) ListResourceOffers(ctx context.Context) ([]billing.Offer, error) {
+	if r == nil || r.db == nil {
+		return nil, billing.ErrFeatureUnavailable
+	}
 	var rows []offerRow
-	if err := r.db.WithContext(ctx).Where("product_kind = ? AND status = ?", string(billing.ProductDataRow), string(billing.OfferActive)).Order("offer_id").Limit(101).Find(&rows).Error; err != nil || len(rows) > 100 {
+	if err := r.db.WithContext(ctx).Where("product_kind IN ? AND status = ?", []string{string(billing.ProductStoreRenewalPeriod), string(billing.ProductAIPoint), string(billing.ProductDataRow)}, string(billing.OfferActive)).Order("offer_id").Limit(101).Find(&rows).Error; err != nil || len(rows) > 100 {
 		return nil, billing.ErrFeatureUnavailable
 	}
 	now := r.now().UTC()
@@ -20,4 +23,18 @@ func (r *Repository) ListDataRowOffers(ctx context.Context) ([]billing.Offer, er
 		result = append(result, offer)
 	}
 	return result, nil
+}
+
+func (r *Repository) ListDataRowOffers(ctx context.Context) ([]billing.Offer, error) {
+	offers, err := r.ListResourceOffers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	data := make([]billing.Offer, 0, len(offers))
+	for _, offer := range offers {
+		if offer.ProductKind == billing.ProductDataRow {
+			data = append(data, offer)
+		}
+	}
+	return data, nil
 }

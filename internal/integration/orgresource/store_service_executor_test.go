@@ -24,7 +24,7 @@ func TestStoreServiceExecutorActivatesAndConsumesInOneTransaction(t *testing.T) 
 	execution := storecenter.ServiceExecution{
 		OrganizationID: "org-a", OperationID: "operation-activate", StoreID: store.ID(),
 		Command: storecenter.ServiceCommandActivate, Quantity: 1, MaxQuantity: 12,
-		ExpectedStoreVersion: 2, ExpectedConnectionRef: store.ConnectionRef(), ConnectionStatus: storecenter.ConnectionStatusConnected,
+		ExpectedStoreVersion: 1, ExpectedConnectionRef: store.ConnectionRef(), ConnectionStatus: storecenter.ConnectionStatusConnected,
 		ActorSubject: "operator", OccurredAt: now, RequestFingerprint: sixtyFourHex('a'),
 	}
 
@@ -39,14 +39,14 @@ func TestStoreServiceExecutorActivatesAndConsumesInOneTransaction(t *testing.T) 
 	if first.Replayed || !replayed.Replayed || replayed.Snapshot.OperationID != first.Snapshot.OperationID {
 		t.Fatalf("results first=%+v replay=%+v", first, replayed)
 	}
-	if first.Snapshot.BalanceAfter != "0" || first.Snapshot.StoreVersion != 3 || first.Snapshot.ServiceState.ServiceStatus != storecenter.ServiceStatusActive {
+	if first.Snapshot.BalanceAfter != "0" || first.Snapshot.StoreVersion != 2 || first.Snapshot.ServiceState.ServiceStatus != storecenter.ServiceStatusActive {
 		t.Fatalf("snapshot = %+v", first.Snapshot)
 	}
 	assertResourceBucket(t, db, "org-a", 0, 1)
 	assertTableCount(t, db, "saas_organization_resource_operations", 1)
 	assertTableCount(t, db, "saas_organization_resource_events", 1)
 	assertTableCount(t, db, "saas_organization_resource_audit_logs", 1)
-	assertStoreServiceRow(t, db, store.ID(), 3, storecenter.ServiceStatusActive, now, now.Add(30*24*time.Hour))
+	assertStoreServiceRow(t, db, store.ID(), 2, storecenter.ServiceStatusActive, now, now.Add(30*24*time.Hour))
 }
 
 func TestStoreServiceExecutorRollsBackStoreAndResourceWhenAuditFails(t *testing.T) {
@@ -66,7 +66,7 @@ func TestStoreServiceExecutorRollsBackStoreAndResourceWhenAuditFails(t *testing.
 	_, err = executor.ExecuteServiceLifecycle(context.Background(), storecenter.ServiceExecution{
 		OrganizationID: "org-a", OperationID: "operation-rollback", StoreID: store.ID(),
 		Command: storecenter.ServiceCommandActivate, Quantity: 1, MaxQuantity: 12,
-		ExpectedStoreVersion: 2, ExpectedConnectionRef: store.ConnectionRef(), ConnectionStatus: storecenter.ConnectionStatusConnected,
+		ExpectedStoreVersion: 1, ExpectedConnectionRef: store.ConnectionRef(), ConnectionStatus: storecenter.ConnectionStatusConnected,
 		ActorSubject: "operator", OccurredAt: now, RequestFingerprint: sixtyFourHex('b'),
 	})
 	if err == nil {
@@ -76,7 +76,7 @@ func TestStoreServiceExecutorRollsBackStoreAndResourceWhenAuditFails(t *testing.
 	assertTableCount(t, db, "saas_organization_resource_operations", 0)
 	assertTableCount(t, db, "saas_organization_resource_events", 0)
 	assertTableCount(t, db, "saas_organization_resource_audit_logs", 0)
-	assertStoreServiceRow(t, db, store.ID(), 2, storecenter.ServiceStatusPendingActivation, time.Time{}, time.Time{})
+	assertStoreServiceRow(t, db, store.ID(), 1, storecenter.ServiceStatusPendingActivation, time.Time{}, time.Time{})
 }
 
 func TestStoreServiceExecutorReplaysTerminalInsufficientBalance(t *testing.T) {
@@ -91,7 +91,7 @@ func TestStoreServiceExecutorReplaysTerminalInsufficientBalance(t *testing.T) {
 	execution := storecenter.ServiceExecution{
 		OrganizationID: "org-a", OperationID: "operation-insufficient", StoreID: store.ID(),
 		Command: storecenter.ServiceCommandActivate, Quantity: 1, MaxQuantity: 12,
-		ExpectedStoreVersion: 2, ExpectedConnectionRef: store.ConnectionRef(), ConnectionStatus: storecenter.ConnectionStatusConnected,
+		ExpectedStoreVersion: 1, ExpectedConnectionRef: store.ConnectionRef(), ConnectionStatus: storecenter.ConnectionStatusConnected,
 		ActorSubject: "operator", OccurredAt: now, RequestFingerprint: sixtyFourHex('c'),
 	}
 	if _, err := executor.ExecuteServiceLifecycle(context.Background(), execution); !errors.Is(err, orgresource.ErrInsufficientBalance) {
@@ -106,7 +106,7 @@ func TestStoreServiceExecutorReplaysTerminalInsufficientBalance(t *testing.T) {
 		t.Fatalf("terminal replay error = %v", err)
 	}
 	assertResourceBucket(t, db, "org-a", 1, 0)
-	assertStoreServiceRow(t, db, store.ID(), 2, storecenter.ServiceStatusPendingActivation, time.Time{}, time.Time{})
+	assertStoreServiceRow(t, db, store.ID(), 1, storecenter.ServiceStatusPendingActivation, time.Time{}, time.Time{})
 	assertTableCount(t, db, "saas_organization_resource_operations", 1)
 	assertTableCount(t, db, "saas_organization_resource_events", 0)
 	assertTableCount(t, db, "saas_organization_resource_audit_logs", 1)
@@ -125,13 +125,13 @@ func TestStoreServiceExecutorRecoversSuccessfulCommitResponseLoss(t *testing.T) 
 	result, err := executor.ExecuteServiceLifecycle(context.Background(), storecenter.ServiceExecution{
 		OrganizationID: "org-a", OperationID: "operation-response-loss", StoreID: store.ID(),
 		Command: storecenter.ServiceCommandActivate, Quantity: 1, MaxQuantity: 12,
-		ExpectedStoreVersion: 2, ExpectedConnectionRef: store.ConnectionRef(), ConnectionStatus: storecenter.ConnectionStatusConnected,
+		ExpectedStoreVersion: 1, ExpectedConnectionRef: store.ConnectionRef(), ConnectionStatus: storecenter.ConnectionStatusConnected,
 		ActorSubject: "operator", OccurredAt: now, RequestFingerprint: sixtyFourHex('d'),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Replayed || result.Snapshot.StoreVersion != 3 {
+	if !result.Replayed || result.Snapshot.StoreVersion != 2 {
 		t.Fatalf("response-loss result = %+v", result)
 	}
 	assertResourceBucket(t, db, "org-a", 0, 1)
@@ -152,20 +152,20 @@ func TestStoreServiceExecutorClearsTerminalFailureBetweenTransactionRetries(t *t
 	result, err := executor.ExecuteServiceLifecycle(context.Background(), storecenter.ServiceExecution{
 		OrganizationID: "org-a", OperationID: "operation-retry-terminal", StoreID: store.ID(),
 		Command: storecenter.ServiceCommandActivate, Quantity: 1, MaxQuantity: 12,
-		ExpectedStoreVersion: 2, ExpectedConnectionRef: store.ConnectionRef(), ConnectionStatus: storecenter.ConnectionStatusConnected,
+		ExpectedStoreVersion: 1, ExpectedConnectionRef: store.ConnectionRef(), ConnectionStatus: storecenter.ConnectionStatusConnected,
 		ActorSubject: "operator", OccurredAt: now, RequestFingerprint: sixtyFourHex('e'),
 	})
 	if err != nil {
 		t.Fatalf("ExecuteServiceLifecycle() error = %v, want retry success", err)
 	}
-	if result.Replayed || result.Snapshot.StoreVersion != 3 {
+	if result.Replayed || result.Snapshot.StoreVersion != 2 {
 		t.Fatalf("retry result = %+v, want committed second attempt", result)
 	}
 	if stores.lockCalls != 2 {
 		t.Fatalf("LockServiceState calls = %d, want 2 attempts", stores.lockCalls)
 	}
 	assertResourceBucket(t, db, "org-a", 0, 1)
-	assertStoreServiceRow(t, db, store.ID(), 3, storecenter.ServiceStatusActive, now, now.Add(30*24*time.Hour))
+	assertStoreServiceRow(t, db, store.ID(), 2, storecenter.ServiceStatusActive, now, now.Add(30*24*time.Hour))
 	assertTableCount(t, db, "saas_organization_resource_operations", 1)
 }
 
@@ -181,14 +181,14 @@ func TestStoreServiceExecutorRejectsConnectionReferenceDriftWithoutSideEffects(t
 	_, err = executor.ExecuteServiceLifecycle(context.Background(), storecenter.ServiceExecution{
 		OrganizationID: "org-a", OperationID: "operation-connection-drift", StoreID: store.ID(),
 		Command: storecenter.ServiceCommandActivate, Quantity: 1, MaxQuantity: 12,
-		ExpectedStoreVersion: 2, ExpectedConnectionRef: store.ConnectionRef(), ConnectionStatus: storecenter.ConnectionStatusConnected,
+		ExpectedStoreVersion: 1, ExpectedConnectionRef: store.ConnectionRef(), ConnectionStatus: storecenter.ConnectionStatusConnected,
 		ActorSubject: "operator", OccurredAt: now, RequestFingerprint: sixtyFourHex('f'),
 	})
 	if !errors.Is(err, storecenter.ErrConnectionSnapshotChanged) {
 		t.Fatalf("ExecuteServiceLifecycle() error = %v, want ErrConnectionSnapshotChanged", err)
 	}
 	assertResourceBucket(t, db, "org-a", 1, 0)
-	assertStoreServiceRow(t, db, store.ID(), 2, storecenter.ServiceStatusPendingActivation, time.Time{}, time.Time{})
+	assertStoreServiceRow(t, db, store.ID(), 1, storecenter.ServiceStatusPendingActivation, time.Time{}, time.Time{})
 	assertTableCount(t, db, "saas_organization_resource_operations", 0)
 	assertTableCount(t, db, "saas_organization_resource_events", 0)
 	assertTableCount(t, db, "saas_organization_resource_audit_logs", 0)
@@ -278,19 +278,13 @@ func seedPendingActivationStore(t *testing.T, db *gorm.DB, repository *storecent
 	store, err := storecenter.NewStore(storecenter.CreateStoreInput{
 		ID: storeID, OrganizationID: organizationID, ActorSubject: "creator", Name: "Service Store", Platform: "shein", Region: "SG",
 		ExternalStoreID: "external-" + storeID, CreateIdempotencyKey: "00000000-0000-4000-8000-000000000512",
-		QuotaAllocationID: "00000000-0000-4000-8000-000000000513", OccurredAt: createdAt,
+		OccurredAt: createdAt,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	store, _, err = repository.CreateOrReplay(context.Background(), organizationID, store)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.TransitionTo(storecenter.RecordStatusActive, "creator", createdAt.Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repository.Save(context.Background(), organizationID, store, 1); err != nil {
 		t.Fatal(err)
 	}
 	return store

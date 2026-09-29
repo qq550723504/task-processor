@@ -226,7 +226,6 @@ export function StoreServiceActions({
         1 期为 30 天，首次开通需要真实平台连接。
       </p>
       {canWrite &&
-      store.recordStatus !== "provisioning" &&
       store.recordStatus !== "deleting" ? (
         <Button
           disabled={action === "activate" && !connected}

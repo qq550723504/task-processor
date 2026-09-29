@@ -3,52 +3,44 @@
 Optional ZITADEL/Tencent SMS delivery configuration and the remaining local
 provider connection prerequisite are documented in [SMS.md](SMS.md).
 
-## Store Center (#552)
+## Current base plan and resources (#564)
 
-The current Console entry is `/workbench/stores`. Select a current organization
-before opening the list. Viewers can read the list and detail; operators can
-create, edit, disable and enable records; administrators can also delete.
-Creation requires the organization's existing active Store Management entitlement
-with a frozen positive `store_count`. No trial quota is inferred or seeded by
-Store Center. When it is absent, the page explains the unavailable capacity.
+The current entries are `/workbench/account`, `/workbench/plans/options`,
+`/workbench/plans/entitlements`, `/workbench/plans/usage`, and `/workbench/stores`.
+All organizations use the base plan without buying a subscription. Store records
+have no subscription capacity quota. New records start pending activation and do
+not acquire a connection or a paid service period. Activation requires a real
+connected Store and allocated service periods; one period is 30 days.
 
-The list and detail show record status, connection status, and saved service
-status/period separately. New stores are pending activation with no paid period.
-Disabling/enabling a record preserves existing paid service facts. Platform
-connection and service activation/renewal/reactivation are not opened in this
-batch; their BFF and current-application routes are absent. Deletion releases the
-existing Store quota once, creates no resource refund, and has no restore entry.
-Lost creation/deletion responses reuse their original request identity; refresh
-reads saved state. An interrupted creation can use its existing Resume action.
+Administrators buy Store periods, AI points and data rows from the enterprise
+wallet against configured `commercial_offers`. AI/data also accept a money budget:
+the server floors the purchasable quantity and leaves the remainder uncharged.
+Missing prices disable purchases. `ACCOUNT_ISOLATED_TRIAL_CATALOG` and the former
+free subscription seed are retired and rejected; no formal prices are seeded.
+Enterprise resource balances do not expire monthly. Members retain concrete Store
+grants, allocated periods/data and a UTC calendar-month AI spending limit.
 
-Follow the [normal fresh installation steps](#start) below using a new project
-name and unique ports. Bootstrap creates a separate `store_center` database,
-`store_center_owner`, `store_center_runtime` and `store_quota_runtime`. Schema-init
-uses the existing Goose installer via `store-center-schema-init`; serving pools
-perform no DDL. Existing older projects must use their original checkout or a
-new empty project; this feature does not migrate, reset or clean their data.
+Start a **new isolated project** using the normal commands below. A manifest with
+`commercialDatabase` or `storeCenter.quotaDatabase`, or an old Store schema, is
+rejected. Keep existing projects on their original checkout: this cutover does not
+migrate or delete their data. The native Store initializer now accepts only
+`store-center-schema-init -config <absolute-private-store-owner-json>`.
+The current commercial/money initializer installs only their current owners and
+explicit grants. Serving verifies schemas and permissions without altering them.
 
-For a separately provisioned fresh installation, the private application JSON
-must explicitly set `storeCenter.enabled: true`, `storeCenter.database` using
-`store_center_runtime` and `storeCenter.quotaDatabase` using `store_quota_runtime`.
-The quota host/port/database must exactly match the explicit
-`commercialOwnerDatabase`; the Store database must be distinct from all current
-owners. Each pool has at most eight connections. Install the empty Store schema
-with `go run ./cmd/store-center-schema-init -config <absolute-private-store-owner-json>
--quota-config <absolute-private-commercial-owner-json>` before starting
-`go run ./cmd/current-application -config <absolute-private-application-json>`.
-Schema-owner JSON uses the existing explicit loopback database fields and at
-most two connections. The canonical commercial owner must already have installed
-its quota and entitlement tables. The initializer grants narrowly scoped rights;
-it does not create plans or entitlements. Disabled configuration opens no Store
-pools and registers no Store routes.
+Product Agent remains explicitly opt-in. Its `productAgent.textPolicy.pointPricing`
+requires a reviewed `priceVersion` and positive integer
+`inputPointsPerMillionTokens` / `outputPointsPerMillionTokens`. No rates are defaulted.
+The native invocation freezes rates and governed Token bounds; Resource reserves
+AI points and settles observed input/output usage using the frozen rates. Unknown
+calls retain their original hold and are never redispatched by recovery. Actual
+Tokens remain visible as usage audit, separate from point consumption.
 
-Store records and append-only audit survive stop/restart in the existing business
-DB volume; quota remains in the canonical commercial database. Preserve that
-volume and private role secrets together. Startup rejects missing/weakened state
-constraints, uniqueness boundaries, or roles with extra business/DDL rights.
-Development API/PostgreSQL and UI checks are not user acceptance; actual browser
-trial and deployment require the corresponding authorization.
+The prior controlled image trial overlay below depends on the retired subscription
+fixture and is historical; it is not a startup path for this new batch. Real SHEIN
+connection remains unavailable until an approved application is configured. Real
+provider calls and payment acceptance are not implied by local tests.
+
 
 ## Enterprise wallet top-up (optional, #481)
 
@@ -62,7 +54,7 @@ the original organization; changing organizations does not redirect money.
 
 Principal is credited equally, repaying existing debt first. The platform bears
 channel fees; no bonus, discount or referral commission is generated by top-up.
-Buying a subscription remains a separate action. The first version supports
+Buying prepaid resources remains a separate action. The first version supports
 desktop Alipay checkout and scanning a QR code with WeChat; mobile web direct
 launch, automatic top-up and a self-service refund workbench are not available.
 
@@ -291,8 +283,7 @@ their application features.
 | Module / fact owner | Tables (all in `public`) | Logical database | Runtime role | Separate application pool / maximum connections | Instance |
 | --- | --- | --- | --- | --- | --- |
 | Source Account Registry; Account business profile | `source_account_resources`, `source_account_operations`; `account_business_profiles`, `account_business_profile_audit_events` | `source_accounts` | `source_account_runtime` | `sourceAccountDatabase` / 4 | `business-db:5433` |
-| Commercial reads, usage reservation/settlement, member allocation | `saas_plans`, `saas_tenant_subscriptions`, `saas_tenant_entitlements`; `saas_usage_buckets`, `saas_usage_events`, `saas_usage_event_outbox`, `saas_subscription_audit_logs`; `account_member_token_locks`, `account_member_token_allocations`, `account_member_token_operations`, `account_member_token_audit_events` | `commercial` (or `ACCOUNT_COMMERCIAL_DATABASE`) | `commercial_runtime` | `commercialDatabase` / 4; image worker has its own commercial pool / 4 | `business-db:5433` |
-| Subscription/catalog owner; commercial orders; organization resources | `saas_modules`, `saas_plans`, `saas_plan_modules`, `saas_tenant_subscriptions`, `saas_tenant_entitlements`, `saas_usage_counters`, `saas_usage_counter_adjustments`, `saas_subscription_audit_logs`, `saas_subscription_activation_fences`, `saas_purchased_plan_activations`; `commercial_offers`, `commercial_quotes`, `commercial_orders`, `commercial_order_items`; `saas_organization_resource_buckets`, `saas_organization_resource_operations`, `saas_organization_resource_source_claims`, `saas_organization_resource_events`, `saas_organization_resource_reservations`, `saas_organization_resource_debts`, `saas_organization_resource_audit_logs` | same commercial database | `commercial_owner_runtime` (separate password) | `commercialOwnerDatabase` / 2 | `business-db:5433` |
+| Current catalog owner; commercial orders; organization resources | `commercial_offers`, `commercial_quotes`, `commercial_orders`, `commercial_order_items`; `saas_organization_resource_buckets`, `saas_organization_resource_operations`, `saas_organization_resource_source_claims`, `saas_organization_resource_events`, `saas_organization_resource_reservations`, `saas_organization_resource_debts`, `saas_organization_resource_audit_logs` | same commercial database | `commercial_owner_runtime` (separate password) | `commercialOwnerDatabase` / 2 | `business-db:5433` |
 | Referral registration/economics; canonical Money owner | `referral_codes`, `registration_intents`, `referral_relations`, `referral_receipts`, `registration_admission_buckets`, `referral_earning_claims`, `referral_earnings_ledger`, `referral_refund_operations`, `referral_chargeback_operations`, `referral_earnings_projection`, `referral_withdrawals`, `referral_withdrawal_operations`, `referral_earnings_audit_events`; `ledger_payment_settlements`, `ledger_refund_settlements`, `ledger_chargeback_settlements`, `ledger_payout_methods`, `ledger_payout_method_operations`, `ledger_organization_wallets`, `ledger_organization_wallet_entries`, `ledger_organization_wallet_reservations`, `ledger_organization_wallet_reserve_decisions`, `ledger_organization_topup_settlements`, `ledger_organization_wallet_reversals` | `referrals` | `referral_runtime` | `referrals.referralDatabase` / 4 | `business-db:5433` |
 | Organization membership invitation/operation receipts and audit (identity remains ZITADEL-owned) | `organization_member_invitations`, `organization_member_operations`, `organization_member_audit_events` | `membership` | `organization_membership_runtime` | `membership.database` / 4 | `business-db:5433` |
 | Acquisition; SRC publication and Product Catalog | `product_acquisition_operations`, `product_source_publications`, `product_source_publication_receipts`, `product_snapshot_versions`, `product_snapshot_heads` | `product_acquisition` | `source_acquisition_runtime` | `productAcquisitionDatabase` / 4 | `business-db:5433` |
@@ -305,16 +296,11 @@ and order tables; the ImageAgent API and worker keep their different exact
 allowlists, and the old v2 slot-effect table is not granted to either current
 role. Existing startup permission checks remain authoritative. Installed metadata
 tables are `goose_source_account_registry_version` and
-`goose_account_profile_version` in source_accounts, and
-`goose_account_member_token_allocation_version` in commercial; these are
-schema-owner-only. The existing subscription installer also creates
-`saas_store_quota_allocations` and `saas_store_quota_buckets` in commercial;
-this local composition grants neither commercial runtime role access to them.
-Their presence does not open an additional store-quota product flow.
+`goose_account_profile_version` in source_accounts. These are schema-owner-only.
+The new commercial initializer does not install subscription, Token allocation
+or Store quota tables. The optional old image trial table list above is historical.
 
-The seven current-application pools total at most 26 connections when the image
-overlay is enabled (18 without it); the worker adds two independent pools of 4.
-The server retains PostgreSQL's existing 100-connection limit. No shared pool,
+Pool sizes are bounded by each explicit runtime manifest. The server retains PostgreSQL's existing 100-connection limit. No shared pool,
 cross-database transaction, FDW, or dblink is introduced. In particular, Money
 remains in `referrals` and orders/resources in commercial: existing owner calls,
 idempotency receipts and recovery retain their original transaction boundaries.

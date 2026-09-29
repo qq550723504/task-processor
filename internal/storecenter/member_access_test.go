@@ -82,7 +82,7 @@ func TestMemberStoreAccessFiltersBeforePaginationAndDoesNotInheritAfterRejoin(t 
 	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", first); !errors.Is(err, storecenter.ErrNotFound) {
 		t.Fatalf("create replay restored a revoked member grant: %v", err)
 	}
-	if err := first.TransitionTo(storecenter.RecordStatusActive, "subject-create", first.UpdatedAt().Add(time.Second)); err != nil {
+	if _, err := first.EditBasic("Changed", first.Region(), "subject-create", first.UpdatedAt().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", first, 1); !errors.Is(err, storecenter.ErrNotFound) {

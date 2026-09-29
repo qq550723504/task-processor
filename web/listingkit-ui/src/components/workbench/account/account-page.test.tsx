@@ -1,3 +1,4 @@
+import {commercialOverviewFixture} from "@/test/fixtures/commercial-overview";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -314,14 +315,12 @@ describe("AccountPage read-only projection", () => {
   });
   it("renders returned enterprise owner facts and labels a failed commercial read unavailable", async () => {
     const memberList = { schemaVersion: "membership-v1", userId: "u1", organizationId: "B", items: [{ id: "member-1", userId: "member-user", organizationId: "B", projectId: "project-1", displayName: "成员甲", loginName: "member@example.test", roles: ["listingkit_viewer"], state: "active", createdAt: "2026-09-12T00:00:00Z", changedAt: "2026-09-12T00:00:00Z", observedVersion: "a".repeat(64), canChangeRole: false, canRemove: false, permissions: [] }], total: 8, canManage: false, assignableRoles: [] };
-    const allocation = { schemaVersion: "account-member-token-allocation-v1", organizationId: "B", metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", enterprise: { total: "9000", allocated: "4500", unallocated: "4500", consumed: "1200" }, members: [{ memberId: "member-1", userId: "member-user", displayName: "成员甲", loginName: "member@example.test", state: "active", allocation: { metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", allocated: "4500", consumed: "1200", remaining: "3300", version: "1", active: true } }] };
     const audit = { schemaVersion: "account-audit-v1", userId: "u1", effectiveOrganizationId: "B", source: "source_account_committed_operations+account_business_profile_audit", items: [{ eventType: "account_business_profile.updated", actor: "operator-B", time: "2026-09-12T00:00:00Z", objectType: "account_business_profile", objectReference: "u1", operation: "update", result: "succeeded", relation: { type: "account_business_profile_version", reference: "u1", version: "1" } }], nextCursor: null };
     const fetcher = vi.fn((input: string) => {
       const path = String(input);
       if (path === "/api/account/organization") return Promise.resolve(Response.json(organization));
       if (path === "/api/account/members/summary") return Promise.resolve(Response.json({schemaVersion:"membership-summary-v1",userId:"u1",organizationId:"B",total:8,active:7,administrators:1,inactive:1,source:"zitadel_authorization_v2",readAt:profile.readAt}));
       if (path === "/api/workbench/commercial/overview") return Promise.resolve(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 }));
-      if (path === "/api/account/member-allocations") return Promise.resolve(Response.json(allocation));
       if (path.startsWith("/api/account/audit?")) return Promise.resolve(Response.json(audit));
       throw new Error(`unexpected fetch: ${path}`);
     });
@@ -329,32 +328,14 @@ describe("AccountPage read-only projection", () => {
 
     expect(await screen.findByText("8")).toBeVisible();
     expect(screen.getByText("全部有效成员 7 人")).toBeVisible();
-    expect(screen.getByText("权益服务未返回订阅")).toBeVisible();
+    expect(screen.getByText("店铺按期收费，AI 与数据资源预付使用")).toBeVisible();
     expect(screen.getAllByText("暂不可用").length).toBeGreaterThan(0);
     expect(screen.getByRole("region",{name:"AI 点数余额"})).toBeVisible();
     expect(screen.getByText("operator-B")).toBeVisible();
     expect(screen.getByText("update · u1")).toBeVisible();
     expect(fetcher).toHaveBeenCalledTimes(7);
   });
-  it.each([
-    ["expired", "已过期", "active", "2026-08-01T00:00:00Z", "2026-09-01T00:00:00Z"],
-    ["disabled", "已停用", "disabled", null, null],
-    ["not_started", "尚未生效", "active", "2026-10-01T00:00:00Z", null],
-  ])("shows the owner effective subscription status %s", async (effectiveStatus, label, status, startsAt, expiresAt) => {
-    const observedAt = "2026-09-07T00:00:00Z";
-    const metrics = ["listingkit_generations_succeeded", "product_image_jobs_succeeded", "shein_drafts_succeeded", "shein_publishes_succeeded", "storage_bytes_current"] as const;
-    const commercial = {
-      organization_id: "B", observed_at: observedAt,
-      plans: [{ code: "base_payg", name: "基础方案 · 按需使用", source: "approved_product_description", availability: "not_for_sale", price: null, currency: null }],
-      subscription: { plan_code: "paid-pilot-contract", plan_name: "Paid Pilot", status, effective_status: effectiveStatus, starts_at: startsAt, expires_at: expiresAt, updated_at: observedAt },
-      entitlements: [],
-      usage: metrics.map((metric, index) => ({ module_code: index === 4 ? "oss_storage" : "listingkit", metric, source: "subscription_usage_ledger", unit: index === 4 ? "byte" : "operation", period_key: index === 4 ? "__current__" : "2026-09", window_start: index === 4 ? null : "2026-09-01T00:00:00Z", window_end: index === 4 ? null : "2026-10-01T00:00:00Z", state: "unknown", committed: null, reserved: null, updated_at: null })),
-      resource_balance: { state: "unsupported", value: null }, cash_balance: { state: "unsupported", value: null },
-    };
-    const fetcher = vi.fn((input: string) => String(input) === "/api/workbench/commercial/overview" ? Promise.resolve(Response.json(commercial)) : String(input) === "/api/account/organization" ? Promise.resolve(Response.json(organization)) : Promise.resolve(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
-    vi.stubGlobal("fetch",withSelfReads(fetcher)); mount("organization");
-    expect(await screen.findByText(`当前订阅：Paid Pilot · ${label}`)).toBeVisible();
-  });
+  it("reads the fixed base plan from the current commercial contract",async()=>{const fetcher=vi.fn((input:string)=>String(input)==="/api/workbench/commercial/overview"?Promise.resolve(Response.json(commercialOverviewFixture("B"))):String(input)==="/api/account/organization"?Promise.resolve(Response.json(organization)):Promise.resolve(Response.json({code:"DEPENDENCY_UNAVAILABLE",message:"",requestId:"",fieldErrors:[]},{status:503})));vi.stubGlobal("fetch",withSelfReads(fetcher));mount("organization");expect(await screen.findByText("基础方案")).toBeVisible();expect(screen.getByText("店铺按期收费，AI 与数据资源预付使用")).toBeVisible();});
   it.each(["AUTHENTICATION_REQUIRED", "IDENTITY_CONTEXT_CHANGED", "ACCOUNT_NOT_CONFIGURED", "DEPENDENCY_UNAVAILABLE", "DEADLINE_EXCEEDED", "PERMISSION_DENIED", "ORGANIZATION_ACCESS_REVOKED", "unexpected"])("shows a safe %s state without data or raw error", async code => {
     const status = code === "AUTHENTICATION_REQUIRED" ? 401 : code === "IDENTITY_CONTEXT_CHANGED" ? 409 : code === "DEADLINE_EXCEEDED" ? 504 : code.includes("PERMISSION") || code.includes("REVOKED") ? 403 : 503;
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code, message: "private-secret", requestId: "", fieldErrors: [] }, { status }))); mount();

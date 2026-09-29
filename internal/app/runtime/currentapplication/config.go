@@ -38,7 +38,6 @@ type Config struct {
 	Listen                     ListenConfig                  `json:"listen"`
 	Identity                   IdentityConfig                `json:"identity"`
 	SourceAccountDatabase      DatabaseConfig                `json:"sourceAccountDatabase"`
-	CommercialDatabase         DatabaseConfig                `json:"commercialDatabase"`
 	CommercialOwnerDatabase    *DatabaseConfig               `json:"commercialOwnerDatabase,omitempty"`
 	MoneyOwnerDatabase         *DatabaseConfig               `json:"moneyOwnerDatabase,omitempty"`
 	WalletTopUp                topupconfig.Config            `json:"walletTopUp,omitempty"`
@@ -261,16 +260,13 @@ func (cfg *Config) validate() error {
 		return errors.New("identity.tenantDirectoryToken must be trimmed and bounded")
 	}
 	if cfg.CommercialOwnerDatabase != nil && cfg.Referrals.Enabled && cfg.Identity.TenantDirectoryToken == "" {
-		return errors.New("identity.tenantDirectoryToken is required for subscription purchase recovery")
+		return errors.New("identity.tenantDirectoryToken is required for financial recovery")
 	}
 	if err := cfg.SourceAccountDatabase.validate("sourceAccountDatabase"); err != nil {
 		return err
 	}
-	if err := cfg.CommercialDatabase.validate("commercialDatabase"); err != nil {
-		return err
-	}
-	if cfg.SourceAccountDatabase.User != "source_account_runtime" || cfg.CommercialDatabase.User != "commercial_runtime" {
-		return errors.New("current application database roles must be source_account_runtime and commercial_runtime")
+	if cfg.SourceAccountDatabase.User != "source_account_runtime" {
+		return errors.New("current application database roles must be source_account_runtime")
 	}
 	if owner := cfg.CommercialOwnerDatabase; owner != nil {
 		if err := owner.validate("commercialOwnerDatabase"); err != nil {
@@ -300,7 +296,7 @@ func (cfg *Config) validate() error {
 		if err := cfg.Membership.validate(cfg.Identity); err != nil {
 			return err
 		}
-		others := []DatabaseConfig{cfg.SourceAccountDatabase, cfg.CommercialDatabase}
+		others := []DatabaseConfig{cfg.SourceAccountDatabase}
 		if cfg.CommercialOwnerDatabase != nil {
 			others = append(others, *cfg.CommercialOwnerDatabase)
 		}
@@ -320,7 +316,7 @@ func (cfg *Config) validate() error {
 		if product.User != "source_acquisition_runtime" || product.MaxConnections > 8 {
 			return errors.New("product acquisition requires source_acquisition_runtime and at most 8 connections")
 		}
-		others := []DatabaseConfig{cfg.SourceAccountDatabase, cfg.CommercialDatabase}
+		others := []DatabaseConfig{cfg.SourceAccountDatabase}
 		if cfg.CommercialOwnerDatabase != nil {
 			others = append(others, *cfg.CommercialOwnerDatabase)
 		}
@@ -343,7 +339,7 @@ func (cfg *Config) validate() error {
 		if image.Database.User != "image_agent_runtime" || image.Database.MaxConnections > 8 {
 			return errors.New("image agent requires image_agent_runtime and at most 8 connections")
 		}
-		for _, other := range []*DatabaseConfig{&cfg.SourceAccountDatabase, &cfg.CommercialDatabase, cfg.CommercialOwnerDatabase, cfg.ProductAcquisitionDatabase, &cfg.Referrals.Database} {
+		for _, other := range []*DatabaseConfig{&cfg.SourceAccountDatabase, cfg.CommercialOwnerDatabase, cfg.ProductAcquisitionDatabase, &cfg.Referrals.Database} {
 			if other != nil && image.Database.Host == other.Host && image.Database.Port == other.Port && image.Database.Database == other.Database {
 				return errors.New("image agent requires a dedicated owner database")
 			}

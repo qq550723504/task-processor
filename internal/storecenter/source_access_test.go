@@ -32,7 +32,7 @@ func TestSourcingStoreAccessFailsClosed(t *testing.T) {
 		{name: "wrong store", store: &Store{id: "other", organizationID: "org-a", platform: PlatformShein, recordStatus: RecordStatusActive}},
 		{name: "wrong platform", store: &Store{id: id, organizationID: "org-a", platform: "amazon", recordStatus: RecordStatusActive}},
 		{name: "disabled", store: &Store{id: id, organizationID: "org-a", platform: PlatformShein, recordStatus: RecordStatusDisabled}},
-		{name: "provisioning", store: &Store{id: id, organizationID: "org-a", platform: PlatformShein, recordStatus: RecordStatusProvisioning}},
+		{name: "provisioning", store: &Store{id: id, organizationID: "org-a", platform: PlatformShein, recordStatus: RecordStatus("provisioning")}},
 		{name: "deleting", store: &Store{id: id, organizationID: "org-a", platform: PlatformShein, recordStatus: RecordStatusDeleting}},
 		{name: "missing"}, {name: "repository failure", err: errors.New("unavailable")},
 	} {

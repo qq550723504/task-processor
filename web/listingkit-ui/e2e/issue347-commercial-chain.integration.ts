@@ -51,33 +51,22 @@ beforeAll(async()=>{
 afterAll(async()=>{vi.unstubAllGlobals();if(server)await new Promise<void>((resolve,reject)=>server.close(err=>err?reject(err):resolve()));});
 const mode=async(value:number)=>{const response=await nativeFetch(`${upstream}/fixture/mode`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({mode:value})});expect(response.status).toBe(204);};
 
-it("executes actual HTTP client → Next BFF → Go verified scope → subscription owner → isolated PostgreSQL",async()=>{
-  const first=await getCommercialOverview("org-B");
-  expect(first.organization_id).toBe("org-B");expect(first.subscription?.plan_code).toBe("paid_pilot");
-  expect(first.plans.map(p=>p.code)).toEqual(["base_payg","paid_pilot"]);expect(first.plans.every(p=>p.price===null&&p.currency===null)).toBe(true);
-  expect(first.usage[0]).toMatchObject({state:"known",committed:"1",reserved:"0",period_key:new Date().toISOString().slice(0,7)});
-  expect(first.usage[1]).toMatchObject({state:"unknown",committed:null,reserved:null,unit:"operation"});
-  expect(first.usage[4]).toMatchObject({state:"known",committed:"9007199254740993",reserved:"-1",unit:"byte",period_key:"__current__",window_start:null});
-  expect(first.resource_balance).toEqual({state:"unsupported",value:null});expect(first.cash_balance).toEqual({state:"unsupported",value:null});
-  const imageLimit=first.entitlements.find(e=>e.module_code==="listingkit")?.limits.find(l=>l.metric==="product_image_jobs_succeeded");
-  expect(imageLimit).toMatchObject({source_key:"product_image_jobs_succeeded",kind:"unlimited",raw_value:"0",value:null,unit:"operation"});
-  selected="org-C";const second=await getCommercialOverview("org-C");expect(second.usage[0].committed).toBe("2");
-  await expect(getCommercialOverview("org-B")).rejects.toMatchObject({status:409,code:"ORGANIZATION_CONTEXT_CHANGED"});
-  selected="org-custom";const custom=await getCommercialOverview(selected);expect(custom.subscription?.plan_code).toBe("定制 plan");expect(custom.plans.map(p=>p.code)).toEqual(["base_payg"]);
-  selected="org-empty";const empty=await getCommercialOverview(selected);expect(empty.subscription).toBeNull();expect(empty.entitlements).toEqual([]);expect(empty.usage.every(u=>u.state==="unknown"&&u.committed===null)).toBe(true);
-  for(const [org,status] of [["org-expired","expired"],["org-disabled","disabled"],["org-future","not_started"]]) {selected=org;expect((await getCommercialOverview(org)).subscription?.effective_status).toBe(status);}
+it("executes actual HTTP client → Next BFF → Go verified scope → native owners → isolated PostgreSQL",async()=>{
+ const first=await getCommercialOverview("org-B");expect(first.organization_id).toBe("org-B");expect(first.base_plan).toMatchObject({code:"base_payg",subscription_required:false,store_period_days:30});expect(first.store_services).toEqual({state:"available",value:{records:0,active:0,expired:0,expiring_soon:0}});if(first.resources.state!=="available")throw new Error("native resource read unavailable");expect(first.resources.value.resources.find(r=>r.resource_type==="ai_point")).toMatchObject({state:"recorded",available:"9007199254740993"});
+ selected="org-C";const second=await getCommercialOverview(selected);if(second.resources.state!=="available")throw new Error("native resource read unavailable");expect(second.resources.value.resources.find(r=>r.resource_type==="ai_point")).toMatchObject({state:"recorded",available:"2"});await expect(getCommercialOverview("org-B")).rejects.toMatchObject({status:409,code:"ORGANIZATION_CONTEXT_CHANGED"});
+ selected="org-empty";const empty=await getCommercialOverview(selected);if(empty.resources.state!=="available")throw new Error("native resource read unavailable");expect(empty.resources.value.resources.every(r=>r.state==="not_recorded"&&r.available===null)).toBe(true);
   selected="org-viewer";await expect(getCommercialOverview(selected)).rejects.toMatchObject({status:403,code:"PERMISSION_DENIED"});
   selected="not-granted";await expect(getCommercialOverview(selected)).rejects.toMatchObject({status:403,code:"ORGANIZATION_ACCESS_DENIED"});
   selected="org-B";await getCommercialOverview(selected); // populate the real grant cache
   await mode(1);await expect(getCommercialOverview(selected)).rejects.toMatchObject({status:403,code:"ORGANIZATION_ACCESS_REVOKED"});
   await mode(2);await expect(getCommercialOverview(selected)).rejects.toMatchObject({status:503,code:"DEPENDENCY_UNAVAILABLE"});
-  await mode(0);expect((await getCommercialOverview(selected)).usage[0].committed).toBe("1");
+  await mode(0);expect((await getCommercialOverview(selected)).base_plan.code).toBe("base_payg");
   await mode(3);const controller=new AbortController();const pending=getCommercialOverview(selected,controller.signal);setTimeout(()=>controller.abort(),25);await expect(pending).rejects.toMatchObject({status:504,code:"DEADLINE_EXCEEDED"});await mode(0);
   const noScope=await nativeFetch(`${bffOrigin}/api/workbench/commercial/overview`);expect(noScope.status).toBe(409);
   const method=await nativeFetch(`${bffOrigin}/api/workbench/commercial/overview`,{method:"POST"});expect(method.status).toBe(405);
   const apiMethod=await nativeFetch(`${upstream}/api/v1/workbench/commercial/overview`,{method:"POST"});expect(apiMethod.status).toBe(404);
   const badQuery=await nativeFetch(`${bffOrigin}/api/workbench/commercial/overview?tenant_id=victim`,{headers:{cookie:"shuomi_effective_organization=org-B","X-Expected-Organization-ID":"org-B"}});expect(badQuery.status).toBe(400);
-  console.info("CHAIN PASS: actual HTTP BFF/client; home A/effective B; current-window ledger; signed exact BIGINT; no subscription; expired/disabled/future; role denial; live revoke/cache drift/outage; scope switching; cancellation; unsupported cash/resources");
+  console.info("CHAIN PASS: actual HTTP BFF/client; current native resource and Store owners; exact BIGINT; live grants; empty resource facts; cancellation; GET-only access");
 });
 
 it("reads wallet, entries, orders, and summary through their actual BFF routes and separate read-only owners",async()=>{

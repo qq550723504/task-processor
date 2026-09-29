@@ -1,13 +1,20 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { proxyCommercialBilling } from "./commercial-billing-proxy";
 
+beforeEach(() => vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL", "http://localhost"));
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+it("rejects foreign-origin resource quotes and orders before forwarding",async()=>{
+ vi.stubEnv("COMMERCIAL_API_ORIGIN","http://localhost:8888");const fetcher=vi.fn();vi.stubGlobal("fetch",fetcher);
+ for(const path of ["quotes","orders"]){const request=new Request(`http://localhost/api/workbench/commercial/${path}`,{method:"POST",headers:{origin:"https://foreign.example",cookie:"shuomi_effective_organization=org-a","X-Expected-Organization-ID":"org-a","X-Expected-User-ID":"user-a","content-type":"application/json"},body:"{}"});expect((await proxyCommercialBilling(request,"fixture-token","user-a")).status).toBe(403);}
+ expect(fetcher).not.toHaveBeenCalled();
+});
 
 function postRequest(body: ReadableStream<Uint8Array>): Request {
   return new Request("http://localhost/api/workbench/commercial/orders", {
     method: "POST",
     headers: {
-      cookie: "shuomi_effective_organization=org-a",
+      origin: "http://localhost", cookie: "shuomi_effective_organization=org-a",
       "X-Expected-Organization-ID": "org-a",
       "X-Expected-User-ID": "user-a",
       "content-type": "application/json",
@@ -58,7 +65,7 @@ it("aborts a stalled upstream request at the fixed deadline", async () => {
   vi.stubGlobal("fetch", fetchMock);
   const request = new Request("http://localhost/api/workbench/commercial/orders", {
     method: "POST",
-    headers: { cookie: "shuomi_effective_organization=org-a", "X-Expected-Organization-ID": "org-a", "X-Expected-User-ID": "user-a", "content-type": "application/json" },
+    headers: { origin: "http://localhost", cookie: "shuomi_effective_organization=org-a", "X-Expected-Organization-ID": "org-a", "X-Expected-User-ID": "user-a", "content-type": "application/json" },
     body: "{}",
   });
 
@@ -81,4 +88,15 @@ it("rejects a stale user assertion before forwarding billing requests", async ()
   expect(response.status).toBe(409);
   expect(await response.json()).toMatchObject({ code: "IDENTITY_CONTEXT_CHANGED" });
   expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it("preserves persisted 409 orders within the normal order response bound", async () => {
+  vi.stubEnv("COMMERCIAL_API_ORIGIN", "http://localhost:8888");
+  const order = { order_id: "original-order", organization_id: "org-a", kind: "RESOURCE_PURCHASE", status: "RECONCILIATION_REQUIRED", items: Array.from({ length: 64 }, (_, i) => ({ order_item_id: `item-${i}-${"x".repeat(16)}`, product_kind: "AI_POINT", resource_type: "ai_point", resource_quantity: "1", amount_minor: "1" })) };
+  expect(JSON.stringify(order).length).toBeGreaterThan(8192);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(order, { status: 409 })));
+  const request = postRequest(new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode('{"quote_id":"quote-1"}')); c.close(); } }));
+  const response = await proxyCommercialBilling(request, "fixture-token", "user-a");
+  expect(response.status).toBe(409);
+  expect(await response.json()).toEqual(order);
 });

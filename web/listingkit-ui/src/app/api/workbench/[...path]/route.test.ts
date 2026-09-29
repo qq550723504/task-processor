@@ -836,7 +836,7 @@ describe("/api/workbench BFF", () => {
       expect(new Headers(init?.headers).get("X-Requested-Organization-ID")).toBe("org-cookie");
       expect(new Headers(init?.headers).get("X-Expected-Organization-ID")).toBeNull();
       const payload = name === "list"
-        ? { items: [], quota: { used: 0, reserved: 0, limit: 5, allowed: true, reason: "" }, pagination: { page: 1, pageSize: 20, total: 0 } }
+        ? { items: [], pagination: { page: 1, pageSize: 20, total: 0 } }
         : name === "delete"
           ? { id: storeId, deleted: true, version: 3 }
           : storePayload;

@@ -102,7 +102,7 @@ func TestCurrentApplicationStartupSchemaContextPostgres(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			trace := &startupSchemaTrace{entered: make(chan context.Context, 1), release: make(chan struct{}, 1)}
 			defer close(trace.release)
-			source, commercial := open("source_account_runtime", trace), open("commercial_runtime", nil)
+			source := open("source_account_runtime", trace)
 			parent, cancel := context.WithCancel(ctx)
 			if mode == "remaining_deadline" {
 				cancel()
@@ -116,14 +116,11 @@ func TestCurrentApplicationStartupSchemaContextPostgres(t *testing.T) {
 			closed := make(map[*gorm.DB]int)
 			cfg := &currentapplication.Config{SchemaVersion: 1, Listen: currentapplication.ListenConfig{Host: "127.0.0.1", Port: 18443}, Identity: currentapplication.IdentityConfig{IssuerURL: "http://127.0.0.1:18080", AuthorizationAPIURL: "http://127.0.0.1:18080", ClientID: "run1", ClientSecret: "synthetic-identity", ProjectID: "run1"}}
 			cfg.SourceAccountDatabase = currentapplication.DatabaseConfig{Host: connection.Host, Port: connection.Port, User: "source_account_runtime", Password: "synthetic-startup-password", Database: connection.Database, MaxConnections: 1}
-			cfg.CommercialDatabase = cfg.SourceAccountDatabase
-			cfg.CommercialDatabase.User = "commercial_runtime"
 			done := make(chan error, 1)
 			go func() {
 				done <- currentapplication.Run(parent, cfg, log, currentapplication.Dependencies{
 					IdentityPreflight: func(context.Context, currentapplication.IdentityConfig) error { return nil },
 					OpenSourceAccount: func(context.Context, currentapplication.DatabaseConfig) (*gorm.DB, error) { return source, nil },
-					OpenCommercial:    func(context.Context, currentapplication.DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
 					NewApplication:    NewCurrentApplication,
 					Listen: func(string, string) (net.Listener, error) {
 						listenCalls.Add(1)
@@ -157,7 +154,7 @@ func TestCurrentApplicationStartupSchemaContextPostgres(t *testing.T) {
 			case result = <-done:
 			case <-time.After(1500 * time.Millisecond):
 				// Release the test gate even on RED so the real runtime can close
-				// both pools; no abandoned goroutine or ten-second fixed sleep.
+				// the owned pool; no abandoned goroutine or ten-second fixed sleep.
 				trace.release <- struct{}{}
 				result = <-done
 				t.Error("schema verification ignored parent cancellation/deadline")
@@ -166,13 +163,13 @@ func TestCurrentApplicationStartupSchemaContextPostgres(t *testing.T) {
 			require.ErrorIs(t, result, parent.Err())
 			require.NotContains(t, result.Error()+logs.String(), "synthetic-startup-password")
 			require.Zero(t, listenCalls.Load())
-			require.Equal(t, map[*gorm.DB]int{source: 1, commercial: 1}, closed)
-			for _, db := range []*gorm.DB{source, commercial} {
+			require.Equal(t, map[*gorm.DB]int{source: 1}, closed)
+			for _, db := range []*gorm.DB{source} {
 				pool, err := db.DB()
 				require.NoError(t, err)
 				require.Error(t, pool.PingContext(ctx))
 			}
-			t.Logf("schema boundary elapsed=%s, permission query completed, zero listen, both owned pools closed once", time.Since(started))
+			t.Logf("schema boundary elapsed=%s, permission query completed, zero listen, the owned pool closed once", time.Since(started))
 		})
 	}
 	t.Run("startup_context_not_retained_by_request_pool", func(t *testing.T) {

@@ -24,6 +24,7 @@ const (
 	walletPath                  = "/api/v1/workbench/commercial/wallet"
 	walletEntriesPath           = walletPath + "/entries"
 	quotePath                   = "/api/v1/workbench/commercial/quotes"
+	resourceOfferPath           = "/api/v1/workbench/commercial/resource-offers"
 	orderPath                   = "/api/v1/workbench/commercial/orders"
 	orderSummaryPath            = orderPath + "/summary"
 	orderDetailPath             = orderPath + "/:order_id"
@@ -97,10 +98,33 @@ func (h *Handler) CreateQuote(c *gin.Context) {
 		return
 	}
 	var request struct {
-		OfferID  string `json:"offer_id"`
-		Quantity string `json:"quantity"`
+		OfferID     string `json:"offer_id"`
+		Quantity    string `json:"quantity"`
+		AmountMinor string `json:"amount_minor"`
 	}
 	if !decodeStrict(c, &request) {
+		return
+	}
+	if (request.Quantity == "") == (request.AmountMinor == "") {
+		writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+		return
+	}
+	if request.AmountMinor != "" {
+		amount, err := strconv.ParseInt(request.AmountMinor, 10, 64)
+		if err != nil || amount <= 0 {
+			writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+			return
+		}
+		result, err := h.service.CreateAmountQuote(c.Request.Context(), billing.ResourceAmountQuoteRequest{OrganizationID: organizationID, OfferID: strings.TrimSpace(request.OfferID), AmountMinor: amount})
+		if err != nil {
+			writeServiceError(c, err)
+			return
+		}
+		response := quoteResponseFromDomain(result.Quote)
+		response.AmountMinor = strconv.FormatInt(result.AmountMinor, 10)
+		response.UnitPriceMinor = strconv.FormatInt(result.UnitPriceMinor, 10)
+		response.RemainderMinor = strconv.FormatInt(result.RemainderMinor, 10)
+		writeJSON(c, http.StatusCreated, response)
 		return
 	}
 	quantity, err := strconv.ParseInt(request.Quantity, 10, 64)
@@ -113,7 +137,33 @@ func (h *Handler) CreateQuote(c *gin.Context) {
 		writeServiceError(c, err)
 		return
 	}
-	writeJSON(c, http.StatusCreated, quoteResponse{QuoteID: quote.QuoteID, OrganizationID: quote.OrganizationID, OfferID: quote.OfferID, ProductKind: string(quote.ProductKind), ResourceType: string(quote.ResourceType), ResourceQuantity: strconv.FormatInt(quote.ResourceQuantity, 10), Currency: quote.Currency, TotalMinor: strconv.FormatInt(quote.TotalMinor, 10), PricingVersion: quote.PricingVersion, ExpiresAt: quote.ExpiresAt.UTC().Format(time.RFC3339Nano), Fingerprint: quote.Fingerprint, CreatedAt: quote.CreatedAt.UTC().Format(time.RFC3339Nano)})
+	writeJSON(c, http.StatusCreated, quoteResponseFromDomain(quote))
+}
+
+func quoteResponseFromDomain(quote billing.Quote) quoteResponse {
+	return quoteResponse{QuoteID: quote.QuoteID, OrganizationID: quote.OrganizationID, OfferID: quote.OfferID, ProductKind: string(quote.ProductKind), ResourceType: string(quote.ResourceType), ResourceQuantity: strconv.FormatInt(quote.ResourceQuantity, 10), Currency: quote.Currency, TotalMinor: strconv.FormatInt(quote.TotalMinor, 10), PricingVersion: quote.PricingVersion, ExpiresAt: quote.ExpiresAt.UTC().Format(time.RFC3339Nano), Fingerprint: quote.Fingerprint, CreatedAt: quote.CreatedAt.UTC().Format(time.RFC3339Nano)}
+}
+
+func (h *Handler) ResourceOffers(c *gin.Context) {
+	if !validReadRequest(c) || c.Request.URL.RawQuery != "" || h == nil || h.service == nil {
+		writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+		return
+	}
+	organizationID, ok := effectiveOrganization(c)
+	if !ok {
+		writeError(c, http.StatusConflict, "ORGANIZATION_SELECTION_REQUIRED")
+		return
+	}
+	offers, err := h.service.ListResourceOffers(c.Request.Context())
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	items := make([]map[string]string, 0, len(offers))
+	for _, offer := range offers {
+		items = append(items, map[string]string{"offer_id": offer.OfferID, "product_kind": string(offer.ProductKind), "resource_type": string(offer.ResourceType), "currency": offer.Currency, "unit_price_minor": strconv.FormatInt(offer.UnitPriceMinor, 10), "min_quantity": strconv.FormatInt(offer.MinQuantity, 10), "max_quantity": strconv.FormatInt(offer.MaxQuantity, 10), "pricing_version": offer.PricingVersion})
+	}
+	writeJSON(c, http.StatusOK, map[string]any{"organization_id": organizationID, "items": items})
 }
 
 func (h *Handler) CreateOrder(c *gin.Context) {
@@ -132,7 +182,8 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 	if !decodeStrict(c, &request) {
 		return
 	}
-	order, err := h.service.CreateResourceOrder(c.Request.Context(), billing.CreateResourceOrderRequest{OrganizationID: organizationID, QuoteID: strings.TrimSpace(request.QuoteID), IdempotencyKey: idempotencyKey})
+	identity, _ := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
+	order, err := h.service.CreateResourceOrder(c.Request.Context(), billing.CreateResourceOrderRequest{OrganizationID: organizationID, ActorID: identity.UserID, QuoteID: strings.TrimSpace(request.QuoteID), IdempotencyKey: idempotencyKey})
 	if err != nil && order.OrderID == "" {
 		writeServiceError(c, err)
 		return
@@ -385,6 +436,7 @@ func Routes(handler *Handler) ([]httproute.Descriptor, error) {
 	}{
 		{http.MethodGet, walletPath, read, handler.Wallet},
 		{http.MethodGet, walletEntriesPath, read, handler.WalletEntries},
+		{http.MethodGet, resourceOfferPath, read, handler.ResourceOffers},
 		{http.MethodPost, quotePath, purchase, handler.CreateQuote},
 		{http.MethodPost, orderPath, purchase, handler.CreateOrder},
 		{http.MethodGet, orderPath, read, handler.Orders},
@@ -394,10 +446,6 @@ func Routes(handler *Handler) ([]httproute.Descriptor, error) {
 		{http.MethodGet, topUpOptionsPath, read, handler.TopUpOptions},
 		{http.MethodPost, topUpCheckoutPath, topup, handler.TopUpCheckout},
 		{http.MethodPost, topUpCancelPath, topup, handler.TopUpCancel},
-		{http.MethodGet, subscriptionOfferPath, read, handler.SubscriptionOffers},
-		{http.MethodPost, subscriptionQuotePath, purchase, handler.CreateSubscriptionQuote},
-		{http.MethodPost, subscriptionOrderPath, purchase, handler.CreateSubscriptionOrder},
-		{http.MethodGet, subscriptionOrderDetailPath, read, handler.SubscriptionOrder},
 	} {
 		handler := route.handler
 		rejectUnreadRequestBody := true
@@ -449,6 +497,9 @@ type quoteResponse struct {
 	ExpiresAt        string `json:"expires_at"`
 	Fingerprint      string `json:"fingerprint"`
 	CreatedAt        string `json:"created_at"`
+	AmountMinor      string `json:"amount_minor,omitempty"`
+	UnitPriceMinor   string `json:"unit_price_minor,omitempty"`
+	RemainderMinor   string `json:"remainder_minor,omitempty"`
 }
 type subscriptionOfferResponse struct {
 	OfferID        string `json:"offer_id"`

@@ -9,7 +9,7 @@ const authenticated = serverAuth(async (request: NextRequest & { auth?: unknown 
   if (request.signal.aborted) return deadline();
   const identity = readZitadelIdentityFromSession(request.auth as never);
   const pathname = new URL(request.url).pathname;
-  const kind = pathname === "/api/account/profile" ? "profile" : pathname === "/api/account/business-profile" ? "business-profile" : pathname === "/api/account/member-ai-point-limits" || pathname.startsWith("/api/account/member-ai-point-limits/") ? "member-ai-point-limits" : pathname === "/api/account/member-allocations" || pathname.startsWith("/api/account/member-allocations/") ? "member-allocations" : "organization";
+  const kind = pathname === "/api/account/profile" ? "profile" : pathname === "/api/account/business-profile" ? "business-profile" : pathname === "/api/account/member-ai-point-limits" || pathname.startsWith("/api/account/member-ai-point-limits/") ? "member-ai-point-limits" : "organization";
   return proxyAccount(request, readZitadelServerAccessToken(request.auth as never), String(identity?.userId ?? ""), kind);
 });
 

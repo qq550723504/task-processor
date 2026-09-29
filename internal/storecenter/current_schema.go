@@ -18,13 +18,13 @@ var currentSchemaStatements = []string{
  id CHAR(36) PRIMARY KEY NOT NULL, organization_id VARCHAR(200) NOT NULL,
  name TEXT NOT NULL, platform TEXT NOT NULL, region TEXT NOT NULL, external_store_id TEXT NOT NULL,
  record_status VARCHAR(32) NOT NULL, service_status VARCHAR(32), service_started_at TIMESTAMPTZ, service_expires_at TIMESTAMPTZ,
- connection_ref TEXT NOT NULL, quota_allocation_id CHAR(36) NOT NULL, version BIGINT NOT NULL,
+ connection_ref TEXT NOT NULL, version BIGINT NOT NULL,
  created_by VARCHAR(200) NOT NULL, updated_by VARCHAR(200) NOT NULL, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL,
  deleted_at TIMESTAMPTZ, create_idempotency_key CHAR(36) NOT NULL, delete_operation_key VARCHAR(36) NOT NULL,
  identity_key VARCHAR(64) NOT NULL, create_request_fingerprint VARCHAR(64) NOT NULL,
- CONSTRAINT store_record_status CHECK (record_status IN ('provisioning','active','disabled','deleting','deleted')),
+ CONSTRAINT store_record_status CHECK (record_status IN ('active','disabled','deleting','deleted')),
  CONSTRAINT store_service_shape CHECK (
-   (record_status IN ('provisioning','deleting','deleted') AND service_status IS NULL AND service_started_at IS NULL AND service_expires_at IS NULL) OR
+   (record_status IN ('deleting','deleted') AND service_status IS NULL AND service_started_at IS NULL AND service_expires_at IS NULL) OR
    (record_status IN ('active','disabled') AND service_status IS NOT NULL AND service_status IN ('pending_activation','active','expired','suspended'))),
  CONSTRAINT store_service_period CHECK (
    (service_status IS NULL AND service_started_at IS NULL AND service_expires_at IS NULL) OR
@@ -44,7 +44,7 @@ var currentSchemaStatements = []string{
 	`CREATE INDEX idx_workbench_stores_deleted_at ON public.workbench_stores (deleted_at)`,
 	`CREATE TABLE public.workbench_store_audit_logs (
  event_id CHAR(36) PRIMARY KEY NOT NULL, organization_id VARCHAR(200) NOT NULL, store_id CHAR(36) NOT NULL,
- allocation_id CHAR(36) NOT NULL, request_key CHAR(36) NOT NULL, action VARCHAR(64) NOT NULL, outcome VARCHAR(32) NOT NULL,
+ request_key CHAR(36) NOT NULL, action VARCHAR(64) NOT NULL, outcome VARCHAR(32) NOT NULL,
  actor_subject VARCHAR(200) NOT NULL, safe_field_names TEXT NOT NULL, payload_fingerprint VARCHAR(64) NOT NULL DEFAULT '',
  previous_state VARCHAR(32) NOT NULL, new_state VARCHAR(32) NOT NULL, failure_code VARCHAR(64) NOT NULL, store_version BIGINT NOT NULL,
  created_at TIMESTAMPTZ NOT NULL, occurred_at TIMESTAMPTZ NOT NULL
@@ -120,8 +120,8 @@ func InstallCurrentSchemaTx(ctx context.Context, tx *sql.Tx) error {
 }
 
 var currentColumnNames = map[string][]string{
-	"workbench_stores":                        strings.Fields("id organization_id name platform region external_store_id record_status service_status service_started_at service_expires_at connection_ref quota_allocation_id version created_by updated_by created_at updated_at deleted_at create_idempotency_key delete_operation_key identity_key create_request_fingerprint"),
-	"workbench_store_audit_logs":              strings.Fields("event_id organization_id store_id allocation_id request_key action outcome actor_subject safe_field_names payload_fingerprint previous_state new_state failure_code store_version created_at occurred_at"),
+	"workbench_stores":                        strings.Fields("id organization_id name platform region external_store_id record_status service_status service_started_at service_expires_at connection_ref version created_by updated_by created_at updated_at deleted_at create_idempotency_key delete_operation_key identity_key create_request_fingerprint"),
+	"workbench_store_audit_logs":              strings.Fields("event_id organization_id store_id request_key action outcome actor_subject safe_field_names payload_fingerprint previous_state new_state failure_code store_version created_at occurred_at"),
 	"workbench_store_member_grants":           strings.Fields("organization_id store_id member_id active version updated_by updated_at"),
 	"workbench_store_member_grant_operations": strings.Fields("organization_id operation_id store_id member_id active expected_version result_version actor_id fingerprint created_at"),
 	"workbench_store_service_operations":      strings.Fields("organization_id operation_id store_id intent_json reservation_id state snapshot_json evidence_id failure_code created_at updated_at"),
@@ -282,7 +282,7 @@ func currentColumnType(table, name string) schemaColumnType {
 		return schemaColumnType{kind: "bigint"}
 	case "active":
 		return schemaColumnType{kind: "boolean"}
-	case "id", "event_id", "store_id", "allocation_id", "quota_allocation_id", "request_key", "create_idempotency_key", "operation_id", "attempt_id":
+	case "id", "event_id", "store_id", "request_key", "create_idempotency_key", "operation_id", "attempt_id":
 		return schemaColumnType{kind: "character", length: 36}
 	case "organization_id", "created_by", "updated_by", "actor_subject", "member_id", "actor_id", "app_id", "app_version", "open_key_id":
 		return schemaColumnType{kind: "character varying", length: 200}
@@ -305,9 +305,9 @@ var currentConstraintDefinitions = map[string]string{
 	"store_delete_shape":   `CHECK (((((record_status)::text = ANY ((ARRAY['deleting'::character varying, 'deleted'::character varying])::text[])) AND ((delete_operation_key)::text <> ''::text)) OR (((record_status)::text <> ALL ((ARRAY['deleting'::character varying, 'deleted'::character varying])::text[])) AND ((delete_operation_key)::text = ''::text))))`,
 	"store_deleted_shape":  `CHECK ((((record_status)::text = 'deleted'::text) = (deleted_at IS NOT NULL)))`,
 	"store_platform":       `CHECK ((platform = 'shein'::text))`,
-	"store_record_status":  `CHECK (((record_status)::text = ANY ((ARRAY['provisioning'::character varying, 'active'::character varying, 'disabled'::character varying, 'deleting'::character varying, 'deleted'::character varying])::text[])))`,
+	"store_record_status":  `CHECK (((record_status)::text = ANY ((ARRAY['active'::character varying, 'disabled'::character varying, 'deleting'::character varying, 'deleted'::character varying])::text[])))`,
 	"store_service_period": `CHECK ((((service_status IS NULL) AND (service_started_at IS NULL) AND (service_expires_at IS NULL)) OR (((service_status)::text = 'pending_activation'::text) AND (service_started_at IS NULL) AND (service_expires_at IS NULL)) OR (((service_status)::text = ANY ((ARRAY['active'::character varying, 'expired'::character varying])::text[])) AND (service_started_at IS NOT NULL) AND (service_expires_at IS NOT NULL) AND (service_expires_at > service_started_at)) OR (((service_status)::text = 'suspended'::text) AND (((service_started_at IS NULL) AND (service_expires_at IS NULL)) OR ((service_started_at IS NOT NULL) AND (service_expires_at IS NOT NULL) AND (service_expires_at > service_started_at))))))`,
-	"store_service_shape":  `CHECK (((((record_status)::text = ANY ((ARRAY['provisioning'::character varying, 'deleting'::character varying, 'deleted'::character varying])::text[])) AND (service_status IS NULL) AND (service_started_at IS NULL) AND (service_expires_at IS NULL)) OR (((record_status)::text = ANY ((ARRAY['active'::character varying, 'disabled'::character varying])::text[])) AND (service_status IS NOT NULL) AND ((service_status)::text = ANY ((ARRAY['pending_activation'::character varying, 'active'::character varying, 'expired'::character varying, 'suspended'::character varying])::text[])))))`,
+	"store_service_shape":  `CHECK (((((record_status)::text = ANY ((ARRAY['deleting'::character varying, 'deleted'::character varying])::text[])) AND (service_status IS NULL) AND (service_started_at IS NULL) AND (service_expires_at IS NULL)) OR (((record_status)::text = ANY ((ARRAY['active'::character varying, 'disabled'::character varying])::text[])) AND (service_status IS NOT NULL) AND ((service_status)::text = ANY ((ARRAY['pending_activation'::character varying, 'active'::character varying, 'expired'::character varying, 'suspended'::character varying])::text[])))))`,
 	"store_times":          `CHECK (((updated_at >= created_at) AND ((deleted_at IS NULL) OR (deleted_at >= updated_at))))`,
 	"store_version":        `CHECK ((version > 0))`,
 }

@@ -20,7 +20,6 @@ import (
 	coreconfig "task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/integration/openai"
-	"task-processor/internal/listingsubscription"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
@@ -63,15 +62,11 @@ func execute() error {
 		OpenStoreCenter: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
-		OpenStoreQuota: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
-			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
-		},
+
 		OpenSourceAccount: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
-		OpenCommercial: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
-			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
-		},
+
 		OpenCommercialOwner: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
@@ -96,7 +91,7 @@ func execute() error {
 		OpenMembership: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
-		NewApplicationWithFeatures: func(ctx context.Context, source, commercial *gorm.DB, features currentapplication.ApplicationFeatures, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
+		NewApplicationWithFeatures: func(ctx context.Context, source *gorm.DB, features currentapplication.ApplicationFeatures, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
 			options := make([]httpapi.CurrentApplicationOption, 0, 6)
 			if features.Knowledge != nil {
 				options = append(options, httpapi.WithKnowledge(features.Knowledge))
@@ -111,7 +106,6 @@ func execute() error {
 					return nil, buildErr
 				}
 				ledger := aistore.NewGormInvocationRecorder(features.ProductAgentDB)
-				ledger.SetUsageSettler(listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(features.CommercialOwnerDB)})
 				options = append(options, httpapi.WithProductAgent(httpapi.ProductAgentDependencies{RunDB: features.ProductAgentDB, ReviewDB: features.ProductReviewDB, AssetDB: features.ProductAgentAssetDB, Manager: manager, Ledger: ledger, TextPolicy: p.TextPolicy, Enabled: true, AllowedOrganizationIDs: p.AllowedOrganizationIDs, Limits: p.Limits()}))
 				agentManager = manager
 			}
@@ -121,8 +115,8 @@ func execute() error {
 			if features.CommercialOwnerDB != nil {
 				options = append(options, httpapi.WithCommercialOwnerDatabase(features.CommercialOwnerDB))
 			}
-			if features.StoreCenterDB != nil || features.StoreQuotaDB != nil {
-				options = append(options, httpapi.WithStoreCenter(features.StoreCenterDB, features.StoreQuotaDB))
+			if features.StoreCenterDB != nil {
+				options = append(options, httpapi.WithStoreCenter(features.StoreCenterDB))
 				if features.OfficialStoreProvider != nil || features.OfficialStoreProtection != nil {
 					options = append(options, httpapi.WithStoreOfficialConnection(features.OfficialStoreProvider, features.OfficialStoreProtection))
 				}
@@ -149,7 +143,7 @@ func execute() error {
 				}
 				options = append(options, httpapi.WithMembership(httpapi.MembershipDependencies{ReceiptDB: features.MembershipDB, ProviderOrigin: features.Membership.ProviderOrigin, ReadToken: features.Membership.ReadToken, WriteToken: features.Membership.WriteToken, InvitationMail: features.Membership.InvitationMail}))
 			}
-			server, buildErr := httpapi.NewCurrentApplicationWithOptions(ctx, source, commercial, cfg, logger, options...)
+			server, buildErr := httpapi.NewCurrentApplicationWithOptions(ctx, source, cfg, logger, options...)
 			if agentManager != nil {
 				if buildErr != nil {
 					_ = agentManager.Close()
@@ -159,11 +153,11 @@ func execute() error {
 			}
 			return server, buildErr
 		},
-		NewApplication: func(ctx context.Context, source, commercial *gorm.DB, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
-			return httpapi.NewCurrentApplication(ctx, source, commercial, cfg, logger)
+		NewApplication: func(ctx context.Context, source *gorm.DB, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
+			return httpapi.NewCurrentApplication(ctx, source, cfg, logger)
 		},
-		NewReferralsApplication: func(ctx context.Context, source, commercial, referrals *gorm.DB, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
-			return httpapi.NewCurrentApplicationWithOptions(ctx, source, commercial, cfg, logger, httpapi.WithReferrals(referrals))
+		NewReferralsApplication: func(ctx context.Context, source, referrals *gorm.DB, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
+			return httpapi.NewCurrentApplicationWithOptions(ctx, source, cfg, logger, httpapi.WithReferrals(referrals))
 		},
 		CloseDatabase: platformdatabase.Close,
 	})

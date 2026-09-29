@@ -28,12 +28,12 @@ describe("audit page", () => {
     expect(within(table).queryByText(/AI token 已结算/)).not.toBeInTheDocument();
   });
   it("shows the exact committed usage quantity, canonical member and invocation without an invented actor", async () => {
-    const usage = { eventType: "account_ai_tokens.committed", actor: "", time: "2026-09-25T01:00:00Z", objectType: "ai_invocation", objectReference: "inv-1", operation: "consume", result: "succeeded", relation: { type: "saas_usage_event", reference, version: "" }, usage: { memberId: "grant-1", quantity: 7, metric: "ai_tokens" } };
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+saas_ai_usage_events", items: [usage] })));
+    const usage = { eventType: "ai_invocation.usage_observed", actor: "", time: "2026-09-25T01:00:00Z", objectType: "ai_invocation", objectReference: "inv-1", operation: "observe", result: "observed", relation: { type: "ai_invocation", reference, version: "" }, usage: { memberId: "grant-1", quantity: 7, metric: "model_tokens" } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+ai_invocations", items: [usage] })));
     mount();
     const table = await screen.findByRole("table", { name: "操作记录" });
     expect(within(table).getByText("未记录操作人")).toBeVisible();
-    expect(within(table).getByText("AI token 已结算：7")).toBeVisible();
+    expect(within(table).getByText("模型实际用量：7 Token")).toBeVisible();
     expect(within(table).getByText("成员 grant-1 · 调用 inv-1")).toBeVisible();
   });
   it("keeps audit row keys unique across relation types and actors", () => {

@@ -9,11 +9,10 @@ import (
 type RecordStatus string
 
 const (
-	RecordStatusProvisioning RecordStatus = "provisioning"
-	RecordStatusActive       RecordStatus = "active"
-	RecordStatusDisabled     RecordStatus = "disabled"
-	RecordStatusDeleting     RecordStatus = "deleting"
-	RecordStatusDeleted      RecordStatus = "deleted"
+	RecordStatusActive   RecordStatus = "active"
+	RecordStatusDisabled RecordStatus = "disabled"
+	RecordStatusDeleting RecordStatus = "deleting"
+	RecordStatusDeleted  RecordStatus = "deleted"
 )
 
 type ServiceStatus string
@@ -49,12 +48,11 @@ type ServiceStoreIdentity struct {
 }
 
 type ServiceStoreSnapshot struct {
-	Identity          ServiceStoreIdentity
-	QuotaAllocationID string
-	ConnectionRef     string
-	Version           int64
-	UpdatedAt         time.Time
-	State             StoreServiceState
+	Identity      ServiceStoreIdentity
+	ConnectionRef string
+	Version       int64
+	UpdatedAt     time.Time
+	State         StoreServiceState
 }
 
 type ServiceStoreMutation struct {
@@ -68,7 +66,7 @@ type ServiceStoreMutation struct {
 
 func ValidateStoreServiceState(state StoreServiceState) error {
 	switch state.RecordStatus {
-	case RecordStatusProvisioning, RecordStatusDeleting, RecordStatusDeleted:
+	case RecordStatusDeleting, RecordStatusDeleted:
 		if state.ServiceStatus != "" || state.StartedAt != nil || state.ExpiresAt != nil {
 			return ErrInvalidServiceState
 		}

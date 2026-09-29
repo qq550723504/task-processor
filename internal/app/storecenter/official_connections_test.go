@@ -211,19 +211,13 @@ func TestOfficialOneMerchantCannotAttachToAnotherEnterpriseOrStore(t *testing.T)
 	if err := connect("org-a", stored); err != nil {
 		t.Fatal(err)
 	}
-	other, err := storecenter.NewStore(storecenter.CreateStoreInput{ID: uuid.NewString(), OrganizationID: "org-b", ActorSubject: "operator", Name: "Other", Platform: "shein", Region: "SG", ExternalStoreID: "record-metadata", CreateIdempotencyKey: uuid.NewString(), QuotaAllocationID: uuid.NewString(), OccurredAt: time.Now().UTC().Add(-time.Minute)})
+	other, err := storecenter.NewStore(storecenter.CreateStoreInput{ID: uuid.NewString(), OrganizationID: "org-b", ActorSubject: "operator", Name: "Other", Platform: "shein", Region: "SG", ExternalStoreID: "record-metadata", CreateIdempotencyKey: uuid.NewString(), OccurredAt: time.Now().UTC().Add(-time.Minute)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	access.member = "member-b"
 	other, _, err = repo.CreateOrReplay(context.Background(), "org-b", other)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := other.TransitionTo(storecenter.RecordStatusActive, "operator", other.UpdatedAt().Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-b", other, 1); err != nil {
 		t.Fatal(err)
 	}
 	if err := connect("org-b", other); !errors.Is(err, storecenter.ErrAlreadyExists) {
@@ -280,18 +274,12 @@ func serviceFixture(t *testing.T) (*gorm.DB, *storecenter.MemberScopedStoreRepos
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := storecenter.NewStore(storecenter.CreateStoreInput{ID: uuid.NewString(), OrganizationID: "org-a", ActorSubject: "operator", Name: "Store", Platform: "shein", Region: "SG", ExternalStoreID: "record-metadata", CreateIdempotencyKey: uuid.NewString(), QuotaAllocationID: uuid.NewString(), OccurredAt: time.Now().UTC().Add(-time.Minute)})
+	store, err := storecenter.NewStore(storecenter.CreateStoreInput{ID: uuid.NewString(), OrganizationID: "org-a", ActorSubject: "operator", Name: "Store", Platform: "shein", Region: "SG", ExternalStoreID: "record-metadata", CreateIdempotencyKey: uuid.NewString(), OccurredAt: time.Now().UTC().Add(-time.Minute)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	store, _, err = repo.CreateOrReplay(context.Background(), "org-a", store)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.TransitionTo(storecenter.RecordStatusActive, "operator", store.UpdatedAt().Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
 		t.Fatal(err)
 	}
 	return db, repo, access, store

@@ -15,18 +15,16 @@ import (
 	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/ledger/orgresource"
-	"task-processor/internal/listingsubscription"
 	"task-processor/internal/storecenter"
 	storehttp "task-processor/internal/storecenter/httpapi"
 )
 
-// WithStoreCenter borrows separately owned record and quota pools. The runtime
+// WithStoreCenter borrows the separately owned native record pool. The runtime
 // retains responsibility for closing them; this builder never opens cfg.Database.
-func WithStoreCenter(records, quota *gorm.DB) CurrentApplicationOption {
+func WithStoreCenter(records *gorm.DB) CurrentApplicationOption {
 	return func(o *currentApplicationOptions) {
 		o.storeCenters++
 		o.storeCenterDB = records
-		o.storeQuotaDB = quota
 	}
 }
 
@@ -37,17 +35,14 @@ func WithStoreOfficialConnection(provider storecenter.OfficialConnectionProvider
 		o.officialStoreProtection = protection
 	}
 }
-func buildCurrentStoreCenterModule(ctx context.Context, records, quota *gorm.DB, authorizer *authz.ListingKitAuthorizer, charges orgresource.ConsumerChargePort, provider storecenter.OfficialConnectionProvider, protection storecenter.OfficialCredentialProtection) (kernelmodule.Module, error) {
-	if records == nil || quota == nil || records == quota {
-		return nil, errors.New("store center requires independent record and quota pools")
+func buildCurrentStoreCenterModule(ctx context.Context, records *gorm.DB, authorizer *authz.ListingKitAuthorizer, charges orgresource.ConsumerChargePort, provider storecenter.OfficialConnectionProvider, protection storecenter.OfficialCredentialProtection) (kernelmodule.Module, error) {
+	if records == nil {
+		return nil, errors.New("store center requires its native record pool")
 	}
 	if err := storecenter.VerifyCurrentSchema(ctx, records); err != nil {
 		return nil, fmt.Errorf("verify store center schema: %w", err)
 	}
 	if err := storecenter.VerifyRuntimePermissions(ctx, records); err != nil {
-		return nil, err
-	}
-	if err := listingsubscription.VerifyStoreQuotaRuntime(ctx, quota); err != nil {
 		return nil, err
 	}
 	if authorizer == nil {
@@ -61,7 +56,6 @@ func buildCurrentStoreCenterModule(ctx context.Context, records, quota *gorm.DB,
 	if err != nil {
 		return nil, err
 	}
-	ledger := listingsubscription.NewGormStoreQuotaLedger(listingsubscription.NewGormRepository(quota))
 	var connections *storeapp.OfficialConnections
 	if provider == nil && protection == nil {
 		connections, err = storeapp.NewUnconfiguredOfficialConnections(repo)
@@ -71,7 +65,7 @@ func buildCurrentStoreCenterModule(ctx context.Context, records, quota *gorm.DB,
 	if err != nil {
 		return nil, err
 	}
-	service, err := storecenter.NewService(repo, ledger, audit, connections, time.Now)
+	service, err := storecenter.NewService(repo, audit, connections, time.Now)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +118,6 @@ func (a currentStoreMemberAuthorizer) AuthorizeStoreMember(ctx context.Context, 
 var currentStoreCenterRoutes = []struct{ method, path, permission string }{
 	{http.MethodGet, "/api/v1/workbench/stores", authz.PermissionWorkbenchStoreRead},
 	{http.MethodPost, "/api/v1/workbench/stores", authz.PermissionWorkbenchStoreCreate},
-	{http.MethodPost, "/api/v1/workbench/stores/:store_id/resume", authz.PermissionWorkbenchStoreCreate},
 	{http.MethodGet, "/api/v1/workbench/stores/:store_id", authz.PermissionWorkbenchStoreRead},
 	{http.MethodPut, "/api/v1/workbench/stores/:store_id", authz.PermissionWorkbenchStoreUpdate},
 	{http.MethodPost, "/api/v1/workbench/stores/:store_id/disable", authz.PermissionWorkbenchStoreLifecycle},

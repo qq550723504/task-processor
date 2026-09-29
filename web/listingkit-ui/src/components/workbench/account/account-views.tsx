@@ -10,7 +10,7 @@ import { getAccountAudit } from "@/lib/api/account-audit";
 
 import { AccountReadError, updateAccountBusinessProfile, type AccountBusinessProfile, type AccountBusinessProfileInput, type AccountOrganization, type AccountProfile } from "@/lib/api/account";
 import { getAccountIdentityProfile, resendAccountEmailVerification, resendAccountPhoneVerification, setAccountEmail, setAccountPhone, updateAccountIdentityProfile, updateAccountPassword, verifyAccountEmail, verifyAccountPhone, type AccountIdentityProfileInput } from "@/lib/api/account-identity";
-import { getCommercialOverview, type CommercialSubscription } from "@/lib/api/commercial";
+import { getCommercialOverview } from "@/lib/api/commercial";
 import { getMemberSummary } from "@/lib/api/members";
 import {getInvitationSummary} from "@/lib/api/invitations";
 import {listWorkbenchStores} from "@/lib/api/workbench-stores";
@@ -22,7 +22,6 @@ import {IdentityDates,RegionSettings,RegionValue} from "./account-facts";
 
 const provided = (value: string | null) => value?.trim() || "未设置";
 const verification = (value: boolean | null) => value === true ? "已验证" : value === false ? "未验证" : "未提供";
-const effectiveSubscriptionLabels: Record<CommercialSubscription["effective_status"], string> = { active: "生效中", trialing: "试用中", expired: "已过期", disabled: "已停用", not_started: "尚未生效" };
 function Panel({ title, description, children, className = "" }: { title: string; description?: string; children: ReactNode; className?: string }) {
   return <Card className={`${styles.panel} ${className}`}><header><h2>{title}</h2>{description ? <p>{description}</p> : null}</header>{children}</Card>;
 }
@@ -199,10 +198,9 @@ export function OrganizationView({ data }: { data: AccountOrganization }) {
   const activeMembers = members.data?.active;
   const invites = useQuery({queryKey:["invitation-summary",data.userId,data.effectiveOrganizationId],queryFn:({signal})=>getInvitationSummary({expectedUserId:data.userId,expectedOrganizationId:data.effectiveOrganizationId,signal}),gcTime:0,staleTime:0,retry:false});
   const stores = useQuery({queryKey:["enterprise-stores",data.userId,data.effectiveOrganizationId],queryFn:({signal})=>listWorkbenchStores({page:1,pageSize:1},data.effectiveOrganizationId,signal),gcTime:0,staleTime:0,retry:false});
-  const subscription = commercial.data?.subscription;
   return <>
     <Card className={styles.identity}><div className={styles.organizationIdentity}><Image src="/console/account/organization-avatar.svg" width={64} height={64} alt="" unoptimized /><div><h2>{provided(data.name)}</h2><p>当前有效企业：{data.effectiveOrganizationId}</p><p>归属企业（Home）：{data.homeOrganizationId}</p></div></div><div className={styles.identityStatus}><span className={styles.badge}>企业信息 · 只读</span><span className={styles.identityMeta}>当前组织角色：{data.roles.length ? data.roles.join("、") : "未提供"}</span></div></Card>
-    <div className={styles.enterpriseMetrics} aria-label="当前企业信息"><article><span>企业成员</span><strong>{metric(members, members.data?.total, "暂不可用")}</strong><small>{activeMembers === undefined ? "有效成员统计暂不可用" : `全部有效成员 ${activeMembers} 人`}</small></article><article><span>已绑定店铺</span><strong>{metric(stores, stores.data?.pagination.total, "暂不可用")}</strong><small>来自当前企业店铺目录</small></article><article><span>待处理邀请</span><strong>{metric(invites, invites.data?.pending, "暂不可用")}</strong><small>未结束且未过期的正式邀请</small></article><article><span>已授予权益</span><strong>{metric(commercial, commercial.data?.entitlements.length, "暂不可用")}</strong><small>{subscription ? `当前订阅：${subscription.plan_name ?? subscription.plan_code} · ${effectiveSubscriptionLabels[subscription.effective_status]}` : commercial.isError ? "权益服务未返回订阅" : "当前无订阅"}</small></article></div>
+    <div className={styles.enterpriseMetrics} aria-label="当前企业信息"><article><span>企业成员</span><strong>{metric(members, members.data?.total, "暂不可用")}</strong><small>{activeMembers === undefined ? "有效成员统计暂不可用" : `全部有效成员 ${activeMembers} 人`}</small></article><article><span>已绑定店铺</span><strong>{metric(stores, stores.data?.pagination.total, "暂不可用")}</strong><small>来自当前企业店铺目录</small></article><article><span>待处理邀请</span><strong>{metric(invites, invites.data?.pending, "暂不可用")}</strong><small>未结束且未过期的正式邀请</small></article><article><span>当前方案</span><strong>{commercial.isPending?"正在读取":commercial.isError?"暂不可用":commercial.data?.base_plan.name}</strong><small>店铺按期收费，AI 与数据资源预付使用</small></article></div>
     <h2 className={styles.sectionTitle}>企业管理</h2><div className={styles.managementGrid}>{[["成员与权限", "查看企业成员；获准管理员可邀请成员、调整角色和移除成员"], ["资源与额度", "查看企业余额和成员消费上限"], ["操作记录", "查看账户资料、成员、额度与源账号的已提交事件"]].map(([title, description]) => <Panel key={title} title={title} description={description}>{title === "成员与权限" ? <><Button asChild variant="outline"><Link href="/workbench/account/organization/members" prefetch={false}>管理成员</Link></Button><p className={styles.note}>角色与可执行操作以当前组织授权 owner 为准。</p></> : title === "资源与额度" ? <Button asChild variant="outline"><Link href="/workbench/account/organization/resources" prefetch={false}>管理资源</Link></Button> : <><Button asChild variant="outline"><Link href="/workbench/account/organization/audit" prefetch={false}>查看记录</Link></Button><p className={styles.note}>只展示已提交成功的业务事件。</p></>}</Panel>)}</div>
     <Panel title="企业资源" className={styles.resources}><EnterpriseResources userId={data.userId} organizationId={data.effectiveOrganizationId} scope={JSON.stringify([data.userId,data.effectiveOrganizationId])} sequence={0}/></Panel>
     <Panel title="最近操作记录" description="时间为业务操作时间；记录只供追溯。" className={styles.resources}>

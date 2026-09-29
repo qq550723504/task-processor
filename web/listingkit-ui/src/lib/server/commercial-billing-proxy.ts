@@ -1,3 +1,5 @@
+import {parseResourceEvents, RESOURCE_EVENTS_MAX_BYTES} from "@/lib/api/resource-events";
+import {parseResourceOffers} from "@/lib/api/resource-purchase";
 import { NextResponse } from "next/server";
 import { readBoundedStrictJSON } from "@/lib/api/strict-json-response";
 import { COMMERCIAL_RESOURCE_MAX_BYTES, parseCommercialResources, parseCommercialBillingFailure } from "@/lib/api/commercial-billing";
@@ -36,9 +38,12 @@ const safeJSON = (body: unknown, status: number) => NextResponse.json(body, { st
 
 export async function proxyCommercialBilling(request: Request, accessToken: string, sessionUserId: string): Promise<Response> {
   const incomingURL = new URL(request.url);
+  const eventRead = incomingURL.pathname === "/api/workbench/commercial/resources/events";
+  const offerRead = incomingURL.pathname === "/api/workbench/commercial/resource-offers";
   const resourceRead = incomingURL.pathname === "/api/workbench/commercial/resources";
-  if (resourceRead && (request.method !== "GET" || incomingURL.href.includes("?"))) return failure(400, "INVALID_REQUEST");
-  const paymentWrite = request.method === "POST" && /\/(top-up-intents|checkout|cancel-payment)$/.test(new URL(request.url).pathname);
+  if ((resourceRead || offerRead) && (request.method !== "GET" || incomingURL.href.includes("?"))) return failure(400, "INVALID_REQUEST");
+  const paymentWrite = request.method === "POST";
+  const orderCreation = paymentWrite && incomingURL.pathname === "/api/workbench/commercial/orders";
   if (paymentWrite && !hasTrustedSameOriginWrite(request)) return failure(403, "PERMISSION_DENIED");
   if (request.signal.aborted) return failure(504, "DEADLINE_EXCEEDED");
   const organization = selectedOrganization(request);
@@ -88,14 +93,14 @@ export async function proxyCommercialBilling(request: Request, accessToken: stri
     }
     let payload: unknown;
     try {
-      payload = await readBoundedStrictJSON(upstream, upstream.status >= 200 && upstream.status < 300 ? (resourceRead ? COMMERCIAL_RESOURCE_MAX_BYTES : MAX_RESPONSE_BYTES) : 8192, controller.signal);
+      payload = await readBoundedStrictJSON(upstream, (upstream.status >= 200 && upstream.status < 300 || orderCreation && upstream.status === 409) ? (resourceRead ? COMMERCIAL_RESOURCE_MAX_BYTES : eventRead ? RESOURCE_EVENTS_MAX_BYTES : MAX_RESPONSE_BYTES) : 8192, controller.signal);
     } catch {
       return controller.signal.aborted ? failure(504, "DEADLINE_EXCEEDED") : failure(502, "INVALID_UPSTREAM_RESPONSE");
     }
     controller.signal.throwIfAborted();
-    if (resourceRead) {
+    if (resourceRead || eventRead || offerRead) {
       if (upstream.status === 200) {
-        const parsed = parseCommercialResources(payload);
+        const parsed = resourceRead ? parseCommercialResources(payload) : eventRead ? parseResourceEvents(payload) : parseResourceOffers(payload);
         return parsed && parsed.organization_id === organization ? safeJSON(parsed, 200) : failure(502, "INVALID_UPSTREAM_RESPONSE");
       }
       if (!parseCommercialBillingFailure(payload, upstream.status)) return failure(502, "INVALID_UPSTREAM_RESPONSE");

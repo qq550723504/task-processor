@@ -1,5 +1,10 @@
 # Self-Service Subscription Purchase Contract
 
+> 2026-09-29 产品决定：当前新系统改用 [统一基础方案与预付资源 V1](unified-base-prepaid-resources-v1.md)。
+> 本文的订阅套餐选择、订阅开通及 Token/store_count 额度产品路径被替代，以下保留历史设计与执行证据。
+> 新设计仍须完成自己的准入和实现；本说明不代表新模型已交付或旧 Must 已验收。
+> Money/Resource 的有效幂等、权限和未知结果规则继续由各当前 owner 合同约束，不恢复本订阅路径作为新模型前置。
+
 Status: IMPLEMENTATION_READY candidate  
 Refs: #478, #479, #473, #438, #457  
 Baseline: `bdabab425a441634b4452d9c519ecc9b6209d62f`

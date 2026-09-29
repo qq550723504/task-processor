@@ -57,7 +57,6 @@ const workbenchStoreSchema = z
     region: normalizedPublicString(1, 64),
     externalStoreId: normalizedPublicString(0, 128),
     recordStatus: z.enum([
-      "provisioning",
       "active",
       "disabled",
       "deleting",
@@ -80,32 +79,6 @@ const workbenchStoreSchema = z
 const workbenchStoreListSchema = z
   .object({
     items: z.array(workbenchStoreSchema).max(100),
-    quota: z
-      .object({
-        used: nonnegativeSafeIntegerSchema,
-        reserved: nonnegativeSafeIntegerSchema,
-        limit: positiveSafeIntegerSchema.nullable(),
-        allowed: z.boolean(),
-        reason: z.enum(["", "subscription_required", "store_limit_reached"]),
-      })
-      .strict()
-      .superRefine((quota, refinement) => {
-        const consumed = quota.used + quota.reserved;
-        const valid =
-          Number.isSafeInteger(consumed) && quota.limit === null
-            ? !quota.allowed && quota.reason === "subscription_required"
-            : quota.limit !== null &&
-              Number.isSafeInteger(consumed) &&
-              quota.allowed === consumed < quota.limit &&
-              quota.reason ===
-                (consumed < quota.limit ? "" : "store_limit_reached");
-        if (!valid) {
-          refinement.addIssue({
-            code: "custom",
-            message: "Quota state is inconsistent",
-          });
-        }
-      }),
     pagination: z
       .object({
         page: positiveSafeIntegerSchema,
@@ -247,20 +220,6 @@ export async function getWorkbenchStore(
   return requestWorkbenchStores(
     storePath(storeId),
     { method: "GET" },
-    workbenchStoreSchema,
-    200,
-    expectedOrganizationId,
-  );
-}
-
-export async function resumeWorkbenchStore(
-  storeId: string,
-  version: number,
-  expectedOrganizationId: string,
-): Promise<WorkbenchStore> {
-  return requestWorkbenchStores(
-    `${storePath(storeId)}/resume`,
-    { method: "POST", headers: { "If-Match": ifMatch(version) } },
     workbenchStoreSchema,
     200,
     expectedOrganizationId,

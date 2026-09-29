@@ -51,7 +51,6 @@ export function StoreDetailPage({ storeId }: { storeId: string }) {
 }
 
 const lifecycleLabels: Record<WorkbenchStore["recordStatus"], string> = {
-  provisioning: "开通中",
   active: "已启用",
   disabled: "已停用",
   deleting: "删除中",

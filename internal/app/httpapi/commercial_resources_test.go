@@ -108,7 +108,7 @@ func TestCommercialResourcesAdmissionAndIndependentInjection(t *testing.T) {
 					return workbenchContextBuildResult{module: currentApplicationTestModule{name: "base", routes: currentWorkbenchApplicationRoutes}, authDependencies: &deps}, nil
 				},
 				buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
-				buildCommercial:    func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
+				buildCommercial:    func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
 				buildCommercialResources: func(_ context.Context, db *gorm.DB) (kernelmodule.Module, error) {
 					calls++
 					if db != resourceDB {
@@ -127,7 +127,7 @@ func TestCommercialResourcesAdmissionAndIndependentInjection(t *testing.T) {
 					return nil, nil
 				},
 			}
-			server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories, WithCommercialOwnerDatabase(resourceDB))
+			server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories, WithCommercialOwnerDatabase(resourceDB))
 			if calls != 1 {
 				t.Fatal("resource builder was not called")
 			}

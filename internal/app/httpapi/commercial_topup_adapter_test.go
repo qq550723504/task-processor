@@ -11,7 +11,7 @@ import (
 
 func TestTopUpAuthorizationSeparatesPlatformRefundAndTenantPayment(t *testing.T) {
 	reader := &exactAuthorizationReaderStub{result: zitadelruntime.ExactServiceProjectAuthorization{Found: true, State: "STATE_ACTIVE", Roles: []string{"listingkit_admin"}}}
-	a := topUpRuntimeAuthorizer{directory: subscriptionPurchaseRecoveryAuthorizer{reader: reader, serviceToken: "fixture-service-token", projectID: "project-1", authorizer: authz.DefaultListingKitAuthorizer()}}
+	a := topUpRuntimeAuthorizer{directory: financialRecoveryAuthorizer{reader: reader, serviceToken: "fixture-service-token", projectID: "project-1", authorizer: authz.DefaultListingKitAuthorizer()}}
 	ctx := func(i authidentity.AuthenticatedIdentity) context.Context {
 		return authidentity.WithAuthenticatedIdentity(context.Background(), i)
 	}

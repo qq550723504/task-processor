@@ -33,6 +33,9 @@ func (p *ProductAgentConfig) validate(cfg *Config) error {
 	if !p.Enabled {
 		return nil
 	}
+	if p.TextPolicy.ValidatePointPricing() != nil {
+		return errors.New("product agent point pricing invalid")
+	}
 	if cfg.ProductAcquisitionDatabase == nil || cfg.CommercialOwnerDatabase == nil {
 		return errors.New("product agent requires acquisition and current commercial owner")
 	}

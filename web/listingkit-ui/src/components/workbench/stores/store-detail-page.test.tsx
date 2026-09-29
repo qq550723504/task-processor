@@ -78,12 +78,7 @@ describe("StoreDetailPage", () => {
     expect(screen.getByText(/删除正在进行中/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "保存更改" })).not.toBeInTheDocument();
   });
-  it("hides editing while the store is still provisioning", () => {
-    query.value = { isPending: false, isError: false, data: { ...STORE, recordStatus: "provisioning" as const, serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null }, refetch: vi.fn() };
-    render(<StoreDetailPage storeId={STORE.id} />);
-    expect(screen.getByText(/店铺状态：开通中/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "保存更改" })).not.toBeInTheDocument();
-  });
+
   it("locks the real detail form when a terminal delete refresh proves deleting", async () => {
     const deleting = { ...STORE, recordStatus: "deleting" as const, serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null, version: 2 };
     const refetch = vi.fn().mockResolvedValue({ data: deleting, isSuccess: true, isError: false });

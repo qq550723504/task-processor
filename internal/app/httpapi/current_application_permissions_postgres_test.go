@@ -75,7 +75,7 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 	require.NoError(t, owner.Exec(`INSERT INTO public.saas_plans (code, name, active, created_at, updated_at) VALUES ('run1-test', 'unchanged', true, now(), now())`).Error)
 	require.NoError(t, owner.Exec(`INSERT INTO public.source_account_resources (organization_id,id,platform,display_name,management_status,connection_status,version,created_by,updated_by,created_at,updated_at) VALUES ('run1-org','01991e24-1009-7009-8009-000000000009','1688','unchanged','disabled','pending_connection',1,'fixture','fixture',now(),now())`).Error)
 	cfg := &currentapplication.Config{SchemaVersion: 1, Listen: currentapplication.ListenConfig{Host: "127.0.0.1", Port: 18443}, Identity: currentapplication.IdentityConfig{IssuerURL: "http://127.0.0.1:18080", AuthorizationAPIURL: "http://127.0.0.1:18080", ClientID: "run1", ClientSecret: "synthetic-identity", ProjectID: "run1"}}
-	for _, role := range []string{"source_account_runtime", "commercial_runtime"} {
+	for _, role := range []string{"source_account_runtime"} {
 		require.NoError(t, owner.Exec(`CREATE ROLE `+role+` LOGIN PASSWORD 'synthetic-run1-password'`).Error)
 		require.NoError(t, owner.Exec(`GRANT CONNECT ON DATABASE issue347 TO `+role).Error)
 		require.NoError(t, owner.Exec(`GRANT USAGE ON SCHEMA public TO `+role).Error)
@@ -88,11 +88,8 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 		dbConfig := currentapplication.DatabaseConfig{Host: "127.0.0.1", Port: connection.Port, User: role, Password: "synthetic-run1-password", Database: connection.Database, MaxConnections: 2}
 		if role == "source_account_runtime" {
 			cfg.SourceAccountDatabase = dbConfig
-		} else {
-			cfg.CommercialDatabase = dbConfig
 		}
 	}
-	require.NoError(t, owner.Exec(`ALTER ROLE commercial_runtime SET default_transaction_read_only=on`).Error)
 	open := func(c currentapplication.DatabaseConfig, readOnly bool) *gorm.DB {
 		p := &platformdatabase.Config{Host: c.Host, Port: c.Port, User: c.User, Password: c.Password, Database: c.Database, MaxConnections: 2}
 		var db *gorm.DB
@@ -106,7 +103,7 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 		t.Cleanup(func() { require.NoError(t, platformdatabase.Close(db)) })
 		return db
 	}
-	source, commercial := open(cfg.SourceAccountDatabase, false), open(cfg.CommercialDatabase, true)
+	source := open(cfg.SourceAccountDatabase, false)
 	var tables, privileges []string
 	require.NoError(t, owner.Raw(`SELECT c.relname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','f') ORDER BY c.relname`).Scan(&tables).Error)
 	require.NoError(t, owner.Raw(`SELECT privilege_type FROM aclexplode(acldefault('r', (SELECT oid FROM pg_roles WHERE rolname=current_user))) ORDER BY privilege_type`).Scan(&privileges).Error)
@@ -127,7 +124,6 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 		err := currentapplication.Run(ctx, cfg, logger, currentapplication.Dependencies{
 			IdentityPreflight: func(context.Context, currentapplication.IdentityConfig) error { return nil },
 			OpenSourceAccount: func(context.Context, currentapplication.DatabaseConfig) (*gorm.DB, error) { return source, nil },
-			OpenCommercial:    func(context.Context, currentapplication.DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
 			CloseDatabase:     func(*gorm.DB) error { return nil },
 			NewApplication:    NewCurrentApplication,
 			Listen:            func(string, string) (net.Listener, error) { listenCalls++; return nil, listenReached },
@@ -143,7 +139,7 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 		}
 	}
 	start(t, false) // Extra table without grants and ordinary pg_catalog access are allowed.
-	for _, role := range []string{"source_account_runtime", "commercial_runtime"} {
+	for _, role := range []string{"source_account_runtime"} {
 		for _, table := range tables {
 			for _, privilege := range privileges {
 				if slices.Contains(run1AllowedPrivileges[role][table], privilege) {
@@ -200,22 +196,18 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 			start(t, true)
 		})
 	}
-	t.Run("PUBLIC/both_roles", func(t *testing.T) {
+	t.Run("PUBLIC/source_account_runtime", func(t *testing.T) {
 		require.NoError(t, owner.Exec(`GRANT SELECT ON public.run1_additional_fact TO PUBLIC`).Error)
 		defer func() {
 			require.NoError(t, owner.Exec(`REVOKE SELECT ON public.run1_additional_fact FROM PUBLIC`).Error)
 			start(t, false)
 		}()
-		// Exercise each owner directly too: source rejects first in the full assembly.
+		// The current startup opens the source owner; PUBLIC grants must be rejected.
 		start(t, true)
-		require.ErrorContains(t, listingsubscription.VerifyCommercialReadSchema(ctx, commercial), "permissions do not match")
 	})
 	t.Run("column_acl", func(t *testing.T) {
-		run1ColumnPermissionMatrix(t, owner, source, commercial, tables, start)
+		run1ColumnPermissionMatrix(t, owner, source, tables, start)
 	})
-	var readOnly string
-	require.NoError(t, commercial.Raw(`SHOW transaction_read_only`).Scan(&readOnly).Error)
-	require.Equal(t, "on", readOnly)
 	require.Equal(t, before, run1PermissionFacts(t, owner, tables), "preflight/GRANT/REVOKE changed business or migration facts")
 	t.Run("normal_binary", func(t *testing.T) { run1PermissionBinary(t, owner, cfg) })
 	require.Equal(t, before, run1PermissionFacts(t, owner, tables))
@@ -265,8 +257,8 @@ func run1PermissionBinary(t *testing.T, owner *gorm.DB, cfg *currentapplication.
 		require.NoError(t, listener.Close())
 		data, err := json.Marshal(copyConfig)
 		require.NoError(t, err)
-		manifest := filepath.Join(dir, "runtime.json")
-		require.NoError(t, os.WriteFile(manifest, data, 0600))
+		// Reuse the private fixture writer; Windows does not enforce os.FileMode.
+		manifest := writeSMSPrivateConfig(t, string(data))
 		shutdown := filepath.Join(dir, fmt.Sprintf("shutdown-%d", copyConfig.Listen.Port))
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
@@ -303,7 +295,7 @@ func run1PermissionBinary(t *testing.T, owner *gorm.DB, cfg *currentapplication.
 		require.Error(t, e, "application listener remains after exit")
 	}
 	run(false)
-	for _, role := range []string{"source_account_runtime", "commercial_runtime"} {
+	for _, role := range []string{"source_account_runtime"} {
 		require.NoError(t, owner.Exec(`GRANT UPDATE ON public.goose_source_account_registry_version TO `+role).Error)
 		run(true)
 		require.NoError(t, owner.Exec(`REVOKE UPDATE ON public.goose_source_account_registry_version FROM `+role).Error)

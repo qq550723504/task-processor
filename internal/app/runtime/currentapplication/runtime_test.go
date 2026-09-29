@@ -21,7 +21,7 @@ func TestRunReferralPoolFailureAndDisabledLifecycle(t *testing.T) {
 		t.Run(stage, func(t *testing.T) {
 			cfg := referralRuntimeConfig(t)
 			cfg.Referrals.Enabled = stage != "disabled"
-			source, commercial, referrals := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
+			source, referrals := &gorm.DB{}, &gorm.DB{}
 			var closed []*gorm.DB
 			opened := 0
 			stop := errors.New("fixture stop")
@@ -30,7 +30,7 @@ func TestRunReferralPoolFailureAndDisabledLifecycle(t *testing.T) {
 			dependencies := Dependencies{
 				IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
 				OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
-				OpenCommercial:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
+
 				OpenReferrals: func(context.Context, DatabaseConfig) (*gorm.DB, error) {
 					opened++
 					if stage == "open" {
@@ -41,11 +41,11 @@ func TestRunReferralPoolFailureAndDisabledLifecycle(t *testing.T) {
 					}
 					return referrals, nil
 				},
-				NewApplication: func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error) {
+				NewApplication: func(context.Context, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error) {
 					return &http.Server{}, nil
 				},
-				NewReferralsApplication: func(_ context.Context, s, c, r *gorm.DB, core *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
-					if s != source || c != commercial || r != referrals || core.Referrals.Prepared == nil {
+				NewReferralsApplication: func(_ context.Context, s, r *gorm.DB, core *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+					if s != source || r != referrals || core.Referrals.Prepared == nil {
 						t.Fatal("referral composition lost independent dependencies")
 					}
 					if stage == "construct" {
@@ -59,7 +59,7 @@ func TestRunReferralPoolFailureAndDisabledLifecycle(t *testing.T) {
 			if err := Run(ctx, cfg, logrus.New(), dependencies); err == nil {
 				t.Fatal("expected bounded stop")
 			}
-			want := []*gorm.DB{commercial, source}
+			want := []*gorm.DB{source}
 			if stage != "disabled" && stage != "open" {
 				want = append([]*gorm.DB{referrals}, want...)
 			}
@@ -73,21 +73,29 @@ func TestRunReferralPoolFailureAndDisabledLifecycle(t *testing.T) {
 	}
 }
 
-func TestRunClosesSourcePoolWhenCommercialOpenFails(t *testing.T) {
+func TestRunClosesSourcePoolWhenResourceOwnerOpenFails(t *testing.T) {
 	source := &gorm.DB{}
-	want := errors.New("commercial unavailable")
+	want := errors.New("resource owner unavailable")
+	cfg := runtimeTestConfig()
+	owner := cfg.SourceAccountDatabase
+	owner.User = "commercial_owner_runtime"
+	cfg.CommercialOwnerDatabase = &owner
 	closed := []*gorm.DB{}
 	dependencies := runtimeDependencies{
 		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
 		OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
-		OpenCommercial:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return nil, want },
+
+		OpenCommercialOwner: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return nil, want },
+		NewApplicationWithFeatures: func(context.Context, *gorm.DB, ApplicationFeatures, *coreconfig.Config, *logrus.Logger) (*http.Server, error) {
+			return nil, nil
+		},
 		CloseDatabase: func(db *gorm.DB) error {
 			closed = append(closed, db)
 			return nil
 		},
 	}
 
-	err := run(context.Background(), runtimeTestConfig(), logrus.New(), dependencies)
+	err := run(context.Background(), cfg, logrus.New(), dependencies)
 	if !errors.Is(err, want) {
 		t.Fatalf("run() error = %v, want wrapped %v", err, want)
 	}
@@ -102,24 +110,24 @@ func TestRunRejectsUnavailableIdentityBeforeOpeningDatabase(t *testing.T) {
 	err := run(context.Background(), runtimeTestConfig(), logrus.New(), runtimeDependencies{
 		IdentityPreflight: func(context.Context, IdentityConfig) error { return want },
 		OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { opened = true; return &gorm.DB{}, nil },
-		OpenCommercial:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { opened = true; return &gorm.DB{}, nil },
-		CloseDatabase:     func(*gorm.DB) error { return nil },
+
+		CloseDatabase: func(*gorm.DB) error { return nil },
 	})
 	if !errors.Is(err, want) || opened {
 		t.Fatalf("run() = %v, database opened=%t", err, opened)
 	}
 }
 
-func TestRunClosesBothPoolsInReverseOrderWhenListenFails(t *testing.T) {
-	source, commercial := &gorm.DB{}, &gorm.DB{}
+func TestRunClosesCurrentPoolWhenListenFails(t *testing.T) {
+	source := &gorm.DB{}
 	want := errors.New("address already in use")
 	closed := []*gorm.DB{}
 	dependencies := runtimeDependencies{
 		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
 		OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
-		OpenCommercial:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
-		NewApplication: func(_ context.Context, gotSource, gotCommercial *gorm.DB, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
-			if gotSource != source || gotCommercial != commercial {
+
+		NewApplication: func(_ context.Context, gotSource *gorm.DB, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+			if gotSource != source {
 				t.Fatal("application received wrong database pools")
 			}
 			return &http.Server{}, nil
@@ -140,13 +148,13 @@ func TestRunClosesBothPoolsInReverseOrderWhenListenFails(t *testing.T) {
 	if !errors.Is(err, want) {
 		t.Fatalf("run() error = %v, want wrapped %v", err, want)
 	}
-	if len(closed) != 2 || closed[0] != commercial || closed[1] != source {
+	if len(closed) != 1 || closed[0] != source {
 		t.Fatalf("close order = %#v", closed)
 	}
 }
 
 func TestRunShutsDownApplicationAndPreservesPoolsUntilServeStops(t *testing.T) {
-	source, commercial := &gorm.DB{}, &gorm.DB{}
+	source := &gorm.DB{}
 	ctx, cancel := context.WithCancel(context.Background())
 	var mu sync.Mutex
 	closed := []*gorm.DB{}
@@ -154,8 +162,8 @@ func TestRunShutsDownApplicationAndPreservesPoolsUntilServeStops(t *testing.T) {
 	dependencies := runtimeDependencies{
 		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
 		OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
-		OpenCommercial:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
-		NewApplication: func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error) {
+
+		NewApplication: func(context.Context, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error) {
 			return &http.Server{Handler: http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) { writer.WriteHeader(http.StatusNoContent) })}, nil
 		},
 		Listen: func(string, string) (net.Listener, error) {
@@ -182,13 +190,13 @@ func TestRunShutsDownApplicationAndPreservesPoolsUntilServeStops(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(closed) != 2 || closed[0] != commercial || closed[1] != source {
+	if len(closed) != 1 || closed[0] != source {
 		t.Fatalf("close order = %#v", closed)
 	}
 }
 
 func TestRunForcesCloseAfterBoundedShutdownExpires(t *testing.T) {
-	source, commercial := &gorm.DB{}, &gorm.DB{}
+	source := &gorm.DB{}
 	ctx, cancel := context.WithCancel(context.Background())
 	listening := make(chan string, 1)
 	requestStarted := make(chan struct{})
@@ -196,8 +204,8 @@ func TestRunForcesCloseAfterBoundedShutdownExpires(t *testing.T) {
 	dependencies := runtimeDependencies{
 		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
 		OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
-		OpenCommercial:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
-		NewApplication: func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error) {
+
+		NewApplication: func(context.Context, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error) {
 			return &http.Server{Handler: http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
 				close(requestStarted)
 				<-request.Context().Done()
@@ -222,7 +230,7 @@ func TestRunForcesCloseAfterBoundedShutdownExpires(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("run() error = %v, want shutdown deadline exceeded", err)
 	}
-	if closed != 2 {
+	if closed != 1 {
 		t.Fatalf("closed databases = %d, want 2", closed)
 	}
 }
@@ -243,10 +251,7 @@ func TestRunPassesOneBoundedStartupContextToBothOpeners(t *testing.T) {
 			}
 			return nil, want
 		},
-		OpenCommercial: func(context.Context, DatabaseConfig) (*gorm.DB, error) {
-			t.Fatal("commercial opener ran after source failure")
-			return nil, nil
-		},
+
 		CloseDatabase: func(*gorm.DB) error { return nil },
 	})
 	if !errors.Is(err, want) {
@@ -263,6 +268,5 @@ func runtimeTestConfig() *Config {
 			ClientID: "client", ClientSecret: "secret", ProjectID: "project",
 		},
 		SourceAccountDatabase: DatabaseConfig{Host: "127.0.0.1", Port: 15432, User: "source_account_runtime", Password: "secret", Database: "task_processor", MaxConnections: 2},
-		CommercialDatabase:    DatabaseConfig{Host: "127.0.0.1", Port: 15432, User: "commercial_runtime", Password: "secret", Database: "task_processor", MaxConnections: 2},
 	}
 }

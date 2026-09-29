@@ -43,12 +43,12 @@ const membershipEvent = z.object({
   relation: z.object({ type: z.literal("organization_membership_operation"), reference: z.string().uuid(), version }).strict(),
 }).strict();
 const usageEvent = z.object({
-  eventType: z.literal("account_ai_tokens.committed"), actor: z.literal(""),
+  eventType: z.literal("ai_invocation.usage_observed"), actor: z.literal(""),
   time: z.string().max(40).datetime({ precision: null }),
   objectType: z.literal("ai_invocation"), objectReference: resourceReference,
-  operation: z.literal("consume"), result: z.literal("succeeded"),
-  relation: z.object({ type: z.literal("saas_usage_event"), reference: resourceReference, version: z.literal("") }).strict(),
-  usage: z.object({ memberId: resourceReference, quantity: z.number().int().positive(), metric: z.literal("ai_tokens") }).strict(),
+  operation: z.literal("observe"), result: z.literal("observed"),
+  relation: z.object({ type: z.literal("ai_invocation"), reference: resourceReference, version: z.literal("") }).strict(),
+  usage: z.object({ memberId: resourceReference, quantity: z.number().int().positive(), metric: z.literal("model_tokens") }).strict(),
 }).strict();
 const pointEvent = z.object({
   eventType: z.literal("account_ai_points.committed"), actor: z.string().min(1).max(192).regex(/^[^\x00-\x1f\x7f]+$/),
@@ -69,14 +69,14 @@ const priorSource = z.enum([
   "source_account_committed_operations+account_member_token_audit+organization_member_audit",
   "source_account_committed_operations+account_business_profile_audit+organization_member_audit",
   "source_account_committed_operations+account_member_token_audit+account_business_profile_audit+organization_member_audit",
-  "source_account_committed_operations+saas_ai_usage_events",
-  "source_account_committed_operations+account_member_token_audit+saas_ai_usage_events",
-  "source_account_committed_operations+account_business_profile_audit+saas_ai_usage_events",
-  "source_account_committed_operations+organization_member_audit+saas_ai_usage_events",
-  "source_account_committed_operations+account_member_token_audit+account_business_profile_audit+saas_ai_usage_events",
-  "source_account_committed_operations+account_member_token_audit+organization_member_audit+saas_ai_usage_events",
-  "source_account_committed_operations+account_business_profile_audit+organization_member_audit+saas_ai_usage_events",
-  "source_account_committed_operations+account_member_token_audit+account_business_profile_audit+organization_member_audit+saas_ai_usage_events",
+  "source_account_committed_operations+ai_invocations",
+  "source_account_committed_operations+account_member_token_audit+ai_invocations",
+  "source_account_committed_operations+account_business_profile_audit+ai_invocations",
+  "source_account_committed_operations+organization_member_audit+ai_invocations",
+  "source_account_committed_operations+account_member_token_audit+account_business_profile_audit+ai_invocations",
+  "source_account_committed_operations+account_member_token_audit+organization_member_audit+ai_invocations",
+  "source_account_committed_operations+account_business_profile_audit+organization_member_audit+ai_invocations",
+  "source_account_committed_operations+account_member_token_audit+account_business_profile_audit+organization_member_audit+ai_invocations",
 ]);
 const source = z.string().refine(value => priorSource.safeParse(value).success || value.endsWith("+image_ai_point_debits") && priorSource.safeParse(value.slice(0, -"+image_ai_point_debits".length)).success);
 const page = z.object({

@@ -103,15 +103,15 @@ func TestQuoteIsServerPricedAndOrderReplayRejectsChangedPayload(t *testing.T) {
 	if err != nil || quote.TotalMinor != 70 {
 		t.Fatalf("quote=%#v err=%v", quote, err)
 	}
-	order, err := repository.CreatePendingResourceOrder(context.Background(), billing.CreateResourceOrderRequest{OrganizationID: "org-a", QuoteID: quote.QuoteID, IdempotencyKey: "idem-1"}, quote)
+	order, err := repository.CreatePendingResourceOrder(context.Background(), billing.CreateResourceOrderRequest{ActorID: "test-admin", OrganizationID: "org-a", QuoteID: quote.QuoteID, IdempotencyKey: "idem-1"}, quote)
 	if err != nil || order.Status != billing.OrderPending || order.AmountMinor != 70 || order.Description != "AI 点数 × 10" {
 		t.Fatalf("order=%#v err=%v", order, err)
 	}
-	replayed, err := repository.CreatePendingResourceOrder(context.Background(), billing.CreateResourceOrderRequest{OrganizationID: "org-a", QuoteID: quote.QuoteID, IdempotencyKey: "idem-1"}, quote)
+	replayed, err := repository.CreatePendingResourceOrder(context.Background(), billing.CreateResourceOrderRequest{ActorID: "test-admin", OrganizationID: "org-a", QuoteID: quote.QuoteID, IdempotencyKey: "idem-1"}, quote)
 	if err != nil || replayed.OrderID != order.OrderID {
 		t.Fatalf("replayed=%#v err=%v", replayed, err)
 	}
-	_, err = repository.CreatePendingResourceOrder(context.Background(), billing.CreateResourceOrderRequest{OrganizationID: "org-a", QuoteID: quote.QuoteID, IdempotencyKey: "idem-1"}, func() billing.Quote { changed := quote; changed.ResourceQuantity = 11; return changed }())
+	_, err = repository.CreatePendingResourceOrder(context.Background(), billing.CreateResourceOrderRequest{ActorID: "test-admin", OrganizationID: "org-a", QuoteID: quote.QuoteID, IdempotencyKey: "idem-1"}, func() billing.Quote { changed := quote; changed.ResourceQuantity = 11; return changed }())
 	if !errors.Is(err, billing.ErrConflict) {
 		t.Fatalf("changed idempotency payload err=%v", err)
 	}
@@ -261,7 +261,7 @@ func TestResourcePurchasePersistsReservationAndGrantProofBeforeFulfillment(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	order, err := service.CreateResourceOrder(ctx, billing.CreateResourceOrderRequest{OrganizationID: "org-purchase", QuoteID: quote.QuoteID, IdempotencyKey: "purchase-key"})
+	order, err := service.CreateResourceOrder(ctx, billing.CreateResourceOrderRequest{ActorID: "test-admin", OrganizationID: "org-purchase", QuoteID: quote.QuoteID, IdempotencyKey: "purchase-key"})
 	if err != nil {
 		t.Fatalf("CreateResourceOrder() error = %v; order=%#v", err, order)
 	}
@@ -276,7 +276,7 @@ func TestResourcePurchasePersistsReservationAndGrantProofBeforeFulfillment(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	lowFundsRequest := billing.CreateResourceOrderRequest{OrganizationID: "org-purchase", QuoteID: lowFundsQuote.QuoteID, IdempotencyKey: "purchase-low-funds"}
+	lowFundsRequest := billing.CreateResourceOrderRequest{ActorID: "test-admin", OrganizationID: "org-purchase", QuoteID: lowFundsQuote.QuoteID, IdempotencyKey: "purchase-low-funds"}
 	firstLowFunds, err := service.CreateResourceOrder(ctx, lowFundsRequest)
 	if !errors.Is(err, billing.ErrInsufficientFunds) || firstLowFunds.Status != billing.OrderCancelled || firstLowFunds.FailureCode != billing.OrderFailureInsufficientFunds {
 		t.Fatalf("first low-funds request = %#v, err=%v", firstLowFunds, err)
@@ -299,7 +299,7 @@ func TestResourcePurchasePersistsReservationAndGrantProofBeforeFulfillment(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	terminalRequest := billing.CreateResourceOrderRequest{OrganizationID: "org-purchase", QuoteID: terminalQuote.QuoteID, IdempotencyKey: "purchase-terminal-grant"}
+	terminalRequest := billing.CreateResourceOrderRequest{ActorID: "test-admin", OrganizationID: "org-purchase", QuoteID: terminalQuote.QuoteID, IdempotencyKey: "purchase-terminal-grant"}
 	firstTerminal, err := terminalService.CreateResourceOrder(ctx, terminalRequest)
 	if !errors.Is(err, billing.ErrResourceGrantRejected) || firstTerminal.Status != billing.OrderCancelled || firstTerminal.FailureCode != billing.OrderFailureGrantRejected {
 		t.Fatalf("first terminal grant failure = %#v, err=%v", firstTerminal, err)
@@ -316,7 +316,7 @@ func TestResourcePurchasePersistsReservationAndGrantProofBeforeFulfillment(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	updateFailureRequest := billing.CreateResourceOrderRequest{OrganizationID: "org-purchase", QuoteID: updateFailureQuote.QuoteID, IdempotencyKey: "purchase-cancel-persistence-failure"}
+	updateFailureRequest := billing.CreateResourceOrderRequest{ActorID: "test-admin", OrganizationID: "org-purchase", QuoteID: updateFailureQuote.QuoteID, IdempotencyKey: "purchase-cancel-persistence-failure"}
 	uncertainOrder, err := updateFailureService.CreateResourceOrder(ctx, updateFailureRequest)
 	if !errors.Is(err, billing.ErrReconciliationRequired) || uncertainOrder.OrderID != "" {
 		t.Fatalf("failed terminal persistence = %#v, err=%v; want unknown reconciliation outcome", uncertainOrder, err)
@@ -338,7 +338,7 @@ func TestResourcePurchasePersistsReservationAndGrantProofBeforeFulfillment(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	releaseFailureRequest := billing.CreateResourceOrderRequest{OrganizationID: "org-purchase", QuoteID: releaseFailureQuote.QuoteID, IdempotencyKey: "purchase-release-before-cancel-failure"}
+	releaseFailureRequest := billing.CreateResourceOrderRequest{ActorID: "test-admin", OrganizationID: "org-purchase", QuoteID: releaseFailureQuote.QuoteID, IdempotencyKey: "purchase-release-before-cancel-failure"}
 	uncertainRelease, err := releaseFailureService.CreateResourceOrder(ctx, releaseFailureRequest)
 	if !errors.Is(err, billing.ErrReconciliationRequired) || uncertainRelease.OrderID != "" {
 		t.Fatalf("release before cancellation persistence failure = %#v, err=%v", uncertainRelease, err)
@@ -402,7 +402,7 @@ func TestResourceGrantIdempotencyConflictKeepsReservationForReconciliation(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := billing.CreateResourceOrderRequest{OrganizationID: "org-grant-conflict", QuoteID: quote.QuoteID, IdempotencyKey: "purchase-grant-conflict"}
+	request := billing.CreateResourceOrderRequest{ActorID: "test-admin", OrganizationID: "org-grant-conflict", QuoteID: quote.QuoteID, IdempotencyKey: "purchase-grant-conflict"}
 	order, err := service.CreateResourceOrder(ctx, request)
 	if !errors.Is(err, billing.ErrReconciliationRequired) || order.Status != billing.OrderReconciliationRequired {
 		t.Fatalf("grant conflict outcome = %#v, err=%v; want reconciliation required", order, err)
@@ -470,7 +470,7 @@ func TestResourcePurchaseReplayReconcilesLostCommitAcknowledgement(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := billing.CreateResourceOrderRequest{OrganizationID: "org-reconcile", QuoteID: quote.QuoteID, IdempotencyKey: "reconcile-key"}
+	request := billing.CreateResourceOrderRequest{ActorID: "test-admin", OrganizationID: "org-reconcile", QuoteID: quote.QuoteID, IdempotencyKey: "reconcile-key"}
 	first, err := service.CreateResourceOrder(ctx, request)
 	if !errors.Is(err, billing.ErrReconciliationRequired) || first.Status != billing.OrderReconciliationRequired {
 		t.Fatalf("first purchase = %#v, err=%v; want persisted reconciliation", first, err)
@@ -534,7 +534,7 @@ func TestResourcePurchaseReplayResumesDurableIntermediateOrders(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			request := billing.CreateResourceOrderRequest{OrganizationID: orgID, QuoteID: quote.QuoteID, IdempotencyKey: "retry-" + string(initialStatus)}
+			request := billing.CreateResourceOrderRequest{ActorID: "test-admin", OrganizationID: orgID, QuoteID: quote.QuoteID, IdempotencyKey: "retry-" + string(initialStatus)}
 			order, err := commercial.CreatePendingResourceOrder(ctx, request, quote)
 			if err != nil {
 				t.Fatal(err)

@@ -38,6 +38,9 @@ func TestLoadSchemaOwnerConfigRejectsRuntimeRole(t *testing.T) {
 
 func TestCommercialRuntimeGrantsStayWithinOwnedTables(t *testing.T) {
 	grants := strings.Join(commercialRuntimeGrants(), "\n")
+	if !strings.Contains(grants, "GRANT CONNECT ON DATABASE") {
+		t.Fatal("current commercial owner role cannot connect after empty database bootstrap")
+	}
 	for _, table := range []string{
 		"commercial_offers",
 		"commercial_quotes",
@@ -53,17 +56,13 @@ func TestCommercialRuntimeGrantsStayWithinOwnedTables(t *testing.T) {
 		"saas_member_ai_point_limits",
 		"saas_member_ai_point_months",
 		"saas_member_resource_positions",
-		"saas_plans",
-		"saas_plan_modules",
-		"saas_tenant_subscriptions",
-		"saas_tenant_entitlements",
-		"saas_subscription_activation_fences",
-		"saas_purchased_plan_activations",
-		"saas_subscription_audit_logs",
 	} {
 		if !strings.Contains(grants, "public."+table) {
 			t.Errorf("runtime grants omit required owner table %s", table)
 		}
+	}
+	if strings.Contains(grants, "saas_plans") || strings.Contains(grants, "saas_tenant_subscriptions") || strings.Contains(grants, "saas_tenant_entitlements") {
+		t.Fatal("retired subscription permissions remain in current schema initialization")
 	}
 	if strings.Contains(grants, "ALL TABLES") || strings.Contains(grants, "GRANT ALL") {
 		t.Fatal("commercial runtime grants must not widen to all tables")
@@ -105,8 +104,12 @@ func TestOwnerSchemaMigrationsKeepMoneyFactsAndWalletTogether(t *testing.T) {
 		{moneyDB, "ledger_payment_settlements", true},
 		{moneyDB, "ledger_organization_wallets", true},
 		{commercialDB, "commercial_orders", true},
-		{commercialDB, "saas_purchased_plan_activations", true},
-		{commercialDB, "saas_subscription_activation_fences", true},
+		{commercialDB, "saas_organization_resource_buckets", true},
+		{commercialDB, "saas_member_ai_point_limits", true},
+		{commercialDB, "saas_plans", false},
+		{commercialDB, "saas_tenant_entitlements", false},
+		{commercialDB, "saas_purchased_plan_activations", false},
+		{commercialDB, "saas_subscription_activation_fences", false},
 		{moneyDB, "ledger_organization_wallet_reserve_decisions", true},
 		{commercialDB, "ledger_payment_settlements", false},
 		{commercialDB, "ledger_organization_wallets", false},
