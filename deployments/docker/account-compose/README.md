@@ -59,8 +59,9 @@ payment histories are not included; observed model usage is not counted as a
 successful operation. The page states this coverage explicitly.
 
 An empty, fully read history displays `0`. Missing owner configuration displays
-**未配置**; failures, timeouts and revoked access clear counts. A summary failure
-does not replace the list's own result. Data remains in each original owner.
+**未配置**; failures and timeouts clear counts. Dependency failures preserve each
+read's own result. An explicit identity, organization or authorization rejection
+clears both reads and cancels pending requests. Data remains in each original owner.
 Backend/BFF requests use fresh authorization and `private, no-store` responses.
 
 Use the normal new-project/private `.env` setup and startup commands below from
