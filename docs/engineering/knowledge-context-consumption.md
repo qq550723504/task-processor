@@ -121,6 +121,18 @@ Materialization precedes Agent Claim; same-key retries adopt the committed bundl
 even if a source has a newer readable revision. Different selection or binding
 conflicts. A materialized but unclaimed bundle cannot send a model request.
 
+The browser keeps only the stable request key and the normalized public Start
+command (platform and optional KnowledgeBase ID), scoped to the actor and
+Organization, in the current operation URL. It stores no protected label, excerpt,
+revision, bundle payload or credentials there. Refresh never dispatches. If the
+run has not been observed, an explicit "使用原请求核实启动" action repeats that exact
+command and key; the existing materialization fingerprint and Agent Claim remain
+the only execution owners. A Knowledge failure during this recovery retains the
+uncertain key. Once a run is observed, recovery uses read/resume, including the
+existing prohibition on redispatch after provider UNKNOWN. Same-Organization role
+changes clear protected display, including late responses; regrant cannot revive
+cached names or excerpts without a new authorized read.
+
 The governed text adapter reads the exact bundle at Quote, Decide and the existing
 BeforeDispatch hook. Full protected content participates in prompt bounds, quote
 identity and prompt/input hashes. BeforeDispatch acquires the existing Knowledge

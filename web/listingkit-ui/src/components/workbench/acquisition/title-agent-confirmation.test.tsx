@@ -29,3 +29,7 @@ it("cancel aborts pending protected reads and never generates",async()=>{
  fireEvent.click(screen.getByLabelText("使用企业知识（可选）"));const signal=fixture.request.mock.calls[0][3].signal as AbortSignal;fireEvent.click(screen.getByText("取消"));expect(props.onCancel).toHaveBeenCalledOnce();view.unmount();expect(signal.aborted).toBe(true);
  resolve({items:[{id:base,name:"旧企业资料",state:"ACTIVE"}]});await waitFor(()=>expect(props.onConfirm).not.toHaveBeenCalled());
 });
+it("removes earlier protected base names when the following source read loses permission",async()=>{
+ fixture.request.mockResolvedValueOnce({items:[{id:base,name:"Private base name",state:"ACTIVE"}]}).mockRejectedValueOnce(new KnowledgeError("KNOWLEDGE_FORBIDDEN",403));render(<TitleAgentConfirmation {...props}/>);
+ fireEvent.click(screen.getByLabelText("使用企业知识（可选）"));await screen.findByText("Private base name");fireEvent.change(screen.getByLabelText("企业知识库"),{target:{value:base}});await screen.findByRole("alert");expect(screen.queryByText("Private base name")).toBeNull();expect(screen.getByText("确认生成")).toBeDisabled();expect(props.onConfirm).not.toHaveBeenCalled();
+});
