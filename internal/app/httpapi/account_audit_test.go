@@ -41,7 +41,7 @@ func (h *imagePointAuditHTTPHistory) ListImagePointDebits(_ context.Context, org
 
 func TestAccountAuditHTTPProjectsImagePointsUnderLiveOrgPermission(t *testing.T) {
 	points := &imagePointAuditHTTPHistory{}
-	query, err := accountaudit.NewWithImagePointAuditSources(&auditHTTPHistory{}, nil, nil, nil, nil, points)
+	query, err := accountaudit.NewCurrentAuditSources(&auditHTTPHistory{}, nil, nil, nil, points, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

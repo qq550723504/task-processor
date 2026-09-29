@@ -17,6 +17,19 @@ function mount() {
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); state.context = { user: { id: "u1" }, effectiveOrganization: { id: "B" }, roles: ["listingkit_viewer"], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null }; });
 describe("audit page", () => {
+  it("shows the original member resource quantity and monthly cap in the audit table", async () => {
+    const allocation = { eventType: "account_member_resource.changed", actor: "operator-B", time: "2026-09-29T08:00:00Z", objectType: "member_resource", objectReference: "member-1", operation: "allocate_member_resource", result: "succeeded", relation: { type: "organization_resource_operation", reference: "allocate-1", version: "1" }, resource: { type: "store_renewal_period", quantity: "1" } };
+    const reclaim = { ...allocation, operation: "reclaim_member_resource", relation: { ...allocation.relation, reference: "reclaim-1", version: "2" }, resource: { type: "data_row", quantity: "100" } };
+    const cap = { ...allocation, eventType: "account_member_ai_point_limit.changed", objectType: "member_ai_point_limit", operation: "set_member_ai_point_limit", relation: { ...allocation.relation, reference: "cap-1" }, resource: { type: "ai_point", quantity: "1000" } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+member_resource_audit", items: [allocation, reclaim, cap] })));
+    mount();
+    const table = await screen.findByRole("table", { name: "操作记录" });
+    expect(within(table).getByText("分配续费期数：1 期")).toBeVisible();
+    expect(within(table).getByText("回收数据额度：100 条")).toBeVisible();
+    expect(within(table).getByText("设置成员 AI 月度上限：1000 点/月")).toBeVisible();
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "操作类型" }), "reclaim_member_resource");
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toContain("operation=reclaim_member_resource"));
+  });
   it("shows image AI points separately from token consumption in the existing table", async () => {
     const debit = { eventType: "account_ai_points.committed", actor: "operator-B", time: "2026-09-26T01:00:00Z", objectType: "image_generation", objectReference: "run-1", operation: "consume", result: "succeeded", relation: { type: "organization_resource_event", reference, version: "" }, points: { memberId: "grant-1", quantity: "12", priceVersion: "price-1", intentId: "intent-1" } };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+image_ai_point_debits", items: [debit] })));

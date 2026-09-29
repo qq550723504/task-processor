@@ -9,7 +9,7 @@ import styles from "./commercial.module.css";
 
 const definitions = [
   { type: "store_renewal_period", name: "店铺续费期数", color: "blue", unit: "期", note: "续费期数不代表已绑定、服务中或到期的店铺数量。" },
-  { type: "ai_point", name: "AI 点数", color: "teal", unit: "点", note: "AI 点数与模型 Token、订阅 Token 额度及现金分别计量。" },
+  { type: "ai_point", name: "AI 点数", color: "teal", unit: "点", note: "AI 点数按配置费率扣减；模型 Token 单独记录用量，钱包资金用于购买点数。" },
   { type: "data_row", name: "数据额度", color: "purple", unit: "条", note: "按数据条数计量，不以操作次数或存储字节替代。" },
 ] as const;
 
@@ -27,7 +27,7 @@ export function EnterpriseResources({ userId, organizationId, scope, sequence, s
   });
   return <div className={styles.stack}>
     {loading ? <p role="status">正在读取当前企业资源余额</p> : !data ? <p role="alert">{errors[code] ?? "资源响应无效"}：本次未取得余额，请确认企业后刷新。</p> : <p className={styles.observation}>资源观察时间：<time dateTime={data.observed_at}>{data.observed_at.replace("T", " ").replace(/Z$/, " UTC")}</time></p>}
-    {showSummary ? <Card role="region" aria-label="企业总权益" className={`${styles.panel} ${styles.summary}`}><h2>企业总权益</h2><p className={styles.subtle}>企业可用资源余额；成员月度上限和订阅权益分别展示。</p><div className={styles.resourceSummary}>{values.map(card => <div className={styles[card.color]} key={card.type}><p>{card.name}余额</p><strong>{card.value}</strong><small>{card.resource?.state === "recorded" ? "企业可用余额" : card.value}</small></div>)}</div></Card> : null}
+    {showSummary ? <Card role="region" aria-label="企业总权益" className={`${styles.panel} ${styles.summary}`}><h2>企业总权益</h2><p className={styles.subtle}>企业可用资源余额；成员月度消费上限与店铺服务期分别展示。</p><div className={styles.resourceSummary}>{values.map(card => <div className={styles[card.color]} key={card.type}><p>{card.name}余额</p><strong>{card.value}</strong><small>{card.resource?.state === "recorded" ? "企业可用余额" : card.value}</small></div>)}</div></Card> : null}
     <div className={styles.threeColumns}>{values.map(card => <Card role="region" aria-label={`${card.name}余额`} className={`${styles.resourceCard} ${styles[card.color]}`} key={card.type}>
       <div className={styles.cardHeading}><h3>{card.name}</h3><span>{card.resource?.state === "recorded" ? "已记录" : card.resource?.state === "not_recorded" ? "尚无记录" : fallback}</span></div>
       <p className={styles.resourceValue}>{card.value}</p>

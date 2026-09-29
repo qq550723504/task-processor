@@ -25,6 +25,7 @@ import (
 	memberstore "task-processor/internal/integration/persistence/organization/membership"
 	store "task-processor/internal/integration/persistence/sourceaccountregistry"
 	kernelmodule "task-processor/internal/kernel/module"
+	"task-processor/internal/ledger/orgresource"
 	membership "task-processor/internal/organization/membership"
 	registry "task-processor/internal/sourceaccountregistry"
 	"task-processor/internal/workbenchcontext"
@@ -103,6 +104,38 @@ func (r profileAuditReader) ListRecentAudit(ctx context.Context, organizationID 
 }
 
 type membershipAuditReader struct{ repository *memberstore.Repository }
+
+type memberResourceAuditReader struct{ repository orgresource.MemberAuditReader }
+
+func (r memberResourceAuditReader) ListRecentAudit(ctx context.Context, organization string, limit int, actor, operation string, after *accountaudit.AuditPosition) (accountaudit.AdditionalAuditPage, error) {
+	var position *orgresource.MemberAuditPosition
+	if after != nil {
+		id, err := strconv.ParseInt(after.Key, 10, 64)
+		if err != nil || id < 1 {
+			return accountaudit.AdditionalAuditPage{}, registry.ErrInvalid
+		}
+		position = &orgresource.MemberAuditPosition{CreatedAt: after.CreatedAt, ID: id}
+	}
+	rows, err := r.repository.ListMemberAudit(ctx, organization, limit, actor, operation, position)
+	if err != nil {
+		return accountaudit.AdditionalAuditPage{}, err
+	}
+	page := accountaudit.AdditionalAuditPage{Items: make([]accountaudit.AdditionalAuditEvent, 0, len(rows.Items))}
+	for _, row := range rows.Items {
+		if row.OrganizationID != organization || row.ID < 1 {
+			return accountaudit.AdditionalAuditPage{}, registry.ErrUnavailable
+		}
+		eventType, objectType := "account_member_resource.changed", "member_resource"
+		if row.Action == "set_member_ai_point_limit" {
+			eventType, objectType = "account_member_ai_point_limit.changed", "member_ai_point_limit"
+		}
+		page.Items = append(page.Items, accountaudit.AdditionalAuditEvent{EventType: eventType, ObjectType: objectType, ObjectReference: row.MemberID, Actor: row.ActorID, Operation: row.Action, Time: row.CreatedAt, Version: row.Version, Key: fmt.Sprintf("%020d", row.ID), RelationReference: row.OperationID, Resource: &accountaudit.ResourceDetail{Type: row.ResourceType, Quantity: strconv.FormatInt(row.Quantity, 10)}})
+	}
+	if rows.Next != nil {
+		page.Next = &accountaudit.AuditPosition{CreatedAt: rows.Next.CreatedAt, Key: fmt.Sprintf("%020d", rows.Next.ID)}
+	}
+	return page, nil
+}
 
 func membershipAuditKey(projectID, actorID, operationKey string) string {
 	encode := hex.EncodeToString
@@ -197,11 +230,11 @@ func accountAuditFilterInput(values url.Values) (accountaudit.Filter, error) {
 		return accountaudit.Filter{}, registry.ErrInvalid
 	}
 	operation := values.Get("operation")
-	if operation != "" && (len(values["operation"]) != 1 || operation != string(registry.OperationRegister) && operation != string(registry.OperationEnable) && operation != string(registry.OperationDisable) && operation != "set_target" && operation != "revoke" && operation != "update" && operation != "invite" && operation != "role" && operation != "remove") {
+	if operation != "" && (len(values["operation"]) != 1 || operation != string(registry.OperationRegister) && operation != string(registry.OperationEnable) && operation != string(registry.OperationDisable) && operation != "allocate_member_resource" && operation != "reclaim_member_resource" && operation != "set_member_ai_point_limit" && operation != "update" && operation != "invite" && operation != "role" && operation != "remove") {
 		return accountaudit.Filter{}, registry.ErrInvalid
 	}
 	filter := accountaudit.Filter{ActorSubject: actor}
-	if operation == "set_target" || operation == "revoke" {
+	if operation == "allocate_member_resource" || operation == "reclaim_member_resource" || operation == "set_member_ai_point_limit" {
 		filter.ResourceOperation = operation
 	} else if operation == "update" {
 		filter.ProfileOperation = operation
@@ -278,16 +311,20 @@ func buildAccountAuditModule(ctx context.Context, sourceDB, membershipDB, resour
 		membershipHistory = membershipAuditReader{repository: membershipRepository}
 	}
 	var pointHistory accountaudit.ImagePointHistory
+	var memberResourceHistory accountaudit.AdditionalHistory
 	if resourceDB != nil {
 		if err := resourceadapter.VerifyRuntimePermissions(ctx, resourceDB); err != nil {
 			return nil, err
 		}
-		pointHistory, err = resourceadapter.NewGormRepository(resourceDB, resourceadapter.TransactionConfig{})
+		resourceRepository, resourceErr := resourceadapter.NewGormRepository(resourceDB, resourceadapter.TransactionConfig{})
+		err = resourceErr
 		if err != nil {
 			return nil, err
 		}
+		pointHistory = resourceRepository
+		memberResourceHistory = memberResourceAuditReader{repository: resourceRepository}
 	}
-	query, err := accountaudit.NewCurrentAuditSources(history, profileHistory, membershipHistory, aiUsageAuditReader{sources: sources}, pointHistory)
+	query, err := accountaudit.NewCurrentAuditSources(history, profileHistory, membershipHistory, aiUsageAuditReader{sources: sources}, pointHistory, memberResourceHistory)
 	if err != nil {
 		return nil, err
 	}

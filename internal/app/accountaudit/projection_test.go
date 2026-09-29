@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	allocation "task-processor/internal/accountallocation"
 	"task-processor/internal/authidentity"
 	registry "task-processor/internal/sourceaccountregistry"
 )
@@ -19,8 +18,6 @@ type historyStub struct {
 	request registry.HistoryRequest
 	calls   int
 }
-
-type allocationHistoryStub struct{ page allocation.AuditPage }
 
 type additionalHistoryStub struct{ page AdditionalAuditPage }
 type usageHistoryStub struct {
@@ -55,7 +52,7 @@ func TestProjectionInterleavesSourceAndUsageAcrossCursorsWithoutLoss(t *testing.
 		{OrganizationID: "B", EventID: "e-3", MemberID: "m", InvocationID: "inv-3", Quantity: 7, Time: now.Add(-time.Second)},
 		{OrganizationID: "B", EventID: "e-1", MemberID: "m", InvocationID: "inv-1", Quantity: 8, Time: now.Add(-3 * time.Second)},
 	}}
-	query, _ := NewWithUsageAuditSources(source, nil, nil, nil, usage)
+	query, _ := NewCurrentAuditSources(source, nil, nil, usage, nil, nil)
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: now.Add(time.Hour)})
 	cursor, seen := "", []string{}
 	for i := 0; i < 4; i++ {
@@ -147,10 +144,6 @@ func TestProjectionPagesCommittedAIUsageWithoutActorImpersonation(t *testing.T) 
 type pagingAdditionalHistoryStub struct {
 	pages []AdditionalAuditPage
 	calls int
-}
-
-func (s *allocationHistoryStub) ListRecentAudit(context.Context, string, int, string, string, *allocation.AuditPosition) (allocation.AuditPage, error) {
-	return s.page, nil
 }
 
 func (s *additionalHistoryStub) ListRecentAudit(context.Context, string, int, string, string, *AuditPosition) (AdditionalAuditPage, error) {
@@ -251,12 +244,12 @@ func TestProjectionEmitsCursorWhenMergedPageTruncatesWithoutSourceCursor(t *test
 		{OrganizationID: "B", AccountID: "0198d4f0-0000-7000-8000-000000000001", ActorSubject: "actor", Kind: registry.OperationDisable, Version: 2, OccurredAt: now},
 		{OrganizationID: "B", AccountID: "0198d4f0-0000-7000-8000-000000000002", ActorSubject: "actor", Kind: registry.OperationDisable, Version: 3, OccurredAt: now.Add(-time.Microsecond)},
 	}}}
-	allocations := &allocationHistoryStub{page: allocation.AuditPage{Items: []allocation.AuditEvent{
-		{OrganizationID: "B", ActorID: "actor", MemberID: "m-1", Operation: "set_target", Version: 1, IdempotencyKey: "k-1", CreatedAt: now.Add(-2 * time.Microsecond)},
-		{OrganizationID: "B", ActorID: "actor", MemberID: "m-2", Operation: "set_target", Version: 2, IdempotencyKey: "k-2", CreatedAt: now.Add(-3 * time.Microsecond)},
+	resources := &additionalHistoryStub{page: AdditionalAuditPage{Items: []AdditionalAuditEvent{
+		{EventType: "account_member_ai_point_limit.changed", ObjectType: "member_ai_point_limit", ObjectReference: "m-1", Actor: "actor", Operation: "set_member_ai_point_limit", Version: 1, Key: "1", RelationReference: "op-1", Time: now.Add(-2 * time.Microsecond), Resource: &ResourceDetail{Type: "ai_point", Quantity: "1000"}},
+		{EventType: "account_member_ai_point_limit.changed", ObjectType: "member_ai_point_limit", ObjectReference: "m-2", Actor: "actor", Operation: "set_member_ai_point_limit", Version: 2, Key: "2", RelationReference: "op-2", Time: now.Add(-3 * time.Microsecond), Resource: &ResourceDetail{Type: "ai_point", Quantity: "0"}},
 	}}}
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: now.Add(time.Hour)})
-	query, err := NewWithAllocation(history, allocations)
+	query, err := NewCurrentAuditSources(history, nil, nil, nil, nil, resources)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +268,7 @@ func TestProjectionIncludesProfileAndMembershipAuditFacts(t *testing.T) {
 	profile := &additionalHistoryStub{page: AdditionalAuditPage{Items: []AdditionalAuditEvent{{EventType: "account_business_profile.updated", Actor: "actor", Time: now, ObjectType: "account_business_profile", ObjectReference: "u1", Operation: "update", Version: 1, Key: "1"}}}}
 	membership := &additionalHistoryStub{page: AdditionalAuditPage{Items: []AdditionalAuditEvent{{EventType: "organization_membership.changed", Actor: "actor", Time: now.Add(-time.Microsecond), ObjectType: "organization_member", ObjectReference: "member-1", Operation: "role", Version: 2, Key: "00000000-0000-4000-8000-000000000001", RelationReference: "00000000-0000-4000-8000-000000000001"}}}}
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: now.Add(time.Hour)})
-	query, err := NewWithAuditSources(history, nil, profile, membership)
+	query, err := NewCurrentAuditSources(history, profile, membership, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +295,7 @@ func TestProjectionOrdersFixedWidthProfileKeysNumerically(t *testing.T) {
 		{Items: []AdditionalAuditEvent{{EventType: "account_business_profile.updated", Actor: "actor", Time: now, ObjectType: "account_business_profile", ObjectReference: "u9", Operation: "update", Version: 9, Key: "00000000000000000009"}}},
 	}}
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: now.Add(time.Hour)})
-	query, err := NewWithAuditSources(history, nil, profile, nil)
+	query, err := NewCurrentAuditSources(history, profile, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

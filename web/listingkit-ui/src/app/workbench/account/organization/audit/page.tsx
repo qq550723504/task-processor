@@ -10,5 +10,5 @@ export default async function AccountAuditPage() {
   const session = await serverAuth();
   const identity = readZitadelIdentityFromSession(session);
   if (!identity || !readZitadelServerAccessToken(session) || readZitadelSessionError(session)) redirect(`/login?returnTo=${encodeURIComponent(pathname)}`);
-  return <AccountShell pathname={pathname} title="操作记录" description="查看当前企业的源账号操作，追溯已提交的变更。"><AuditPage expectedUserId={String(identity.userId)} /></AccountShell>;
+  return <AccountShell pathname={pathname} title="操作记录" description="查看当前企业账户、成员与资源的已提交变更。"><AuditPage expectedUserId={String(identity.userId)} /></AccountShell>;
 }

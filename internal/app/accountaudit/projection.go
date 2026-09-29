@@ -1,5 +1,5 @@
-// Package accountaudit projects the current registry's read-only history into
-// the Account transport contract. Registry remains the fact/permission owner.
+// Package accountaudit projects read-only history from current domain owners
+// into the Account transport contract. Each source remains its fact owner.
 package accountaudit
 
 import (
@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"time"
 
-	allocation "task-processor/internal/accountallocation"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/ledger/orgresource"
 	registry "task-processor/internal/sourceaccountregistry"
@@ -19,9 +18,6 @@ import (
 
 type History interface {
 	List(context.Context, registry.HistoryRequest) (registry.HistoryPage, error)
-}
-type AllocationHistory interface {
-	ListRecentAudit(context.Context, string, int, string, string, *allocation.AuditPosition) (allocation.AuditPage, error)
 }
 type AuditPosition struct {
 	CreatedAt time.Time
@@ -37,6 +33,7 @@ type AdditionalAuditEvent struct {
 	Version           int64
 	Key               string
 	RelationReference string
+	Resource          *ResourceDetail
 }
 type AdditionalAuditPage struct {
 	Items []AdditionalAuditEvent
@@ -59,11 +56,11 @@ type UsageHistory interface {
 }
 type Query struct {
 	history    History
-	allocation AllocationHistory
 	profile    AdditionalHistory
 	membership AdditionalHistory
 	usage      UsageHistory
 	points     ImagePointHistory
+	resources  AdditionalHistory
 }
 type ImagePointHistory interface {
 	ListImagePointDebits(context.Context, string, string, int, *orgresource.ImagePointAuditPosition) (orgresource.ImagePointAuditPage, error)
@@ -83,42 +80,14 @@ func New(history History) (*Query, error) {
 	return &Query{history: history}, nil
 }
 
-func NewWithAllocation(history History, allocationHistory AllocationHistory) (*Query, error) {
-	query, err := New(history)
-	if err != nil {
-		return nil, err
-	}
-	query.allocation = allocationHistory
-	return query, nil
-}
-
-func NewWithAuditSources(history History, allocationHistory AllocationHistory, profile AdditionalHistory, membership AdditionalHistory) (*Query, error) {
-	return NewWithUsageAuditSources(history, allocationHistory, profile, membership, nil)
-}
-
-func NewWithUsageAuditSources(history History, allocationHistory AllocationHistory, profile AdditionalHistory, membership AdditionalHistory, usage UsageHistory) (*Query, error) {
-	return NewWithImagePointAuditSources(history, allocationHistory, profile, membership, usage, nil)
-}
-
-func NewWithImagePointAuditSources(history History, allocationHistory AllocationHistory, profile AdditionalHistory, membership AdditionalHistory, usage UsageHistory, points ImagePointHistory) (*Query, error) {
-	query, err := NewWithAllocation(history, allocationHistory)
-	if err != nil {
-		return nil, err
-	}
-	query.profile = profile
-	query.membership = membership
-	query.usage = usage
-	query.points = points
-	return query, nil
-}
-
 // NewCurrentAuditSources consumes only current native and resource owners.
-func NewCurrentAuditSources(history History, profile, membership AdditionalHistory, usage UsageHistory, points ImagePointHistory) (*Query, error) {
+func NewCurrentAuditSources(history History, profile, membership AdditionalHistory, usage UsageHistory, points ImagePointHistory, resources AdditionalHistory) (*Query, error) {
 	query, err := New(history)
 	if err != nil {
 		return nil, err
 	}
 	query.profile, query.membership, query.usage, query.points = profile, membership, usage, points
+	query.resources = resources
 	return query, nil
 }
 
@@ -128,16 +97,21 @@ type Relation struct {
 	Version   string `json:"version"`
 }
 type Event struct {
-	EventType       string       `json:"eventType"`
-	Actor           string       `json:"actor"`
-	Time            time.Time    `json:"time"`
-	ObjectType      string       `json:"objectType"`
-	ObjectReference string       `json:"objectReference"`
-	Operation       string       `json:"operation"`
-	Result          string       `json:"result"`
-	Relation        Relation     `json:"relation"`
-	Usage           *UsageDetail `json:"usage,omitempty"`
-	Points          *PointDetail `json:"points,omitempty"`
+	EventType       string          `json:"eventType"`
+	Actor           string          `json:"actor"`
+	Time            time.Time       `json:"time"`
+	ObjectType      string          `json:"objectType"`
+	ObjectReference string          `json:"objectReference"`
+	Operation       string          `json:"operation"`
+	Result          string          `json:"result"`
+	Relation        Relation        `json:"relation"`
+	Usage           *UsageDetail    `json:"usage,omitempty"`
+	Points          *PointDetail    `json:"points,omitempty"`
+	Resource        *ResourceDetail `json:"resource,omitempty"`
+}
+type ResourceDetail struct {
+	Type     orgresource.ResourceType `json:"type"`
+	Quantity string                   `json:"quantity"`
 }
 type PointDetail struct {
 	MemberID     string `json:"memberId"`
@@ -159,18 +133,18 @@ type Page struct {
 	NextCursor              *string `json:"nextCursor"`
 }
 type positionWire struct {
-	Organization        string            `json:"org"`
-	Source              *sourcePosition   `json:"source,omitempty"`
-	Allocation          *allocationCursor `json:"allocation,omitempty"`
-	Actor               string            `json:"actor,omitempty"`
-	Kind                string            `json:"kind,omitempty"`
-	ResourceOperation   string            `json:"resourceOperation,omitempty"`
-	ProfileOperation    string            `json:"profileOperation,omitempty"`
-	MembershipOperation string            `json:"membershipOperation,omitempty"`
-	Profile             *auditCursor      `json:"profile,omitempty"`
-	Membership          *auditCursor      `json:"membership,omitempty"`
-	Usage               *auditCursor      `json:"usage,omitempty"`
-	Points              *auditCursor      `json:"points,omitempty"`
+	Organization        string          `json:"org"`
+	Source              *sourcePosition `json:"source,omitempty"`
+	Actor               string          `json:"actor,omitempty"`
+	Kind                string          `json:"kind,omitempty"`
+	ResourceOperation   string          `json:"resourceOperation,omitempty"`
+	ProfileOperation    string          `json:"profileOperation,omitempty"`
+	MembershipOperation string          `json:"membershipOperation,omitempty"`
+	Profile             *auditCursor    `json:"profile,omitempty"`
+	Membership          *auditCursor    `json:"membership,omitempty"`
+	Usage               *auditCursor    `json:"usage,omitempty"`
+	Points              *auditCursor    `json:"points,omitempty"`
+	Resources           *auditCursor    `json:"resources,omitempty"`
 }
 
 type sourcePosition struct {
@@ -179,10 +153,6 @@ type sourcePosition struct {
 	Version string    `json:"version"`
 }
 
-type allocationCursor struct {
-	Time string `json:"time"`
-	Key  string `json:"key"`
-}
 type auditCursor struct {
 	Time string `json:"time"`
 	Key  string `json:"key"`
@@ -190,11 +160,11 @@ type auditCursor struct {
 
 type cursorState struct {
 	source     *registry.HistoryPosition
-	allocation *allocation.AuditPosition
 	profile    *AuditPosition
 	membership *AuditPosition
 	usage      *AuditPosition
 	points     *orgresource.ImagePointAuditPosition
+	resources  *AuditPosition
 }
 
 func (q *Query) Read(ctx context.Context, limit int, cursor string) (Page, error) {
@@ -213,12 +183,11 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 	if err != nil {
 		return Page{}, err
 	}
-	allocationPage := allocation.AuditPage{}
-	if q.allocation != nil && filter.Kind == "" && filter.ProfileOperation == "" && filter.MembershipOperation == "" {
-		var allocationErr error
-		allocationPage, allocationErr = q.allocation.ListRecentAudit(ctx, identity.EffectiveOrganizationID, limit, filter.ActorSubject, filter.ResourceOperation, state.allocation)
-		if allocationErr != nil {
-			return Page{}, allocationErr
+	resourcePage := AdditionalAuditPage{}
+	if q.resources != nil && filter.Kind == "" && filter.ProfileOperation == "" && filter.MembershipOperation == "" {
+		resourcePage, err = q.resources.ListRecentAudit(ctx, identity.EffectiveOrganizationID, limit, filter.ActorSubject, filter.ResourceOperation, state.resources)
+		if err != nil {
+			return Page{}, err
 		}
 	}
 	profilePage := AdditionalAuditPage{}
@@ -269,21 +238,21 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 	if !time.Now().Before(identity.TokenExpiresAt) {
 		return Page{}, registry.ErrAuthenticationRequired
 	}
-	if len(history.Items) > limit || len(allocationPage.Items) > limit || len(profilePage.Items) > limit || len(membershipPage.Items) > limit || len(usagePage.Items) > limit || len(pointPage.Items) > limit {
+	if len(history.Items) > limit || len(resourcePage.Items) > limit || len(profilePage.Items) > limit || len(membershipPage.Items) > limit || len(usagePage.Items) > limit || len(pointPage.Items) > limit {
 		return Page{}, registry.ErrUnavailable
 	}
 	type mergedEvent struct {
 		event      Event
 		source     *registry.HistoryPosition
-		allocation *allocation.AuditPosition
 		profile    *AuditPosition
 		membership *AuditPosition
 		usage      *AuditPosition
 		points     *orgresource.ImagePointAuditPosition
+		resources  *AuditPosition
 		kind       string
 		key        string
 	}
-	merged := make([]mergedEvent, 0, len(history.Items)+len(allocationPage.Items)+len(profilePage.Items)+len(membershipPage.Items)+len(usagePage.Items))
+	merged := make([]mergedEvent, 0, len(history.Items)+len(resourcePage.Items)+len(profilePage.Items)+len(membershipPage.Items)+len(usagePage.Items)+len(pointPage.Items))
 	for _, item := range history.Items {
 		p := item.Position()
 		if item.Validate() != nil || item.OrganizationID != identity.EffectiveOrganizationID {
@@ -291,15 +260,12 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 		}
 		merged = append(merged, mergedEvent{event: Event{EventType: "source_account.operation_committed", Actor: item.ActorSubject, Time: item.OccurredAt.UTC(), ObjectType: "source_account", ObjectReference: item.AccountID, Operation: string(item.Kind), Result: "succeeded", Relation: Relation{Type: "source_account_version", Reference: item.AccountID, Version: strconv.FormatInt(item.Version, 10)}}, source: &p, kind: "source", key: item.AccountID + ":" + strconv.FormatInt(item.Version, 10)})
 	}
-	for _, item := range allocationPage.Items {
-		if item.OrganizationID != identity.EffectiveOrganizationID || item.ActorID == "" || item.MemberID == "" || item.Version < 1 || item.CreatedAt.IsZero() {
+	for _, item := range resourcePage.Items {
+		if item.Actor == "" || item.ObjectReference == "" || item.Time.IsZero() || item.Version < 1 || item.Key == "" || item.RelationReference == "" || !validResourceEvent(item) || filter.ActorSubject != "" && item.Actor != filter.ActorSubject || filter.ResourceOperation != "" && item.Operation != filter.ResourceOperation {
 			return Page{}, registry.ErrUnavailable
 		}
-		p := item.Position()
-		if !p.Valid() {
-			return Page{}, registry.ErrUnavailable
-		}
-		merged = append(merged, mergedEvent{event: Event{EventType: "account_member_token_allocation.changed", Actor: item.ActorID, Time: item.CreatedAt.UTC(), ObjectType: "member_token_allocation", ObjectReference: item.MemberID, Operation: item.Operation, Result: "succeeded", Relation: Relation{Type: "member_token_allocation_version", Reference: item.MemberID, Version: strconv.FormatInt(item.Version, 10)}}, allocation: &p, kind: "allocation", key: item.IdempotencyKey})
+		p := AuditPosition{CreatedAt: item.Time.UTC().Truncate(time.Microsecond), Key: item.Key}
+		merged = append(merged, mergedEvent{event: Event{EventType: item.EventType, Actor: item.Actor, Time: item.Time.UTC(), ObjectType: item.ObjectType, ObjectReference: item.ObjectReference, Operation: item.Operation, Result: "succeeded", Relation: Relation{Type: "organization_resource_operation", Reference: item.RelationReference, Version: strconv.FormatInt(item.Version, 10)}, Resource: item.Resource}, resources: &p, kind: "resources", key: item.Key})
 	}
 	for _, item := range profilePage.Items {
 		if item.Actor == "" || item.ObjectReference == "" || item.Time.IsZero() || item.Version < 1 || item.EventType == "" {
@@ -359,8 +325,8 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 		if item.source != nil {
 			nextState.source = item.source
 		}
-		if item.allocation != nil {
-			nextState.allocation = item.allocation
+		if item.resources != nil {
+			nextState.resources = item.resources
 		}
 		if item.profile != nil {
 			nextState.profile = item.profile
@@ -375,9 +341,6 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 			nextState.points = item.points
 		}
 	}
-	if len(allocationPage.Items) > 0 {
-		result.Source = "source_account_committed_operations+account_member_token_audit"
-	}
 	if len(profilePage.Items) > 0 {
 		result.Source += "+account_business_profile_audit"
 	}
@@ -390,17 +353,20 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 	if len(pointPage.Items) > 0 {
 		result.Source += "+image_ai_point_debits"
 	}
+	if len(resourcePage.Items) > 0 {
+		result.Source += "+member_resource_audit"
+	}
 	// Each source is fetched independently. The merged page can therefore be
 	// truncated even when neither source returned its own page cursor; the
 	// cursor still needs to carry the last emitted position from both streams
 	// so the events beyond the merge boundary remain reachable.
-	if mergedTruncated || history.Next != nil || allocationPage.Next != nil || profilePage.Next != nil || membershipPage.Next != nil || usagePage.Next != nil || pointPage.Next != nil {
+	if mergedTruncated || history.Next != nil || resourcePage.Next != nil || profilePage.Next != nil || membershipPage.Next != nil || usagePage.Next != nil || pointPage.Next != nil {
 		wire := positionWire{Organization: identity.EffectiveOrganizationID, Actor: filter.ActorSubject, Kind: string(filter.Kind), ResourceOperation: filter.ResourceOperation, ProfileOperation: filter.ProfileOperation, MembershipOperation: filter.MembershipOperation}
 		if nextState.source != nil {
 			wire.Source = &sourcePosition{Time: nextState.source.OccurredAt.UTC(), Account: nextState.source.AccountID, Version: strconv.FormatInt(nextState.source.Version, 10)}
 		}
-		if nextState.allocation != nil {
-			wire.Allocation = &allocationCursor{Time: nextState.allocation.CreatedAt.UTC().Format(time.RFC3339Nano), Key: nextState.allocation.IdempotencyKey}
+		if nextState.resources != nil {
+			wire.Resources = &auditCursor{Time: nextState.resources.CreatedAt.UTC().Format(time.RFC3339Nano), Key: nextState.resources.Key}
 		}
 		if nextState.profile != nil {
 			wire.Profile = &auditCursor{Time: nextState.profile.CreatedAt.UTC().Format(time.RFC3339Nano), Key: nextState.profile.Key}
@@ -435,7 +401,7 @@ func parseCursor(value, organization string, filter Filter) (cursorState, error)
 		return cursorState{}, registry.ErrInvalid
 	}
 	var wire positionWire
-	if json.Unmarshal(data, &wire) != nil || wire.Organization != organization || wire.Actor != filter.ActorSubject || wire.Kind != string(filter.Kind) || wire.ResourceOperation != filter.ResourceOperation || wire.ProfileOperation != filter.ProfileOperation || wire.MembershipOperation != filter.MembershipOperation || wire.Source == nil && wire.Allocation == nil && wire.Profile == nil && wire.Membership == nil && wire.Usage == nil && wire.Points == nil {
+	if json.Unmarshal(data, &wire) != nil || wire.Organization != organization || wire.Actor != filter.ActorSubject || wire.Kind != string(filter.Kind) || wire.ResourceOperation != filter.ResourceOperation || wire.ProfileOperation != filter.ProfileOperation || wire.MembershipOperation != filter.MembershipOperation || wire.Source == nil && wire.Resources == nil && wire.Profile == nil && wire.Membership == nil && wire.Usage == nil && wire.Points == nil {
 		return cursorState{}, registry.ErrInvalid
 	}
 	state := cursorState{}
@@ -450,16 +416,13 @@ func parseCursor(value, organization string, filter Filter) (cursorState, error)
 		}
 		state.source = &position
 	}
-	if wire.Allocation != nil {
-		createdAt, err := time.Parse(time.RFC3339Nano, wire.Allocation.Time)
-		if err != nil {
+	if wire.Resources != nil {
+		createdAt, err := time.Parse(time.RFC3339Nano, wire.Resources.Time)
+		id, idErr := strconv.ParseInt(wire.Resources.Key, 10, 64)
+		if err != nil || createdAt.IsZero() || idErr != nil || id < 1 {
 			return cursorState{}, registry.ErrInvalid
 		}
-		position := allocation.AuditPosition{CreatedAt: createdAt, IdempotencyKey: wire.Allocation.Key}
-		if !position.Valid() {
-			return cursorState{}, registry.ErrInvalid
-		}
-		state.allocation = &position
+		state.resources = &AuditPosition{CreatedAt: createdAt, Key: wire.Resources.Key}
 	}
 	if wire.Profile != nil {
 		createdAt, err := time.Parse(time.RFC3339Nano, wire.Profile.Time)
@@ -496,4 +459,18 @@ func parseCursor(value, organization string, filter Filter) (cursorState, error)
 		return cursorState{}, registry.ErrInvalid
 	}
 	return state, nil
+}
+
+func validResourceEvent(item AdditionalAuditEvent) bool {
+	if item.Resource == nil {
+		return false
+	}
+	quantity, err := strconv.ParseInt(item.Resource.Quantity, 10, 64)
+	if err != nil || strconv.FormatInt(quantity, 10) != item.Resource.Quantity || quantity < 0 {
+		return false
+	}
+	if item.EventType == "account_member_ai_point_limit.changed" {
+		return item.ObjectType == "member_ai_point_limit" && item.Operation == "set_member_ai_point_limit" && item.Resource.Type == orgresource.ResourceAIPoint
+	}
+	return item.EventType == "account_member_resource.changed" && item.ObjectType == "member_resource" && (item.Operation == "allocate_member_resource" || item.Operation == "reclaim_member_resource") && (item.Resource.Type == orgresource.ResourceStoreRenewalPeriod || item.Resource.Type == orgresource.ResourceDataRow) && quantity > 0
 }
