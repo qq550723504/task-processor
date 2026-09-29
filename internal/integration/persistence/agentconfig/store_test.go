@@ -160,6 +160,35 @@ func TestRuntimePrivilegesPreserveImmutableFacts(t *testing.T) {
 		}
 	}
 }
+
+func TestRuntimePrivilegesRejectInheritedWriteAuthority(t *testing.T) {
+	for _, tc := range []struct{ name, grant string }{
+		{"schema-create", "GRANT CREATE ON SCHEMA agent_configuration TO "},
+		{"command-delete", "GRANT DELETE ON agent_configuration.commands TO "},
+		{"snapshot-column-update", "GRANT UPDATE (payload) ON agent_configuration.start_snapshots TO "},
+		{"command-identity-update", "GRANT UPDATE (fingerprint) ON agent_configuration.commands TO "},
+		{"owner-set-role", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, _, _ := fixture(t)
+			role := "agent573_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+			donor := "agent573_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+			require.NoError(t, db.Exec("CREATE ROLE "+role+" NOLOGIN").Error)
+			t.Cleanup(func() { _ = db.Exec("DROP OWNED BY " + role).Error; _ = db.Exec("DROP ROLE " + role).Error })
+			if tc.grant == "" {
+				// NOINHERIT still allows explicitly assuming a member role.
+				require.NoError(t, db.Exec("GRANT agent_configuration_owner TO "+role+" WITH INHERIT FALSE").Error)
+			} else {
+				require.NoError(t, db.Exec("CREATE ROLE "+donor+" NOLOGIN").Error)
+				t.Cleanup(func() { _ = db.Exec("DROP OWNED BY " + donor).Error; _ = db.Exec("DROP ROLE " + donor).Error })
+				require.NoError(t, db.Exec(tc.grant+donor).Error)
+				require.NoError(t, db.Exec("GRANT "+donor+" TO "+role).Error)
+			}
+			err := db.Transaction(func(tx *gorm.DB) error { return GrantRuntime(tx, role) })
+			require.ErrorIs(t, err, agentconfig.ErrInvalid)
+		})
+	}
+}
 func TestSnapshotAdmissionAndDisableABA(t *testing.T) {
 	db, s, runs := fixture(t)
 	ctx := context.Background()
