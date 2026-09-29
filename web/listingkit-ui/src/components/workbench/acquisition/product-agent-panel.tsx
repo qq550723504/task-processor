@@ -56,12 +56,15 @@ function ScopedAgentPanel({ userId, organizationId, operationId, productKey, cat
     // stay with the server. Explicit replay never replaces an uncertain key.
     const [intent,setIntent]=useState<StartIntent|null>(initialStart);
     const rolesKey=JSON.stringify([...context.roles].sort());
+    const [authority,setAuthority]=useState({rolesKey,generation:0});
+    const generation=authority.rolesKey===rolesKey?authority.generation:authority.generation+1;
+    if(authority.rolesKey!==rolesKey)setAuthority({rolesKey,generation});
     const knowledgeReadable=context.roles.some(role=>["listingkit_admin","platform_admin","listingkit_operator"].includes(role));
-    const [result, setResult] = useState<(ProductAgentResult & {knowledgeRolesKey:string}) | null>(null);
+    const [result, setResult] = useState<(ProductAgentResult & {knowledgeGeneration:number}) | null>(null);
     // Invalidate protected display during render, including late responses and
     // downgrade/regrant. Keep the durable operation key and all UNKNOWN intent.
-    if(result&&result.knowledgeRolesKey!==rolesKey) {
-        setResult({...result,knowledgeRolesKey:rolesKey,knowledge:result.knowledge?{status:"unavailable",originAgentRunId:result.knowledge.originAgentRunId,citations:[]}:undefined});
+    if(result&&result.knowledgeGeneration!==generation) {
+        setResult({...result,knowledgeGeneration:generation,knowledge:result.knowledge?{status:"unavailable",originAgentRunId:result.knowledge.originAgentRunId,citations:[]}:undefined});
     }
     const [proposal, setProposal] = useState("");
     const [feedback, setFeedback] = useState("");
@@ -106,7 +109,7 @@ function ScopedAgentPanel({ userId, organizationId, operationId, productKey, cat
             if (next.productKey !== productKey || next.catalogVersion !== catalogVersion || platform && next.targetPlatform !== platform)
                 throw new ProductAgentError("AGENT_CONFLICT");
             setPlatform(next.targetPlatform);
-            setResult({...next,knowledgeRolesKey:rolesKey});
+            setResult({...next,knowledgeGeneration:generation});
         }
         catch (error) {
             if (active.current) {
@@ -135,7 +138,7 @@ function ScopedAgentPanel({ userId, organizationId, operationId, productKey, cat
   {result && <div className="space-y-2"><p>素材查询平台：{{ shein: "SHEIN", temu: "Temu", amazon: "Amazon" }[result.targetPlatform]}</p><p>状态：{result.phase === "human_review_required" ? (result.canSubmitReview ? "候选已通过校验，等待人工审核" : "候选未通过校验，不能提交人工审核") : result.phase === "interrupted" ? "需要补充说明" : result.phase === "running" ? "运行记录尚未完成，不能重复发送" : "已停止"}</p>
    {result.stopReason && <p>{reasons[result.stopReason] ?? "本次运行已停止"}</p>}
    {result.candidate.Changes?.map((change, index) => <div key={index}><p>{change.Field}：{change.Value}</p><p className="text-sm">证据：{change.EvidenceIDs?.join("、") || "未提供"}</p></div>)}
-   <KnowledgeCitations knowledge={result.knowledge&&(!knowledgeReadable||result.knowledgeRolesKey!==rolesKey)?{status:"unavailable",originAgentRunId:result.knowledge.originAgentRunId,citations:[]}:result.knowledge}/>
+   <KnowledgeCitations knowledge={result.knowledge&&(!knowledgeReadable||result.knowledgeGeneration!==generation)?{status:"unavailable",originAgentRunId:result.knowledge.originAgentRunId,citations:[]}:result.knowledge}/>
    {result.confidence?.map(value => <p key={value.Field}>模型自报置信度（供参考）：{value.Field} {value.Known ? `${Math.round(value.Value * 100)}%` : "未知"}</p>)}
    {result.unresolved?.length ? <ul>{result.unresolved.map((item, index) => <li key={index}>{item}</li>)}</ul> : null}
    <p className="text-sm">{result.usageStatus === "observed" ? `已观测 ${result.tokens} tokens，预算估价 ${(result.estimatedCostMicros / 1000000).toFixed(4)} ${result.currency}` : "用量尚未确认，显示的预留不能当作实际账单。"}</p>
