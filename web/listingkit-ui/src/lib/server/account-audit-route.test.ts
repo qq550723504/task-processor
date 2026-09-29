@@ -14,7 +14,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers();
 describe("audit BFF exported route", () => {
   it.each(["allocate_member_resource", "reclaim_member_resource", "set_member_ai_point_limit"])("forwards current member resource operation %s and its strict facts", async operation => {
     const cap = operation === "set_member_ai_point_limit";
-    const item = { eventType: cap ? "account_member_ai_point_limit.changed" : "account_member_resource.changed", actor: "actor-1", time: "2026-09-29T08:00:00Z", objectType: cap ? "member_ai_point_limit" : "member_resource", objectReference: "member-1", operation, result: "succeeded", relation: { type: "organization_resource_operation", reference: "op-1", version: "1" }, resource: { type: cap ? "ai_point" : "data_row", quantity: "1000" } };
+    const item = { eventType: cap ? "account_member_ai_point_limit.changed" : "account_member_resource.changed", actor: "actor-1", time: "2026-09-29T08:00:00Z", objectType: cap ? "member_ai_point_limit" : "member_resource", objectReference: "member-1", operation, result: "succeeded", relation: { type: "organization_resource_operation", reference: cap ? "limit key" : "op-1", version: "1" }, resource: { type: cap ? "ai_point" : "data_row", quantity: "1000" } };
     const fetch = vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+member_resource_audit", items: [item] })); vi.stubGlobal("fetch", fetch);
     const response = await GET(request(`?actor=actor-1&operation=${operation}`));
     expect(response.status).toBe(200);

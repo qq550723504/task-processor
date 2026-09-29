@@ -37,7 +37,7 @@ func TestAccountAuditHTTPReadsNativeMemberResourceFactsWithFreshAuthorization(t 
 	require.NoError(t, err)
 	limits, err := resourceadapter.NewGormMemberLimitRepository(db, resourceadapter.TransactionConfig{})
 	require.NoError(t, err)
-	_, err = limits.SetMonthlyLimit(context.Background(), orgresource.SetMemberLimitExecution{OrganizationID: "B", MemberID: "member", ActorID: "safe-actor", OperationID: "limit-1", Target: 1000})
+	_, err = limits.SetMonthlyLimit(context.Background(), orgresource.SetMemberLimitExecution{OrganizationID: "B", MemberID: "member", ActorID: "safe-actor", OperationID: "limit key", Target: 1000})
 	require.NoError(t, err)
 	reader, err := resourceadapter.NewGormRepository(db, resourceadapter.TransactionConfig{})
 	require.NoError(t, err)
@@ -65,6 +65,9 @@ func TestAccountAuditHTTPReadsNativeMemberResourceFactsWithFreshAuthorization(t 
 		require.Equal(t, "member", page.Items[0].ObjectReference)
 		require.Equal(t, quantity, page.Items[0].Resource.Quantity)
 		require.Equal(t, operation, page.Items[0].Operation)
+		if operation == "set_member_ai_point_limit" {
+			require.Equal(t, "limit key", page.Items[0].Relation.Reference)
+		}
 	}
 	require.Equal(t, 400, get("B", "?operation=set_target").Code)
 	require.Equal(t, 403, get("A", "").Code)

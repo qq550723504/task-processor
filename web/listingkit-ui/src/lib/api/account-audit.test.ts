@@ -17,6 +17,17 @@ describe("account audit query boundary", () => {
       expect(() => parseAccountAudit({ ...empty, source: "source_account_committed_operations+member_resource_audit", items: [item] })).toThrow();
     }
   });
+  it("preserves opaque operation IDs allowed by the resource writer within its UTF-8 byte limit", async () => {
+    const cap = { eventType: "account_member_ai_point_limit.changed", actor: "actor-1", time: "2026-09-29T08:00:00Z", objectType: "member_ai_point_limit", objectReference: "member-1", operation: "set_member_ai_point_limit", result: "succeeded", relation: { type: "organization_resource_operation", reference: "limit key", version: "1" }, resource: { type: "ai_point", quantity: "1000" } };
+    for (const reference of ["limit key", "月限操作 / member 1", "x".repeat(128), "\uFEFFlimit key"]) {
+      const item = { ...cap, relation: { ...cap.relation, reference } };
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+member_resource_audit", items: [item] })));
+      expect((await getAccountAudit(options)).items[0].relation.reference).toBe(reference);
+    }
+    for (const reference of ["", " limit key", "limit key ", "\u0085limit", "月".repeat(43)]) {
+      expect(() => parseAccountAudit({ ...empty, source: "source_account_committed_operations+member_resource_audit", items: [{ ...cap, relation: { ...cap.relation, reference } }] })).toThrow();
+    }
+  });
   it("preserves image point debits as exact strings and does not infer token usage", async () => {
     const debit = { eventType: "account_ai_points.committed", actor: "actor-1", time: "2026-09-26T01:00:00Z", objectType: "image_generation", objectReference: "run-1", operation: "consume", result: "succeeded", relation: { type: "organization_resource_event", reference, version: "" }, points: { memberId: "grant-1", quantity: "9007199254740993", priceVersion: "price-1", intentId: "intent-1" } };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+image_ai_point_debits", items: [debit] })));

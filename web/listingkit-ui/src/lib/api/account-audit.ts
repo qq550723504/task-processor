@@ -5,6 +5,9 @@ import { InvalidStrictJSONResponseError, readBoundedStrictJSON } from "./strict-
 const identity = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
 const reference = z.string().uuid();
 const resourceReference = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
+// Resource writers use opaque, trimmed IDs capped at 128 UTF-8 bytes.
+// Go strings.TrimSpace uses Unicode White_Space, which differs from JS trim.
+const operationReference = z.string().min(1).refine(value => new TextEncoder().encode(value).length <= 128 && !/^\p{White_Space}|\p{White_Space}$/u.test(value));
 const version = z.string().regex(/^[1-9][0-9]{0,18}$/);
 const sourceOperation = z.enum(["register", "enable", "disable"]);
 const resourceOperation = z.enum(["allocate_member_resource", "reclaim_member_resource", "set_member_ai_point_limit"]);
@@ -23,7 +26,7 @@ const resourceFields = {
   actor: z.string().min(1).max(256).regex(/^[^\x00-\x1f\x7f]+$/),
   time: z.string().max(40).datetime({ precision: null }),
   objectReference: resourceReference, result: z.literal("succeeded"),
-  relation: z.object({ type: z.literal("organization_resource_operation"), reference: resourceReference, version }).strict(),
+  relation: z.object({ type: z.literal("organization_resource_operation"), reference: operationReference, version }).strict(),
 };
 const exactNonnegative = z.string().refine(value => /^(0|[1-9][0-9]{0,18})$/.test(value) && BigInt(value) <= BigInt("9223372036854775807"));
 const resourceEvent = z.object({
