@@ -232,15 +232,30 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 		return sourcing.AcquisitionEvidence{}, err
 	}
 
-	evidence, outcome := c.collect(ctx, source)
+	reported := false
+	evidence, outcome := c.collect(ctx, source, &reported)
 	// A challenge is the only outcome that stops the process: it is the observed
 	// escalation, and continuing immediately is what deepens it.
-	c.throttle.Observe(outcome)
+	//
+	// A challenge is notified at detection time so the cooldown engages while the
+	// solve is still running. The terminal outcome below is the same challenge seen
+	// again, so re-reporting it would restart the window from the end of the solve
+	// and make the configured cooldown last longer than it says. Suppressing it here,
+	// where both notifications are known to belong to one acquisition, keeps the
+	// suppression out of the throttle - where it would also discard a second,
+	// genuinely distinct challenge from an overlapping acquisition.
+	if !reported {
+		c.throttle.Observe(outcome)
+	}
 	return evidence, outcome
 }
 
 // collect performs one paced acquisition. Its outcome is observed by Acquire.
-func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource) (sourcing.AcquisitionEvidence, error) {
+// reported is set when this acquisition has already notified the throttle of a
+// challenge, so the caller can avoid reporting the same challenge twice.
+func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource, reported *bool) (
+	sourcing.AcquisitionEvidence, error,
+) {
 	deadlineAt, _ := ctx.Deadline()
 	pw, err := playwright.Run()
 	if err != nil {
@@ -390,6 +405,7 @@ func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource)
 			// caller can start a browser against an IP we already know is
 			// challenged, deepening the block.
 			c.throttle.Observe(ErrChallenge)
+			*reported = true
 		}
 		if err == nil && challenged && !isAuthenticationWall(page) {
 			if _, solveErr := c.trySolve(ctx, page); solveErr != nil && ctx.Err() != nil {

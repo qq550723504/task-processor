@@ -883,31 +883,81 @@ func TestThrottleScheduleMovedAdmitsBothInterleaveings(t *testing.T) {
 	require.Equal(t, interval/2, atTail(base).slipTolerance)
 }
 
-// A single challenge is observed twice - once at detection, once when the bounded
-// solve gives up - and the window must describe the time since the challenge was
-// actually seen, not since the solve finished. A solve that consumes six seconds
-// must not make a ten-minute window last ten minutes and six.
-func TestThrottleCooldownIsNotRestartedByTheSolve(t *testing.T) {
+// Every observed challenge gets the full window from the moment it was seen, so
+// overlapping acquisitions that each meet a challenge cannot resume sooner than
+// ChallengeCooldown after the LATEST one. Suppressing the second observation
+// process-wide - the obvious way to stop one acquisition reporting twice - would
+// silently shorten the window for the newest challenge.
+func TestThrottleEachObservedChallengeGetsTheFullWindow(t *testing.T) {
 	cooldown := 300 * time.Millisecond
 	th := newThrottle(time.Millisecond, 0, cooldown, -1, time.Second, time.Second/4)
 	require.NoError(t, th.Wait(context.Background()))
 
-	expiry := func() time.Time {
+	deadline := func() time.Time {
 		th.mu.Lock()
 		defer th.mu.Unlock()
 		return th.cooledAt
 	}
 
 	th.Observe(ErrChallenge)
-	first := expiry()
-	require.False(t, first.IsZero(), "the first observation must start a window")
-	require.Greater(t, th.CooldownRemaining(), cooldown/2)
+	first := deadline()
+	require.False(t, first.IsZero(), "the first challenge must start a window")
 
-	// The bounded solve runs, then reports the same challenge again.
+	// A second, genuinely distinct challenge while the first window is still running.
 	time.Sleep(120 * time.Millisecond)
 	th.Observe(ErrChallenge)
-	require.Equal(t, first, expiry(),
-		"a second observation of the same challenge must not move the deadline it already set")
-	require.Less(t, th.CooldownRemaining(), cooldown,
-		"the window must keep counting down from the observation, not restart")
+	second := deadline()
+	require.True(t, second.After(first),
+		"a second distinct challenge must extend the window from when it was seen")
+	require.GreaterOrEqual(t, th.CooldownRemaining(), cooldown*4/5,
+		"the newest challenge must still be served its full window")
+}
+
+// Under scheduler inversion a later reservation's goroutine can be scheduled ahead
+// of an earlier waiter and dispatch first, leaving the earlier one with a valid
+// timer and an unchanged generation. It must not then start beside the acquisition
+// that is already running.
+func TestThrottleSchedulerInversionDoesNotDoubleDispatch(t *testing.T) {
+	interval := 60 * time.Millisecond
+	budget := 2 * time.Second
+	th := newThrottle(interval, 0, 0, -1, budget, budget/4)
+	require.NoError(t, th.Wait(context.Background()))
+
+	for i := 0; i < 4; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), budget)
+		start := time.Now()
+		require.NoError(t, th.Wait(ctx))
+		require.GreaterOrEqual(t, time.Since(start), interval*3/4,
+			"every dispatch must respect the collector-wide floor")
+		cancel()
+	}
+}
+
+// A waiter whose slot predates a real dispatch is second in line, not first, even
+// when the on-time dispatch of that later acquisition left the queue tail alone and
+// so changed no generation. This is the state scheduler inversion leaves behind: the
+// floor from a real dispatch is ahead, the tail is not, and the waiter would
+// otherwise dispatch immediately beside an acquisition that is already running.
+func TestThrottleLateWaiterDoesNotOverwriteNewerDispatchFloor(t *testing.T) {
+	interval := 50 * time.Millisecond
+	budget := interval * 6
+	th := newThrottle(interval, 0, 0, -1, budget, budget/4)
+	require.NoError(t, th.Wait(context.Background()))
+
+	// Reproduce the post-inversion state directly: a real dispatch just ran, its
+	// floor is ahead, and the queue tail it left is already in the past.
+	th.mu.Lock()
+	now := time.Now()
+	th.lastDispatchAt = now
+	th.dispatchFloor = now.Add(interval)
+	th.next = now.Add(-time.Millisecond)
+	th.generation = 0
+	th.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	defer cancel()
+	start := time.Now()
+	require.NoError(t, th.Wait(ctx))
+	require.GreaterOrEqual(t, time.Since(start), interval*3/4,
+		"a waiter behind a real dispatch must not start beside it")
 }

@@ -60,6 +60,10 @@ type Throttle struct {
 	// schedule that no longer holds. A clock tick of goroutine scheduling is not a
 	// slip; half an interval plainly is.
 	slipTolerance time.Duration
+	// lastDispatchAt is when the last REAL acquisition dispatch actually ran. The
+	// floor is a whole interval past it and would overshoot, so the instant is kept
+	// separately to decide whether a waiter is still first in line.
+	lastDispatchAt time.Time
 	// dispatchFloor is the earliest start allowed by the last REAL acquisition
 	// dispatch. Observe overwrites next with a synthetic cooldown floor, so the real
 	// one has to be kept here or it is lost; on expiry the floor resumes at
@@ -192,7 +196,17 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	if extra := float64(t.MinInterval) * t.Jitter; extra > 0 {
 		span += time.Duration(t.rand.Float64() * extra)
 	}
+	// No acquisition may start before BOTH the queue tail and the floor left by the
+	// last real dispatch. The two are not the same value: a dispatch that landed
+	// inside an existing tail moved neither, and under scheduler inversion a later
+	// reservation can reach its dispatch first and leave the tail behind while its
+	// own floor is still ahead. Consulting only the tail there lets an earlier waiter
+	// overwrite that floor and start beside an acquisition already running, which is
+	// the burst this throttle exists to prevent.
 	start := t.next
+	if t.dispatchFloor.After(start) {
+		start = t.dispatchFloor
+	}
 	if start.Before(now) {
 		start = now
 	}
@@ -342,6 +356,7 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	// follows it, or the next waiter can start too soon after this one.
 	actual := time.Now()
 	dispatched := actual.Add(span)
+	t.lastDispatchAt = actual
 	t.dispatchFloor = dispatched
 	// See the immediate path: lateness on actual, the tail on the floor.
 	if t.scheduleMoved(dispatched, actual, start) {
@@ -352,6 +367,14 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	}
 	t.mu.Unlock()
 	return nil
+}
+
+// discardLocked drops a reservation without restoring any boundary. The caller must
+// already hold the mutex.
+func (t *Throttle) discardLocked(seq uint64) {
+	if t.owner == seq {
+		t.prevNext = time.Time{}
+	}
 }
 
 // discard drops a reservation without restoring any boundary.
@@ -468,16 +491,15 @@ func (t *Throttle) Observe(err error) {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	// A challenge is observed twice for one acquisition: once when the page is
-	// detected as challenged, and again when the bounded solve gives up. Restarting
-	// the window on the second call would push the end of the cooldown out by however
-	// long the solve took, so a configured ten-minute window would really last ten
-	// minutes and six seconds - and the drift grows as the configured window shrinks.
-	// A window already in flight therefore stands; only the first observation of a
-	// challenge starts it.
-	if t.blocked && t.cooledAt.After(time.Now()) {
-		return
-	}
+	// Every observed challenge gets the full configured window from the moment it was
+	// seen, so overlapping acquisitions that each meet a challenge cannot resume
+	// sooner than ChallengeCooldown after the latest one.
+	//
+	// The duplicate notification a single acquisition produces - once at detection,
+	// again when the bounded solve gives up - is suppressed by the caller, which
+	// knows both notifications belong to the same acquisition. Suppressing it here
+	// instead would be process-wide and would drop the second of two genuinely
+	// distinct challenges.
 	t.blocked = true
 	t.cooledAt = time.Now().Add(t.ChallengeCooldown)
 	// Push the interval floor past the cooldown so work resumes paced.
