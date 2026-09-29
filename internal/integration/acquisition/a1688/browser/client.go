@@ -26,6 +26,7 @@ import (
 
 	"github.com/mxschmitt/playwright-go"
 	sigjson "sigs.k8s.io/json"
+	"sync"
 	"task-processor/internal/product/sourcing"
 )
 
@@ -382,7 +383,17 @@ func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource)
 	// still report it. Otherwise a challenge whose automatic attempt happened to
 	// run out of budget is reported as an ordinary timeout, the throttle does not
 	// cool, and the next acquisition walks straight back into the block.
-	var sawChallenge atomic.Bool
+	// challengeMu covers both the cooldown and the flag, so a reader that sees the
+	// flag is guaranteed to see the cooldown and a reader that does not is looking
+	// at a detection that has not been published yet. Setting them under one lock is
+	// what makes the pair atomic; ordering the two operations only moves the window.
+	var challengeMu sync.Mutex
+	var sawChallenge bool
+	sawChallengeSeen := func() bool {
+		challengeMu.Lock()
+		defer challengeMu.Unlock()
+		return sawChallenge
+	}
 	go func() {
 		// The whole phase is inside the race: the automatic captcha attempt and the
 		// re-check perform further uncancellable protocol calls, so bounding only
@@ -397,8 +408,10 @@ func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource)
 			// acquisition would then start a browser against an IP already known to be
 			// challenged. In this order a reader that sees the flag is guaranteed to
 			// see the cooldown too; a reader that does not still gets the protection.
+			challengeMu.Lock()
 			c.throttle.Observe(ErrChallenge)
-			sawChallenge.Store(true)
+			sawChallenge = true
+			challengeMu.Unlock()
 		}
 		if err == nil && challenged && !isAuthenticationWall(page) {
 			if _, solveErr := c.trySolve(ctx, page); solveErr != nil && ctx.Err() != nil {
@@ -419,12 +432,12 @@ func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource)
 		// from here - deadline or caller cancellation - must still carry it. Without
 		// this, a caller that disconnects mid-solve reports a bare cancellation and
 		// the cooldown is skipped.
-		if sawChallenge.Load() && inspected.err != nil && isTerminalContextErr(inspected.err) {
+		if sawChallengeSeen() && inspected.err != nil && isTerminalContextErr(inspected.err) {
 			inspected.err = errors.Join(ErrChallenge, inspected.err)
 		}
 	case <-ctx.Done():
 		_ = page.Close()
-		if sawChallenge.Load() {
+		if sawChallengeSeen() {
 			return sourcing.AcquisitionEvidence{}, errors.Join(ErrChallenge, ctx.Err())
 		}
 		return sourcing.AcquisitionEvidence{}, ctx.Err()

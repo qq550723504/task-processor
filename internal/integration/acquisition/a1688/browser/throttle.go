@@ -178,6 +178,15 @@ func (t *Throttle) admit(ctx context.Context) (time.Duration, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	// A caller that gave up before or during its wait must not be admitted. The
+	// derived context can still have a future deadline after cancellation, so the
+	// budget check below does not notice on its own; without this the caller would
+	// be told it may start, spend a pacing slot, and then launch a browser for a
+	// request nobody is waiting for.
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+
 	now := time.Now()
 	// A cooldown is a refusal, not a wait: the configured window is already longer
 	// than any caller's budget, so waiting would only convert it into a timeout.

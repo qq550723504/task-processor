@@ -949,3 +949,49 @@ func TestThrottleNeverAdmitsTwoAcquisitionsCloserThanTheInterval(t *testing.T) {
 			"admissions %d and %d are %s apart, under the %s floor", i-1, i, gap, interval)
 	}
 }
+
+// A caller that has already given up must not be admitted. The derived context can
+// still carry a future deadline after cancellation, so the budget check alone does
+// not notice - and an admitted-but-dead caller spends a pacing slot and then
+// launches a browser for a request nobody is waiting for.
+//
+// The case that matters is the immediate one: when the floor has already passed
+// there is nothing to wait for, so the decision to commit happens in the same pass
+// that would have to notice the cancellation. A caller cancelled while the floor is
+// still in the future is already covered by the sleep.
+func TestThrottleDoesNotAdmitAnAlreadyCancelledCaller(t *testing.T) {
+	interval := 50 * time.Millisecond
+	budget := 3 * time.Second
+
+	fresh := func() *Throttle { return newThrottle(interval, 0, 0, -1, budget, budget/4) }
+	floorOf := func(th *Throttle) time.Time {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return th.floor
+	}
+
+	t.Run("cancelled before the first admission", func(t *testing.T) {
+		th := fresh()
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		require.ErrorIs(t, th.Wait(ctx), context.Canceled)
+		require.True(t, floorOf(th).IsZero(),
+			"a caller that never started must not establish a pacing floor")
+	})
+
+	t.Run("cancelled once the floor has passed", func(t *testing.T) {
+		th := fresh()
+		require.NoError(t, th.Wait(context.Background()))
+		// Let the floor pass so the next caller is admitted immediately rather than
+		// through the wait, which is the path that has to check for cancellation.
+		time.Sleep(interval + 20*time.Millisecond)
+		before := floorOf(th)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		require.ErrorIs(t, th.Wait(ctx), context.Canceled)
+		require.Equal(t, before, floorOf(th),
+			"a cancelled immediate admission must not consume an interval")
+	})
+}

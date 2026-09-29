@@ -26,8 +26,12 @@ func main() {
 	browserPath := flag.String("browser", "", "path to the Chromium binary")
 	headless := flag.Bool("headless", true, "run headless")
 	timeout := flag.Duration("timeout", 120*time.Second, "acquisition budget")
-	startupQuarantine := flag.Duration("startup-quarantine", 0,
-		"how long to refuse the first request; the production default is the full challenge cooldown, which is not what an acceptance run wants")
+	// Negative disables the quarantine outright. Zero is NOT the way to ask for
+	// that: the throttle reads zero as "unset" and falls back to the full
+	// challenge cooldown, which is the production default and would refuse this
+	// run before it ever launched Chromium.
+	startupQuarantine := flag.Duration("startup-quarantine", -1,
+		"how long to refuse the first request; negative disables it, as an acceptance run wants")
 	flag.Parse()
 
 	if *offer == "" {
@@ -59,7 +63,8 @@ func main() {
 		// quarantines a freshly started process for the full challenge cooldown, so
 		// leaving this unset would refuse the very request the runner exists to
 		// make, and no amount of context timeout would reach Chromium. The choice is
-		// explicit here rather than inherited.
+		// explicit here rather than inherited, and an operator can still impose a
+		// warmup with the flag.
 		StartupQuarantine: *startupQuarantine,
 	})
 
