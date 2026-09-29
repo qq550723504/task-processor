@@ -43,6 +43,8 @@ go run ./cmd/agent-configuration-schema-init --runtime-role <existing_serving_ro
 - 配置写操作必须携带 UUID `Idempotency-Key` 和强 `If-Match`；首次启用用 `If-None-Match: *`。缺少前置条件 428，版本失配 412。
 - 同组织、同 actor、同 key 的相同已提交配置命令返回原回执，页面另行读取当前状态。变更载荷或路由返回冲突。
 - 结果尚未确认时只重试原配置命令或核实原执行编号。页面不会自动换 key 发起新的模型调用。
+- 首次 Start 明确返回零 Claim 的配置变更/停用/模板归档拒绝时，可点击“重新确认配置”，重新选择并确认后使用新编号；Resume 配置拒绝仍保留原运行和 checkpoint，UNKNOWN 仍只核实原编号。
+- Knowledge 身份和元数据预检在 RunDB 事务外执行；匹配的已提交配置指令先返回原回执，并发写入仍通过同一事务的命令唯一键收敛为一个回执。
 - 停用阻止后续 Start/Resume；已领取的有限执行可完成。旧回执读取及已有 Review/Apply 保留。
 - 新 Start 在同一 RunDB 事务内检查启用、epoch、模板未归档和当前硬上限，再领取既有 run；Prepared Start 经停用再启用仍拒绝。Resume 沿用冻结请求，检查当前启用及硬上限。
 - 收紧运行上限时，先停止并排空旧执行进程，再声明新上限生效。未排空前旧进程仍使用旧代码上限；没有新增分布式配置协调器。

@@ -69,8 +69,13 @@ func TestConfigurationReceiptsAndExactDefault(t *testing.T) {
 	require.NoError(t, e)
 	def := command(scope, "default", 1)
 	def.Default = &agentconfig.TemplateRef{TemplateID: tr.TemplateID, Revision: "1"}
-	_, e = s.Execute(ctx, def)
+	defaultReceipt, e := s.Execute(ctx, def)
 	require.NoError(t, e)
+	require.Equal(t, tr.TemplateID, defaultReceipt.TemplateID)
+	require.Equal(t, "1", defaultReceipt.Version)
+	var audit commandRow
+	require.NoError(t, s.db.Where("command_id=?", defaultReceipt.CommandID).Take(&audit).Error)
+	require.Equal(t, tr.TemplateID, text(audit.TemplateID))
 	update := command(scope, "update-template", 1)
 	update.TemplateID = tr.TemplateID
 	update.Input = agentconfig.TemplateInput{Name: "second", TargetPlatform: "amazon"}
@@ -98,8 +103,12 @@ func TestConfigurationReceiptsAndExactDefault(t *testing.T) {
 	_, e = s.ReadTemplate(ctx, agent.Scope{OrganizationID: "org-b", ActorID: "actor-a"}, enable.AgentID, tr.TemplateID, 1)
 	require.ErrorIs(t, e, agentconfig.ErrNotFound)
 	clear := command(scope, "default", 2)
-	_, e = s.Execute(ctx, clear)
+	clearReceipt, e := s.Execute(ctx, clear)
 	require.NoError(t, e)
+	require.Empty(t, clearReceipt.TemplateID)
+	var cleared commandRow
+	require.NoError(t, s.db.Where("command_id=?", clearReceipt.CommandID).Take(&cleared).Error)
+	require.Nil(t, cleared.TemplateID)
 	_, e = s.Execute(ctx, arch)
 	require.NoError(t, e)
 	replay, e = s.Execute(ctx, update)
@@ -115,6 +124,107 @@ func TestConfigurationReceiptsAndExactDefault(t *testing.T) {
 	_, e = s.Execute(ctx, update, func(context.Context) error { eligibleCalls++; return agentconfig.ErrUnavailable })
 	require.ErrorIs(t, e, agentconfig.ErrConflict)
 	require.Zero(t, eligibleCalls)
+}
+
+func TestKnowledgeEligibilityDoesNotHoldRunDBTransaction(t *testing.T) {
+	db, s, _ := fixture(t)
+	ctx := context.Background()
+	scope := agent.Scope{OrganizationID: "org", ActorID: "admin"}
+	enable := command(scope, "enable", 0)
+	enable.Absent = true
+	_, err := s.Execute(ctx, enable)
+	require.NoError(t, err)
+	pool, err := db.DB()
+	require.NoError(t, err)
+	pool.SetMaxOpenConns(1)
+	create := command(scope, "create-template", 0)
+	create.Input = agentconfig.TemplateInput{Name: "preflight", TargetPlatform: "shein"}
+	checkCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	_, err = s.Execute(checkCtx, create, func(ctx context.Context) error {
+		_, e := s.ReadAgent(ctx, scope, create.AgentID)
+		return e
+	})
+	require.NoError(t, err, "external preflight must leave the sole RunDB connection available")
+}
+
+func TestCommittedWinnerPrecedesFailedEligibility(t *testing.T) {
+	_, s, _ := fixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	scope := agent.Scope{OrganizationID: "org", ActorID: "admin"}
+	enable := command(scope, "enable", 0)
+	enable.Absent = true
+	_, err := s.Execute(ctx, enable)
+	require.NoError(t, err)
+	create := command(scope, "create-template", 0)
+	create.Input = agentconfig.TemplateInput{Name: "race", TargetPlatform: "shein"}
+	var winner agentconfig.Receipt
+	result, err := s.Execute(ctx, create, func(ctx context.Context) error {
+		var e error
+		winner, e = s.Execute(ctx, create)
+		if e != nil {
+			return e
+		}
+		return agentconfig.ErrUnavailable
+	})
+	require.NoError(t, err)
+	require.Equal(t, winner, result)
+}
+
+func TestConcurrentCommandPreflightKeepsOneReceipt(t *testing.T) {
+	db, s, _ := fixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	scope := agent.Scope{OrganizationID: "org", ActorID: "admin"}
+	enable := command(scope, "enable", 0)
+	enable.Absent = true
+	_, err := s.Execute(ctx, enable)
+	require.NoError(t, err)
+	create := command(scope, "create-template", 0)
+	create.Input = agentconfig.TemplateInput{Name: "concurrent", TargetPlatform: "shein"}
+	const count = 6
+	entered, release := make(chan struct{}, count), make(chan struct{})
+	type response struct {
+		receipt agentconfig.Receipt
+		err     error
+	}
+	responses := make(chan response, count)
+	for range count {
+		go func() {
+			r, e := s.Execute(ctx, create, func(ctx context.Context) error {
+				entered <- struct{}{}
+				select {
+				case <-release:
+					return nil
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			})
+			responses <- response{r, e}
+		}()
+	}
+	for range count {
+		select {
+		case <-entered:
+		case <-ctx.Done():
+			t.Fatal("preflight must not wait on command-key claim")
+		}
+	}
+	close(release)
+	var first agentconfig.Receipt
+	for i := 0; i < count; i++ {
+		r := <-responses
+		require.NoError(t, r.err)
+		if i == 0 {
+			first = r.receipt
+		} else {
+			require.Equal(t, first, r.receipt)
+		}
+	}
+	var templates int64
+	require.NoError(t, db.Model(&templateRow{}).Count(&templates).Error)
+	require.EqualValues(t, 1, templates)
 }
 
 func TestRuntimePrivilegesPreserveImmutableFacts(t *testing.T) {

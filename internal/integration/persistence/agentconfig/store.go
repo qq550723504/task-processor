@@ -274,6 +274,25 @@ func (s *Store) Templates(ctx context.Context, scope agent.Scope, id, cursor, li
 	return out, next, nil
 }
 
+func commandReceipt(db *gorm.DB, c agentconfig.Command, fingerprint string) (agentconfig.Receipt, bool, error) {
+	var old commandRow
+	err := db.Where("organization_id=? AND actor_id=? AND idempotency_key=?", c.Scope.OrganizationID, c.Scope.ActorID, c.Key).Take(&old).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return agentconfig.Receipt{}, false, nil
+	}
+	if err != nil {
+		return agentconfig.Receipt{}, false, err
+	}
+	if old.Fingerprint != fingerprint {
+		return agentconfig.Receipt{}, true, agentconfig.ErrConflict
+	}
+	var receipt agentconfig.Receipt
+	if json.Unmarshal(old.Receipt, &receipt) != nil || receipt.CommandID != old.CommandID {
+		return agentconfig.Receipt{}, true, agentconfig.ErrUnavailable
+	}
+	return receipt, true, nil
+}
+
 func (s *Store) Execute(ctx context.Context, c agentconfig.Command, eligibility ...func(context.Context) error) (agentconfig.Receipt, error) {
 	if len(eligibility) > 1 {
 		return agentconfig.Receipt{}, agentconfig.ErrInvalid
@@ -306,6 +325,20 @@ func (s *Store) Execute(ctx context.Context, c agentconfig.Command, eligibility 
 	if e != nil {
 		return agentconfig.Receipt{}, e
 	}
+	// Return committed receipts before mutable external checks. New-command
+	// identity/Knowledge preflight runs without occupying a RunDB transaction.
+	if receipt, found, err := commandReceipt(s.db.WithContext(ctx), c, fp); err != nil || found {
+		return receipt, err
+	}
+	if len(eligibility) == 1 && eligibility[0] != nil {
+		if err := eligibility[0](ctx); err != nil {
+			// A concurrent identical writer may have committed during preflight.
+			if receipt, found, readErr := commandReceipt(s.db.WithContext(ctx), c, fp); readErr != nil || found {
+				return receipt, readErr
+			}
+			return agentconfig.Receipt{}, err
+		}
+	}
 	var result agentconfig.Receipt
 	e = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		now := time.Now().UTC()
@@ -315,24 +348,16 @@ func (s *Store) Execute(ctx context.Context, c agentconfig.Command, eligibility 
 			return write.Error
 		}
 		if write.RowsAffected == 0 {
-			var old commandRow
-			if e := tx.Where("organization_id=? AND actor_id=? AND idempotency_key=?", c.Scope.OrganizationID, c.Scope.ActorID, c.Key).Take(&old).Error; e != nil {
-				return e
+			var found bool
+			var err error
+			result, found, err = commandReceipt(tx, c, fp)
+			if err != nil {
+				return err
 			}
-			if old.Fingerprint != fp {
-				return agentconfig.ErrConflict
-			}
-			if json.Unmarshal(old.Receipt, &result) != nil || result.CommandID == "" {
+			if !found {
 				return agentconfig.ErrUnavailable
 			}
 			return nil
-		}
-		// Committed receipts precede mutable Knowledge eligibility and CAS. The
-		// idempotency insert also waits for a concurrent winner's transaction.
-		if len(eligibility) == 1 && eligibility[0] != nil {
-			if e := eligibility[0](ctx); e != nil {
-				return e
-			}
 		}
 		a, e := findAgent(tx, c.Scope.OrganizationID, c.AgentID, true)
 		if errors.Is(e, agentconfig.ErrNotFound) && c.Operation == "enable" && c.Absent {
@@ -386,6 +411,8 @@ func (s *Store) Execute(ctx context.Context, c agentconfig.Command, eligibility 
 						return e
 					}
 					result.Noop = a.DefaultTemplateID != nil && *a.DefaultTemplateID == t.TemplateID && a.DefaultTemplateRevision != nil && *a.DefaultTemplateRevision == v
+					result.TemplateID = t.TemplateID
+					result.Version = decimal(v)
 					a.DefaultTemplateID = &t.TemplateID
 					a.DefaultTemplateRevision = &v
 				}

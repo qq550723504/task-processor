@@ -36,6 +36,58 @@ it("retains one request key after lost response without automatically retrying",
     await waitFor(() => expect(fixture.request).toHaveBeenCalledTimes(2));
     expect(fixture.request.mock.calls[1].slice(0, 3)).toEqual(["read", op, key]);
     expect(screen.queryByText("生成标题建议")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", {name:"重新确认配置"})).toBeNull();
+});
+
+it.each(["CONFIGURATION_CHANGED", "TEMPLATE_ARCHIVED", "AGENT_NOT_ENABLED"])("offers explicit new confirmation only after a zero-Claim Start rejection: %s", async code => {
+    fixture.request.mockRejectedValueOnce(new ProductAgentError(code)).mockRejectedValueOnce(new ProductAgentError("OUTCOME_UNKNOWN"));
+    render(<ProductAgentPanel {...props}/>);
+    fireEvent.change(screen.getByLabelText("素材查询平台"), { target: { value: "shein" } });
+    fireEvent.click(screen.getByText("生成标题建议"));
+    fireEvent.click(screen.getByText("确认生成"));
+    await screen.findByRole("alert");
+    const firstKey = fixture.request.mock.calls[0][2];
+    expect(fixture.request).toHaveBeenCalledTimes(1);
+    expect(new URL(window.location.href).searchParams.get("agent_key")).toBe(firstKey);
+    fireEvent.click(screen.getByRole("button", {name:"重新确认配置"}));
+    expect(new URL(window.location.href).searchParams.has("agent_key")).toBe(false);
+    expect(fixture.request).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByLabelText("素材查询平台"), { target: { value: "shein" } });
+    fireEvent.click(screen.getByText("生成标题建议"));
+    fireEvent.click(screen.getByText("确认生成"));
+    await waitFor(() => expect(fixture.request).toHaveBeenCalledTimes(2));
+    expect(fixture.request.mock.calls[1][2]).not.toBe(firstKey);
+    await screen.findByRole("alert");
+    expect(screen.queryByRole("button", {name:"重新确认配置"})).toBeNull();
+});
+
+it("preserves an interrupted run after CONFIGURATION_CHANGED on Resume", async () => {
+    fixture.request.mockResolvedValueOnce({runId:op,requestKey:op,operationId:op,productKey:"product",catalogVersion:"1",targetPlatform:"shein",phase:"interrupted",revision:"2",canSubmitReview:false,candidate:{Changes:[]},confidence:[],unresolved:[],steps:[],tokens:0,estimatedCostMicros:0,currency:"CNY",usageStatus:"observed"}).mockRejectedValueOnce(new ProductAgentError("CONFIGURATION_CHANGED"));
+    render(<ProductAgentPanel {...props}/>);
+    fireEvent.change(screen.getByLabelText("素材查询平台"), { target: { value: "shein" } });
+    fireEvent.click(screen.getByText("生成标题建议"));fireEvent.click(screen.getByText("确认生成"));
+    await screen.findByText("状态：需要补充说明");
+    const firstKey = fixture.request.mock.calls[0][2];
+    fireEvent.change(screen.getByLabelText("补充说明"), {target:{value:"继续"}});
+    fireEvent.click(screen.getByText("继续本次诊断"));
+    await screen.findByRole("alert");
+    expect(fixture.request.mock.calls[1][0]).toBe("resume");
+    expect(new URL(window.location.href).searchParams.get("agent_key")).toBe(firstKey);
+    expect(screen.queryByRole("button", {name:"重新确认配置"})).toBeNull();
+});
+
+it("allows reconfirmation after an original restored Start receives a definite zero-Claim response", async () => {
+    fixture.params = new URLSearchParams({agent_key:op,agent_platform:"shein",agent_actor:"actor",agent_org:"org"});
+    window.history.replaceState(null,"",`/?${fixture.params}`);
+    fixture.request.mockRejectedValueOnce(new ProductAgentError("CONFIGURATION_CHANGED"));
+    render(<ProductAgentPanel {...props}/>);
+    fireEvent.click(screen.getByText("使用原请求核实启动"));
+    await screen.findByRole("alert");
+    expect(new URL(window.location.href).searchParams.get("agent_key")).toBe(op);
+    fireEvent.click(screen.getByRole("button", {name:"重新确认配置"}));
+    expect(new URL(window.location.href).searchParams.has("agent_key")).toBe(false);
+    expect(fixture.request).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("生成标题建议")).toBeInTheDocument();
 });
 it("only admits a validated candidate to existing human review", async () => {
     fixture.request.mockResolvedValue({ runId: op, requestKey: op, operationId: op, productKey: "product", catalogVersion: "1", targetPlatform: "shein", phase: "human_review_required", revision: "2", canSubmitReview: true, candidate: { Changes: [{ Field: "title", Value: "建议标题", EvidenceIDs: ["evidence"] }] }, confidence: [], unresolved: [], steps: [], tokens: 30, estimatedCostMicros: 20, currency: "CNY", usageStatus: "observed" });
