@@ -43,7 +43,7 @@ describe("AccountPage read-only projection", () => {
     expect(await screen.findByRole("link", { name: "查看操作记录" })).toHaveAttribute("href", "/workbench/account/organization/audit");
     expect(screen.getByRole("link", { name: "管理成员额度" })).toHaveAttribute("href", "/workbench/account/organization/resources");
     expect(screen.getByText("只展示已提交成功的业务事件。")).toBeVisible();
-    expect(screen.getByText("AI 点数与模型 Token、订阅 Token 额度及现金分别计量。")).toBeVisible();
+    expect(screen.getByText("AI 点数按配置费率扣减；模型 Token 单独记录用量，钱包资金用于购买点数。")).toBeVisible();
     expect(screen.queryByText("暂未接入")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "管理成员" })).toBeVisible();
   });
@@ -58,7 +58,7 @@ describe("AccountPage read-only projection", () => {
   it("links the available resource page without claiming balances", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
     expect(await screen.findByRole("link", { name: "管理成员额度" })).toHaveAttribute("href", "/workbench/account/organization/resources");
-    expect(screen.getByText("AI 点数与模型 Token、订阅 Token 额度及现金分别计量。")).toBeVisible();
+    expect(screen.getByText("AI 点数按配置费率扣减；模型 Token 单独记录用量，钱包资金用于购买点数。")).toBeVisible();
     expect(screen.queryByText("暂未接入")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "管理成员" })).toBeVisible();
   });
