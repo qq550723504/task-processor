@@ -202,9 +202,18 @@ func testProductAgentOwners(t *testing.T, mode string) {
 		require.NoError(t, e)
 		require.Equal(t, 409, code, string(raw))
 		require.Contains(t, string(raw), knowledge.ErrContextTooLarge.Error())
+		code, raw, e = acquisitionHTTPRequest(server, "POST", path, "operator", "B", uuid.NewString(), `{"targetPlatform":"shein","knowledgeSelection":{"knowledgeBaseId":"`+kf.escapedBase()+`"}}`)
+		require.NoError(t, e)
+		require.Equal(t, 409, code, string(raw))
+		require.Contains(t, string(raw), knowledge.ErrContextTooLarge.Error(), "JSON re-escaping must reject before Agent Claim")
 		var runs int64
 		require.NoError(t, f.owner.Table("product_agent_runs").Count(&runs).Error)
 		require.Zero(t, runs)
+		for _, table := range []string{"ai_invocations", "saas_organization_resource_reservations"} {
+			var count int64
+			require.NoError(t, f.owner.Table(table).Count(&count).Error)
+			require.Zero(t, count, "oversize rejection must not create model accounting facts")
+		}
 		require.Zero(t, calls.Load())
 		var failClaim atomic.Bool
 		failClaim.Store(true)

@@ -3,11 +3,16 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
+
+	"go.opentelemetry.io/otel/trace"
 
 	sigjson "sigs.k8s.io/json"
 	"task-processor/internal/agent"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/integration/commercetoolauth"
+	"task-processor/internal/integration/openai"
 	"task-processor/internal/knowledge"
 	"task-processor/internal/product/review"
 )
@@ -82,6 +87,21 @@ func (a *productAgentApplication) startRequest(ctx context.Context, binding agen
 	}
 	request.ContextSnapshotRef = agent.ContextSnapshotRef{Kind: ref.Kind, ID: ref.ID, Digest: ref.Digest}
 	request.PromptVersion = "product-title-agent-knowledge-v1"
+	if a.model == nil {
+		return agent.Request{}, agent.ErrUnavailable
+	}
+	// Reserve the real UUID width without creating a run. Trace and the empty
+	// first state match execution; the quote is never reserved or dispatched.
+	initial := agent.State{Request: request, RunID: strings.Repeat("0", 36)}
+	if span := trace.SpanContextFromContext(ctx); span.IsValid() {
+		initial.TraceID = span.TraceID().String()
+	}
+	if _, err := a.model.Quote(ctx, initial.ModelInput(a.definition)); err != nil {
+		if errors.Is(err, openai.ErrTextInput) {
+			return agent.Request{}, knowledge.ErrContextTooLarge
+		}
+		return agent.Request{}, err
+	}
 	return request, nil
 }
 

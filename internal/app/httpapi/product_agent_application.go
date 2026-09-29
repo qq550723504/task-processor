@@ -61,6 +61,8 @@ type ProductAgentInvocationLedger interface {
 }
 
 type productAgentApplication struct {
+	model      *grsaitext.AgentTextModel
+	definition commercetool.AgentDefinition
 	context    *knowledge.ContextService
 	runtime    *einoruntime.Runtime
 	store      *agentstore.Store
@@ -176,6 +178,7 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 	if err != nil {
 		return nil, err
 	}
+	a.model, a.definition = model, definition
 	a.runtime, err = einoruntime.New(einoruntime.Config{Definition: definition, Tools: definitions, Model: model, Gateway: a, Validator: a, Authorizer: a, Store: a.store})
 	if err != nil {
 		return nil, err

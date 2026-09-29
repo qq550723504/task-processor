@@ -121,6 +121,14 @@ Materialization precedes Agent Claim; same-key retries adopt the committed bundl
 even if a source has a newer readable revision. Different selection or binding
 conflicts. A materialized but unclaimed bundle cannot send a model request.
 
+Before a new Knowledge-backed run is claimed, the application quotes the same
+complete initial input with the existing text adapter, including JSON re-escaping
+inside the provider prompt envelope. It uses UUID-width run metadata without
+creating a run, reserving points or sending a model request. Input overflow returns
+the explicit Knowledge context size error; all frozen Knowledge/provider limits
+remain unchanged. The unclaimed immutable bundle follows the existing retry
+contract. Other quote failures keep their original authorization/config errors.
+
 For a successfully scoped existing Agent record, Start first validates the original
 Knowledge command fingerprint and ref through the Knowledge owner's fresh
 authorizer. This metadata-only lookup reads ID/digest/fingerprint, without payload,
@@ -164,7 +172,8 @@ into Agent checkpoints or Review receipts.
 
 Developer checks use synthetic localhost PostgreSQL and an HTTP model fixture.
 `TestProductAgentKnowledgeRealOwnersFreezeRetryClaimAndReview` covers materialize
-then failed Claim, concurrent retry, exact version adoption after update, restart
+then failed Claim, pre-claim escaped-envelope rejection with no run/model accounting
+or dispatch, concurrent retry, exact version adoption after update, restart
 of handlers, Review handoff, revoked access and disabled content. Existing
 `TestProductAgentAcquisitionToReviewUsesRealOwners` covers the ordinary path.
 Real process crash, complete logged-in browser use, real documents, paid provider

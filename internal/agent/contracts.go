@@ -144,6 +144,17 @@ type ModelInput struct {
 	AgentRunID, AgentID, AgentVersion, TraceID string
 }
 
+// ModelInput projects the same complete state for execution and pre-claim input
+// validation. The caller owns isolation/cloning and all authorization.
+func (s State) ModelInput(definition commercetool.AgentDefinition) ModelInput {
+	return ModelInput{
+		ContextSnapshotRef: s.Request.ContextSnapshotRef, Binding: s.Request.Binding,
+		PolicyVersion: s.Request.PolicyVersion, PromptVersion: s.Request.PromptVersion,
+		History: s.History, Validation: s.Validation, UserFeedback: s.UserFeedback,
+		AgentRunID: s.RunID, AgentID: definition.ID, AgentVersion: definition.Version, TraceID: s.TraceID,
+	}
+}
+
 // GovernedModel must enforce its quote, honor the deadline and never silently
 // retry/fail over. The real text implementation is a separate #130 dependency.
 // It returns authoritative invocation/usage facts, not model-authored counters.

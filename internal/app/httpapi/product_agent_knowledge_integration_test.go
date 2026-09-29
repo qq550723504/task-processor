@@ -81,6 +81,14 @@ func (f *consumerKnowledgeFixture) oversizedBase() string {
 	f.addSource(result.Base.ID, strings.Repeat("x", knowledge.MaxContextRevisionBytes+1), "")
 	return result.Base.ID
 }
+func (f *consumerKnowledgeFixture) escapedBase() string {
+	result, err := f.service.Mutate(context.Background(), knowledge.Command{Scope: knowledge.Scope{OrganizationID: "B", ActorID: "operator"}, Kind: "base_create", Key: uuid.NewString(), Name: "Escaped guide"})
+	require.NoError(f.t, err)
+	for range 3 {
+		f.addSource(result.Base.ID, "Guide"+strings.Repeat("\n", 14600)+"end", "")
+	}
+	return result.Base.ID
+}
 func TestProductAgentKnowledgeRealOwnersFreezeRetryClaimAndReview(t *testing.T) {
 	testProductAgentOwners(t, "knowledge")
 }
