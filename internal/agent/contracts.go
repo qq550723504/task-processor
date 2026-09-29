@@ -75,7 +75,8 @@ func ValidID(s string) bool {
 // Scope comes from the current authorizer, never model or browser payload.
 type Scope struct{ OrganizationID, ActorID string }
 type Request struct {
-	ContextSnapshotRef           ContextSnapshotRef `json:",omitzero"`
+	ConfigurationSnapshotRef     ConfigurationSnapshotRef `json:",omitzero"`
+	ContextSnapshotRef           ContextSnapshotRef       `json:",omitzero"`
 	Key                          string
 	Binding                      Binding
 	PolicyVersion, PromptVersion string

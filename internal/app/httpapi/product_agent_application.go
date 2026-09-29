@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/agent"
+	"task-processor/internal/agentconfig"
 	"task-processor/internal/aicapability"
 	aistore "task-processor/internal/aicapability/store"
 	"task-processor/internal/app/productsourcing"
@@ -22,6 +23,7 @@ import (
 	"task-processor/internal/integration/openai"
 	orgresourceadapter "task-processor/internal/integration/orgresource"
 	agentstore "task-processor/internal/integration/persistence/agent"
+	configstore "task-processor/internal/integration/persistence/agentconfig"
 	assetstore "task-processor/internal/integration/persistence/product/asset"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	reviewstore "task-processor/internal/integration/persistence/product/review"
@@ -61,21 +63,22 @@ type ProductAgentInvocationLedger interface {
 }
 
 type productAgentApplication struct {
-	model      *grsaitext.AgentTextModel
-	definition commercetool.AgentDefinition
-	context    *knowledge.ContextService
-	runtime    *einoruntime.Runtime
-	store      *agentstore.Store
-	reviews    *review.Service
-	receipts   sourcing.PublishedAcquisitionReader
-	resolver   organizationIdentityResolver
-	authorizer *authz.ListingKitAuthorizer
-	config     ProductAgentDependencies
-	canonical  *canonicalinspect.Invoker
-	sources    *sourceevidenceinspect.Invoker
-	assets     *assetinspect.Invoker
-	readiness  *readinessinspect.Invoker
-	points     *orgresourceadapter.GormModelInvocationRepository
+	configuration *configstore.Store
+	model         *grsaitext.AgentTextModel
+	definition    commercetool.AgentDefinition
+	context       *knowledge.ContextService
+	runtime       *einoruntime.Runtime
+	store         *agentstore.Store
+	reviews       *review.Service
+	receipts      sourcing.PublishedAcquisitionReader
+	resolver      organizationIdentityResolver
+	authorizer    *authz.ListingKitAuthorizer
+	config        ProductAgentDependencies
+	canonical     *canonicalinspect.Invoker
+	sources       *sourceevidenceinspect.Invoker
+	assets        *assetinspect.Invoker
+	readiness     *readinessinspect.Invoker
+	points        *orgresourceadapter.GormModelInvocationRepository
 }
 
 func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, receipts sourcing.PublishedAcquisitionReader, resolver organizationIdentityResolver, auth *authz.ListingKitAuthorizer, cfg ProductAgentDependencies) (*productAgentApplication, error) {
@@ -120,6 +123,13 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 	if err != nil {
 		return nil, err
 	}
+	if err := configstore.VerifySchema(ctx, cfg.RunDB); err != nil {
+		return nil, err
+	}
+	a.configuration, err = configstore.New(cfg.RunDB)
+	if err != nil {
+		return nil, err
+	}
 	reader, err := catalogstore.NewBoundedSnapshotReader(productDB, 1<<20)
 	if err != nil {
 		return nil, err
@@ -142,11 +152,7 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 	if err != nil {
 		return nil, err
 	}
-	definitions := []commercetool.Definition{canonicalinspect.Definition(), sourceevidenceinspect.Definition(), assetinspect.Definition(), readinessinspect.Definition()}
-	definition := commercetool.AgentDefinition{ID: "product.title.agent", Version: "v1.0.0"}
-	for _, tool := range definitions {
-		definition.AllowedTools = append(definition.AllowedTools, tool.Ref)
-	}
+	definition, definitions := productTitleRegistration()
 	fresh, err := commercetoolauth.NewFreshWorkbenchPrincipalResolver(commercetoolauth.FreshOrganizationResolverFunc(func(ctx context.Context, _ commercetoolauth.OrganizationRequest) (authidentity.AuthenticatedIdentity, error) {
 		return a.freshIdentity(ctx)
 	}), time.Now)
@@ -179,7 +185,16 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 		return nil, err
 	}
 	a.model, a.definition = model, definition
-	a.runtime, err = einoruntime.New(einoruntime.Config{Definition: definition, Tools: definitions, Model: model, Gateway: a, Validator: a, Authorizer: a, Store: a.store})
+	guard, err := configstore.NewGuard(cfg.RunDB, a.configuration, a.store, func(id, version string) (agent.Limits, error) {
+		if id != definition.ID || version != definition.Version {
+			return agent.Limits{}, agentconfig.ErrDefinition
+		}
+		return a.config.Limits, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	a.runtime, err = einoruntime.New(einoruntime.Config{Definition: definition, Tools: definitions, Model: model, Gateway: a, Validator: a, Authorizer: a, Store: guard})
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +226,7 @@ func (a *productAgentApplication) freshIdentity(ctx context.Context) (authidenti
 		return authidentity.AuthenticatedIdentity{}, agent.ErrUnavailable
 	}
 	identity, err := a.resolver.Resolve(ctx, httproute.OrganizationAccessPolicyLiveWrite, workbenchcontext.ResolveInput{Identity: authidentity.AuthenticatedIdentity{UserID: capability.actorID, HomeOrganizationID: capability.homeOrganizationID, TokenExpiresAt: capability.tokenExpiresAt}, BearerToken: capability.bearerToken, RequestedOrganizationID: capability.effectiveOrganizationID})
-	if err != nil || identity.UserID != original.UserID || identity.TenantID != original.TenantID || identity.EffectiveOrganizationID != original.TenantID || !agent.ValidID(identity.EffectiveMemberID) || !a.authorizer.Authorize("", identity.Roles, authz.PermissionListingKitAdminWrite) {
+	if err != nil || identity.UserID != original.UserID || identity.TenantID != original.TenantID || identity.EffectiveOrganizationID != original.TenantID || !agent.ValidID(identity.EffectiveMemberID) || !a.authorizer.Authorize("", identity.Roles, authz.PermissionListingKitAdminWrite) || !a.authorizer.Authorize(identity.UserID, identity.Roles, authz.PermissionWorkbenchAgentUse) {
 		return authidentity.AuthenticatedIdentity{}, review.ErrForbidden
 	}
 	return identity, nil

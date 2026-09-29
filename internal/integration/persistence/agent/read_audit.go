@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -27,6 +28,31 @@ func (s *Store) Read(ctx context.Context, scope agent.Scope, contextID, key stri
 type toolAuditRow struct {
 	RunID, CallID string
 	Payload       []byte
+}
+
+// Lookup distinguishes an absent run from unavailable storage; callers must
+// never treat an uncertain database read as permission to prepare new work.
+func (s *Store) Lookup(ctx context.Context, scope agent.Scope, binding agent.Binding, key string) (agent.Record, bool, error) {
+	if s == nil || s.db == nil {
+		return agent.Record{}, false, agent.ErrUnavailable
+	}
+	return s.LookupInTransaction(ctx, s.db.WithContext(ctx), scope, binding, key)
+}
+
+func (s *Store) LookupInTransaction(ctx context.Context, tx *gorm.DB, scope agent.Scope, binding agent.Binding, key string) (agent.Record, bool, error) {
+	if s == nil || tx == nil || !agent.ValidID(scope.OrganizationID) || !agent.ValidID(scope.ActorID) || !binding.Valid() || !agent.ValidID(key) {
+		return agent.Record{}, false, agent.ErrInvalid
+	}
+	var row runRow
+	err := tx.WithContext(ctx).Where("org = ? AND actor = ? AND context_kind = ? AND context_id = ? AND request_key = ?", scope.OrganizationID, scope.ActorID, binding.ContextKind, binding.ContextID, key).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return agent.Record{}, false, nil
+	}
+	if err != nil {
+		return agent.Record{}, false, err
+	}
+	record, err := decode(row)
+	return record, err == nil, err
 }
 
 func (toolAuditRow) TableName() string { return "product_agent_tool_calls" }

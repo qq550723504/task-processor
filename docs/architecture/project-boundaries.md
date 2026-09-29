@@ -220,6 +220,14 @@ at Phase 2 close: `internal/listing`, `internal/product`,
 `internal/organization`. MCP, pgvector, and TigerBeetle are not admitted
 technologies; adding one requires a separate approved architecture decision.
 
+Agent D (#570 / PR #571) additionally admits `internal/agentconfig` under the
+same rule. It owns enterprise activation, immutable template revisions, exact
+defaults, command receipts and configuration snapshots. Its `httpapi` adapter
+owns the feature routes; persistence and atomic run admission are injected from
+`internal/integration/persistence/agentconfig` through application assembly.
+Generic Agent runtime, Knowledge, AI accounting and Product Review retain their
+existing owners. See [the frozen configuration contract](./organization-agent-configuration-v1.md).
+
 ### 3.7 `internal/compatibility/listingkit`
 
 CURRENT STATE: `internal/compatibility/listingkit/sourcehandoff` is a drain-only

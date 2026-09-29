@@ -45,7 +45,29 @@ func InstallSchema(db *gorm.DB) error {
 	return db.Exec(schemaSQL).Error
 }
 
+// UsesPool lets a bounded admission adapter verify the shared local pool.
+func (s *Store) UsesPool(db *gorm.DB) bool { return s != nil && s.db == db }
+
 func (s *Store) Claim(ctx context.Context, initial agent.Record, expected uint64) (agent.Record, bool, error) {
+	if s == nil || s.db == nil {
+		return agent.Record{}, false, agent.ErrUnavailable
+	}
+	var result agent.Record
+	var acquired bool
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		result, acquired, err = s.ClaimInTransaction(ctx, tx, initial, expected)
+		return err
+	})
+	if err != nil {
+		return agent.Record{}, false, err
+	}
+	return result, acquired, nil
+}
+
+// ClaimInTransaction never commits its caller's transaction. Acquisition is
+// usable only after that caller confirms the outer commit.
+func (s *Store) ClaimInTransaction(ctx context.Context, tx *gorm.DB, initial agent.Record, expected uint64) (agent.Record, bool, error) {
 	if s == nil || s.db == nil {
 		return agent.Record{}, false, agent.ErrUnavailable
 	}
@@ -54,7 +76,7 @@ func (s *Store) Claim(ctx context.Context, initial agent.Record, expected uint64
 	}
 	var result agent.Record
 	acquired := false
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := func() error {
 		if expected == 0 {
 			initial.State.Revision = 1
 			row, err := encode(initial)
@@ -110,7 +132,7 @@ func (s *Store) Claim(ctx context.Context, initial agent.Record, expected uint64
 		}
 		result, acquired = stored, true
 		return nil
-	})
+	}()
 	if err != nil {
 		return agent.Record{}, false, err
 	}
@@ -169,7 +191,7 @@ func (s *Store) Commit(ctx context.Context, record agent.Record, expected uint64
 }
 
 func validEnvelope(s agent.State) bool {
-	if !agent.ValidContextCitations(s.Request.ContextSnapshotRef, s.ContextCitationRefs) {
+	if !agent.ValidContextCitations(s.Request.ContextSnapshotRef, s.ContextCitationRefs) || !s.Request.ConfigurationSnapshotRef.ValidOrAbsent() {
 		return false
 	}
 	digest, err := hex.DecodeString(s.Fingerprint)

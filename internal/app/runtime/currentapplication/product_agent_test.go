@@ -84,7 +84,7 @@ func TestProductAgentAndImageGenerationShareManifestWithoutLosingAdmission(t *te
 	require.Error(t, loaded.validate(), "Product Agent must not bypass explicit image pricing")
 }
 
-func TestProductAgentPoolsCloseOnPartialStartupAndStayClosedWhenDisabled(t *testing.T) {
+func TestProductAgentPoolsCloseOnPartialStartupAndConfigOnlyOpensRunDB(t *testing.T) {
 	for _, failAt := range []int{0, 1, 2, 3, 4} {
 		t.Run(string(rune('0'+failAt)), func(t *testing.T) {
 			cfg := agentRuntimeConfig()
@@ -118,6 +118,9 @@ func TestProductAgentPoolsCloseOnPartialStartupAndStayClosedWhenDisabled(t *test
 				t.Fatal("expected startup stop")
 			}
 			opened := []*gorm.DB{pools[0], pools[2], pools[3]}
+			if failAt == 0 {
+				opened = append(opened, pools[4])
+			}
 			if failAt > 0 {
 				for i := 1; i < failAt; i++ {
 					opened = append(opened, pools[3+i])
@@ -130,8 +133,8 @@ func TestProductAgentPoolsCloseOnPartialStartupAndStayClosedWhenDisabled(t *test
 			if !reflect.DeepEqual(closed, want) {
 				t.Fatalf("closed %d pools, want %d in reverse order", len(closed), len(want))
 			}
-			if failAt == 0 && openedAgent != 0 {
-				t.Fatal("disabled agent opened owner pools")
+			if failAt == 0 && openedAgent != 1 {
+				t.Fatal("configuration-only mode must open RunDB without execution pools")
 			}
 		})
 	}
