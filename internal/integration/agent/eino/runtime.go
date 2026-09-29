@@ -93,7 +93,7 @@ func (r *Runtime) Resume(ctx context.Context, request agent.Request, revision ui
 }
 
 func (r *Runtime) run(ctx context.Context, request agent.Request, expected uint64, feedback string) (agent.Record, error) {
-	if !request.ContextSnapshotRef.ValidOrAbsent() {
+	if !request.ContextSnapshotRef.ValidOrAbsent() || !request.ConfigurationSnapshotRef.ValidOrAbsent() {
 		return agent.Record{}, agent.ErrInvalid
 	}
 	if ctx == nil || r == nil || !request.Binding.Valid() || !agent.ValidID(request.Key) || !agent.ValidID(request.PolicyVersion) || !agent.ValidID(request.PromptVersion) || !request.Limits.Valid() || request.Limits.Steps > (1<<29) {

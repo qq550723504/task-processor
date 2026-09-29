@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"task-processor/internal/agent"
+	"task-processor/internal/agentconfig"
+	confighttp "task-processor/internal/agentconfig/httpapi"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
@@ -37,6 +39,7 @@ func isProductAgentHTTPPath(path string) bool {
 }
 
 type productAgentModule struct {
+	application   *productAgentApplication
 	routes        []httproute.Descriptor
 	recoverPoints func(context.Context) (int, error)
 }
@@ -49,7 +52,11 @@ func (m productAgentModule) Register(reg *kernelmodule.Registry) error {
 }
 
 func WithProductAgent(deps ProductAgentDependencies) CurrentApplicationOption {
-	return func(options *currentApplicationOptions) { options.productAgent = &deps; options.productAgents++ }
+	return func(options *currentApplicationOptions) {
+		options.productAgent = &deps
+		options.productAgents++
+		options.agentConfigurationDB = deps.RunDB
+	}
 }
 
 func buildProductAgentModule(ctx context.Context, productDB *gorm.DB, deps routeAuthDependencies, auth *authz.ListingKitAuthorizer, agentCfg ProductAgentDependencies, appCfg *config.Config) (kernelmodule.Module, error) {
@@ -73,7 +80,7 @@ func buildProductAgentModule(ctx context.Context, productDB *gorm.DB, deps route
 		}
 		routes = append(routes, route)
 	}
-	return productAgentModule{routes: routes, recoverPoints: a.points.RecoverDue}, nil
+	return productAgentModule{application: a, routes: routes, recoverPoints: a.points.RecoverDue}, nil
 }
 
 type productAgentStepDTO struct {
@@ -84,27 +91,28 @@ type productAgentStepDTO struct {
 	AuditStatus  string `json:"auditStatus,omitempty"`
 }
 type productAgentResultDTO struct {
-	Knowledge           *productKnowledgeDTO    `json:"knowledge,omitempty"`
-	RunID               string                  `json:"runId"`
-	RequestKey          string                  `json:"requestKey"`
-	OperationID         string                  `json:"operationId"`
-	ProductKey          string                  `json:"productKey"`
-	CatalogVersion      string                  `json:"catalogVersion"`
-	PublicationID       string                  `json:"publicationId"`
-	TargetPlatform      string                  `json:"targetPlatform"`
-	Phase               agent.Phase             `json:"phase"`
-	Revision            string                  `json:"revision"`
-	StopReason          agent.StopReason        `json:"stopReason,omitempty"`
-	HumanReviewRequired bool                    `json:"humanReviewRequired"`
-	Candidate           enrichment.Candidate    `json:"candidate"`
-	Confidence          []agent.FieldConfidence `json:"confidence"`
-	Unresolved          []string                `json:"unresolved"`
-	Steps               []productAgentStepDTO   `json:"steps"`
-	Tokens              int64                   `json:"tokens"`
-	EstimatedCostMicros int64                   `json:"estimatedCostMicros"`
-	Currency            string                  `json:"currency"`
-	UsageStatus         string                  `json:"usageStatus"`
-	CanSubmitReview     bool                    `json:"canSubmitReview"`
+	TemplateSelection   *agentconfig.TemplateRef `json:"templateSelection,omitempty"`
+	Knowledge           *productKnowledgeDTO     `json:"knowledge,omitempty"`
+	RunID               string                   `json:"runId"`
+	RequestKey          string                   `json:"requestKey"`
+	OperationID         string                   `json:"operationId"`
+	ProductKey          string                   `json:"productKey"`
+	CatalogVersion      string                   `json:"catalogVersion"`
+	PublicationID       string                   `json:"publicationId"`
+	TargetPlatform      string                   `json:"targetPlatform"`
+	Phase               agent.Phase              `json:"phase"`
+	Revision            string                   `json:"revision"`
+	StopReason          agent.StopReason         `json:"stopReason,omitempty"`
+	HumanReviewRequired bool                     `json:"humanReviewRequired"`
+	Candidate           enrichment.Candidate     `json:"candidate"`
+	Confidence          []agent.FieldConfidence  `json:"confidence"`
+	Unresolved          []string                 `json:"unresolved"`
+	Steps               []productAgentStepDTO    `json:"steps"`
+	Tokens              int64                    `json:"tokens"`
+	EstimatedCostMicros int64                    `json:"estimatedCostMicros"`
+	Currency            string                   `json:"currency"`
+	UsageStatus         string                   `json:"usageStatus"`
+	CanSubmitReview     bool                     `json:"canSubmitReview"`
 }
 
 func productAgentRoutes(a *productAgentApplication) []httproute.Descriptor {
@@ -142,6 +150,10 @@ func productAgentRoutes(a *productAgentApplication) []httproute.Descriptor {
 				return
 			}
 			ctx = authidentity.WithAuthenticatedIdentity(ctx, i)
+			if !a.authorizer.Authorize(i.UserID, i.Roles, authz.PermissionWorkbenchAgentUse) {
+				writeProductAgentError(c, agentconfig.ErrForbidden)
+				return
+			}
 			ctx, err = knowledgeRequestContext(ctx)
 			if err != nil {
 				writeProductAgentError(c, err)
@@ -164,13 +176,18 @@ func productAgentRoutes(a *productAgentApplication) []httproute.Descriptor {
 				writeProductAgentError(c, selectionErr)
 				return
 			}
+			template, templateErr := body.templateSelection(spec.action)
+			if templateErr != nil {
+				writeProductAgentError(c, templateErr)
+				return
+			}
 			var record agent.Record
 			var binding agent.Binding
 			if spec.action == "start" {
 				binding, err = a.binding(ctx, operationID, body.TargetPlatform)
 				if err == nil {
 					var request agent.Request
-					request, err = a.startRequest(ctx, binding, key, selection)
+					request, err = a.startRequest(ctx, binding, key, selection, template)
 					if err == nil {
 						record, err = a.runtime.Start(ctx, request)
 					}
@@ -227,6 +244,16 @@ func productAgentRoutes(a *productAgentApplication) []httproute.Descriptor {
 				result.UsageStatus = "unknown_reserved"
 			}
 			result.Knowledge = a.projectKnowledge(ctx, provenance)
+			if a.configuration == nil {
+				writeProductAgentError(c, agentconfig.ErrUnavailable)
+				return
+			}
+			frozen, frozenErr := a.configuration.LoadSnapshot(ctx, state.Scope, state.Request.ConfigurationSnapshotRef)
+			if frozenErr != nil {
+				writeProductAgentError(c, frozenErr)
+				return
+			}
+			result.TemplateSelection = frozen.Template
 			for _, step := range state.History {
 				result.Steps = append(result.Steps, productAgentStepDTO{Step: step.Step, Tool: step.Tool.ID, CallID: step.CallID, InvocationID: step.InvocationID, AuditStatus: string(step.AuditStatus)})
 			}
@@ -247,6 +274,12 @@ func agentRunReviewable(s agent.State) bool {
 }
 
 func writeProductAgentError(c *gin.Context, err error) {
+	for _, e := range []error{agentconfig.ErrInvalid, agentconfig.ErrForbidden, agentconfig.ErrNotFound, agentconfig.ErrConflict, agentconfig.ErrChanged, agentconfig.ErrNotEnabled, agentconfig.ErrArchived, agentconfig.ErrDefault, agentconfig.ErrDefinition, agentconfig.ErrRevision, agentconfig.ErrPrecondition, agentconfig.ErrUnavailable} {
+		if errors.Is(err, e) {
+			confighttp.Failure(c, err)
+			return
+		}
+	}
 	status, code := http.StatusServiceUnavailable, "PRODUCT_AGENT_UNAVAILABLE"
 	switch {
 	case errors.Is(err, knowledge.ErrContextTooLarge):

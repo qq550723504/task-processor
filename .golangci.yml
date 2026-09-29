@@ -104,6 +104,8 @@ linters-settings:
           - "**/internal/marketplace/**/*.go"
           - "**/internal/agent/*.go"
           - "**/internal/agent/**/*.go"
+          - "**/internal/agentconfig/*.go"
+          - "**/internal/agentconfig/**/*.go"
           - "**/internal/commercetool/*.go"
           - "**/internal/commercetool/**/*.go"
           - "**/internal/console/*.go"

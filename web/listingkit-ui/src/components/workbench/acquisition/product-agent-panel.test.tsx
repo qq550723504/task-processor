@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {useEffect} from "react";
 import { ProductAgentPanel } from "./product-agent-panel";
 import { ProductAgentError } from "@/lib/api/product-agent";
 const fixture = vi.hoisted(() => ({ request: vi.fn(), knowledge:vi.fn(), params: new URLSearchParams(), context: { user: { id: "actor" }, effectiveOrganization: { id: "org" }, roles:["listingkit_operator"], isLoading: false, isSwitching: false, error: null, blockingError: null, selectionRequired: false, registerOrganizationSwitchGuard: vi.fn(() => () => { }) } }));
@@ -7,6 +8,7 @@ vi.mock("@/lib/api/knowledge",async original=>({...await original<typeof import(
 vi.mock("@/lib/api/product-agent", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/api/product-agent")>(), requestProductAgent: fixture.request }));
 vi.mock("next/navigation", () => ({ useSearchParams: () => fixture.params }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => fixture.context }));
+vi.mock("./title-agent-templates",()=>({TitleAgentTemplates:({onReady}:{onReady:(v:boolean)=>void})=>{useEffect(()=>onReady(true),[onReady]);return null}}));
 beforeEach(() => { fixture.context.roles=["listingkit_operator"];fixture.request.mockReset();fixture.knowledge.mockReset(); fixture.params = new URLSearchParams(); window.history.replaceState(null, "", "/"); Object.defineProperty(HTMLDialogElement.prototype,"showModal",{configurable:true,value:function(this:HTMLDialogElement){this.open=true}});Object.defineProperty(HTMLDialogElement.prototype,"close",{configurable:true,value:function(this:HTMLDialogElement){this.open=false}}); });
 afterEach(cleanup);
 const op = "11111111-1111-4111-8111-111111111111";

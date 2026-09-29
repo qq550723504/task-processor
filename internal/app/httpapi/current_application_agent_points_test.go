@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	confighttp "task-processor/internal/agentconfig/httpapi"
 	"task-processor/internal/httproute"
 )
 
@@ -30,6 +31,22 @@ func agentAndPointRoutes(agent, points bool) []httproute.Descriptor {
 		routes = append(routes, (memberPointLimitModule{}).routes()...)
 	}
 	return routes
+}
+
+func TestCurrentApplicationConfigurationMountsWithoutExecution(t *testing.T) {
+	routes := append(agentAndPointRoutes(false, false), confighttp.Routes(nil)...)
+	validate := func(r []httproute.Descriptor) error {
+		return validateCurrentApplicationRoutesInternal(r, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{AgentConfiguration: true})
+	}
+	require.NoError(t, validate(routes))
+	for i, route := range routes {
+		if route.Module != confighttp.Module {
+			continue
+		}
+		changed := append([]httproute.Descriptor(nil), routes...)
+		changed[i].AuthPolicy = httproute.AuthPolicyPublic
+		require.Error(t, validate(changed), "billing discovery cannot skip configuration admission")
+	}
 }
 
 func TestCurrentApplicationAgentAndMemberPointRoutesAreIndependent(t *testing.T) {

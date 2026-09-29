@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
+	confighttp "task-processor/internal/agentconfig/httpapi"
 	registration "task-processor/internal/app/referralregistration"
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
@@ -105,6 +106,7 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
+	agentConfigurationDB    *gorm.DB
 	knowledgeServices       int
 	knowledge               *knowledge.Service
 	storeCenters            int
@@ -493,6 +495,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		modules = append(modules, image)
 	}
+	var productRuntime *productAgentApplication
 	if supplied.productAgent != nil {
 		agentConfig := *supplied.productAgent
 		agentConfig.Knowledge = supplied.knowledge
@@ -503,6 +506,14 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		modules = append(modules, agentModule)
 		modelPointRecovery = agentModule.(productAgentModule).recoverPoints
+		productRuntime = agentModule.(productAgentModule).application
+	}
+	if supplied.agentConfigurationDB != nil {
+		m, e := buildAgentConfigurationModule(ctx, supplied.agentConfigurationDB, workbench.authDependencies.organizationResolver, authorizer, supplied.knowledge, productRuntime)
+		if e != nil {
+			return nil, fmt.Errorf("build current agent configuration: %w", e)
+		}
+		modules = append(modules, m)
 	}
 	if factories.buildBrowserCapture != nil {
 		browser, err := factories.buildBrowserCapture(authorizer, *workbench.authDependencies)
@@ -596,6 +607,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		Knowledge:           supplied.knowledgeServices > 0,
 		AcquisitionImage:    factories.buildAcquisitionImage != nil,
 		ProductAgent:        supplied.productAgent != nil,
+		AgentConfiguration:  supplied.agentConfigurationDB != nil,
 		MemberPoints:        includeMemberPoints,
 		MemberResources:     includeMemberResources,
 		Resources:           includeResources,
@@ -676,6 +688,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	AgentConfiguration  bool
 	Knowledge           bool
 	StoreCenter         bool
 	Resources           bool
@@ -689,6 +702,11 @@ type currentApplicationOptionalRoutes struct {
 
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if optional.AgentConfiguration {
+		for _, r := range confighttp.Routes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
 	if optional.Knowledge {
 		for _, r := range knowledgehttp.Routes(&knowledgehttp.Handler{}) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
@@ -799,6 +817,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {
+		if strings.HasPrefix(descriptor.Path, confighttp.Base+"/") {
+			if !optional.AgentConfiguration {
+				return errors.New("agent configuration not admitted")
+			}
+			if e := confighttp.ValidateDescriptor(descriptor); e != nil {
+				return e
+			}
+		}
 		if strings.HasPrefix(descriptor.Path, "/api/v1/workbench/knowledge-") {
 			if !optional.Knowledge {
 				return errors.New("knowledge feature not admitted")
@@ -838,6 +864,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	seen := make(map[currentApplicationRoute]struct{}, len(routes))
 	for _, descriptor := range routes {
+		if strings.HasPrefix(descriptor.Path, confighttp.Base+"/") {
+			if !optional.AgentConfiguration {
+				return errors.New("agent configuration not admitted")
+			}
+			if e := confighttp.ValidateDescriptor(descriptor); e != nil {
+				return e
+			}
+		}
 		if descriptor.Path == memberResourcesBase || strings.HasPrefix(descriptor.Path, memberResourcesBase+"/") {
 			permission := authz.PermissionWorkbenchOrganizationMemberRead
 			if descriptor.Method != http.MethodGet {

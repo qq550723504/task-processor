@@ -17,6 +17,9 @@ const (
 	PermissionListingKitPlatformAdm             = "listingkit.platform_admin"
 	PermissionProductSourcingWrite              = "product_sourcing.write"
 	PermissionLocalAgentWrite                   = "local_agent.write"
+	PermissionWorkbenchAgentRead                = "workbench.agent.read"
+	PermissionWorkbenchAgentUse                 = "workbench.agent.use"
+	PermissionWorkbenchAgentConfigure           = "workbench.agent.configure"
 	PermissionImageAgentRead                    = "listingkit.image_agent.read"
 	PermissionImageAgentWrite                   = "listingkit.image_agent.write"
 	PermissionWorkbenchStoreRead                = "workbench.store.read"
@@ -61,7 +64,7 @@ var workbenchCommercialPermissions = []string{
 
 // WorkbenchPermissions is a bounded display contract, never a policy source.
 func WorkbenchPermissions() []string {
-	result := []string{PermissionProductSourcingWrite, PermissionLocalAgentWrite, PermissionImageAgentRead, PermissionImageAgentWrite}
+	result := []string{PermissionProductSourcingWrite, PermissionLocalAgentWrite, PermissionImageAgentRead, PermissionImageAgentWrite, PermissionWorkbenchAgentRead, PermissionWorkbenchAgentUse, PermissionWorkbenchAgentConfigure}
 	for _, group := range [][]string{workbenchKnowledgePermissions, workbenchStorePermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
 		result = append(result, group...)
 	}
@@ -105,6 +108,15 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 	}
 
 	for _, policy := range [][]string{
+		{"listingkit_viewer", PermissionWorkbenchAgentRead},
+		{"listingkit_operator", PermissionWorkbenchAgentRead},
+		{"listingkit_operator", PermissionWorkbenchAgentUse},
+		{"listingkit_admin", PermissionWorkbenchAgentRead},
+		{"listingkit_admin", PermissionWorkbenchAgentUse},
+		{"listingkit_admin", PermissionWorkbenchAgentConfigure},
+		{"platform_admin", PermissionWorkbenchAgentRead},
+		{"platform_admin", PermissionWorkbenchAgentUse},
+		{"platform_admin", PermissionWorkbenchAgentConfigure},
 		{"listingkit_operator", PermissionWorkbenchKnowledgeRead},
 		{"listingkit_admin", PermissionWorkbenchKnowledgeRead},
 		{"listingkit_admin", PermissionWorkbenchKnowledgeManage},

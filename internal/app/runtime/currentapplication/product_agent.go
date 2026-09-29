@@ -31,7 +31,7 @@ func (p *ProductAgentConfig) Limits() agent.Limits {
 
 func (p *ProductAgentConfig) validate(cfg *Config) error {
 	if !p.Enabled {
-		return nil
+		return p.Database.validate("productAgent.database")
 	}
 	if p.TextPolicy.ValidatePointPricing() != nil {
 		return errors.New("product agent point pricing invalid")

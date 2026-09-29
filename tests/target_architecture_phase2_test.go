@@ -530,7 +530,7 @@ func TestTargetDomainsDoNotImportConcreteInfrastructure(t *testing.T) {
 		t.Fatal(err)
 	}
 	domains := map[string]struct{}{
-		"listing": {}, "product": {}, "marketplace": {}, "agent": {}, "knowledge": {},
+		"listing": {}, "product": {}, "marketplace": {}, "agent": {}, "agentconfig": {}, "knowledge": {},
 		"resourcecatalog": {}, "commercial": {}, "ledger": {}, "organization": {},
 	}
 	for path, facts := range index.files {
