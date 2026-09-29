@@ -5,7 +5,13 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/cases"
 )
+
+// Fold is stateless and concurrency-safe; do not replace it with lowercasing,
+// which misses equivalent Unicode case forms such as Greek sigma.
+var directorySearchFold = cases.Fold()
 
 func (p PageRequest) Normalize() (PageRequest, error) {
 	if p.Limit < 1 || p.Limit > 100 || p.Offset < 0 || p.Offset > 10000 ||
@@ -31,6 +37,9 @@ func (f ListFilter) Matches(member Member) bool {
 	if (f.Role != "" && !slices.Contains(member.Roles, f.Role)) || (f.State != "" && member.State != f.State) {
 		return false
 	}
-	q := strings.ToLower(f.Search)
-	return q == "" || strings.Contains(strings.ToLower(member.DisplayName), q) || strings.Contains(strings.ToLower(member.LoginName), q)
+	if f.Search == "" {
+		return true
+	}
+	q := directorySearchFold.String(f.Search)
+	return strings.Contains(directorySearchFold.String(member.DisplayName), q) || strings.Contains(directorySearchFold.String(member.LoginName), q)
 }

@@ -36,10 +36,13 @@ func TestDirectorySearchLiteralAndUnicodeBounds(t *testing.T) {
 	}{
 		{"%_", "literal %_ name", true}, {"%_", "wildcard other name", false}, {"目标", "目标成员", true},
 		{"ÄBC", "äbc", true}, {"é", "e", false}, {"\u2003target\u2003", "TARGET@example.invalid", true},
+		{"ος", "ΟΣ", true}, {"S", "ſ", true}, {"STRASSE", "Straße", true},
 	} {
 		p, err := (PageRequest{Limit: 20, Filter: ListFilter{Search: tc.q}}).Normalize()
-		if err != nil || p.Filter.Matches(Member{LoginName: tc.name}) != tc.match {
-			t.Fatalf("case=%+v err=%v", tc, err)
+		for _, member := range []Member{{LoginName: tc.name}, {DisplayName: tc.name}} {
+			if err != nil || p.Filter.Matches(member) != tc.match {
+				t.Fatalf("case=%+v member=%+v err=%v", tc, member, err)
+			}
 		}
 	}
 	if _, err := (PageRequest{Limit: 20, Filter: ListFilter{Search: strings.Repeat("目", 66) + "ab"}}).Normalize(); err != nil {

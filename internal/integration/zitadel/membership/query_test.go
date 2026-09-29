@@ -28,6 +28,8 @@ func TestDirectoryQuerySearchesCompleteFilteredDirectoryBeforePaging(t *testing.
 	}
 	rows[110]["user"].(map[string]string)["displayName"] = "TARGET 目标成员"
 	rows[111]["user"].(map[string]string)["preferredLoginName"] = "target@other.invalid"
+	rows[112]["user"].(map[string]string)["displayName"] = "ΟΣ"
+	rows[113]["user"].(map[string]string)["preferredLoginName"] = "ſ@example.invalid"
 	for _, tc := range []struct {
 		search        string
 		offset, total int
@@ -35,6 +37,7 @@ func TestDirectoryQuerySearchesCompleteFilteredDirectoryBeforePaging(t *testing.
 	}{
 		{"target", 0, 2, "grant-110"}, {"TaRgEt", 1, 2, "grant-111"}, {"目标", 0, 1, "grant-110"},
 		{"not-present", 0, 0, ""}, {"target", 20, 2, ""},
+		{"ος", 0, 1, "grant-112"}, {"S", 0, 1, "grant-113"},
 	} {
 		t.Run(fmt.Sprintf("%s-%d", tc.search, tc.offset), func(t *testing.T) {
 			reads := 0
