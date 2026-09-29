@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"task-processor/internal/ledger/orgresource"
 	"task-processor/internal/product/sourcing"
 )
 
@@ -90,8 +91,18 @@ func newBrowserStore() *browserStore {
 	return &browserStore{byKey: map[string]sourcing.AcquisitionOperation{}, capacity: true, claimOK: true}
 }
 
-func (s *browserStore) Start(context.Context, sourcing.AcquisitionOperation) (sourcing.AcquisitionOperation, bool, error) {
-	panic("browser path must not use Start")
+func (s *browserStore) Start(_ context.Context, op sourcing.AcquisitionOperation) (sourcing.AcquisitionOperation, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.prepared {
+		return sourcing.AcquisitionOperation{}, false, errors.New("boom")
+	}
+	if existing, ok := s.byKey[op.Scope.OrganizationID+"|"+op.Key]; ok {
+		return existing, false, nil
+	}
+	op.State, op.Fence = sourcing.AcquisitionAcquiring, 1
+	s.byKey[op.Scope.OrganizationID+"|"+op.Key] = op
+	return op, true, nil
 }
 func (s *browserStore) ByKey(_ context.Context, scope sourcing.PublicationScope, key string) (sourcing.AcquisitionOperation, error) {
 	s.mu.Lock()
@@ -108,8 +119,13 @@ func (s *browserStore) ByKey(_ context.Context, scope sourcing.PublicationScope,
 func (s *browserStore) ByID(context.Context, sourcing.PublicationScope, string) (sourcing.AcquisitionOperation, error) {
 	return sourcing.AcquisitionOperation{}, sourcing.ErrAcquisitionNotFound
 }
-func (s *browserStore) Prepare(context.Context, sourcing.AcquisitionOperation, sourcing.PublicationCommand) (sourcing.AcquisitionOperation, error) {
-	panic("browser path must not use Prepare")
+func (s *browserStore) Prepare(_ context.Context, op sourcing.AcquisitionOperation, cmd sourcing.PublicationCommand) (sourcing.AcquisitionOperation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.startPrep++
+	op.State, op.Command = sourcing.AcquisitionPrepared, &cmd
+	s.byKey[op.Scope.OrganizationID+"|"+op.Key] = op
+	return op, nil
 }
 func (s *browserStore) StartPrepared(_ context.Context, op sourcing.AcquisitionOperation, cmd sourcing.PublicationCommand) (sourcing.AcquisitionOperation, bool, error) {
 	s.mu.Lock()
@@ -180,9 +196,22 @@ func newBrowserService(t *testing.T, store sourcing.AcquisitionOperationStore, p
 	t.Helper()
 	authorizer := browserAuthStub{scope: testScope()}
 	reader := &acquisitionCatalogReaderSpy{}
-	svc, err := NewBrowserAcquisitionService(store, provider, &recordingPublisher{}, reader, authorizer, 90*time.Second)
+	svc, err := NewBrowserAcquisitionService(store, provider, &recordingPublisher{}, reader, authorizer, 90*time.Second, &acquisitionTestChargeCoordinator{})
 	require.NoError(t, err)
 	return svc
+}
+
+func TestBrowserAcquisitionDoesNotDispatchWhenDataReservationFails(t *testing.T) {
+	store := newBrowserStore()
+	store.prepared = true
+	provider := &browserProviderSpy{evidence: browserEvidence()}
+	charges := &acquisitionTestChargeCoordinator{beforeError: orgresource.ErrInsufficientBalance}
+	service, err := NewBrowserAcquisitionService(store, provider, &recordingPublisher{}, &acquisitionCatalogReaderSpy{}, browserAuthStub{scope: testScope()}, time.Second, charges)
+	require.NoError(t, err)
+	_, err = service.Acquire(context.Background(), "8a2b1c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", "981645030344")
+	require.ErrorIs(t, err, orgresource.ErrInsufficientBalance)
+	require.Equal(t, 0, provider.count())
+	require.Equal(t, 1, charges.beforeCalls)
 }
 
 type browserAuthStub struct{ scope sourcing.PublicationScope }
@@ -348,7 +377,7 @@ func TestBrowserProviderTimeoutIsDeadlineExceeded(t *testing.T) {
 	store.prepared = true
 	// Provider blocks until its child context expires.
 	provider := &browserProviderSpy{delay: 200 * time.Millisecond}
-	svc, err := NewBrowserAcquisitionService(store, provider, &recordingPublisher{}, &acquisitionCatalogReaderSpy{}, browserAuthStub{scope: testScope()}, 30*time.Millisecond)
+	svc, err := NewBrowserAcquisitionService(store, provider, &recordingPublisher{}, &acquisitionCatalogReaderSpy{}, browserAuthStub{scope: testScope()}, 30*time.Millisecond, &acquisitionTestChargeCoordinator{})
 	require.NoError(t, err)
 	_, err = svc.Acquire(context.Background(), "8a2b1c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", "981645030344")
 	require.ErrorIs(t, err, context.DeadlineExceeded)

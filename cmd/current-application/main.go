@@ -123,6 +123,9 @@ func execute() error {
 			}
 			if features.StoreCenterDB != nil || features.StoreQuotaDB != nil {
 				options = append(options, httpapi.WithStoreCenter(features.StoreCenterDB, features.StoreQuotaDB))
+				if features.OfficialStoreProvider != nil || features.OfficialStoreProtection != nil {
+					options = append(options, httpapi.WithStoreOfficialConnection(features.OfficialStoreProvider, features.OfficialStoreProtection))
+				}
 			}
 			if features.MoneyOwnerDB != nil {
 				options = append(options, httpapi.WithMoneyOwnerDatabase(features.MoneyOwnerDB))
@@ -156,8 +159,6 @@ func execute() error {
 			}
 			return server, buildErr
 		},
-		NewApplicationWithAcquisition:             httpapi.NewCurrentApplicationWithAcquisition,
-		NewApplicationWithAcquisitionAndReferrals: httpapi.NewCurrentApplicationWithAcquisitionAndReferrals,
 		NewApplication: func(ctx context.Context, source, commercial *gorm.DB, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
 			return httpapi.NewCurrentApplication(ctx, source, commercial, cfg, logger)
 		},

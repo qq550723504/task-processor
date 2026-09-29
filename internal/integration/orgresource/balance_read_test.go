@@ -2,6 +2,7 @@ package orgresourceadapter
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
@@ -60,6 +61,27 @@ func TestReadBalancesReflectsOwnerGrantWithoutWrites(t *testing.T) {
 	}
 }
 
+func TestReadBalancesProjectsAllocatedHoldingsSeparatelyFromAdminAvailability(t *testing.T) {
+	db := openSQLiteStore(t)
+	if err := AutoMigrate(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&organizationResourceBucketRow{OrganizationID: "org-a", ResourceType: "store_renewal_period", Available: 3, Allocated: 2, UpdatedAt: time.Now().UTC()}).Error; err != nil {
+		t.Fatal(err)
+	}
+	repo, _ := NewGormRepository(db, TransactionConfig{})
+	balances, err := repo.ReadBalances(context.Background(), "org-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(balances.Resources[0])
+	var result map[string]any
+	_ = json.Unmarshal(encoded, &result)
+	if result["available"] != "3" || result["allocated"] != "2" {
+		t.Fatalf("member holdings lost or counted as admin-spendable: %s", encoded)
+	}
+}
+
 func TestReadBalancesZeroExactIntegersDebtAndReserved(t *testing.T) {
 	db := openSQLiteStore(t)
 	if err := AutoMigrate(db); err != nil {
@@ -104,7 +126,7 @@ func TestReadBalancesRejectsCorruptFactsAndDependencyFailures(t *testing.T) {
 			db := openSQLiteStore(t)
 			if setup != "missing_tables" {
 				// Deliberately unconstrained fixture models corruption, never production repair.
-				for _, statement := range []string{"CREATE TABLE saas_organization_resource_buckets (organization_id TEXT,resource_type TEXT,available BIGINT,reserved BIGINT,consumed BIGINT,updated_at DATETIME)", "CREATE TABLE saas_organization_resource_debts (organization_id TEXT,resource_type TEXT,amount BIGINT)"} {
+				for _, statement := range []string{"CREATE TABLE saas_organization_resource_buckets (organization_id TEXT,resource_type TEXT,available BIGINT,allocated BIGINT,reserved BIGINT,consumed BIGINT,updated_at DATETIME)", "CREATE TABLE saas_organization_resource_debts (organization_id TEXT,resource_type TEXT,amount BIGINT)"} {
 					if err := db.Exec(statement).Error; err != nil {
 						t.Fatal(err)
 					}
@@ -123,7 +145,7 @@ func TestReadBalancesRejectsCorruptFactsAndDependencyFailures(t *testing.T) {
 					if setup == "invalid_timestamp" {
 						updated = "bad"
 					}
-					if err := db.Exec("INSERT INTO saas_organization_resource_buckets VALUES ('org-a','ai_point',?,0,0,?)", available, updated).Error; err != nil {
+					if err := db.Exec("INSERT INTO saas_organization_resource_buckets VALUES ('org-a','ai_point',?,0,0,0,?)", available, updated).Error; err != nil {
 						t.Fatal(err)
 					}
 					if setup == "debt_with_available" {

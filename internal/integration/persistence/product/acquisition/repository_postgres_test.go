@@ -103,14 +103,19 @@ func TestAcquisitionPostgresFrozenCommandFenceAndUniquePublish(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, fetch)
 	require.Equal(t, old.ID, replay.ID)
-	// Only an unprepared expired acquisition may be re-fetched.
+	intent := sourcing.AcquisitionChargeIntent{Scope: old.Scope, OperationID: old.ID, MemberID: "member-a", Funding: sourcing.AcquisitionFundingMember, Fingerprint: old.Fingerprint, Source: old.Source}
+	require.NoError(t, r.RecordChargeIntent(ctx, old, intent))
+	require.NoError(t, r.BindChargeReservation(ctx, old, intent, uuid.NewString()))
+	// Expiry alone cannot authorize another provider call for this operation.
 	require.NoError(t, db.Exec("UPDATE public.product_acquisition_operations SET lease_until=clock_timestamp()-interval '1 second' WHERE operation_id=?", old.ID).Error)
 	current, fetch, err := r.Start(ctx, req)
 	require.NoError(t, err)
-	require.True(t, fetch)
-	require.EqualValues(t, 2, current.Fence)
+	require.False(t, fetch)
+	require.EqualValues(t, 1, current.Fence)
 	_, err = r.Prepare(ctx, old, originalCommand(t, old))
 	require.ErrorIs(t, err, sourcing.ErrAcquisitionFence)
+	// The original still-active worker may prepare under its original fence.
+	require.NoError(t, db.Exec("UPDATE public.product_acquisition_operations SET lease_until=clock_timestamp()+interval '30 seconds' WHERE operation_id=?", old.ID).Error)
 	command := originalCommand(t, current)
 	prepared, err := r.Prepare(ctx, current, command)
 	require.NoError(t, err)
@@ -156,6 +161,58 @@ func TestAcquisitionPostgresFrozenCommandFenceAndUniquePublish(t *testing.T) {
 	require.NoError(t, db.Exec("UPDATE public.product_acquisition_operations SET command_hash=? WHERE operation_id=?", strings.Repeat("b", 64), req.ID).Error)
 	_, err = rebuilt.ByID(ctx, req.Scope, req.ID)
 	require.ErrorIs(t, err, sourcing.ErrAcquisitionUnavailable)
+}
+
+func TestAcquisitionPostgresResumesOnlyUnboundExpiredOriginal(t *testing.T) {
+	db := isolatedDatabase(t)
+	require.NoError(t, InstallSchema(db))
+	ctx := context.Background()
+	r, err := NewRepository(ctx, db)
+	require.NoError(t, err)
+	req := requestedOperation(t, "resume-org", "resume-actor", uuid.NewString())
+	old, claimed, err := r.Start(ctx, req)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	intent := sourcing.AcquisitionChargeIntent{Scope: old.Scope, OperationID: old.ID, MemberID: "original-member", Funding: sourcing.AcquisitionFundingMember, Fingerprint: old.Fingerprint, Source: old.Source}
+	require.NoError(t, r.RecordChargeIntent(ctx, old, intent))
+	require.NoError(t, db.Exec("UPDATE public.product_acquisition_operations SET lease_until=clock_timestamp()-interval '1 second' WHERE operation_id=?", old.ID).Error)
+	var claims atomic.Int32
+	var wg sync.WaitGroup
+	for i := 0; i < 12; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			op, claim, e := r.Start(ctx, req)
+			if e != nil {
+				t.Error(e)
+				return
+			}
+			if op.ID != old.ID {
+				t.Error("recovery changed original operation")
+			}
+			if claim {
+				claims.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	require.EqualValues(t, 1, claims.Load())
+	current, err := r.ByKey(ctx, old.Scope, old.Key)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, current.Fence)
+	require.ErrorIs(t, r.RecordChargeIntent(ctx, old, intent), sourcing.ErrAcquisitionFence)
+	reservation := uuid.NewString()
+	require.ErrorIs(t, r.BindChargeReservation(ctx, old, intent, reservation), sourcing.ErrAcquisitionFence)
+	require.NoError(t, r.RecordChargeIntent(ctx, current, intent))
+	require.NoError(t, r.BindChargeReservation(ctx, current, intent, reservation))
+	require.NoError(t, r.BindChargeReservation(ctx, current, intent, reservation))
+	// An old worker cannot use the same-receipt replay branch to dispatch late.
+	require.ErrorIs(t, r.BindChargeReservation(ctx, old, intent, reservation), sourcing.ErrAcquisitionFence)
+	require.NoError(t, db.Exec("UPDATE public.product_acquisition_operations SET lease_until=clock_timestamp()-interval '1 second' WHERE operation_id=?", old.ID).Error)
+	bound, claim, err := r.Start(ctx, req)
+	require.NoError(t, err)
+	require.False(t, claim)
+	require.Equal(t, current.Fence, bound.Fence)
 }
 
 func TestAcquisitionPostgresCapacityIncludesPreparedAndPublishing(t *testing.T) {

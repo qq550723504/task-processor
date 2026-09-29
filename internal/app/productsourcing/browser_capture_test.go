@@ -202,7 +202,7 @@ func TestBrowserCaptureReadOnlyRecoveryAllStates(t *testing.T) {
 			store := &browserReadOnlyStore{op: op}
 			publisher := &browserTestPublisher{persisted: persisted}
 			auth := &browserTestAuthorizer{scope: op.Scope}
-			service, err := NewBrowserCaptureService(store, publisher, nil, auth)
+			service, err := NewBrowserCaptureService(store, publisher, nil, auth, &acquisitionTestChargeCoordinator{})
 			require.NoError(t, err)
 			result, err := service.Verify(context.Background(), op.Key, body)
 			switch state {
@@ -232,7 +232,7 @@ func TestBrowserCaptureVerifyAndReadNeverWrite(t *testing.T) {
 	store := &browserReadOnlyStore{op: op}
 	publisher := &browserTestPublisher{persisted: persisted}
 	auth := &browserTestAuthorizer{scope: op.Scope}
-	service, err := NewBrowserCaptureService(store, publisher, nil, auth)
+	service, err := NewBrowserCaptureService(store, publisher, nil, auth, &acquisitionTestChargeCoordinator{})
 	require.NoError(t, err)
 	_, err = service.Verify(context.Background(), op.Key, body)
 	require.NoError(t, err)
@@ -262,7 +262,7 @@ func TestBrowserCapturePreflightFailureDoesNotAdmitOperation(t *testing.T) {
 			store := &browserCaptureAdmissionStore{startPreparedErr: tc.startErr}
 			publisher := &browserTestPublisher{persisted: persisted}
 			auth := &browserTestAuthorizer{scope: sourcing.PublicationScope{OrganizationID: "browser-org", ActorID: "browser-actor"}}
-			service, err := NewBrowserCaptureService(store, publisher, browserCaptureAdmissionReader{err: tc.readerErr}, auth)
+			service, err := NewBrowserCaptureService(store, publisher, browserCaptureAdmissionReader{err: tc.readerErr}, auth, &acquisitionTestChargeCoordinator{})
 			require.NoError(t, err)
 			_, err = service.Capture(context.Background(), "d0ca04d0-1d36-4fce-8305-754c39244d09", body)
 			require.Error(t, err)
@@ -280,7 +280,7 @@ func TestBrowserCaptureUsesAtomicPreparedAdmission(t *testing.T) {
 	body, op, persisted := browserApplicationFixture(t)
 	store := &browserCaptureAdmissionStore{claim: true}
 	publisher := &browserTestPublisher{persisted: persisted, publishReceipt: persisted.Receipt}
-	service, err := NewBrowserCaptureService(store, publisher, browserCaptureAdmissionReader{}, &browserTestAuthorizer{scope: op.Scope})
+	service, err := NewBrowserCaptureService(store, publisher, browserCaptureAdmissionReader{}, &browserTestAuthorizer{scope: op.Scope}, &acquisitionTestChargeCoordinator{})
 	require.NoError(t, err)
 
 	result, err := service.Capture(context.Background(), op.Key, body)
@@ -312,7 +312,7 @@ func TestBrowserCaptureSecondAuthorizationFailureDoesNotAdmitOperation(t *testin
 	body, _, persisted := browserApplicationFixture(t)
 	store := &browserCaptureAdmissionStore{}
 	authorizer := &browserCaptureFlippingAuthorizer{scope: sourcing.PublicationScope{OrganizationID: "browser-org", ActorID: "browser-actor"}}
-	service, err := NewBrowserCaptureService(store, &browserTestPublisher{persisted: persisted}, browserCaptureAdmissionReader{}, authorizer)
+	service, err := NewBrowserCaptureService(store, &browserTestPublisher{persisted: persisted}, browserCaptureAdmissionReader{}, authorizer, &acquisitionTestChargeCoordinator{})
 	require.NoError(t, err)
 
 	_, err = service.Capture(context.Background(), "d0ca04d0-1d36-4fce-8305-754c39244d09", body)
@@ -326,7 +326,7 @@ func TestBrowserCaptureAdmissionCancellationDoesNotAdmitOperation(t *testing.T) 
 	store := &browserCaptureAdmissionStore{}
 	reader := browserCaptureCancelReader{started: make(chan struct{})}
 	authorizer := &browserTestAuthorizer{scope: sourcing.PublicationScope{OrganizationID: "browser-org", ActorID: "browser-actor"}}
-	service, err := NewBrowserCaptureService(store, &browserTestPublisher{persisted: persisted}, reader, authorizer)
+	service, err := NewBrowserCaptureService(store, &browserTestPublisher{persisted: persisted}, reader, authorizer, &acquisitionTestChargeCoordinator{})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -352,7 +352,7 @@ func TestBrowserCaptureByKeyResumesDurablePrePublicationStates(t *testing.T) {
 			store := &browserCaptureAdmissionStore{op: op, claim: state == sourcing.AcquisitionPrepared}
 			publisher := &browserTestPublisher{persisted: persisted, publishReceipt: persisted.Receipt}
 			auth := &browserTestAuthorizer{scope: op.Scope}
-			service, err := NewBrowserCaptureService(store, publisher, nil, auth)
+			service, err := NewBrowserCaptureService(store, publisher, nil, auth, &acquisitionTestChargeCoordinator{})
 			require.NoError(t, err)
 
 			result, err := service.ByKey(context.Background(), op.Key)
@@ -372,7 +372,7 @@ func TestBrowserCaptureByKeyExposesDurableFailure(t *testing.T) {
 	op.State = sourcing.AcquisitionFailed
 	store := &browserCaptureAdmissionStore{op: op}
 	publisher := &browserTestPublisher{persisted: persisted}
-	service, err := NewBrowserCaptureService(store, publisher, nil, &browserTestAuthorizer{scope: op.Scope})
+	service, err := NewBrowserCaptureService(store, publisher, nil, &browserTestAuthorizer{scope: op.Scope}, &acquisitionTestChargeCoordinator{})
 	require.NoError(t, err)
 
 	result, err := service.ByKey(context.Background(), op.Key)
@@ -405,7 +405,7 @@ func TestBrowserCaptureRecoveryAuthUnknownAndWrongAction(t *testing.T) {
 			case "canceled":
 				cancel()
 			}
-			service, err := NewBrowserCaptureService(store, publisher, nil, auth)
+			service, err := NewBrowserCaptureService(store, publisher, nil, auth, &acquisitionTestChargeCoordinator{})
 			require.NoError(t, err)
 			_, err = service.Verify(ctx, op.Key, body)
 			require.Error(t, err)

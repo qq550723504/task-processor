@@ -26,6 +26,7 @@ type Balance struct {
 	Unit         string       `json:"unit"`
 	State        string       `json:"state"`
 	Available    *string      `json:"available"`
+	Allocated    *string      `json:"allocated"`
 	Reserved     *string      `json:"reserved"`
 	Consumed     *string      `json:"consumed"`
 	Debt         *string      `json:"debt"`

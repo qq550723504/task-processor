@@ -37,6 +37,7 @@ func TestWorkbenchAutoMigrateCreatesOwnedTablesAndIsRepeatable(t *testing.T) {
 		"listing_store",
 		"saas_member_ai_point_limits",
 		"saas_member_ai_point_months",
+		"saas_member_resource_positions",
 		"saas_organization_resource_audit_logs",
 		"saas_organization_resource_buckets",
 		"saas_organization_resource_debts",
@@ -50,6 +51,12 @@ func TestWorkbenchAutoMigrateCreatesOwnedTablesAndIsRepeatable(t *testing.T) {
 		"saas_tenant_entitlements",
 		"saas_tenant_subscriptions",
 		"workbench_store_audit_logs",
+		"workbench_store_connection_attempts",
+		"workbench_store_connections",
+		"workbench_store_member_grant_operations",
+		"workbench_store_member_grants",
+		"workbench_store_merchant_bindings",
+		"workbench_store_service_operations",
 		"workbench_stores",
 	}
 	if got := sqliteUserTables(t, db); !reflect.DeepEqual(got, wantTables) {

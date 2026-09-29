@@ -52,6 +52,7 @@ func TestCommercialRuntimeGrantsStayWithinOwnedTables(t *testing.T) {
 		"saas_organization_resource_audit_logs",
 		"saas_member_ai_point_limits",
 		"saas_member_ai_point_months",
+		"saas_member_resource_positions",
 		"saas_plans",
 		"saas_plan_modules",
 		"saas_tenant_subscriptions",

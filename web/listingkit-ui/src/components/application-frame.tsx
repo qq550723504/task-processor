@@ -43,6 +43,9 @@ export function ApplicationFrame({ children, productAcquisitionAvailable = false
   if (pathname?.startsWith("/invitations/")) {
     return <ThemeProvider defaultTheme="dark"><div className="console-theme"><QueryProvider>{children}</QueryProvider></div></ThemeProvider>;
   }
+  if(pathname === "/workbench/stores/shein/callback") {
+    return <ThemeProvider defaultTheme="dark"><div className="console-theme"><QueryProvider><WorkbenchContextProvider>{children}</WorkbenchContextProvider></QueryProvider></div></ThemeProvider>;
+  }
 
   if (isWorkbenchRoute(pathname)) {
     return (

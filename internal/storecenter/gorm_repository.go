@@ -55,7 +55,7 @@ func AutoMigrateStoreRepository(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("store repository database is required")
 	}
-	return db.AutoMigrate(&workbenchStoreRecord{})
+	return db.AutoMigrate(&workbenchStoreRecord{}, &storeMemberGrantRow{}, &storeMemberGrantOperation{}, &storeServiceChargeRow{}, &officialConnectionRow{}, &officialAttemptRow{}, &officialMerchantBinding{})
 }
 
 func NewGormStoreRepository(db *gorm.DB) (*GormStoreRepository, error) {
@@ -111,6 +111,9 @@ func (r *GormStoreRepository) List(ctx context.Context, organizationID string, q
 		base := tx.Model(&workbenchStoreRecord{}).
 			Where("organization_id = ?", organizationID).
 			Where("deleted_at IS NULL")
+		if query.MemberID != "" {
+			base = base.Where("EXISTS (SELECT 1 FROM workbench_store_member_grants g WHERE g.organization_id=workbench_stores.organization_id AND g.store_id=workbench_stores.id AND g.member_id=? AND g.active=?)", query.MemberID, true)
+		}
 		if query.Platform != "" {
 			base = base.Where("platform = ?", string(query.Platform))
 		}

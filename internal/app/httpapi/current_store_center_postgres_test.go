@@ -20,8 +20,12 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	storeschema "task-processor/internal/app/schema/storecenter"
+	storeapp "task-processor/internal/app/storecenter"
+	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
+	"task-processor/internal/integration/shein"
 	kernelmodule "task-processor/internal/kernel/module"
+	"task-processor/internal/ledger/orgresource"
 	"task-processor/internal/listingsubscription"
 	"task-processor/internal/storecenter"
 )
@@ -64,16 +68,21 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	recordsOwner := open("store_center", "store_center_owner")
 	require.NoError(t, storeschema.Migrate(ctx, recordsOwner))
 	require.NoError(t, storeschema.Migrate(ctx, recordsOwner))
-	for _, q := range []string{`REVOKE CREATE ON SCHEMA public FROM PUBLIC`, `REVOKE ALL ON DATABASE store_center FROM PUBLIC`, `GRANT CONNECT ON DATABASE store_center TO store_center_runtime`, `GRANT USAGE ON SCHEMA public TO store_center_runtime`, `GRANT SELECT,INSERT,UPDATE ON workbench_stores TO store_center_runtime`, `GRANT SELECT,INSERT ON workbench_store_audit_logs TO store_center_runtime`} {
+	for _, q := range []string{`REVOKE CREATE ON SCHEMA public FROM PUBLIC`, `REVOKE ALL ON DATABASE store_center FROM PUBLIC`, `GRANT CONNECT ON DATABASE store_center TO store_center_runtime`, `GRANT USAGE ON SCHEMA public TO store_center_runtime`, `GRANT SELECT,INSERT,UPDATE ON workbench_stores TO store_center_runtime`, `GRANT SELECT,INSERT ON workbench_store_audit_logs TO store_center_runtime`, `GRANT SELECT,INSERT,UPDATE ON workbench_store_member_grants TO store_center_runtime`, `GRANT SELECT,INSERT ON workbench_store_member_grant_operations TO store_center_runtime`, `GRANT SELECT,INSERT,UPDATE ON workbench_store_service_operations TO store_center_runtime`} {
 		require.NoError(t, recordsOwner.Exec(q).Error)
 	}
 	require.NoError(t, listingsubscription.AutoMigrateRepository(commercial))
+	for _, statement := range []string{`GRANT SELECT,INSERT,UPDATE ON workbench_store_connections,workbench_store_connection_attempts TO store_center_runtime`, `GRANT SELECT,INSERT ON workbench_store_merchant_bindings TO store_center_runtime`} {
+		require.NoError(t, recordsOwner.Exec(statement).Error)
+	}
 	require.NoError(t, listingsubscription.GrantStoreQuotaRuntimeAccess(ctx, commercial))
 	entitlement, err := listingsubscription.NewGormRepository(commercial).UpsertEntitlement(ctx, &listingsubscription.Entitlement{TenantID: "B", ModuleCode: listingsubscription.ModuleStoreManagement, Status: listingsubscription.StatusActive, Limits: map[string]int{"store_count": 2}})
 	require.NoError(t, err)
 	require.NotNil(t, entitlement)
 	records, quota := open("store_center", "store_center_runtime"), open("commercial", "store_quota_runtime")
-	module, err := buildCurrentStoreCenterModule(ctx, records, quota)
+	charges, err := orgresource.NewConsumerChargeService(currentStoreChargeFixture{}, map[orgresource.ResourceConsumer]orgresource.ConsumerChargeOwner{orgresource.ConsumerStoreService: currentStoreChargeFixture{}})
+	require.NoError(t, err)
+	module, err := buildCurrentStoreCenterModule(ctx, records, quota, authz.DefaultListingKitAuthorizer(), charges, nil, nil)
 	require.NoError(t, err)
 	f := newAccountFixture(t)
 	cfg := &config.Config{Workbench: config.WorkbenchConfig{Enabled: true}, ListingKit: config.ListingKitConfig{Zitadel: config.ListingKitZitadelConfig{IssuerURL: f.provider.URL, ClientID: "fixture-client", ClientSecret: "fixture-secret", ProjectID: "project", AuthorizationAPIURL: f.provider.URL}}}
@@ -118,6 +127,15 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	require.Nil(t, out["serviceExpiresAt"])
 	require.Equal(t, "unavailable", out["connectionStatus"])
 	require.NotContains(t, out, "lifecycleStatus")
+	status, connection := request("GET", root+"/"+id+"/connection", "B", "", "", 0)
+	require.Equal(t, 200, status, connection)
+	require.Equal(t, "unavailable", connection["connectionStatus"])
+	status, connection = request("POST", root+"/"+id+"/connection/begin", "B", "", uuid.NewString(), 2)
+	require.Equal(t, 503, status, connection)
+	require.Equal(t, "STORE_OFFICIAL_SETUP_UNAVAILABLE", connection["code"])
+	status, connection = request("POST", root+"/"+id+"/activate", "B", `{}`, uuid.NewString(), 2)
+	require.Equal(t, 503, status, connection)
+	require.Equal(t, "STORE_CONNECTION_UNAVAILABLE", connection["code"])
 	status, replay := request("POST", root, "B", body, key, 0)
 	require.Equal(t, 201, status, replay)
 	require.Equal(t, id, replay["id"])
@@ -141,7 +159,7 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	require.Equal(t, 404, status, out)
 	require.Greater(t, f.grantReads.Load(), int32(5))
 	// A fresh module/pool reads the durable results after reconstructing runtime.
-	fresh, err := buildCurrentStoreCenterModule(ctx, open("store_center", "store_center_runtime"), open("commercial", "store_quota_runtime"))
+	fresh, err := buildCurrentStoreCenterModule(ctx, open("store_center", "store_center_runtime"), open("commercial", "store_quota_runtime"), authz.DefaultListingKitAuthorizer(), charges, nil, nil)
 	require.NoError(t, err)
 	reg = kernelmodule.NewRegistry()
 	require.NoError(t, fresh.Register(reg))
@@ -228,10 +246,67 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	})
 	require.NoError(t, storecenter.VerifyCurrentSchema(ctx, records))
 	require.NoError(t, listingsubscription.VerifyStoreQuotaRuntime(ctx, quota))
+	t.Run("official-credential-shape-on-narrow-postgres", func(t *testing.T) {
+		repo, err := storecenter.NewMemberScopedStoreRepository(records, postgresConnectionAccess{})
+		require.NoError(t, err)
+		candidate, err := storecenter.NewStore(storecenter.CreateStoreInput{ID: uuid.NewString(), OrganizationID: "official-fixture", ActorSubject: "synthetic-operator", Name: "Official fixture", Platform: "shein", Region: "SG", ExternalStoreID: "metadata-only", CreateIdempotencyKey: uuid.NewString(), QuotaAllocationID: uuid.NewString(), OccurredAt: time.Now().UTC().Add(-time.Minute)})
+		require.NoError(t, err)
+		candidate, _, err = repo.CreateOrReplay(ctx, "official-fixture", candidate)
+		require.NoError(t, err)
+		require.NoError(t, candidate.TransitionTo(storecenter.RecordStatusActive, "synthetic-operator", candidate.UpdatedAt().Add(time.Second)))
+		require.NoError(t, repo.Save(ctx, "official-fixture", candidate, 1))
+		protection, err := shein.NewCredentialProtection("synthetic-key", make([]byte, 32))
+		require.NoError(t, err)
+		app, err := storeapp.NewOfficialConnections(repo, postgresConnectionProvider{}, protection)
+		require.NoError(t, err)
+		begin, err := app.Begin(ctx, storecenter.OfficialConnectionCommand{OrganizationID: "official-fixture", StoreID: candidate.ID(), AttemptID: uuid.NewString(), ExpectedStoreVersion: candidate.Version()})
+		require.NoError(t, err)
+		authorized, err := url.Parse(begin.AuthorizationURL)
+		require.NoError(t, err)
+		_, query, _ := strings.Cut(authorized.Fragment, "?")
+		params, err := url.ParseQuery(query)
+		require.NoError(t, err)
+		complete := storecenter.CompleteOfficialConnection{OrganizationID: "official-fixture", StoreID: candidate.ID(), AttemptID: begin.AttemptID, AppID: "synthetic-app", State: params.Get("state"), TempToken: "synthetic-temp"}
+		view, err := app.Complete(ctx, complete)
+		require.NoError(t, err)
+		require.Equal(t, storecenter.ConnectionStatusConnected, view.Status)
+		current, err := repo.Get(ctx, "official-fixture", candidate.ID())
+		require.NoError(t, err)
+		status, err := app.Status(ctx, storecenter.ConnectionStatusInput{OrganizationID: "official-fixture", StoreID: current.ID(), Platform: storecenter.PlatformShein, ConnectionRef: current.ConnectionRef()})
+		require.NoError(t, err)
+		require.Equal(t, storecenter.ConnectionStatusConnected, status)
+		_, err = app.Disconnect(ctx, storecenter.OfficialConnectionCommand{OrganizationID: "official-fixture", StoreID: current.ID(), AttemptID: uuid.NewString(), ExpectedStoreVersion: current.Version()})
+		require.NoError(t, err)
+		_, err = app.Complete(ctx, complete)
+		require.ErrorIs(t, err, storecenter.ErrNotFound)
+		require.Error(t, records.Exec(`UPDATE workbench_store_merchant_bindings SET open_key_id='other'`).Error)
+		require.Error(t, records.Exec(`DELETE FROM workbench_store_connection_attempts`).Error)
+	})
 	t.Run("weakened-store-constraint", func(t *testing.T) {
 		require.NoError(t, recordsOwner.Exec(`ALTER TABLE workbench_stores DROP CONSTRAINT store_service_period`).Error)
 		require.NoError(t, recordsOwner.Exec(`ALTER TABLE workbench_stores ADD CONSTRAINT store_service_period CHECK (TRUE)`).Error)
 		require.Error(t, storecenter.VerifyCurrentSchema(ctx, records), "a constraint name alone is not a service contract")
 	})
 
+}
+
+type postgresConnectionAccess struct{}
+
+func (postgresConnectionAccess) AuthorizeStoreMember(_ context.Context, org string) (storecenter.StoreMemberAccess, error) {
+	return storecenter.StoreMemberAccess{OrganizationID: org, ActorID: "synthetic-operator", MemberID: "synthetic-membership", CanWrite: true}, nil
+}
+
+type postgresConnectionProvider struct{}
+
+func (postgresConnectionProvider) Application() storecenter.OfficialApplication {
+	return storecenter.OfficialApplication{AppID: "synthetic-app", Version: "config-v1", CallbackURL: "https://localhost/callback"}
+}
+func (postgresConnectionProvider) AuthorizationURL(state string) (string, error) {
+	return "https://openapi-sem.sheincorp.com/#/empower?state=" + state, nil
+}
+func (postgresConnectionProvider) Exchange(context.Context, string, string) (storecenter.OfficialMerchantCredential, error) {
+	return storecenter.OfficialMerchantCredential{AppID: "synthetic-app", OpenKeyID: "synthetic-open-key", SecretKey: "synthetic-merchant-secret", SupplierID: "123"}, nil
+}
+func (postgresConnectionProvider) QueryStore(context.Context, storecenter.OfficialMerchantCredential) (storecenter.OfficialStoreInformation, error) {
+	return storecenter.OfficialStoreInformation{}, nil
 }

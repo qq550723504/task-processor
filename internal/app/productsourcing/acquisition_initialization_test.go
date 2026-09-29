@@ -28,7 +28,7 @@ func TestAcquisitionExplicitInitializerRequiresEmptyConfirmedDatabase(t *testing
 	require.Zero(t, count)
 	require.NoError(t, InitializeAcquisitionDatabase(context.Background(), manifest, name))
 	require.NoError(t, db.Raw("SELECT count(*) FROM information_schema.tables WHERE table_schema='public'").Scan(&count).Error)
-	require.EqualValues(t, 5, count)
+	require.EqualValues(t, 6, count)
 	require.Error(t, InitializeAcquisitionDatabase(context.Background(), manifest, name), "never migrate or repair a nonempty database")
 }
 

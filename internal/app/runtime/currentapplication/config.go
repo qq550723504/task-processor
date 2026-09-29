@@ -311,6 +311,9 @@ func (cfg *Config) validate() error {
 		}
 	}
 	if product := cfg.ProductAcquisitionDatabase; product != nil {
+		if cfg.CommercialOwnerDatabase == nil {
+			return errors.New("product acquisition requires the canonical resource owner database")
+		}
 		if err := product.validate("productAcquisitionDatabase"); err != nil {
 			return err
 		}

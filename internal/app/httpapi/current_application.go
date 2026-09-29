@@ -25,6 +25,8 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/knowledge"
 	knowledgehttp "task-processor/internal/knowledge/httpapi"
+	"task-processor/internal/ledger/orgresource"
+	"task-processor/internal/storecenter"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
 )
 
@@ -85,7 +87,8 @@ var currentCommercialBillingApplicationRoutes = []currentApplicationRoute{
 }
 
 type currentApplicationFactories struct {
-	buildStoreCenter                func(context.Context, *gorm.DB, *gorm.DB) (kernelmodule.Module, error)
+	buildStoreCenter                func(context.Context, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, storecenter.OfficialConnectionProvider, storecenter.OfficialCredentialProtection) (kernelmodule.Module, error)
+	buildResourceCharges            func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (*orgresource.ConsumerChargeService, error)
 	buildCommercialResources        func(context.Context, *gorm.DB) (kernelmodule.Module, error)
 	buildWorkbench                  workbenchContextModuleBuilder
 	buildSourceAccount              func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
@@ -97,6 +100,7 @@ type currentApplicationFactories struct {
 	buildMembership                 func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildAccountAllocation          func(context.Context, *config.Config, *gorm.DB, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildMemberPointLimits          func(context.Context, *config.Config, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildMemberResources            func(context.Context, *config.Config, *gorm.DB, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAccountAudit               func(*gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAccountAuditWithMembership func(*gorm.DB, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAccountProfile             func(*gorm.DB) (kernelmodule.Module, error)
@@ -110,6 +114,9 @@ type currentApplicationOptions struct {
 	knowledge                   *knowledge.Service
 	storeCenters                int
 	storeCenterDB, storeQuotaDB *gorm.DB
+	officialStoreProvider       storecenter.OfficialConnectionProvider
+	officialStoreProtection     storecenter.OfficialCredentialProtection
+	officialStoreConfigs        int
 	runtimeContext              context.Context
 	commercialOwnerDB           *gorm.DB
 	moneyOwnerDB                *gorm.DB
@@ -211,6 +218,7 @@ func defaultCurrentApplicationFactories(ctx context.Context, projectIDs ...strin
 		},
 		buildAccountAllocation: buildAccountResourceAllocationModule,
 		buildMemberPointLimits: buildMemberPointLimitModule,
+		buildMemberResources:   buildMemberResourcesModule,
 	}
 }
 
@@ -287,7 +295,34 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	if supplied.membership != nil && (supplied.membership.ReceiptDB == nil || supplied.membership.ReceiptDB == sourceAccountDB || supplied.membership.ReceiptDB == commercialDB || supplied.membership.ReceiptDB == supplied.productAcquisitionDB || supplied.membership.ReceiptDB == supplied.referralDB) {
 		return nil, errors.New("membership requires an independent receipt pool")
 	}
+	var consumerCharges *orgresource.ConsumerChargeService
+	authorizer, err := authz.NewListingKitAuthorizer(cfg.ListingKit.PlatformAdminUsers, cfg.ListingKit.PlatformAdminRoles)
+	if err != nil {
+		return nil, fmt.Errorf("build current application authorizer: %w", err)
+	}
+	if supplied.officialStoreConfigs > 1 || (supplied.officialStoreConfigs > 0 && supplied.storeCenters == 0) || (supplied.officialStoreProvider == nil) != (supplied.officialStoreProtection == nil) {
+		return nil, errors.New("official Store configuration must accompany its owner and protection")
+	}
+	if supplied.productAcquisitionDB != nil || supplied.storeCenters > 0 {
+		if supplied.commercialOwnerDB == nil {
+			return nil, errors.New("resource consumers require their resource owner pool")
+		}
+		builder := factories.buildResourceCharges
+		if builder == nil {
+			builder = buildCurrentResourceCharges
+		}
+		consumerCharges, err = builder(ctx, supplied.productAcquisitionDB, supplied.storeCenterDB, supplied.commercialOwnerDB, authorizer)
+		if err != nil {
+			return nil, err
+		}
+		if consumerCharges == nil {
+			return nil, errors.New("resource consumer service unavailable")
+		}
+	}
 	if supplied.productAcquisitionDB != nil {
+		if supplied.commercialOwnerDB == nil {
+			return nil, errors.New("product acquisition requires its resource owner pool")
+		}
 		if factories.buildAcquisition != nil {
 			return nil, errors.New("product acquisition factory and pool cannot both be supplied")
 		}
@@ -299,7 +334,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 			if err != nil {
 				return nil, err
 			}
-			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService)
+			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges)
 		}
 	}
 	if supplied.browserCaptures > 1 {
@@ -314,7 +349,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		browserDB := supplied.productAcquisitionDB
 		factories.buildBrowserCapture = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer)
+			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer, consumerCharges)
 		}
 	}
 	if supplied.imageAgents > 0 {
@@ -338,10 +373,6 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		factories.buildMembership = func(startup context.Context, authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
 			return buildMembershipModule(startup, cfg, membershipDeps, authorizer, dependencies)
 		}
-	}
-	authorizer, err := authz.NewListingKitAuthorizer(cfg.ListingKit.PlatformAdminUsers, cfg.ListingKit.PlatformAdminRoles)
-	if err != nil {
-		return nil, fmt.Errorf("build current application authorizer: %w", err)
 	}
 	workbench, err := factories.buildWorkbench(cfg, logger)
 	if err != nil {
@@ -368,7 +399,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		modules = append(modules, knowledgehttp.NewModule(handler))
 	}
 	if supplied.storeCenters > 0 {
-		stores, err := factories.buildStoreCenter(ctx, supplied.storeCenterDB, supplied.storeQuotaDB)
+		stores, err := factories.buildStoreCenter(ctx, supplied.storeCenterDB, supplied.storeQuotaDB, authorizer, consumerCharges, supplied.officialStoreProvider, supplied.officialStoreProtection)
 		if err != nil {
 			return nil, fmt.Errorf("build current store center: %w", err)
 		}
@@ -550,6 +581,17 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		modules = append(modules, points)
 	}
+	includeMemberResources := factories.buildMemberResources != nil && supplied.membership != nil && supplied.commercialOwnerDB != nil
+	if includeMemberResources {
+		resources, err := factories.buildMemberResources(ctx, cfg, supplied.commercialOwnerDB, supplied.storeCenterDB, *supplied.membership, authorizer)
+		if err != nil {
+			return nil, fmt.Errorf("build member resources: %w", err)
+		}
+		if resources == nil {
+			return nil, errors.New("member resources unavailable")
+		}
+		modules = append(modules, resources)
+	}
 	bundle, err := buildRuntimeBundleFromModules(cfg, modules)
 	if err != nil {
 		return nil, err
@@ -561,6 +603,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		AcquisitionImage:    factories.buildAcquisitionImage != nil,
 		ProductAgent:        supplied.productAgent != nil,
 		MemberPoints:        includeMemberPoints,
+		MemberResources:     includeMemberResources,
 		Resources:           includeResources,
 		SubjectVerification: factories.buildSubjectVerification != nil,
 	}
@@ -585,6 +628,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 			runtimeContext = context.Background()
 		}
 		startCommercialRecoveryLoop(runtimeContext, server, topUpRecovery, 30*time.Second, "wallet top-up", logger)
+	}
+	if consumerCharges != nil {
+		runtimeContext := supplied.runtimeContext
+		if runtimeContext == nil {
+			runtimeContext = context.Background()
+		}
+		startCommercialRecoveryLoop(runtimeContext, server, func(ctx context.Context) error { _, err := consumerCharges.RecoverDue(ctx); return err }, 30*time.Second, "resource consumers", logger)
 	}
 	return server, nil
 }
@@ -629,6 +679,7 @@ type currentApplicationOptionalRoutes struct {
 	AcquisitionImage    bool
 	ProductAgent        bool
 	MemberPoints        bool
+	MemberResources     bool
 }
 
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
@@ -712,6 +763,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	if optional.MemberPoints {
 		admitted = append(admitted, currentApplicationRoute{Method: http.MethodGet, Path: memberPointLimitBase}, currentApplicationRoute{Method: http.MethodPut, Path: memberPointLimitBase + "/:member_id"})
 	}
+	if optional.MemberResources {
+		for _, descriptor := range (memberResourcesModule{}).routes() {
+			admitted = append(admitted, currentApplicationRoute{Method: descriptor.Method, Path: descriptor.Path})
+		}
+	}
 	expected := make(map[currentApplicationRoute]struct{}, len(admitted))
 	if optional.Resources {
 		admitted = append(admitted, currentApplicationRoute{Method: http.MethodGet, Path: commercialResourcesPath})
@@ -775,6 +831,15 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	seen := make(map[currentApplicationRoute]struct{}, len(routes))
 	for _, descriptor := range routes {
+		if descriptor.Path == memberResourcesBase || strings.HasPrefix(descriptor.Path, memberResourcesBase+"/") {
+			permission := authz.PermissionWorkbenchOrganizationMemberRead
+			if descriptor.Method != http.MethodGet {
+				permission = authz.PermissionWorkbenchOrganizationMemberManage
+			}
+			if !optional.MemberResources || descriptor.Module != memberResourcesModuleName || descriptor.AuthPolicy != httproute.AuthPolicyCurrentIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.OrganizationTargetResolver == nil || !descriptor.RejectUnreadRequestBody || descriptor.RequestTimeout != 15*time.Second || descriptor.Permission != permission || descriptor.Handler == nil {
+				return errors.New("member resources route loses live permission boundary")
+			}
+		}
 		if descriptor.Path == "/api/v1/workbench/stores" || strings.HasPrefix(descriptor.Path, "/api/v1/workbench/stores/") {
 			if !optional.StoreCenter {
 				return errors.New("store center feature not admitted")

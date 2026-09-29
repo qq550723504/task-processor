@@ -34,6 +34,7 @@ var currentSchemaStatements = []string{
  CONSTRAINT store_delete_shape CHECK ((record_status IN ('deleting','deleted') AND delete_operation_key <> '') OR (record_status NOT IN ('deleting','deleted') AND delete_operation_key = '')),
  CONSTRAINT store_deleted_shape CHECK ((record_status='deleted') = (deleted_at IS NOT NULL)),
  CONSTRAINT store_version CHECK (version > 0), CONSTRAINT store_platform CHECK (platform='shein'),
+ CONSTRAINT store_organization_identity UNIQUE (organization_id,id),
  CONSTRAINT store_times CHECK (updated_at >= created_at AND (deleted_at IS NULL OR deleted_at >= updated_at))
 )`,
 	`CREATE UNIQUE INDEX ux_workbench_stores_org_create_key ON public.workbench_stores (organization_id,create_idempotency_key)`,
@@ -50,6 +51,60 @@ var currentSchemaStatements = []string{
 )`,
 	`CREATE UNIQUE INDEX ux_workbench_store_audit_org_request_action ON public.workbench_store_audit_logs (organization_id,request_key,action)`,
 	`CREATE INDEX idx_workbench_store_audit_org_store_created ON public.workbench_store_audit_logs (organization_id,store_id,created_at)`,
+	`CREATE TABLE public.workbench_store_member_grants (
+ organization_id VARCHAR(200) NOT NULL, store_id CHAR(36) NOT NULL, member_id VARCHAR(200) NOT NULL,
+ active BOOLEAN NOT NULL, version BIGINT NOT NULL, updated_by VARCHAR(200) NOT NULL, updated_at TIMESTAMPTZ NOT NULL,
+ PRIMARY KEY (organization_id,store_id,member_id),
+ CONSTRAINT store_member_grant_store FOREIGN KEY (organization_id,store_id) REFERENCES public.workbench_stores (organization_id,id),
+ CONSTRAINT store_member_grant_version CHECK (version > 0)
+)`,
+	`CREATE TABLE public.workbench_store_member_grant_operations (
+ organization_id VARCHAR(200) NOT NULL, operation_id CHAR(36) NOT NULL, store_id CHAR(36) NOT NULL, member_id VARCHAR(200) NOT NULL,
+ active BOOLEAN NOT NULL, expected_version BIGINT NOT NULL, result_version BIGINT NOT NULL, actor_id VARCHAR(200) NOT NULL,
+ fingerprint VARCHAR(64) NOT NULL, created_at TIMESTAMPTZ NOT NULL,
+ PRIMARY KEY (organization_id,operation_id),
+ CONSTRAINT store_member_operation_grant FOREIGN KEY (organization_id,store_id,member_id) REFERENCES public.workbench_store_member_grants (organization_id,store_id,member_id),
+ CONSTRAINT store_member_operation_version CHECK (expected_version >= 0 AND result_version > 0)
+)`,
+	`CREATE TABLE public.workbench_store_service_operations (
+ organization_id VARCHAR(200) NOT NULL, operation_id CHAR(36) NOT NULL, store_id CHAR(36) NOT NULL,
+ intent_json TEXT NOT NULL, reservation_id VARCHAR(36) NOT NULL DEFAULT '', state VARCHAR(32) NOT NULL,
+ snapshot_json TEXT NOT NULL DEFAULT '', evidence_id VARCHAR(128) NOT NULL DEFAULT '', failure_code VARCHAR(64) NOT NULL DEFAULT '',
+ created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL,
+ PRIMARY KEY (organization_id,operation_id),
+ CONSTRAINT store_service_operation_store FOREIGN KEY (organization_id,store_id) REFERENCES public.workbench_stores (organization_id,id),
+ CONSTRAINT store_service_operation_bound CHECK (octet_length(intent_json)<=16384 AND octet_length(snapshot_json)<=16384 AND updated_at>=created_at),
+ CONSTRAINT store_service_operation_shape CHECK (
+ (state='admitted' AND reservation_id='' AND snapshot_json='' AND evidence_id='' AND failure_code='') OR
+ (state='bound' AND reservation_id<>'' AND snapshot_json='' AND evidence_id='' AND failure_code='') OR
+ (state='succeeded' AND reservation_id<>'' AND snapshot_json<>'' AND evidence_id<>'' AND failure_code='') OR
+ (state='failed_fenced' AND snapshot_json='' AND evidence_id<>'' AND failure_code IN ('NOT_ALLOWED','STORE_CHANGED','CONNECTION_CHANGED','INVALID_STATE','QUOTA_INSUFFICIENT')))
+)`,
+	`CREATE TABLE public.workbench_store_connections (
+ organization_id VARCHAR(200) NOT NULL, store_id CHAR(36) NOT NULL, attempt_id CHAR(36) NOT NULL,
+ version BIGINT NOT NULL, status VARCHAR(32) NOT NULL, observed_at TIMESTAMPTZ,
+ PRIMARY KEY (organization_id,store_id),
+ CONSTRAINT store_connection_store FOREIGN KEY (organization_id,store_id) REFERENCES public.workbench_stores (organization_id,id),
+ CONSTRAINT store_connection_shape CHECK (version>0 AND status IN ('disconnected','connected','expired','unavailable'))
+)`,
+	`CREATE TABLE public.workbench_store_connection_attempts (
+ organization_id VARCHAR(200) NOT NULL, attempt_id CHAR(36) NOT NULL, store_id CHAR(36) NOT NULL,
+ actor_id VARCHAR(200) NOT NULL, member_id VARCHAR(200) NOT NULL, app_id VARCHAR(200) NOT NULL, app_version VARCHAR(200) NOT NULL,
+ state_hash VARCHAR(64) NOT NULL, store_version BIGINT NOT NULL, connection_version BIGINT NOT NULL,
+ state VARCHAR(32) NOT NULL, key_id VARCHAR(128) NOT NULL, ciphertext TEXT NOT NULL,
+ expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL,
+ PRIMARY KEY (organization_id,attempt_id),
+ CONSTRAINT store_connection_attempt_store FOREIGN KEY (organization_id,store_id) REFERENCES public.workbench_stores (organization_id,id),
+ CONSTRAINT store_connection_attempt_bounds CHECK (store_version>0 AND connection_version>0 AND octet_length(state_hash)=64 AND octet_length(ciphertext)<=16384 AND updated_at>=created_at AND expires_at>created_at AND expires_at<=created_at+INTERVAL '5 minutes'),
+ CONSTRAINT store_connection_attempt_shape CHECK (
+ (state IN ('awaiting_consent','exchange_dispatched','failed') AND key_id='' AND ciphertext='') OR
+ (state IN ('credential_received','verified') AND key_id<>'' AND ciphertext<>''))
+)`,
+	`CREATE TABLE public.workbench_store_merchant_bindings (
+ app_id VARCHAR(200) NOT NULL, open_key_id VARCHAR(200) NOT NULL, organization_id VARCHAR(200) NOT NULL, store_id CHAR(36) NOT NULL,
+ PRIMARY KEY (app_id,open_key_id),
+ CONSTRAINT store_merchant_binding_store FOREIGN KEY (organization_id,store_id) REFERENCES public.workbench_stores (organization_id,id)
+)`,
 }
 
 func InstallCurrentSchemaTx(ctx context.Context, tx *sql.Tx) error {
@@ -65,8 +120,14 @@ func InstallCurrentSchemaTx(ctx context.Context, tx *sql.Tx) error {
 }
 
 var currentColumnNames = map[string][]string{
-	"workbench_stores":           strings.Fields("id organization_id name platform region external_store_id record_status service_status service_started_at service_expires_at connection_ref quota_allocation_id version created_by updated_by created_at updated_at deleted_at create_idempotency_key delete_operation_key identity_key create_request_fingerprint"),
-	"workbench_store_audit_logs": strings.Fields("event_id organization_id store_id allocation_id request_key action outcome actor_subject safe_field_names payload_fingerprint previous_state new_state failure_code store_version created_at occurred_at"),
+	"workbench_stores":                        strings.Fields("id organization_id name platform region external_store_id record_status service_status service_started_at service_expires_at connection_ref quota_allocation_id version created_by updated_by created_at updated_at deleted_at create_idempotency_key delete_operation_key identity_key create_request_fingerprint"),
+	"workbench_store_audit_logs":              strings.Fields("event_id organization_id store_id allocation_id request_key action outcome actor_subject safe_field_names payload_fingerprint previous_state new_state failure_code store_version created_at occurred_at"),
+	"workbench_store_member_grants":           strings.Fields("organization_id store_id member_id active version updated_by updated_at"),
+	"workbench_store_member_grant_operations": strings.Fields("organization_id operation_id store_id member_id active expected_version result_version actor_id fingerprint created_at"),
+	"workbench_store_service_operations":      strings.Fields("organization_id operation_id store_id intent_json reservation_id state snapshot_json evidence_id failure_code created_at updated_at"),
+	"workbench_store_connections":             strings.Fields("organization_id store_id attempt_id version status observed_at"),
+	"workbench_store_connection_attempts":     strings.Fields("organization_id attempt_id store_id actor_id member_id app_id app_version state_hash store_version connection_version state key_id ciphertext expires_at created_at updated_at"),
+	"workbench_store_merchant_bindings":       strings.Fields("app_id open_key_id organization_id store_id"),
 }
 
 func VerifyCurrentSchema(ctx context.Context, db *gorm.DB) error {
@@ -97,7 +158,7 @@ func VerifyCurrentSchema(ctx context.Context, db *gorm.DB) error {
 				return fmt.Errorf("store schema type mismatch: %s.%s", table, name)
 			}
 			got = append(got, name)
-			optional := table == "workbench_stores" && slices.Contains([]string{"service_status", "service_started_at", "service_expires_at", "deleted_at"}, name)
+			optional := (table == "workbench_stores" && slices.Contains([]string{"service_status", "service_started_at", "service_expires_at", "deleted_at"}, name)) || (table == "workbench_store_connections" && name == "observed_at")
 			if (nullable == "YES") != optional {
 				rows.Close()
 				return fmt.Errorf("store schema nullability mismatch: %s.%s", table, name)
@@ -131,12 +192,37 @@ func VerifyCurrentSchema(ctx context.Context, db *gorm.DB) error {
 		{"workbench_store_audit_logs", "ux_workbench_store_audit_org_request_action", "organization_id,request_key,action", false},
 		{"workbench_stores", "workbench_stores_pkey", "id", true},
 		{"workbench_store_audit_logs", "workbench_store_audit_logs_pkey", "event_id", true},
+		{"workbench_store_member_grants", "workbench_store_member_grants_pkey", "organization_id,store_id,member_id", true},
+		{"workbench_store_member_grant_operations", "workbench_store_member_grant_operations_pkey", "organization_id,operation_id", true},
+		{"workbench_store_service_operations", "workbench_store_service_operations_pkey", "organization_id,operation_id", true},
+		{"workbench_store_connections", "workbench_store_connections_pkey", "organization_id,store_id", true},
+		{"workbench_store_connection_attempts", "workbench_store_connection_attempts_pkey", "organization_id,attempt_id", true},
+		{"workbench_store_merchant_bindings", "workbench_store_merchant_bindings_pkey", "app_id,open_key_id", true},
 	} {
 		if err := sqlDB.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid WHERE i.indrelid=('public.'||$1)::regclass AND c.relname=$2 AND i.indisunique AND i.indisvalid AND i.indisready AND i.indpred IS NULL AND (NOT $4 OR i.indisprimary) AND (SELECT string_agg(a.attname,',' ORDER BY k.n) FROM unnest(i.indkey) WITH ORDINALITY k(attnum,n) JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum)=$3)`, target.table, target.name, target.columns, target.primary).Scan(&valid); err != nil {
 			return err
 		}
 		if !valid {
 			return errors.New("store schema uniqueness boundary unavailable")
+		}
+	}
+	for _, boundary := range []struct{ table, name, kind string }{
+		{"workbench_store_member_grants", "store_member_grant_store", "f"},
+		{"workbench_store_member_grants", "store_member_grant_version", "c"},
+		{"workbench_store_member_grant_operations", "store_member_operation_grant", "f"},
+		{"workbench_store_member_grant_operations", "store_member_operation_version", "c"},
+		{"workbench_store_service_operations", "store_service_operation_store", "f"},
+		{"workbench_store_service_operations", "store_service_operation_bound", "c"},
+		{"workbench_store_service_operations", "store_service_operation_shape", "c"},
+		{"workbench_store_connections", "store_connection_store", "f"},
+		{"workbench_store_connections", "store_connection_shape", "c"},
+		{"workbench_store_connection_attempts", "store_connection_attempt_store", "f"},
+		{"workbench_store_connection_attempts", "store_connection_attempt_bounds", "c"},
+		{"workbench_store_connection_attempts", "store_connection_attempt_shape", "c"},
+		{"workbench_store_merchant_bindings", "store_merchant_binding_store", "f"},
+	} {
+		if err := sqlDB.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid=('public.'||$1)::regclass AND conname=$2 AND contype::text=$3 AND convalidated)`, boundary.table, boundary.name, boundary.kind).Scan(&valid); err != nil || !valid {
+			return errors.New("store member schema boundary unavailable")
 		}
 	}
 	return nil
@@ -147,7 +233,13 @@ const storeRuntimePermissionQuery = `SELECT current_user,
  AND pg_catalog.to_regclass('workbench_stores')=pg_catalog.to_regclass('public.workbench_stores') AND pg_catalog.to_regclass('workbench_store_audit_logs')=pg_catalog.to_regclass('public.workbench_store_audit_logs')
  AND has_database_privilege(current_user,current_database(),'CONNECT') AND has_schema_privilege(current_user,'public','USAGE')
  AND has_table_privilege(current_user,'public.workbench_stores','SELECT') AND has_table_privilege(current_user,'public.workbench_stores','INSERT') AND has_table_privilege(current_user,'public.workbench_stores','UPDATE')
- AND has_table_privilege(current_user,'public.workbench_store_audit_logs','SELECT') AND has_table_privilege(current_user,'public.workbench_store_audit_logs','INSERT'),
+ AND has_table_privilege(current_user,'public.workbench_store_audit_logs','SELECT') AND has_table_privilege(current_user,'public.workbench_store_audit_logs','INSERT')
+ AND has_table_privilege(current_user,'public.workbench_store_member_grants','SELECT') AND has_table_privilege(current_user,'public.workbench_store_member_grants','INSERT') AND has_table_privilege(current_user,'public.workbench_store_member_grants','UPDATE')
+ AND has_table_privilege(current_user,'public.workbench_store_member_grant_operations','SELECT') AND has_table_privilege(current_user,'public.workbench_store_member_grant_operations','INSERT')
+ AND has_table_privilege(current_user,'public.workbench_store_service_operations','SELECT') AND has_table_privilege(current_user,'public.workbench_store_service_operations','INSERT') AND has_table_privilege(current_user,'public.workbench_store_service_operations','UPDATE')
+ AND has_table_privilege(current_user,'public.workbench_store_connections','SELECT') AND has_table_privilege(current_user,'public.workbench_store_connections','INSERT') AND has_table_privilege(current_user,'public.workbench_store_connections','UPDATE')
+ AND has_table_privilege(current_user,'public.workbench_store_connection_attempts','SELECT') AND has_table_privilege(current_user,'public.workbench_store_connection_attempts','INSERT') AND has_table_privilege(current_user,'public.workbench_store_connection_attempts','UPDATE')
+ AND has_table_privilege(current_user,'public.workbench_store_merchant_bindings','SELECT') AND has_table_privilege(current_user,'public.workbench_store_merchant_bindings','INSERT'),
  has_database_privilege(current_user,current_database(),'CREATE') OR has_database_privilege(current_user,current_database(),'TEMP') OR has_schema_privilege(current_user,'public','CREATE')
  OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname !~ '^pg_' AND has_schema_privilege(current_user,n.oid,'CREATE'))
  OR EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname=current_user AND (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls))
@@ -156,7 +248,7 @@ const storeRuntimePermissionQuery = `SELECT current_user,
  CROSS JOIN LATERAL pg_catalog.aclexplode(pg_catalog.acldefault('r',r.relowner)) p
  WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname !~ '^pg_' AND r.relkind IN ('r','p','v','m','f')
  AND CASE WHEN p.privilege_type IN ('SELECT','INSERT','UPDATE','REFERENCES') THEN pg_catalog.has_any_column_privilege(current_user,r.oid,p.privilege_type) ELSE pg_catalog.has_table_privilege(current_user,r.oid,p.privilege_type) END
- AND NOT (n.nspname='public' AND (r.relname,p.privilege_type) IN (('workbench_stores','SELECT'),('workbench_stores','INSERT'),('workbench_stores','UPDATE'),('workbench_store_audit_logs','SELECT'),('workbench_store_audit_logs','INSERT'))))`
+ AND NOT (n.nspname='public' AND (r.relname,p.privilege_type) IN (('workbench_stores','SELECT'),('workbench_stores','INSERT'),('workbench_stores','UPDATE'),('workbench_store_audit_logs','SELECT'),('workbench_store_audit_logs','INSERT'),('workbench_store_member_grants','SELECT'),('workbench_store_member_grants','INSERT'),('workbench_store_member_grants','UPDATE'),('workbench_store_member_grant_operations','SELECT'),('workbench_store_member_grant_operations','INSERT'),('workbench_store_service_operations','SELECT'),('workbench_store_service_operations','INSERT'),('workbench_store_service_operations','UPDATE'),('workbench_store_connections','SELECT'),('workbench_store_connections','INSERT'),('workbench_store_connections','UPDATE'),('workbench_store_connection_attempts','SELECT'),('workbench_store_connection_attempts','INSERT'),('workbench_store_connection_attempts','UPDATE'),('workbench_store_merchant_bindings','SELECT'),('workbench_store_merchant_bindings','INSERT'))))`
 
 func VerifyRuntimePermissions(ctx context.Context, db *gorm.DB) error {
 	if db == nil {
@@ -184,20 +276,24 @@ type schemaColumnType struct {
 
 func currentColumnType(table, name string) schemaColumnType {
 	switch name {
-	case "service_started_at", "service_expires_at", "created_at", "updated_at", "deleted_at", "occurred_at":
+	case "service_started_at", "service_expires_at", "created_at", "updated_at", "deleted_at", "occurred_at", "observed_at", "expires_at":
 		return schemaColumnType{kind: "timestamp with time zone"}
-	case "version", "store_version":
+	case "version", "store_version", "expected_version", "result_version", "connection_version":
 		return schemaColumnType{kind: "bigint"}
-	case "id", "event_id", "store_id", "allocation_id", "quota_allocation_id", "request_key", "create_idempotency_key":
+	case "active":
+		return schemaColumnType{kind: "boolean"}
+	case "id", "event_id", "store_id", "allocation_id", "quota_allocation_id", "request_key", "create_idempotency_key", "operation_id", "attempt_id":
 		return schemaColumnType{kind: "character", length: 36}
-	case "organization_id", "created_by", "updated_by", "actor_subject":
+	case "organization_id", "created_by", "updated_by", "actor_subject", "member_id", "actor_id", "app_id", "app_version", "open_key_id":
 		return schemaColumnType{kind: "character varying", length: 200}
-	case "record_status", "service_status", "outcome", "previous_state", "new_state":
+	case "record_status", "service_status", "outcome", "previous_state", "new_state", "state", "status":
 		return schemaColumnType{kind: "character varying", length: 32}
-	case "identity_key", "create_request_fingerprint", "payload_fingerprint", "action", "failure_code":
+	case "identity_key", "create_request_fingerprint", "payload_fingerprint", "action", "failure_code", "fingerprint", "state_hash":
 		return schemaColumnType{kind: "character varying", length: 64}
-	case "delete_operation_key":
+	case "delete_operation_key", "reservation_id":
 		return schemaColumnType{kind: "character varying", length: 36}
+	case "evidence_id", "key_id":
+		return schemaColumnType{kind: "character varying", length: 128}
 	default:
 		return schemaColumnType{kind: "text"}
 	}

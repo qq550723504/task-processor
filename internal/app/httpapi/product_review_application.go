@@ -161,6 +161,9 @@ func (access *productReviewLiveOrganizationAccess) ResolveLiveRoles(ctx context.
 	if resolved.UserID != actorID || resolved.EffectiveOrganizationID != organizationID || resolved.TenantID != organizationID {
 		return nil, sourcing.ErrPublicationForbidden
 	}
+	if identity.EffectiveMemberID != "" && resolved.EffectiveMemberID != identity.EffectiveMemberID {
+		return nil, sourcing.ErrPublicationForbidden
+	}
 	return append([]string(nil), resolved.Roles...), nil
 }
 

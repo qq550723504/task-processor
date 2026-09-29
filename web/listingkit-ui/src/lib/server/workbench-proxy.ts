@@ -1,4 +1,5 @@
 import { hasValidStoreServiceFacts } from "@/lib/validation/workbench-store";
+import {officialConnectionViewSchema,officialConnectionBeginSchema,officialConnectionCompleteSchema,officialConnectionQuerySchema} from "@/lib/contracts/store-connection";
 import { BROWSER_CAPTURE_MAX_BYTES, browserCaptureSchema } from "@/lib/contracts/browser-capture";
 import {agentEmptyRequestSchema,agentStartRequestSchema,agentResumeRequestSchema,agentResultSchema,agentReviewLinkSchema,agentPath} from "@/lib/contracts/product-agent";
 import { NextResponse } from "next/server";
@@ -61,6 +62,8 @@ export type WorkbenchResponseContract =
   | "store-item"
   | "store-delete"
   | "store-service-lifecycle"
+  | "store-connection-view"
+  | "store-connection-begin"
   | "source-account-list"
   | "source-account-create"
   | "source-account-detail"
@@ -96,6 +99,11 @@ type WorkbenchRequestContract =
   | "store-service-activate"
   | "store-service-renew"
   | "store-service-reactivate"
+  | "store-connection-read"
+  | "store-connection-begin"
+  | "store-connection-complete"
+  | "store-connection-query"
+  | "store-connection-disconnect"
   | "source-account-list"
   | "source-account-create"
   | "source-account-detail"
@@ -283,6 +291,10 @@ const documentedWorkbenchErrorStatuses: Readonly<Record<string, number>> = {
   STORE_INVALID_STATE: 422,
   STORE_SERVICE_STATE_CORRUPT: 409,
   STORE_CONNECTION_UNAVAILABLE: 503,
+  STORE_SERVICE_OUTCOME_UNKNOWN: 503,
+  STORE_AUTHORIZATION_OUTCOME_UNKNOWN: 503,
+  STORE_OFFICIAL_SETUP_UNAVAILABLE: 503,
+  STORE_AUTHORIZATION_REJECTED: 422,
   STORE_CONNECTION_NOT_CONNECTED: 422,
   RESOURCE_QUANTITY_INVALID: 422,
   RESOURCE_INSUFFICIENT_BALANCE: 409,
@@ -378,6 +390,11 @@ const workbenchRouteAllowlist = [
   routeDefinition("POST", "store-resume", "store-item", (path) =>
     storeActionPath(path, "resume"),
   ),
+  routeDefinition("POST","store-service-activate","store-service-lifecycle",path=>storeActionPath(path,"activate")),
+  routeDefinition("POST","store-service-renew","store-service-lifecycle",path=>storeActionPath(path,"renew")),
+  routeDefinition("POST","store-service-reactivate","store-service-lifecycle",path=>storeActionPath(path,"reactivate")),
+  routeDefinition("GET","store-connection-read","store-connection-view",path=>path.length === 3&&path[0] === "stores"&&isAcquisitionUUID(path[1]!)&&path[2] === "connection" ? `stores/${path[1]}/connection`:null),
+  ...(["begin","complete","query","disconnect"] as const).map(action=>routeDefinition("POST",`store-connection-${action}`,action === "begin" ? "store-connection-begin":"store-connection-view",path=>path.length === 4&&path[0] === "stores"&&isAcquisitionUUID(path[1]!)&&path[2] === "connection"&&path[3] === action ? `stores/${path[1]}/connection/${action}`:null)),
   routeDefinition("GET", "source-account-list", "source-account-list", (path) =>
     exactPath(path, "source-accounts") ? "source-accounts" : null,
   ),
@@ -480,6 +497,25 @@ export async function buildWorkbenchUpstreamRequest(
     }
 
     switch (route.requestContract) {
+      case "store-connection-read":
+      case "store-connection-begin":
+      case "store-connection-complete":
+      case "store-connection-query":
+      case "store-connection-disconnect": {
+        if(!hasExactNoQuery(request) || request.headers.get(EXPECTED_USER_ID_HEADER) !== authenticatedActorSubject || !authenticatedActorSubject) return protocolError(409,"IDENTITY_CONTEXT_CHANGED","Identity context changed");
+        if(route.requestContract === "store-connection-read") {if(!(await requestHasNoBody(request)))return protocolError(400,"INVALID_REQUEST","Body is not allowed");break;}
+        const assertion=validateSourceMutationBoundary(request,authenticatedActorSubject);if(assertion)return assertion;
+        if(route.requestContract === "store-connection-begin" || route.requestContract === "store-connection-disconnect") {
+          if(!(await requestHasNoBody(request)))return protocolError(400,"INVALID_REQUEST","Body is not allowed");
+          const key=readCanonicalUUIDHeader(request.headers,"Idempotency-Key"),match=readIfMatchHeader(request.headers);
+          if(!key||!match)return protocolError(400,"INVALID_REQUEST","Required header is invalid");
+          headers.set("Idempotency-Key",key);headers.set("If-Match",match);break;
+        }
+        if(request.headers.has("Idempotency-Key")||request.headers.has("If-Match")||request.headers.get("content-type") !== "application/json"||request.headers.has("content-encoding"))return protocolError(400,"INVALID_REQUEST","Request is invalid");
+        const raw=await readRequestBody(request,8192);if(raw instanceof Response)return raw;const parsed=parseJSONBody(raw);
+        const valid=(route.requestContract === "store-connection-query" ? officialConnectionQuerySchema:officialConnectionCompleteSchema).safeParse(parsed?.payload);
+        if(!parsed||!valid.success)return protocolError(400,"INVALID_REQUEST","Request is invalid");body=JSON.stringify(valid.data);headers.set("Content-Type","application/json");break;
+      }
       case "product-agent-start":
       case "product-agent-read":
       case "product-agent-resume":
@@ -654,6 +690,7 @@ export async function buildWorkbenchUpstreamRequest(
       case "store-service-activate":
       case "store-service-renew":
       case "store-service-reactivate": {
+        const assertion=validateSourceMutationBoundary(request,authenticatedActorSubject);if(assertion)return assertion;
         if (!hasNoQuery(request)) {
           return protocolError(400, "INVALID_REQUEST", "Query is not allowed");
         }
@@ -784,6 +821,8 @@ export async function buildWorkbenchUpstreamRequest(
         : undefined,
     requestId,
     sourceMutation:
+      (route.requestContract.startsWith("store-connection-") && route.requestContract !== "store-connection-read") ||
+      route.requestContract.startsWith("store-service-") ||
       (route.requestContract.startsWith("product-agent-") && route.requestContract!=="product-agent-read") ||
       route.requestContract === "browser-capture-create" ||
       route.requestContract === "browser-capture-verify" ||
@@ -1751,6 +1790,8 @@ function parseSuccessfulPayload(
     );
   }
   const parser =
+    contract === "store-connection-view" ? officialConnectionViewSchema :
+    contract === "store-connection-begin" ? officialConnectionBeginSchema :
     contract === "store-list"
       ? listStoresResponseSchema
       : contract === "store-delete"

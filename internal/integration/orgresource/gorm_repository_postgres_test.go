@@ -316,7 +316,7 @@ func TestPostgresResourceRuntimeMonthlyLimitPermissions(t *testing.T) {
 	for _, statement := range []string{
 		`REVOKE CREATE ON SCHEMA public FROM PUBLIC`,
 		`GRANT USAGE ON SCHEMA public TO commercial_owner_runtime`,
-		`GRANT SELECT,INSERT,UPDATE ON saas_organization_resource_buckets,saas_organization_resource_operations,saas_organization_resource_reservations,saas_organization_resource_debts,saas_member_ai_point_limits,saas_member_ai_point_months TO commercial_owner_runtime`,
+		`GRANT SELECT,INSERT,UPDATE ON saas_organization_resource_buckets,saas_organization_resource_operations,saas_organization_resource_reservations,saas_organization_resource_debts,saas_member_ai_point_limits,saas_member_ai_point_months,saas_member_resource_positions TO commercial_owner_runtime`,
 		`GRANT SELECT,INSERT ON saas_organization_resource_source_claims,saas_organization_resource_events,saas_organization_resource_audit_logs TO commercial_owner_runtime`,
 		`GRANT USAGE,SELECT ON SEQUENCE saas_organization_resource_audit_logs_id_seq TO commercial_owner_runtime`,
 	} {
@@ -332,6 +332,25 @@ func TestPostgresResourceRuntimeMonthlyLimitPermissions(t *testing.T) {
 	t.Cleanup(func() { _ = runtimePool.Close() })
 	require.NoError(t, VerifyRuntimePermissions(ctx, runtimeDB))
 	require.Error(t, VerifyRuntimePermissions(ctx, owner), "schema owner cannot run the application")
+	require.NoError(t, owner.Exec(`INSERT INTO saas_organization_resource_buckets (organization_id,resource_type,available,allocated,reserved,consumed,created_at,updated_at) VALUES ('org-member','data_row',10,0,0,0,now(),now())`).Error)
+	memberAllocations, err := NewGormMemberAllocationRepository(runtimeDB, TransactionConfig{})
+	require.NoError(t, err)
+	allocated, err := memberAllocations.Transfer(ctx, orgresource.MemberResourceTransfer{OrganizationID: "org-member", MemberID: "membership", ActorID: "admin", OperationID: "allocate-member", ResourceType: orgresource.ResourceDataRow, Action: orgresource.MemberResourceAllocate, Quantity: 10})
+	require.NoError(t, err)
+	require.Equal(t, int64(10), allocated.Position.Free)
+	consumerCharges, err := NewGormConsumerChargeRepository(runtimeDB, TransactionConfig{})
+	require.NoError(t, err)
+	intent := chargeTestIntent("postgreSQL-acquisition", orgresource.FundingMember)
+	intent.Identity.OrganizationID, intent.MemberID = "org-member", "membership"
+	reserved, err := consumerCharges.Reserve(ctx, intent)
+	require.NoError(t, err)
+	committed, err := consumerCharges.Settle(ctx, reserved, orgresource.ConsumerChargeProof{Intent: intent, ReservationID: reserved.ReservationID, State: orgresource.ConsumerEffectSucceeded, EvidenceID: "catalog:original-result"})
+	require.NoError(t, err)
+	require.Equal(t, orgresource.ReservationCommitted, committed.State)
+	require.Error(t, runtimeDB.Exec(`DELETE FROM saas_member_resource_positions WHERE organization_id='org-member'`).Error)
+	require.NoError(t, owner.Exec(`REVOKE UPDATE ON saas_member_resource_positions FROM commercial_owner_runtime`).Error)
+	require.Error(t, VerifyRuntimePermissions(ctx, runtimeDB))
+	require.NoError(t, owner.Exec(`GRANT UPDATE ON saas_member_resource_positions TO commercial_owner_runtime`).Error)
 	repository, err := NewGormRepository(runtimeDB, TransactionConfig{})
 	require.NoError(t, err)
 	absent, err := repository.ReadBalances(ctx, "org-read")
@@ -346,7 +365,9 @@ func TestPostgresResourceRuntimeMonthlyLimitPermissions(t *testing.T) {
 	require.Equal(t, "9007199254740993", *balances.Resources[1].Reserved)
 	require.Equal(t, "7", *balances.Resources[1].Debt)
 	require.Equal(t, "not_recorded", balances.Resources[2].State)
-	assertTableCount(t, owner, "saas_organization_resource_events", 0)
+	var readEvents int64
+	require.NoError(t, owner.Model(&organizationResourceEventRow{}).Where("organization_id = ?", "org-read").Count(&readEvents).Error)
+	require.Zero(t, readEvents, "balance reads must not mutate the requested organization")
 	require.NoError(t, owner.Exec(`REVOKE UPDATE ON saas_member_ai_point_months FROM commercial_owner_runtime`).Error)
 	require.Error(t, VerifyRuntimePermissions(ctx, runtimeDB))
 	require.NoError(t, owner.Exec(`GRANT UPDATE ON saas_member_ai_point_months TO commercial_owner_runtime`).Error)

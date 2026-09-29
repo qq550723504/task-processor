@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import { StoreStateFacts } from "@/components/workbench/stores/store-state-facts";
+import { StoreOfficialConnection } from "./store-official-connection";
 import { StoreForm } from "@/components/workbench/stores/store-form";
 import { StoreLifecycleActions } from "@/components/workbench/stores/store-lifecycle-actions";
 import { Button } from "@/components/ui/button";
@@ -42,7 +43,7 @@ export function StoreDetailPage({ storeId }: { storeId: string }) {
   }
   return (
     <StoreDetailContent
-      key={`${organizationId}:${storeId}`}
+      key={JSON.stringify([context.user?.id,organizationId,context.roles,storeId])}
       canUpdate={canUpdateWorkbenchStore(context.roles)}
       storeId={storeId}
     />
@@ -104,6 +105,7 @@ function StoreDetailContent({ canUpdate, storeId }: { canUpdate: boolean; storeI
       <h1 className="mt-1 text-2xl font-semibold tracking-tight">{store.name}</h1>
       <p className="mt-2 text-sm text-muted-foreground">店铺状态：{lifecycleLabels[store.recordStatus]}</p>
       <StoreStateFacts store={store} />
+      {context.user?.id && context.effectiveOrganization?.id ? <StoreOfficialConnection key={JSON.stringify([context.user.id,context.effectiveOrganization.id,context.roles,store.id])} store={store} scope={{expectedUserId:context.user.id,expectedOrganizationId:context.effectiveOrganization.id}} canWrite={canUpdate} administrator={context.roles.some(role=>["listingkit_admin","platform_admin","admin"].includes(role))} onChanged={refreshLifecycleStore}/>:null}
       <div className="mt-4"><StoreLifecycleActions onDeleted={() => router.push("/workbench/stores?notice=store-deleted")} onRefreshStore={refreshLifecycleStore} onStoreUpdated={(next) => { displayStore(next); setRecovery({ state: "idle" }); }} store={store} /></div>
     </section>
     {recovery.state === "failed" ? <section className="mx-auto mt-6 max-w-2xl rounded-xl border bg-card p-4" role="alert"><p>无法确认店铺最新版本，草稿已保留。</p><Button className="mt-3" onClick={() => void loadLatest(recovery.draft, recovery.base)} variant="outline">重试获取最新版本</Button></section> : null}

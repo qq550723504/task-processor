@@ -19,6 +19,7 @@ const resourceRuntimePermissionQuery = `WITH owned(table_name,mutable) AS (VALUE
  ('saas_organization_resource_debts',true),
  ('saas_member_ai_point_limits',true),
  ('saas_member_ai_point_months',true),
+ ('saas_member_resource_positions',true),
  ('saas_organization_resource_source_claims',false),
  ('saas_organization_resource_events',false),
  ('saas_organization_resource_audit_logs',false))
