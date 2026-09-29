@@ -122,6 +122,13 @@ source of truth for long-lived rules.
 
 ## Supporting Context
 
+- [`organization-agent-configuration-v1.md`](./organization-agent-configuration-v1.md)
+  - DRAFT / NOT_IMPLEMENTATION_READY #570 Slice D: enterprise Agent enablement,
+    immutable templates/defaults and start snapshots, capability projections,
+    same-database activation/Claim ordering and existing Product Agent consumption.
+    Independent Architecture Review and admission are pending; no production
+    implementation, merge, rollout or provider use is authorized.
+
 - [`account-audit-summary-v1.md`](./account-audit-summary-v1.md)
   - IMPLEMENTATION_READY #478 four true Account Audit totals over the complete
     30-day window of current committed owner events, preserving live Organization
@@ -181,7 +188,7 @@ documents unless they say so explicitly:
 - `2026-09-27-1688-anonymous-rate-and-egress-proxy-addendum.md`
   - Draft addendum to the #514 browser acquisition design: anonymous collection
     rate governance (the observed 1688 challenge is frequency-triggered) and the
-    constraints any egress proxy must satisfy. **Proposal only — neither the
+    constraints any egress proxy must satisfy the proxy must satisfy. **Proposal only — neither the
     rate-governance half nor the egress-proxy half is implemented.** Implementation
     waits on admission of this document and an explicit `IMPLEMENTATION_READY`.
 - `2026-09-26-1688-server-public-browser-acquisition-design.md`
