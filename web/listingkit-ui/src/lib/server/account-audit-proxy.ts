@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { AccountReadError, accountErrorCode } from "@/lib/api/account";
-import { AUDIT_RESPONSE_MAX_BYTES, auditQuery, parseAccountAudit, type AuditOptions } from "@/lib/api/account-audit";
+import { AUDIT_RESPONSE_MAX_BYTES, auditQuery, parseAccountAudit, parseAccountAuditSummary, type AuditOptions } from "@/lib/api/account-audit";
 import { readBoundedStrictJSON } from "@/lib/api/strict-json-response";
 import { accountFailure } from "./account-proxy";
 import { WORKBENCH_COOKIE_NAME } from "./workbench-proxy";
@@ -15,11 +15,17 @@ function origin(): string | null {
   } catch { return null; }
 }
 export async function proxyAccountAudit(request: Request, token: string, userId: string): Promise<Response> {
+  return proxyAudit(request, token, userId, false);
+}
+export async function proxyAccountAuditSummary(request: Request, token: string, userId: string): Promise<Response> {
+  return proxyAudit(request, token, userId, true);
+}
+async function proxyAudit(request: Request, token: string, userId: string, isSummary: boolean): Promise<Response> {
   if (request.method !== "GET") return accountFailure(405, "INVALID_REQUEST");
   if (!token || !validID(userId)) return accountFailure(401, "AUTHENTICATION_REQUIRED");
   if (request.headers.get("X-Expected-User-ID") !== userId) return accountFailure(409, "IDENTITY_CONTEXT_CHANGED");
   const url = new URL(request.url);
-  if (url.pathname !== "/api/account/audit" || url.search.length > 2300 || request.body || (request.headers.has("content-length") && request.headers.get("content-length") !== "0") || request.headers.has("transfer-encoding")) {
+  if (url.pathname !== (isSummary ? "/api/account/audit/summary" : "/api/account/audit") || isSummary && url.search !== "" || url.search.length > 2300 || request.body || (request.headers.has("content-length") && request.headers.get("content-length") !== "0") || request.headers.has("transfer-encoding")) {
     void request.body?.cancel().catch(() => undefined); return accountFailure(400, "INVALID_REQUEST");
   }
   let query: string;
@@ -49,7 +55,7 @@ export async function proxyAccountAudit(request: Request, token: string, userId:
   try {
     controller.signal.throwIfAborted();
     const headers = new Headers({ Accept: "application/json", Authorization: `Bearer ${token}`, "X-Requested-Organization-ID": organization });
-    const upstream = await fetch(`${service}/api/v1/account/audit?${query}`, { method: "GET", headers, cache: "no-store", redirect: "manual", signal: controller.signal });
+    const upstream = await fetch(`${service}/api/v1/account/audit${isSummary ? "/summary" : `?${query}`}`, { method: "GET", headers, cache: "no-store", redirect: "manual", signal: controller.signal });
     controller.signal.throwIfAborted();
     if (upstream.status === 404) { void upstream.body?.cancel().catch(() => undefined); return accountFailure(503, "ACCOUNT_NOT_CONFIGURED"); }
     let payload: unknown;
@@ -57,10 +63,10 @@ export async function proxyAccountAudit(request: Request, token: string, userId:
     catch { throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE"); }
     controller.signal.throwIfAborted();
     if (upstream.status !== 200) return accountFailure(upstream.status, accountErrorCode(upstream.status, payload));
-    const result = parseAccountAudit(payload);
+    const result = isSummary ? parseAccountAuditSummary(payload) : parseAccountAudit(payload);
     if (result.userId !== userId) return accountFailure(409, "IDENTITY_CONTEXT_CHANGED");
     if (result.effectiveOrganizationId !== organization) return accountFailure(409, "ORGANIZATION_CONTEXT_CHANGED");
-    if (result.items.length > limit) return accountFailure(502, "INVALID_UPSTREAM_RESPONSE");
+    if ("items" in result && result.items.length > limit) return accountFailure(502, "INVALID_UPSTREAM_RESPONSE");
     return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
   } catch (error) {
     if (controller.signal.aborted) return accountFailure(504, "DEADLINE_EXCEEDED");

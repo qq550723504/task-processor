@@ -191,7 +191,24 @@ func (m accountAuditModule) Register(modules *kernelmodule.Registry) error {
 		// LiveWrite is the existing resolver policy for fresh grants. This GET
 		// requires only read permission and never invokes a mutation.
 		OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, OrganizationTargetResolver: accountOrganizationTarget, RejectUnreadRequestBody: true, RequestTimeout: registry.Timeout, Handler: m.read})
+	modules.AddRoutes(httproute.Descriptor{Method: http.MethodGet, Path: accountAuditPath + "/summary", Module: m.Name(), Permission: authz.PermissionWorkbenchSourceAccountRead, AuthPolicy: httproute.AuthPolicyVerifiedIdentity,
+		OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, OrganizationTargetResolver: accountOrganizationTarget, RejectUnreadRequestBody: true, RequestTimeout: registry.Timeout, Handler: m.readSummary})
 	return nil
+}
+
+func (m accountAuditModule) readSummary(c *gin.Context) {
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("X-Content-Type-Options", "nosniff")
+	if c.Request.URL.RawQuery != "" || c.Request.URL.ForceQuery {
+		writeAccountAuditError(c, registry.ErrInvalid)
+		return
+	}
+	summary, err := m.query.ReadSummary(c.Request.Context())
+	if err != nil {
+		writeAccountAuditError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, summary)
 }
 func accountOrganizationTarget(request *http.Request) (string, error) {
 	values := request.Header.Values("X-Requested-Organization-ID")
@@ -273,6 +290,8 @@ func accountAuditPageInput(raw string) (int, string, error) {
 func writeAccountAuditError(c *gin.Context, err error) {
 	status, code := 503, "DEPENDENCY_UNAVAILABLE"
 	switch {
+	case errors.Is(err, accountaudit.ErrSummaryNotConfigured):
+		status, code = 503, "SUMMARY_NOT_CONFIGURED"
 	case errors.Is(err, registry.ErrAuthenticationRequired):
 		status, code = 401, "AUTHENTICATION_REQUIRED"
 	case errors.Is(err, registry.ErrForbidden):

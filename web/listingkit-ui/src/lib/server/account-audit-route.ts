@@ -3,13 +3,14 @@ import { serverAuth } from "@/auth";
 import { readZitadelIdentityFromSession } from "./zitadel-auth";
 import { readZitadelServerAccessToken } from "./zitadel-server-token";
 import { accountFailure } from "./account-proxy";
-import { proxyAccountAudit } from "./account-audit-proxy";
+import { proxyAccountAudit, proxyAccountAuditSummary } from "./account-audit-proxy";
 
 const deadline = () => accountFailure(504, "DEADLINE_EXCEEDED");
 const authenticated = serverAuth(async (request: NextRequest & { auth?: unknown }) => {
   if (request.signal.aborted) return deadline();
   const identity = readZitadelIdentityFromSession(request.auth as never);
-  return proxyAccountAudit(request, readZitadelServerAccessToken(request.auth as never), String(identity?.userId ?? ""));
+  const proxy = request.nextUrl.pathname === "/api/account/audit/summary" ? proxyAccountAuditSummary : proxyAccountAudit;
+  return proxy(request, readZitadelServerAccessToken(request.auth as never), String(identity?.userId ?? ""));
 });
 export async function handleAuditGET(request: NextRequest) {
   if (request.signal.aborted) return deadline();

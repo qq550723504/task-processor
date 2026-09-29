@@ -1,6 +1,6 @@
 # Account Audit 四项真实汇总 V1
 
-状态：DESIGN_PREPARATION / NOT_READY。Issue #478 当前顶部范围为产品依据；只有独立评审完成并在 Issue 写明 IMPLEMENTATION_READY / Ready 后才实现生产路径。
+状态：IMPLEMENTATION_READY。独立 reviewer audit_summary_review 第一轮核对 design-only HEAD ebdc8aebd195f14bad5c6a1e9be7db4892600e00 / blob 6bdea09d59b1778e5b982440636fe1e97fb40b2e，设计级 BLOCKER=0；准入已写回 Issue #478 / Ready 后开始实现。该准入不是合并、部署或产品验收授权。
 
 ## 产品结果与依据
 
@@ -24,7 +24,7 @@ Out of Scope：搜索/时间/成员新筛选、人名补全、新统计或审计
 | 权限变更 | 上述 membership 的 role（成员变更的子集，卡片不相加解释为总数） |
 | 资源与续费 | 成员期数/数据 allocate_member_resource、reclaim_member_resource，set_member_ai_point_limit，图片已提交点数扣款 |
 
-源账号按企业+account/version；profile按企业+user/version；membership按企业+project/actor/operation（当前内部游标含project/actor/operation；传输身份含actor、operation reference/version）；Resource按企业+operation ID；图片点数按企业+event ID。计数复用传输事件的 canonical relation/type/reference/version/actor，不使用当前页长度，也不从当前余额或当前月限重建。每个身份最多一次；同身份矛盾载荷 fail closed。成功操作同键重放不新增原事实，失败/UNKNOWN/预留不计；ai_invocation.usage_observed 表示观察到实际用量，不能证明操作成功，因此仅保留原列表显示、不计成功汇总。
+源账号按企业+account/version；profile按企业+user/version；membership按企业+配置project/actor/operation（revision不作新操作）；Resource按企业+operation ID（actor/version不作新操作）；图片点数按企业+event ID。复用传输事件的 canonical relation，并按各owner身份去重；不使用当前页长度，也不从当前余额或当前月限重建。每个身份最多一次；同身份矛盾载荷 fail closed。成功操作同键重放不新增原事实，失败/UNKNOWN/预留不计；ai_invocation.usage_observed 表示观察到实际用量，不能证明操作成功，因此仅保留原列表显示、不计成功汇总。
 聚合复用 Query.ReadFiltered 的 allowlist/validation 与多源 scoped cursor，内部每页100，从首页遍历直至所有在窗口内的事实遍历完成或已越过窗口下界。不设静默行数上限；超时取消时返回错误而非部分总数。全查询10s、响应有界，临时去重集合只活于请求中。总数十进制非负int64字符串，不丢JavaScript整数精度。
 跨owner为现有实时只读浏览，不引入跨库冻结快照或锁；返回asOf/from和覆盖说明。窗口之后的事件排除；读取期间刚提交且原时间较早的事实可能在下次刷新体现，与原实时列表语义一致，不宣称数据库commit时刻全局一致性。统计不消费页面筛选/游标，切页/筛选不改变统计请求；显式刷新/重新授权/恢复焦点重新读并在读取时隐藏旧值。
 
@@ -52,4 +52,3 @@ Legacy decision：N/A，本次只消费已装配当前owner；旧Token/订阅/Ta
 
 TDD：先记录目标失败，再最小实现。必要测试覆盖>100/多源多页、上下边界/未来/旧历史、分类与overlap、原身份重放/冲突、企业隔离/到期/当前read权限/撤权、缺源与读取错误/超时/正常0、不可变quantity回归、strict HTTP/BFF/client与原列表筛选分页。复用现有owner/runtime集成测试和任务独立临时PG，无共享服务/浏览器/数据操作，无新runner。
 实现完成在同一主要PR交准确HEAD、必要CI与一次最终独立检查；修复只复核增量。开发自检不签用户产品验收。入口/正常启动方法/数据仍存原owner/未接入独立Store-Billing来源一并交接。新PR合并、部署现有22444、关Issue或真实数据操作均NOT_AUTHORIZED。
-

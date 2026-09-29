@@ -5,7 +5,8 @@
 .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
 .metrics article { display: grid; gap: 8px; min-width: 0; padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
 .metrics span, .metrics small { color: var(--muted-foreground); font-size: 12px; }
-.metrics strong { font-size: 18px; }
+.metrics strong { font-size: 25px; }
+.summaryWindow { color: var(--muted-foreground); font-size: 12px; line-height: 1.7; }
 .toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; margin: 20px 0; font-size: 13px; }
 .toolbar span { overflow-wrap: anywhere; }
 .panel { padding: 16px; }

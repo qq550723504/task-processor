@@ -79,6 +79,20 @@ const page = z.object({
   source, items: z.array(event).max(100), nextCursor: cursor.nullable(),
 }).strict().refine(value => value.items.length > 0 || value.nextCursor === null);
 export type AccountAuditPage = z.infer<typeof page>;
+const summary = z.object({
+  schemaVersion: z.literal("account-audit-summary-v1"), userId: identity, effectiveOrganizationId: identity,
+  coverage: z.literal("current_account_audit_committed_events"),
+  window: z.object({ from: z.string().max(40).datetime({ precision: null }), asOf: z.string().max(40).datetime({ precision: null }) }).strict(),
+  counts: z.object({ operations: exactNonnegative, members: exactNonnegative, permissions: exactNonnegative, resources: exactNonnegative }).strict(),
+}).strict().refine(value => Date.parse(value.window.from) + 30 * 24 * 60 * 60 * 1000 === Date.parse(value.window.asOf)
+  && BigInt(value.counts.permissions) <= BigInt(value.counts.members)
+  && BigInt(value.counts.members) + BigInt(value.counts.resources) <= BigInt(value.counts.operations));
+export type AccountAuditSummary = z.infer<typeof summary>;
+export function parseAccountAuditSummary(value: unknown): AccountAuditSummary {
+  const parsed = summary.safeParse(value);
+  if (!parsed.success) throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE");
+  return parsed.data;
+}
 export const AUDIT_RESPONSE_MAX_BYTES = 128 * 1024;
 
 export function parseAccountAudit(value: unknown): AccountAuditPage {
@@ -96,9 +110,15 @@ export function auditQuery(limit = 20, after?: string, actor?: string, kind?: Au
   return query.toString();
 }
 export async function getAccountAudit(options: AuditOptions): Promise<AccountAuditPage> {
+  return readAccountAudit(options, false) as Promise<AccountAuditPage>;
+}
+export async function getAccountAuditSummary(options: Pick<AuditOptions, "expectedUserId" | "expectedOrganizationId" | "signal">): Promise<AccountAuditSummary> {
+  return readAccountAudit(options, true) as Promise<AccountAuditSummary>;
+}
+async function readAccountAudit(options: AuditOptions, isSummary: boolean): Promise<AccountAuditPage | AccountAuditSummary> {
   if (!identity.safeParse(options.expectedUserId).success) throw new AccountReadError(409, "IDENTITY_CONTEXT_CHANGED");
   if (!identity.safeParse(options.expectedOrganizationId).success) throw new AccountReadError(409, "ORGANIZATION_SELECTION_REQUIRED");
-  const query = auditQuery(options.limit, options.cursor, options.actor, options.operation);
+  const path = isSummary ? "/api/account/audit/summary" : `/api/account/audit?${auditQuery(options.limit, options.cursor, options.actor, options.operation)}`;
   const controller = new AbortController();
   const abort = () => controller.abort();
   options.signal?.addEventListener("abort", abort, { once: true });
@@ -107,14 +127,14 @@ export async function getAccountAudit(options: AuditOptions): Promise<AccountAud
   try {
     controller.signal.throwIfAborted();
     const headers = new Headers({ Accept: "application/json", "X-Expected-User-ID": options.expectedUserId, "X-Expected-Organization-ID": options.expectedOrganizationId });
-    const response = await fetch(`/api/account/audit?${query}`, { method: "GET", headers, credentials: "same-origin", cache: "no-store", redirect: "error", signal: controller.signal });
+    const response = await fetch(path, { method: "GET", headers, credentials: "same-origin", cache: "no-store", redirect: "error", signal: controller.signal });
     const payload = await readBoundedStrictJSON(response, AUDIT_RESPONSE_MAX_BYTES, controller.signal);
     controller.signal.throwIfAborted();
     if (response.status !== 200) throw new AccountReadError(response.status, accountErrorCode(response.status, payload));
-    const result = parseAccountAudit(payload);
+    const result = isSummary ? parseAccountAuditSummary(payload) : parseAccountAudit(payload);
     if (result.userId !== options.expectedUserId) throw new AccountReadError(409, "IDENTITY_CONTEXT_CHANGED");
     if (result.effectiveOrganizationId !== options.expectedOrganizationId) throw new AccountReadError(409, "ORGANIZATION_CONTEXT_CHANGED");
-    if (result.items.length > (options.limit ?? 20)) throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE");
+    if ("items" in result && result.items.length > (options.limit ?? 20)) throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE");
     return result;
   } catch (error) {
     if (controller.signal.aborted) throw new AccountReadError(504, "DEADLINE_EXCEEDED");

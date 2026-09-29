@@ -41,7 +41,7 @@ func TestAccountAuditHTTPReadsNativeMemberResourceFactsWithFreshAuthorization(t 
 	require.NoError(t, err)
 	reader, err := resourceadapter.NewGormRepository(db, resourceadapter.TransactionConfig{})
 	require.NoError(t, err)
-	query, err := accountaudit.NewCurrentAuditSources(&auditHTTPHistory{}, nil, nil, nil, nil, memberResourceAuditReader{repository: reader})
+	query, err := accountaudit.NewCurrentAuditSources(&auditHTTPHistory{}, emptyAdditionalAuditHTTP{}, emptyAdditionalAuditHTTP{}, nil, reader, memberResourceAuditReader{repository: reader})
 	require.NoError(t, err)
 	modules := kernelmodule.NewRegistry()
 	require.NoError(t, (accountAuditModule{query: query}).Register(modules))
@@ -70,10 +70,26 @@ func TestAccountAuditHTTPReadsNativeMemberResourceFactsWithFreshAuthorization(t 
 		}
 	}
 	require.Equal(t, 400, get("B", "?operation=set_target").Code)
+	var summary accountaudit.Summary
+	w := get("B", "/summary")
+	require.Equal(t, 200, w.Code, w.Body.String())
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &summary))
+	require.Equal(t, "3", summary.Counts.Resources)
+	require.Equal(t, "0", summary.Counts.Members)
+	require.Equal(t, 400, get("B", "/summary?actor=safe-actor").Code)
+	require.Equal(t, 400, get("B", "/summary?cursor=x").Code)
+	require.Equal(t, 403, get("A", "/summary").Code)
 	require.Equal(t, 403, get("A", "").Code)
 	grants.revoked = true
+	require.Equal(t, 403, get("B", "/summary").Code)
 	require.Equal(t, 403, get("B", "").Code)
 	var count int64
 	require.NoError(t, db.Table("saas_organization_resource_operations").Count(&count).Error)
 	require.Equal(t, int64(3), count)
+}
+
+type emptyAdditionalAuditHTTP struct{}
+
+func (emptyAdditionalAuditHTTP) ListRecentAudit(context.Context, string, int, string, string, *accountaudit.AuditPosition) (accountaudit.AdditionalAuditPage, error) {
+	return accountaudit.AdditionalAuditPage{Items: []accountaudit.AdditionalAuditEvent{}}, nil
 }
