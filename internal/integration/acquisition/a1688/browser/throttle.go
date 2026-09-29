@@ -55,6 +55,11 @@ type Throttle struct {
 	// conservative choice - it can delay a request, never let two start together.
 	owner    uint64
 	prevNext time.Time
+	// slipTolerance is how far past its reserved slot a dispatch may run before the
+	// waiters queued behind it are considered to have been scheduled against a
+	// schedule that no longer holds. A clock tick of goroutine scheduling is not a
+	// slip; half an interval plainly is.
+	slipTolerance time.Duration
 	// dispatchFloor is the earliest start allowed by the last REAL acquisition
 	// dispatch. Observe overwrites next with a synthetic cooldown floor, so the real
 	// one has to be kept here or it is lost; on expiry the floor resumes at
@@ -126,6 +131,7 @@ func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, s
 		Jitter:            jitter,
 		ChallengeCooldown: challengeCooldown,
 		StartupQuarantine: startupQuarantine,
+		slipTolerance:     minInterval / 2,
 		rand:              rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 	if quarantined && startupQuarantine > 0 {
@@ -256,11 +262,14 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		// follows it, or the next waiter can start too soon after this one.
 		dispatched := time.Now().Add(span)
 		t.dispatchFloor = dispatched
-		// A dispatch changes the schedule only when it moves the queue tail. A waiter
-		// that is a clock tick late but still lands inside the existing tail has not
-		// moved anything, and treating that as a change would invalidate waiters
-		// whose timers are still valid and push each of them a full extra interval.
-		if dispatched.After(t.next) {
+		// A dispatch invalidates the waiters queued behind it when it either moved
+		// the queue tail or ran past the slot it reserved by more than the slip
+		// tolerance. Comparing only against the tail misses a real slip whenever a
+		// later reservation has already pushed the tail out; comparing with no
+		// tolerance counts every clock tick as one and pushes valid waiters a whole
+		// extra interval out. Both interleaveings are real, so the criterion has to
+		// admit both kinds and nothing in between.
+		if t.scheduleMoved(dispatched, start) {
 			t.generation++
 		}
 		if dispatched.After(t.next) {
@@ -338,8 +347,8 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	// follows it, or the next waiter can start too soon after this one.
 	dispatched := time.Now().Add(span)
 	t.dispatchFloor = dispatched
-	// Only a tail move is a schedule change - see the immediate path.
-	if dispatched.After(t.next) {
+	// See the immediate path: a tail move, or a real slip past the reserved slot.
+	if t.scheduleMoved(dispatched, start) {
 		t.generation++
 	}
 	if dispatched.After(t.next) {
@@ -378,6 +387,21 @@ func (t *Throttle) blockedLocked() bool {
 // The caller must hold the lock.
 func (t *Throttle) generationLocked(seen uint64) bool {
 	return t.generation != seen
+}
+
+// scheduleMoved reports whether a dispatch that started at start and produced a
+// floor of dispatched invalidates the waiters queued behind it.
+//
+// Both interleaveings are real and they pull in opposite directions. Comparing only
+// against the queue tail misses a genuine slip whenever a later reservation has
+// already pushed that tail out, letting the next waiter start right behind a
+// predecessor that ran late. Comparing with no tolerance counts a single clock tick
+// of goroutine scheduling as a slip and pushes every still-valid waiter a whole
+// extra interval out, refusing requests that fitted their budget. So a dispatch
+// counts as a change when it moved the tail, or when it overran its own reserved
+// slot by more than the tolerance.
+func (t *Throttle) scheduleMoved(dispatched, start time.Time) bool {
+	return dispatched.After(t.next) || dispatched.After(start.Add(t.slipTolerance))
 }
 
 // rollbackIfNewest restores the displaced boundary only when this reservation is

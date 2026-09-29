@@ -52,7 +52,7 @@ type options struct {
 	allowedOrigins    string
 	shutdownTimeout   time.Duration
 	minInterval       time.Duration
-	startupQuarantine int64
+	startupQuarantine time.Duration
 	jitter            float64
 	challengeCooldown time.Duration
 }
@@ -69,7 +69,7 @@ func run(ctx context.Context, args []string) error {
 	fs.DurationVar(&opts.minInterval, "min-interval", browser.DefaultMinInterval, "floor between acquisition starts; the 1688 challenge is frequency-triggered, so this is the primary control")
 	fs.Float64Var(&opts.jitter, "jitter", browser.DefaultJitterFraction, "random extra fraction of min-interval, so collectors do not synchronise")
 	fs.DurationVar(&opts.challengeCooldown, "challenge-cooldown", browser.DefaultChallengeCooldown, "how long to refuse work after a challenge is observed")
-	fs.Int64Var(&opts.startupQuarantine, "startup-quarantine", 0, "how long a freshly started collector refuses its first request; 0 follows -challenge-cooldown")
+	fs.DurationVar(&opts.startupQuarantine, "startup-quarantine", 0, "how long a freshly started collector refuses its first request; 0 follows -challenge-cooldown; must not be negative")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -108,7 +108,7 @@ func run(ctx context.Context, args []string) error {
 		MinInterval:       opts.minInterval,
 		Jitter:            opts.jitter,
 		ChallengeCooldown: opts.challengeCooldown,
-		StartupQuarantine: time.Duration(opts.startupQuarantine),
+		StartupQuarantine: opts.startupQuarantine,
 	})
 	handler, err := browsercollector.Handler(browsercollector.Options{
 		Provider: provider,

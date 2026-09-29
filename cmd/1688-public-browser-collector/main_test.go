@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -58,20 +60,75 @@ func TestSplitOriginsTrimsAndDropsBlanks(t *testing.T) {
 
 // The negative startup-quarantine escape hatch exists for tests. A production
 // collector must not start with it, or it could immediately reuse an exit IP that
-// was challenged just before the restart.
+// was challenged just before the restart. A bare "-1" is rejected by the flag
+// parser as a malformed duration; a well-formed negative one has to be rejected by
+// run itself.
 func TestRunRejectsNegativeStartupQuarantine(t *testing.T) {
 	withCredential(t)
+	for _, tc := range []string{"-1s", "-1m"} {
+		err := run(context.Background(), append(baseArgs("chrome.exe"), "-startup-quarantine", tc))
+		require.Error(t, err, tc)
+		require.Contains(t, err.Error(), "must not be negative", tc)
+	}
 	err := run(context.Background(), append(baseArgs("chrome.exe"), "-startup-quarantine", "-1"))
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "must not be negative")
 }
 
-// Zero must keep following the configured cooldown rather than disabling anything.
-func TestRunZeroStartupQuarantineIsAccepted(t *testing.T) {
-	t.Setenv(credentialEnvKey, "")
-	// The run proceeds past the quarantine check and fails later on the missing
-	// browser, which proves the zero value was not rejected as a disable switch.
-	err := run(context.Background(), []string{"-browser", "chrome.exe", "-credential", "x"})
+// The quarantine is a duration, so it has to accept the same syntax as the
+// duration flags next to it. Reading it as an integer rejected "-startup-quarantine=5m"
+// outright.
+//
+// A bare number is rejected outright rather than reinterpreted: "300" meaning 300
+// nanoseconds would look configured while removing restart protection entirely, so
+// failing on it is the safe direction.
+//
+// The listen port is occupied so that run reaches the point of serving and fails
+// there: reaching that failure is what proves the flag parsed.
+func TestStartupQuarantineAcceptsDurationSyntax(t *testing.T) {
+	withCredential(t)
+	for _, tc := range []string{"5m", "300s", "1500ms", "1h"} {
+		occupied, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		addr := occupied.Addr().String()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		err = run(ctx, append(baseArgs("chrome.exe"),
+			"-startup-quarantine", tc, "-listen", addr))
+		cancel()
+		occupied.Close()
+
+		if err == nil {
+			continue
+		}
+		require.NotContains(t, err.Error(), "invalid value",
+			"%q must parse like the adjacent duration flags", tc)
+		require.NotContains(t, err.Error(), "must not be negative",
+			"%q is a positive duration and must be accepted", tc)
+	}
+}
+
+// A bare number is not a duration and must fail loudly rather than being read as
+// nanoseconds, which would leave a quarantine that looks configured and protects
+// nothing.
+func TestStartupQuarantineRejectsBareNumber(t *testing.T) {
+	withCredential(t)
+	err := run(context.Background(), append(baseArgs("chrome.exe"), "-startup-quarantine", "300"))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid value")
+}
+
+// Zero still means "follow the configured cooldown" and must not be treated as a
+// way to switch the quarantine off.
+func TestRunZeroStartupQuarantineIsNotADisableSwitch(t *testing.T) {
+	withCredential(t)
+	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer occupied.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	err = run(ctx, append(baseArgs("chrome.exe"),
+		"-startup-quarantine", "0", "-listen", occupied.Addr().String()))
 	if err != nil {
 		require.NotContains(t, err.Error(), "must not be negative")
 	}

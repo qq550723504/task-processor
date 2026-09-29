@@ -833,3 +833,44 @@ func TestThrottleMinimallyLateDispatchDoesNotInvalidateWaiters(t *testing.T) {
 		cancel()
 	}
 }
+
+// The two interleaveings pull in opposite directions, so the predicate that decides
+// whether a dispatch invalidates the waiters behind it has to admit both and nothing
+// in between. A tail-only rule misses a real slip; a no-tolerance rule counts a
+// clock tick as one.
+func TestThrottleScheduleMovedAdmitsBothInterleaveings(t *testing.T) {
+	base := time.Now()
+	tolerance := 100 * time.Millisecond
+
+	// A later reservation has pushed the queue tail out beyond the dispatch. It did
+	// not move the tail, and it ran a real 50ms past its slot: the waiters behind it
+	// were scheduled against a schedule that no longer holds, so this is a change.
+	t.Run("real slip inside a tail pushed by a later reservation", func(t *testing.T) {
+		th := newThrottle(200*time.Millisecond, 0, 0, -1, time.Second, time.Second/4)
+		th.next = base.Add(500 * time.Millisecond)
+		require.True(t, th.scheduleMoved(base.Add(150*time.Millisecond), base),
+			"a dispatch that overran its slot by more than the tolerance must invalidate waiters")
+	})
+
+	// A clock tick of goroutine scheduling, landing inside the existing tail: not a
+	// change, or every queued waiter would be pushed a whole interval out.
+	t.Run("clock tick inside the tail", func(t *testing.T) {
+		th := newThrottle(200*time.Millisecond, 0, 0, -1, time.Second, time.Second/4)
+		th.next = base.Add(500 * time.Millisecond)
+		require.False(t, th.scheduleMoved(base.Add(time.Millisecond), base),
+			"a tick of lateness must not invalidate waiters")
+	})
+
+	// An on-time dispatch that advances the tail still moves the schedule.
+	t.Run("on time but advancing the tail", func(t *testing.T) {
+		th := newThrottle(200*time.Millisecond, 0, 0, -1, time.Second, time.Second/4)
+		th.next = base
+		require.True(t, th.scheduleMoved(base.Add(10*time.Millisecond), base),
+			"advancing the queue tail must invalidate waiters")
+	})
+
+	// The cases above are written against a 200ms interval, so the tolerance the
+	// throttle derives must be half of that for their margins to mean anything.
+	th := newThrottle(200*time.Millisecond, 0, 0, -1, time.Second, time.Second/4)
+	require.Equal(t, tolerance, th.slipTolerance)
+}
