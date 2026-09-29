@@ -126,6 +126,8 @@
 .resourcePurchaseCard h3 { margin-bottom: 8px; font-size: 14px; }
 .resourcePurchaseCard p { min-height: 40px; margin-bottom: 14px; color: var(--muted-foreground); font-size: 11px; line-height: 1.6; }
 .resourcePurchaseCard button { width: 100%; }
+.resourcePurchaseCard label { display: grid; gap: 6px; min-width: 0; margin-bottom: 12px; font-size: 12px; }
+.resourcePurchaseCard input, .resourcePurchaseCard select { width: 100%; min-width: 0; max-width: 100%; height: 36px; border: 1px solid var(--border); border-radius: 7px; background: var(--background); color: var(--foreground); padding: 0 9px; font: inherit; }
 @media (max-width: 1000px) { .billingFilters { grid-template-columns: repeat(2,minmax(0,1fr)); } .billingFilters label:first-child { grid-column: 1 / -1; } }
 @media (max-width: 640px) { .billingStats, .walletFacts, .resourcePurchaseCards { grid-template-columns: repeat(2,minmax(0,1fr)); } .walletHero { grid-template-columns: 1fr; } .walletHero > button { justify-self: start; } .orderFacts { grid-template-columns: 1fr; } }
 @media (max-width: 1000px) { .threeColumns, .subscriptionOffers { grid-template-columns: 1fr; } .twoColumns { grid-template-columns: 1fr; } }
@@ -145,3 +147,5 @@
   .gatedRows > div strong { grid-column: 1; }
   .gatedRows > div .button { grid-column: 2; grid-row: 1 / span 2; }
 }
+
+@media (max-width: 640px) { .resourcePurchaseCards { grid-template-columns: 1fr; } }

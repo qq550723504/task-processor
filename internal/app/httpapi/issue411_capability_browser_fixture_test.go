@@ -56,7 +56,7 @@ func TestIssue411CapabilityBrowserFixture(t *testing.T) {
 		t.Cleanup(func() { require.NoError(t, pool.Close()) })
 		return db
 	}
-	source, commercial := open(cfg.SourceAccountDatabase), open(cfg.CommercialDatabase)
+	source := open(cfg.SourceAccountDatabase)
 	core := cfg.CoreConfig()
 	core.ListingKit.PlatformAdminUsers = []string{manifest.Users["viewer"].ID}
 	core.ListingKit.PlatformAdminRoles = []string{"issue411_support_admin"}

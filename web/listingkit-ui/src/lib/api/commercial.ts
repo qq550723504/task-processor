@@ -91,7 +91,7 @@ export function parseCommercialReadFailure(payload: unknown, status: number) {
       }
     : null;
 }
-export class CommercialReadError extends Error {
+class CommercialReadError extends Error {
   constructor(
     public readonly status: number,
     public readonly code: string,

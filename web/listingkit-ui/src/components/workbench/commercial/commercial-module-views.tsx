@@ -131,6 +131,15 @@ const reasons: Record<string, string> = {
   reserved: "预留",
   consumed: "消费",
   released: "释放",
+  grant_commercial_purchase: "购买到账",
+  allocate_member_resource: "分配成员资源",
+  reclaim_member_resource: "回收成员资源",
+  reserve: "预留",
+  commit: "消费",
+  release: "释放",
+  model_point_reserve: "模型调用预留",
+  model_point_committed: "模型调用消费",
+  model_point_released: "释放模型调用预留",
 };
 function quantity(value: string) {
   const n = BigInt(value);
@@ -141,16 +150,24 @@ function boundary(value: string, next = false) {
 }
 export function UsageDetailsView({
   page,
+  filters = {},
   onFilter,
   onNext,
 }: {
   page: ResourceEventPage;
+  filters?: ResourceEventFilters;
   onFilter: (v: ResourceEventFilters) => void;
   onNext: () => void;
 }) {
-  const [type, setType] = useState("");
-  const [from, setFrom] = useState("");
-  const [until, setUntil] = useState("");
+  const [type, setType] = useState(filters.resourceType ?? "");
+  const [from, setFrom] = useState(filters.from?.slice(0, 10) ?? "");
+  const [until, setUntil] = useState(
+    filters.until
+      ? new Date(new Date(filters.until).getTime() - 86400000)
+          .toISOString()
+          .slice(0, 10)
+      : "",
+  );
   const [invalid, setInvalid] = useState(false);
   return (
     <div className={styles.stack}>

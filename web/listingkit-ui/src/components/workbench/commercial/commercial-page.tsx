@@ -130,7 +130,7 @@ function PageFrame({
         : [{ label: "套餐与权益", href: "/workbench/plans" }, { label: title }];
   const descriptions: Record<PageKind, string> = {
     overview: "统一基础方案、店铺服务及企业预付资源。",
-    options: "基础方案无需订阅，按服务端报价购买店铺期数、AI 点数和数据条数。",
+    options: "基础方案无需订阅，按当前价格购买店铺期数、AI 点数和数据条数。",
     entitlements: "查看店铺服务期限和企业已购资源。",
     usage: "查看真实资源预留、消费、分配和回收记录。",
     "top-up": "管理企业钱包、充值及按需购买。",
@@ -662,6 +662,7 @@ function ResourceUsageRequest({
   return (
     <UsageDetailsView
       page={result.data}
+      filters={filters}
       onFilter={(v) => {
         setFilters(v);
         setCursor("");

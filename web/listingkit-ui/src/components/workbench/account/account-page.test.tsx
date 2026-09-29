@@ -315,14 +315,12 @@ describe("AccountPage read-only projection", () => {
   });
   it("renders returned enterprise owner facts and labels a failed commercial read unavailable", async () => {
     const memberList = { schemaVersion: "membership-v1", userId: "u1", organizationId: "B", items: [{ id: "member-1", userId: "member-user", organizationId: "B", projectId: "project-1", displayName: "成员甲", loginName: "member@example.test", roles: ["listingkit_viewer"], state: "active", createdAt: "2026-09-12T00:00:00Z", changedAt: "2026-09-12T00:00:00Z", observedVersion: "a".repeat(64), canChangeRole: false, canRemove: false, permissions: [] }], total: 8, canManage: false, assignableRoles: [] };
-    const allocation = { schemaVersion: "account-member-token-allocation-v1", organizationId: "B", metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", enterprise: { total: "9000", allocated: "4500", unallocated: "4500", consumed: "1200" }, members: [{ memberId: "member-1", userId: "member-user", displayName: "成员甲", loginName: "member@example.test", state: "active", allocation: { metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", allocated: "4500", consumed: "1200", remaining: "3300", version: "1", active: true } }] };
     const audit = { schemaVersion: "account-audit-v1", userId: "u1", effectiveOrganizationId: "B", source: "source_account_committed_operations+account_business_profile_audit", items: [{ eventType: "account_business_profile.updated", actor: "operator-B", time: "2026-09-12T00:00:00Z", objectType: "account_business_profile", objectReference: "u1", operation: "update", result: "succeeded", relation: { type: "account_business_profile_version", reference: "u1", version: "1" } }], nextCursor: null };
     const fetcher = vi.fn((input: string) => {
       const path = String(input);
       if (path === "/api/account/organization") return Promise.resolve(Response.json(organization));
       if (path === "/api/account/members/summary") return Promise.resolve(Response.json({schemaVersion:"membership-summary-v1",userId:"u1",organizationId:"B",total:8,active:7,administrators:1,inactive:1,source:"zitadel_authorization_v2",readAt:profile.readAt}));
       if (path === "/api/workbench/commercial/overview") return Promise.resolve(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 }));
-      if (path === "/api/account/member-allocations") return Promise.resolve(Response.json(allocation));
       if (path.startsWith("/api/account/audit?")) return Promise.resolve(Response.json(audit));
       throw new Error(`unexpected fetch: ${path}`);
     });

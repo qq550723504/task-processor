@@ -145,7 +145,7 @@ const errorStatuses: Record<string, readonly number[]> = {
   DEADLINE_EXCEEDED: [504],
   INVALID_UPSTREAM_RESPONSE: [502],
 };
-export class ResourcePurchaseError extends Error {
+class ResourcePurchaseError extends Error {
   constructor(
     public readonly status: number,
     public readonly code: string,

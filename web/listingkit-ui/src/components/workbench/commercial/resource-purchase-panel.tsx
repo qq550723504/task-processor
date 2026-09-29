@@ -42,7 +42,7 @@ export const resourceDefinitions = [
     detail: "按采集成功入库的商品结果扣减；成员额度由管理员分配。",
   },
 ] as const;
-export function resourceMoney(v: string) {
+function resourceMoney(v: string) {
   const n = BigInt(v);
   return `¥${(n / BigInt(100)).toLocaleString("zh-CN")}.${(n % BigInt(100)).toString().padStart(2, "0")}`;
 }
@@ -561,7 +561,7 @@ function ResourceCard({
     <Card
       role="region"
       aria-label={`${definition.name}购买`}
-      className={styles.resourcePurchaseCard}
+      className={`${styles.resourcePurchaseCard} ${definition.type === "store_renewal_period" ? styles.blue : definition.type === "ai_point" ? styles.purple : styles.teal}`}
     >
       <h3>{definition.name}</h3>
       <p>{definition.detail}</p>

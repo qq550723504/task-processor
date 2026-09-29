@@ -15,8 +15,8 @@ export function serviceOrigin(): string | null {
   } catch { return null; }
 }
 
-export async function proxyAccount(request: Request, token: string, sessionUserId: string, kind: "profile" | "organization" | "business-profile" | "member-allocations" | "member-ai-point-limits"): Promise<Response> {
-  const memberResource = kind === "member-allocations" || kind === "member-ai-point-limits";
+export async function proxyAccount(request: Request, token: string, sessionUserId: string, kind: "profile" | "organization" | "business-profile" | "member-ai-point-limits"): Promise<Response> {
+  const memberResource = kind === "member-ai-point-limits";
   const mutable = kind === "business-profile" || memberResource;
   if (!mutable && request.method !== "GET" || mutable && !["GET", "PUT"].includes(request.method)) return accountFailure(405, "INVALID_REQUEST");
   if (!token || !validID(sessionUserId)) return accountFailure(401, "AUTHENTICATION_REQUIRED");
@@ -74,7 +74,6 @@ export async function proxyAccount(request: Request, token: string, sessionUserI
     if (memberResource && request.method === "GET") {
       if (!payload || typeof payload !== "object" || !("organizationId" in payload) || payload.organizationId !== organization) return accountFailure(409, "ORGANIZATION_CONTEXT_CHANGED");
     }
-    if (kind === "member-allocations") return json(payload, 200);
     if (kind === "member-ai-point-limits") return json(request.method === "GET" ? parseMemberAIPointLimits(payload, organization!) : parseMemberAIPointLimit(payload, organization!, memberPath), 200);
     const result = parseAccountPayload(kind, payload);
     if (result.userId !== sessionUserId) return accountFailure(409, "IDENTITY_CONTEXT_CHANGED");
