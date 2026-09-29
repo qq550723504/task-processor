@@ -90,7 +90,6 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 			cfg.SourceAccountDatabase = dbConfig
 		}
 	}
-	require.NoError(t, owner.Exec(`ALTER ROLE commercial_runtime SET default_transaction_read_only=on`).Error)
 	open := func(c currentapplication.DatabaseConfig, readOnly bool) *gorm.DB {
 		p := &platformdatabase.Config{Host: c.Host, Port: c.Port, User: c.User, Password: c.Password, Database: c.Database, MaxConnections: 2}
 		var db *gorm.DB
@@ -197,13 +196,13 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 			start(t, true)
 		})
 	}
-	t.Run("PUBLIC/both_roles", func(t *testing.T) {
+	t.Run("PUBLIC/source_account_runtime", func(t *testing.T) {
 		require.NoError(t, owner.Exec(`GRANT SELECT ON public.run1_additional_fact TO PUBLIC`).Error)
 		defer func() {
 			require.NoError(t, owner.Exec(`REVOKE SELECT ON public.run1_additional_fact FROM PUBLIC`).Error)
 			start(t, false)
 		}()
-		// Exercise each owner directly too: source rejects first in the full assembly.
+		// The current startup opens the source owner; PUBLIC grants must be rejected.
 		start(t, true)
 	})
 	t.Run("column_acl", func(t *testing.T) {
@@ -258,8 +257,8 @@ func run1PermissionBinary(t *testing.T, owner *gorm.DB, cfg *currentapplication.
 		require.NoError(t, listener.Close())
 		data, err := json.Marshal(copyConfig)
 		require.NoError(t, err)
-		manifest := filepath.Join(dir, "runtime.json")
-		require.NoError(t, os.WriteFile(manifest, data, 0600))
+		// Reuse the private fixture writer; Windows does not enforce os.FileMode.
+		manifest := writeSMSPrivateConfig(t, string(data))
 		shutdown := filepath.Join(dir, fmt.Sprintf("shutdown-%d", copyConfig.Listen.Port))
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
