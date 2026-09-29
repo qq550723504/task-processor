@@ -3,7 +3,9 @@ package browser
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -139,7 +141,7 @@ func TestThrottleJitterStaysWithinBand(t *testing.T) {
 		require.NoError(t, th.Wait(context.Background()))
 		// After a wait returns, the reserved next slot is the one just consumed
 		// plus the next effective interval, which must sit inside the band.
-		gap := time.Until(th.next)
+		gap := time.Until(th.floor)
 		require.Greater(t, gap, time.Duration(0))
 		require.LessOrEqual(t, gap, 150*time.Millisecond,
 			"effective interval must stay within MinInterval*(1+Jitter)")
@@ -178,7 +180,7 @@ func TestThrottleRefusedRequestDoesNotConsumeSlot(t *testing.T) {
 	}
 
 	th.mu.Lock()
-	queued := th.next
+	queued := th.floor
 	th.mu.Unlock()
 	// Repeated refusals must not have pushed the queue further out.
 	// Compare against the throttle's own effective band: passing Jitter: 0 selects
@@ -207,7 +209,7 @@ func TestThrottleRollbackPreservesPrecedingFloor(t *testing.T) {
 	require.NoError(t, th.Wait(context.Background()))
 
 	th.mu.Lock()
-	established := th.next
+	established := th.floor
 	th.mu.Unlock()
 	require.False(t, established.IsZero(), "the first acquisition must establish a floor")
 
@@ -223,7 +225,7 @@ func TestThrottleRollbackPreservesPrecedingFloor(t *testing.T) {
 	// exact boundary is not pinned, because releasing re-packs the surviving
 	// reservations with a fresh jittered interval.
 	th.mu.Lock()
-	after := th.next
+	after := th.floor
 	th.mu.Unlock()
 	require.False(t, after.Before(established.Add(-50*time.Millisecond)),
 		"a cancelled waiter must not pull the schedule earlier than the floor it left")
@@ -337,7 +339,7 @@ func TestThrottleCancelledCallerLeavesItsIntervalConsumed(t *testing.T) {
 	// The next caller still cannot start immediately: the floor was committed when
 	// the cancelled one reserved it.
 	th.mu.Lock()
-	floor := th.next
+	floor := th.floor
 	th.mu.Unlock()
 	require.True(t, floor.After(time.Now().Add(50*time.Millisecond)),
 		"a cancelled caller must not release the floor it already committed")
@@ -383,7 +385,7 @@ func TestThrottleAdvancesFloorFromActualDispatch(t *testing.T) {
 	dispatch := time.Now()
 
 	th.mu.Lock()
-	gap := th.next.Sub(dispatch)
+	gap := th.floor.Sub(dispatch)
 	th.mu.Unlock()
 	require.GreaterOrEqual(t, gap, interval-time.Millisecond,
 		"the floor must be re-anchored on the real dispatch, not the ideal slot")
@@ -401,8 +403,8 @@ func TestThrottleStateIsBoundedByConstruction(t *testing.T) {
 	for i := 0; i < 200; i++ {
 		fields++
 	}
-	floor := th.next
-	blocked := th.blocked
+	floor := th.floor
+	blocked := !th.cooldownUntil.IsZero()
 	th.mu.Unlock()
 	_ = fields
 	require.False(t, floor.IsZero(), "the floor is the only pacing state")
@@ -420,74 +422,75 @@ func TestThrottleHonoursConfiguredHeadroom(t *testing.T) {
 		"an unset headroom must be derived from the configured budget")
 }
 
-// A cancelled waiter hands its slot back when no later caller committed, so
-// disconnects cannot starve valid work indefinitely. The boundary is asserted
-// exactly: the floor must return to the FIRST waiter's slot, not merely become
-// unreachable in time, which a stale floor would also satisfy.
-func TestThrottleCancelledWaiterHandsBackItsSlot(t *testing.T) {
-	th := newThrottle(2*time.Second, 0, 0, -1, time.Minute, time.Nanosecond)
-	require.NoError(t, th.Wait(context.Background())) // A takes the immediate slot
+// The floor only ever moves forward, and only when a caller is actually admitted.
+// An earlier version handed a cancelled reservation's slot back when it was still
+// the newest, and tracked the displaced boundary so a superseded cancellation could
+// not restore it; both needed a second copy of the floor that could disagree with
+// the first. Nothing is reserved here, so a caller that never started has consumed
+// no interval and there is nothing to restore.
+//
+// This asserts the property directly, under concurrent cancellation and admission,
+// rather than reproducing a scheduler interleaving.
+func TestThrottleFloorOnlyMovesForward(t *testing.T) {
+	interval := 40 * time.Millisecond
+	budget := 3 * time.Second
+	th := newThrottle(interval, 0, 0, -1, budget, budget/4)
 
-	th.mu.Lock()
-	firstFloor := th.next
-	th.mu.Unlock()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() { _ = th.Wait(ctx) }()
-	require.Eventually(t, func() bool {
+	floor := func() time.Time {
 		th.mu.Lock()
 		defer th.mu.Unlock()
-		return th.next.After(firstFloor)
-	}, time.Second, 5*time.Millisecond, "the second caller must hold a later slot")
+		return th.floor
+	}
 
-	cancel()
-	require.Eventually(t, func() bool {
-		th.mu.Lock()
-		defer th.mu.Unlock()
-		return th.next.Equal(firstFloor)
-	}, time.Second, 5*time.Millisecond,
-		"an un-superseded cancellation must restore exactly the boundary it displaced")
-}
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	// Watch the floor for any backward movement while callers come and go.
+	var regression atomic.Value
+	regression.Store("")
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		prev := time.Time{}
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			// Yield between samples: a tight spin here starves the callers this
+			// test is meant to be observing.
+			time.Sleep(200 * time.Microsecond)
+			if cur := floor(); !prev.IsZero() && cur.Before(prev) {
+				regression.Store(cur.String())
+				return
+			} else {
+				prev = cur
+			}
+		}
+	}()
 
-// When a later caller already committed, the cancelled one cannot know which
-// boundary it displaced, so the floor stands - the conservative direction.
-// Asserted directly on the contract rather than through a timing-sensitive
-// interleaving, which only tested the scheduler.
-func TestThrottleSupersededCancellationKeepsTheFloor(t *testing.T) {
-	th := newThrottle(150*time.Millisecond, 0, 0, -1, time.Minute, time.Nanosecond)
-	require.NoError(t, th.Wait(context.Background()))
+	for i := 0; i < 6; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), budget)
+			defer cancel()
+			// Half the callers give up mid-wait, which is what used to restore a
+			// boundary that a later caller had already moved.
+			if i%2 == 0 {
+				time.Sleep(interval / 4)
+				cancel()
+			}
+			_ = th.Wait(ctx)
+		}(i)
+		time.Sleep(interval / 8)
+	}
+	time.Sleep(2 * interval)
+	close(stop)
+	wg.Wait()
 
-	// Two further callers commit in order.
-	ctxB, cancelB := context.WithCancel(context.Background())
-	go func() { _ = th.Wait(ctxB) }()
-	require.Eventually(t, func() bool {
-		th.mu.Lock()
-		defer th.mu.Unlock()
-		return th.next.After(time.Now().Add(100 * time.Millisecond))
-	}, time.Second, 5*time.Millisecond)
-	stale := func() uint64 { th.mu.Lock(); defer th.mu.Unlock(); return th.owner }()
-
-	ctxC, cancelC := context.WithCancel(context.Background())
-	go func() { _ = th.Wait(ctxC) }()
-	require.Eventually(t, func() bool {
-		staleNow := func() uint64 { th.mu.Lock(); defer th.mu.Unlock(); return th.owner }()
-		return staleNow > stale
-	}, time.Second, 5*time.Millisecond, "a later caller must supersede the first")
-
-	th.mu.Lock()
-	floor := th.next
-	th.mu.Unlock()
-
-	// Releasing the superseded sequence must not move the floor.
-	th.release(stale)
-	th.mu.Lock()
-	after := th.next
-	th.mu.Unlock()
-	require.False(t, after.Before(floor),
-		"a superseded cancellation must not move the floor backwards")
-
-	cancelB()
-	cancelC()
+	require.Empty(t, regression.Load().(string),
+		"the floor must never move backwards, whoever is cancelled and whenever")
 }
 
 // A challenge observed but not cleared because the automatic attempt ran out of
@@ -526,7 +529,7 @@ func TestThrottleQueuedWaitersReevaluateAfterALateDispatch(t *testing.T) {
 	require.Eventually(t, func() bool {
 		th.mu.Lock()
 		defer th.mu.Unlock()
-		return th.next.After(time.Now().Add(20 * time.Millisecond))
+		return th.floor.After(time.Now().Add(20 * time.Millisecond))
 	}, time.Second, 5*time.Millisecond)
 	go func() { _ = th.Wait(context.Background()); startedC <- time.Now() }()
 
@@ -574,7 +577,7 @@ func TestThrottleIdlePathRespectsAConcurrentCooldown(t *testing.T) {
 	th2.Observe(ErrChallenge)
 	<-ready
 	th2.mu.Lock()
-	blocked := th2.blocked
+	blocked := !th2.cooldownUntil.IsZero()
 	th2.mu.Unlock()
 	require.True(t, blocked, "the cooldown must still be in force after a concurrent trigger")
 }
@@ -649,43 +652,42 @@ func TestThrottleConcurrentExpiredTimersDoNotDispatchTogether(t *testing.T) {
 
 // A caller cancelled while the timer fired but the waiter was blocked taking the
 // lock must not be handed a slot: Acquire would go on to start a browser for it.
-func TestThrottleCancellationDuringTheDispatchLockIsNotCommitted(t *testing.T) {
-	interval := 40 * time.Millisecond
-	th := newTestThrottle(interval, 0, 0)
+// A caller that gives up while waiting commits nothing. The earlier design
+// reserved a slot, slept on a timer, and only then committed the dispatch, which
+// left a window between the timer firing and the commit in which a cancellation
+// could be lost and a slot handed out for a dead request. Deciding and committing
+// happen together under the mutex, so there is no such window to lose.
+func TestThrottleCancelledCallerCommitsNothing(t *testing.T) {
+	interval := 60 * time.Millisecond
+	budget := 3 * time.Second
+	th := newThrottle(interval, 0, 0, -1, budget, budget/4)
 	require.NoError(t, th.Wait(context.Background()))
+
+	floor := func() time.Time {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return th.floor
+	}
+	before := floor()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- th.Wait(ctx) }()
 
-	// Let it commit its reservation and reach its timer, then hold the lock so
-	// the dispatch cannot complete. That is the window between the timer firing
-	// and the dispatch being committed.
-	require.Eventually(t, func() bool {
-		th.mu.Lock()
-		defer th.mu.Unlock()
-		return th.owner > 1
-	}, time.Second, 5*time.Millisecond)
+	// Cancel while the caller is still waiting, well inside the interval.
+	time.Sleep(interval / 2)
+	cancel()
+	require.ErrorIs(t, <-done, context.Canceled)
 
-	th.mu.Lock()
-	time.Sleep(interval * 3) // the timer fires while the lock is held
-	cancel()                 // and the caller goes away in that window
-	th.mu.Unlock()
+	require.Equal(t, before, floor(),
+		"a caller that never started must not move the floor")
 
-	select {
-	case err := <-done:
-		require.ErrorIs(t, err, context.Canceled,
-			"a cancellation during the dispatch lock must not commit a slot")
-	case <-time.After(2 * time.Second):
-		t.Fatal("the waiter never returned")
-	}
-
-	// And the slot it had reserved was handed back rather than consumed.
-	require.Eventually(t, func() bool {
-		th.mu.Lock()
-		defer th.mu.Unlock()
-		return !th.next.After(time.Now().Add(interval / 4))
-	}, time.Second, 5*time.Millisecond, "the cancelled caller's slot must be released")
+	// The next caller is still paced from the previous real dispatch, not from the
+	// abandoned one.
+	start := time.Now()
+	require.NoError(t, th.Wait(context.Background()))
+	require.Greater(t, time.Since(start), interval/2,
+		"an abandoned wait must not shorten the floor for the next caller")
 }
 
 // When the cooldown is SHORTER than the interval, expiry must not discard the
@@ -705,7 +707,7 @@ func TestThrottleShortCooldownKeepsThePacingFloor(t *testing.T) {
 
 	// The pacing floor from the real dispatch must still be honoured.
 	th.mu.Lock()
-	floor := th.next
+	floor := th.floor
 	th.mu.Unlock()
 	require.False(t, floor.Before(dispatch.Add(interval)),
 		"a short cooldown must not discard the floor the last dispatch established")
@@ -752,18 +754,21 @@ func TestThrottleCooldownRespectsBothDirections(t *testing.T) {
 	})
 }
 
-// Observe overwrites the floor with a synthetic cooldown value, so the real
-// dispatch floor must be tracked separately: a long cooldown must resume at its
-// deadline, and a short one must still honour the interval from the last real
-// dispatch. Neither requirement may be satisfied at the other's expense.
-func TestThrottleCooldownFloorAndDispatchFloorAreDistinct(t *testing.T) {
-	budget := time.Minute
-
-	// The shipped relationship, scaled down: a cooldown LONGER than the interval,
-	// with a budget and headroom that the synthetic cooldown+interval floor cannot
-	// fit. The last real dispatch's own floor has by then expired, so resumption is
-	// due - and a generous budget would not have caught this.
-	t.Run("long cooldown is not extended by a synthetic floor", func(t *testing.T) {
+// A cooldown is exactly the window the operator configured, and it does not
+// disturb the pacing floor in either direction.
+//
+// An earlier version overwrote the pacing floor with the cooldown end plus a full
+// interval, which made the configured window a lower bound on the real one: with a
+// 20s floor, a 10s budget and 7.5s of headroom, every request kept being refused
+// for roughly another 17.5s past the configured ten-minute window. The fix for that
+// needed a second copy of the floor kept separately, and keeping the two in step
+// then produced its own findings. The floor now belongs to real dispatches alone
+// and a cooldown is a separate instant, so neither direction has to be reconciled.
+func TestThrottleCooldownIsExactlyTheConfiguredWindow(t *testing.T) {
+	t.Run("a cooldown that outlasts the interval does not delay resumption", func(t *testing.T) {
+		// Scaled down from the shipped shape: the budget and headroom cannot fit the
+		// interval that a synthetic floor would have added, which is what made the
+		// original defect observable. A generous budget would not catch it.
 		interval, acquisitionBudget := 200*time.Millisecond, 100*time.Millisecond
 		headroom := acquisitionBudget * 3 / 4
 		th := newThrottle(interval, 0, 500*time.Millisecond, -1, acquisitionBudget, headroom)
@@ -771,22 +776,24 @@ func TestThrottleCooldownFloorAndDispatchFloorAreDistinct(t *testing.T) {
 		th.Observe(ErrChallenge)
 		require.Eventually(t, func() bool { return th.CooldownRemaining() == 0 },
 			2*time.Second, 5*time.Millisecond)
+
 		ctx, cancel := context.WithTimeout(context.Background(), acquisitionBudget)
 		defer cancel()
 		require.NoError(t, th.Wait(ctx),
-			"the synthetic cooldown+interval floor must not delay resumption past the window")
+			"resumption must happen at the configured deadline, not an interval later")
 	})
 
-	t.Run("short cooldown still respects the real dispatch floor", func(t *testing.T) {
-		th := newThrottle(400*time.Millisecond, 0, 50*time.Millisecond, -1, budget, budget/4)
+	t.Run("a cooldown shorter than the interval does not cancel the floor", func(t *testing.T) {
+		th := newThrottle(400*time.Millisecond, 0, 50*time.Millisecond, -1, time.Minute, time.Minute/4)
 		require.NoError(t, th.Wait(context.Background()))
 		th.Observe(ErrChallenge)
 		require.Eventually(t, func() bool { return th.CooldownRemaining() == 0 },
 			2*time.Second, 5*time.Millisecond)
+
 		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 		defer cancel()
 		require.ErrorIs(t, th.Wait(ctx), ErrThrottled,
-			"the floor from the last real dispatch must survive a shorter cooldown")
+			"the interval from the last real dispatch must survive a shorter cooldown")
 	})
 }
 
@@ -834,55 +841,6 @@ func TestThrottleMinimallyLateDispatchDoesNotInvalidateWaiters(t *testing.T) {
 	}
 }
 
-// The two interleaveings pull in opposite directions, so the predicate that decides
-// whether a dispatch invalidates the waiters behind it has to admit both and nothing
-// in between. A tail-only rule misses a real slip; a rule that measures lateness on
-// the floor rather than on the instant the dispatch ran is true for every dispatch,
-// because the floor is a full interval ahead by construction.
-//
-// A dispatch is written the way the code builds it: it reserved a slot at start, it
-// actually ran at actual, and it left a floor one interval past actual.
-func TestThrottleScheduleMovedAdmitsBothInterleaveings(t *testing.T) {
-	base := time.Now()
-	interval := 200 * time.Millisecond
-
-	atTail := func(tail time.Time) *Throttle {
-		th := newThrottle(interval, 0, 0, -1, time.Second, time.Second/4)
-		th.next = tail
-		return th
-	}
-
-	// A later reservation has already pushed the queue tail out past the dispatch, so
-	// the dispatch did not move the tail - but it ran 150ms past the slot it
-	// reserved, well beyond the half-interval tolerance. The waiters behind it were
-	// scheduled against a schedule that no longer holds.
-	t.Run("real slip inside a tail pushed by a later reservation", func(t *testing.T) {
-		actual := base.Add(150 * time.Millisecond)
-		require.True(t, atTail(base.Add(500*time.Millisecond)).
-			scheduleMoved(actual.Add(interval), actual, base),
-			"a dispatch that overran its slot by more than the tolerance must invalidate waiters")
-	})
-
-	// A clock tick of goroutine scheduling, landing inside the existing tail. The
-	// floor here is a full interval past the reserved slot, so a rule that compared
-	// the floor against the slot would call this a change and push valid waiters out.
-	t.Run("clock tick inside the tail", func(t *testing.T) {
-		actual := base.Add(time.Millisecond)
-		require.False(t, atTail(base.Add(500*time.Millisecond)).
-			scheduleMoved(actual.Add(interval), actual, base),
-			"a tick of lateness must not invalidate waiters")
-	})
-
-	// An on-time dispatch that advances the tail still moves the schedule.
-	t.Run("on time but advancing the tail", func(t *testing.T) {
-		require.True(t, atTail(base).scheduleMoved(base.Add(interval), base, base),
-			"advancing the queue tail must invalidate waiters")
-	})
-
-	// The tolerance is half the configured interval, so the margins above are real.
-	require.Equal(t, interval/2, atTail(base).slipTolerance)
-}
-
 // Every observed challenge gets the full window from the moment it was seen, so
 // overlapping acquisitions that each meet a challenge cannot resume sooner than
 // ChallengeCooldown after the LATEST one. Suppressing the second observation
@@ -896,7 +854,7 @@ func TestThrottleEachObservedChallengeGetsTheFullWindow(t *testing.T) {
 	deadline := func() time.Time {
 		th.mu.Lock()
 		defer th.mu.Unlock()
-		return th.cooledAt
+		return th.cooldownUntil
 	}
 
 	th.Observe(ErrChallenge)
@@ -933,58 +891,61 @@ func TestThrottleSchedulerInversionDoesNotDoubleDispatch(t *testing.T) {
 	}
 }
 
-// A waiter whose slot predates a real dispatch is second in line, not first, even
-// when the on-time dispatch of that later acquisition left the queue tail alone and
-// so changed no generation. This is the state scheduler inversion leaves behind: the
-// floor from a real dispatch is ahead, the tail is not, and the waiter would
-// otherwise dispatch immediately beside an acquisition that is already running.
-func TestThrottleLateWaiterDoesNotOverwriteNewerDispatchFloor(t *testing.T) {
-	interval := 50 * time.Millisecond
-	budget := interval * 6
-	th := newThrottle(interval, 0, 0, -1, budget, budget/4)
-	require.NoError(t, th.Wait(context.Background()))
-
-	// Reproduce the post-inversion state directly: a real dispatch just ran, its
-	// floor is ahead, and the queue tail it left is already in the past.
-	th.mu.Lock()
-	now := time.Now()
-	th.lastDispatchAt = now
-	th.dispatchFloor = now.Add(interval)
-	th.next = now.Add(-time.Millisecond)
-	th.generation = 0
-	th.mu.Unlock()
-
-	ctx, cancel := context.WithTimeout(context.Background(), budget)
-	defer cancel()
-	start := time.Now()
-	require.NoError(t, th.Wait(ctx))
-	require.GreaterOrEqual(t, time.Since(start), interval*3/4,
-		"a waiter behind a real dispatch must not start beside it")
-}
-
-// The real dispatch floor has to be re-checked when the waiter commits, not only
-// when it reserved. With enough callers queued the tail can sit beyond that floor
-// while a later waiter dispatches first, so nothing at reservation time reveals the
-// inversion and the sleeping waiter would otherwise overwrite the newer floor and
-// return within the interval of an acquisition already running.
+// The invariant every earlier finding in this area was a symptom of: however many
+// callers queue, however they are cancelled, and in whatever order the scheduler
+// runs them, no two admissions are closer together than the configured interval.
 //
-// The rule is unit tested directly. I could not build a deterministic end-to-end
-// reproduction of the interleaving - the admission floor and the queue tail both
-// stay consistent under every ordering I could set up by hand - so this covers the
-// decision, not the schedule that produces it.
-func TestThrottleStaleBehindNewerDispatch(t *testing.T) {
-	base := time.Now()
-	th := newThrottle(50*time.Millisecond, 0, 0, -1, time.Second, time.Second/4)
+// An earlier version of this throttle re-derived the answer at four separate points
+// from a queue tail, a generation counter, a reservation owner, a displaced
+// boundary and a separate real-dispatch floor. Each point consulted a different
+// subset, so each invariant had several independent enforcement sites that could
+// disagree, and a caller was admitted on a value observed before its wait. The
+// throttle now holds one floor and decides and commits under one lock, so this
+// holds by construction rather than by each site being correct.
+func TestThrottleNeverAdmitsTwoAcquisitionsCloserThanTheInterval(t *testing.T) {
+	const (
+		callers  = 8
+		interval = 150 * time.Millisecond
+		// The instant is sampled just after Wait returns, so the measurement can lag
+		// the admission itself by however long the goroutine takes to be scheduled -
+		// much longer under -race. The margin covers that, and is far below the
+		// interval, so a real regression still fails.
+		measureSkew = 60 * time.Millisecond
+	)
+	th := newThrottle(interval, 0, 0, -1, 30*time.Second, 30*time.Second/4)
 
-	// No dispatch has run yet.
-	require.False(t, th.staleBehindNewerDispatch(base))
+	var mu sync.Mutex
+	var admitted []time.Time
+	var wg sync.WaitGroup
+	for i := 0; i < callers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			// Cancel roughly half the callers while they are queued, which is what
+			// used to restore a boundary that a later caller had already moved.
+			if i%2 == 0 {
+				go func() {
+					time.Sleep(time.Duration(i) * interval / 8)
+					cancel()
+				}()
+			}
+			if err := th.Wait(ctx); err == nil {
+				mu.Lock()
+				admitted = append(admitted, time.Now())
+				mu.Unlock()
+			}
+		}(i)
+	}
+	wg.Wait()
 
-	// A real dispatch ran after this caller reserved its slot: it is now second.
-	th.lastDispatchAt = base.Add(time.Millisecond)
-	require.True(t, th.staleBehindNewerDispatch(base))
-
-	// A real dispatch ran before this caller reserved: it is genuinely first.
-	th.lastDispatchAt = base.Add(-time.Millisecond)
-	require.False(t, th.staleBehindNewerDispatch(base),
-		"a caller that reserved after the dispatch is still next in line")
+	require.GreaterOrEqual(t, len(admitted), 2,
+		"the test needs at least two admissions to say anything about spacing")
+	sort.Slice(admitted, func(a, b int) bool { return admitted[a].Before(admitted[b]) })
+	for i := 1; i < len(admitted); i++ {
+		gap := admitted[i].Sub(admitted[i-1])
+		require.GreaterOrEqual(t, gap, interval-measureSkew,
+			"admissions %d and %d are %s apart, under the %s floor", i-1, i, gap, interval)
+	}
 }

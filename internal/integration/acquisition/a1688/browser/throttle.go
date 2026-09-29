@@ -19,6 +19,26 @@ import (
 // It is deliberately self-imposed and conservative by default. Every duration is
 // configurable so a deployment can measure its own budget rather than inherit a
 // guess.
+//
+// # Why the state is this small
+//
+// The invariant is one sentence: two acquisitions must not START less than
+// MinInterval apart, and none may start while a challenge cooldown is in force.
+// That is two instants, so the throttle holds two instants and nothing else -
+// floor, the earliest start the last real dispatch permits, and cooldownUntil.
+//
+// An earlier version of this file also kept a queue tail, a generation counter, a
+// reservation owner, the boundary a reservation had displaced, the real dispatch
+// floor and the instant of the last dispatch, and it re-derived the answer at four
+// separate points in Wait. Every one of those encoded the same fact, so each
+// invariant was enforced in several places that could disagree, and a decision made
+// from a subset of them was wrong in exactly the case that subset did not cover.
+//
+// Nothing is reserved here. A caller waits on the advertised floor and then
+// re-derives the decision from the floor under the mutex, in the same critical
+// section that commits its own start. A stale timer, a scheduler inversion or a
+// cancelled caller can therefore delay work but can never admit it early, because
+// admission is never taken from a value observed before the wait.
 type Throttle struct {
 	// MinInterval is the floor between the START of two acquisitions. Zero uses
 	// DefaultMinInterval.
@@ -42,47 +62,19 @@ type Throttle struct {
 	// re-hit 1688 and negate the cooldown. Zero uses DefaultChallengeCooldown.
 	StartupQuarantine time.Duration
 
-	mu       sync.Mutex
-	next     time.Time // earliest allowed start
-	cooledAt time.Time
-	blocked  bool
+	mu sync.Mutex
+	// floor is the earliest instant an acquisition may start, established by the
+	// last real dispatch. It only ever moves forward, and only when a caller is
+	// actually admitted.
+	floor time.Time
+	// cooldownUntil is when a challenge cooldown ends, or the zero time.
+	cooldownUntil time.Time
 	// headroom is how much budget the caller must keep after waiting.
 	headroom time.Duration
-	// owner/prevNext describe the newest committed reservation, so a caller that
-	// is cancelled can hand its slot back when no later caller has committed
-	// since. Only the newest is tracked: if it has been superseded this process
-	// cannot tell which boundary was displaced, and leaving the floor is the
-	// conservative choice - it can delay a request, never let two start together.
-	owner    uint64
-	prevNext time.Time
-	// slipTolerance is how far past its reserved slot a dispatch may run before the
-	// waiters queued behind it are considered to have been scheduled against a
-	// schedule that no longer holds. A clock tick of goroutine scheduling is not a
-	// slip; half an interval plainly is.
-	slipTolerance time.Duration
-	// lastDispatchAt is when the last REAL acquisition dispatch actually ran. The
-	// floor is a whole interval past it and would overshoot, so the instant is kept
-	// separately to decide whether a waiter is still first in line.
-	lastDispatchAt time.Time
-	// dispatchFloor is the earliest start allowed by the last REAL acquisition
-	// dispatch. Observe overwrites next with a synthetic cooldown floor, so the real
-	// one has to be kept here or it is lost; on expiry the floor resumes at
-	// max(now, dispatchFloor).
-	dispatchFloor time.Time
-	// generation is bumped whenever the floor is re-anchored on a late dispatch.
-	// Waiters capture it before sleeping and re-loop when it changed, so a
-	// caller already in the queue is not admitted on its original timer after an
-	// earlier waiter slipped.
-	generation uint64
 	// rand is guarded by mu.
 	rand *rand.Rand
 }
 
-// Conservative defaults.
-//
-// MinInterval is set well above the observed burst that triggered a wall, and
-// ChallengeCooldown is long enough for the observed recovery window. Both are
-// starting points to be measured, not tuned truths.
 const (
 	DefaultMinInterval    = 20 * time.Second
 	DefaultJitterFraction = 0.3
@@ -135,13 +127,11 @@ func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, s
 		Jitter:            jitter,
 		ChallengeCooldown: challengeCooldown,
 		StartupQuarantine: startupQuarantine,
-		slipTolerance:     minInterval / 2,
 		rand:              rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 	if quarantined && startupQuarantine > 0 {
 		// A new collector assumes the worst about an exit IP it never observed.
-		th.blocked = true
-		th.cooledAt = time.Now().Add(startupQuarantine)
+		th.cooldownUntil = time.Now().Add(startupQuarantine)
 	}
 	return th
 }
@@ -154,352 +144,95 @@ func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, s
 // HTTP handler for ten minutes is worse than telling the caller to retry, and the
 // caller's budget is far shorter than the cooldown anyway.
 //
-// A reservation is only committed when the caller can actually use the slot. A
-// request that is refused, or whose context is cancelled while waiting, gives its
-// slot back, so repeated retryable callers cannot push the queue forward forever
-// and starve every later request.
+// Wait may loop. Each pass re-reads the floor under the mutex and re-derives the
+// decision, so a caller that lost a race simply waits again rather than proceeding
+// on the value it saw before its wait. It cannot spin: the next pass always has a
+// strictly later floor to wait on unless it is admitted or refused.
 func (t *Throttle) Wait(ctx context.Context) error {
 	if t == nil {
 		return nil
 	}
-	// Reject an already-canceled caller before it can consume a slot, otherwise
-	// an idle throttle returns success for a request nobody is waiting for.
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	t.mu.Lock()
-	now := time.Now()
-	// A cooldown that has elapsed is no longer a block. Resuming is paced rather
-	// than immediate: the floor is set one interval out, so the process does not
-	// immediately resume at full rate right after a challenge.
-	if t.blocked && !t.cooledAt.IsZero() && !now.Before(t.cooledAt) {
-		t.blocked = false
-		t.cooledAt = time.Time{}
-		// Resume at the configured deadline. Observe overwrote next with a synthetic
-		// cooldown+interval floor, so leaving it there refuses every request for a
-		// further interval - well past the window the operator configured - because
-		// the budget and headroom no longer fit. The real floor is kept in
-		// dispatchFloor, so resumption is at max(now, dispatchFloor): immediate when
-		// the cooldown outlasted the interval, still paced when a real dispatch is
-		// still inside its own interval.
-		t.next = now
-		if t.dispatchFloor.After(t.next) {
-			t.next = t.dispatchFloor
+	for {
+		wait, err := t.admit(ctx)
+		if err != nil {
+			return err
+		}
+		if wait <= 0 {
+			return nil
+		}
+		if err := t.sleep(ctx, wait); err != nil {
+			return err
 		}
 	}
-	if t.blocked {
-		t.mu.Unlock()
-		return ErrThrottled
+}
+
+// admit derives the caller's fate from the current floor and, when that caller may
+// start, records the start in the same critical section.
+//
+// It returns the duration to wait before asking again, or nil error with a
+// non-positive wait once the caller has been admitted. Admitting and committing
+// together is what makes the interval hold: there is no window in which a caller
+// has been told "you may start" but has not yet moved the floor, which is where the
+// earlier version of this file let two acquisitions start side by side.
+func (t *Throttle) admit(ctx context.Context) (time.Duration, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	now := time.Now()
+	// A cooldown is a refusal, not a wait: the configured window is already longer
+	// than any caller's budget, so waiting would only convert it into a timeout.
+	if now.Before(t.cooldownUntil) {
+		return 0, ErrThrottled
 	}
 
+	earliest := t.floor
+	if earliest.Before(now) {
+		earliest = now
+	}
+	// Admit only if the caller can start early enough to keep the collection
+	// headroom. Checking this against the earliest possible start, rather than
+	// after the wait, is what turns "this would have timed out" into an honest
+	// refusal instead of a request that spends its whole budget queueing.
+	if deadline, ok := ctx.Deadline(); ok && earliest.Add(t.headroom).After(deadline) {
+		return 0, ErrThrottled
+	}
+
+	if earliest.After(now) {
+		return earliest.Sub(now), nil
+	}
+
+	// The commit. The floor is measured from the instant this acquisition really
+	// starts, not from any slot it may have been aiming at, so the next caller is
+	// paced from reality.
+	t.floor = now.Add(t.spanLocked())
+	return 0, nil
+}
+
+// spanLocked is the configured interval plus this process's jitter. The caller must
+// hold mu, because it draws from the shared generator.
+func (t *Throttle) spanLocked() time.Duration {
 	span := t.MinInterval
 	if extra := float64(t.MinInterval) * t.Jitter; extra > 0 {
 		span += time.Duration(t.rand.Float64() * extra)
 	}
-	// No acquisition may start before BOTH the queue tail and the floor left by the
-	// last real dispatch. The two are not the same value: a dispatch that landed
-	// inside an existing tail moved neither, and under scheduler inversion a later
-	// reservation can reach its dispatch first and leave the tail behind while its
-	// own floor is still ahead. Consulting only the tail there lets an earlier waiter
-	// overwrite that floor and start beside an acquisition already running, which is
-	// the burst this throttle exists to prevent.
-	start := t.next
-	if t.dispatchFloor.After(start) {
-		start = t.dispatchFloor
-	}
-	if start.Before(now) {
-		start = now
-	}
-	wait := start.Sub(now)
-	// Admit only if the caller can start early enough to keep collection
-	// headroom left. Checking the start alone let a caller that merely squeaks in
-	// just before its deadline spend the entire remaining budget on the wait, and
-	// then hand that exhausted budget to the collection - surfacing as a timeout
-	// rather than the refusal this throttle intends.
-	if deadline, ok := ctx.Deadline(); ok && start.Add(t.headroom).After(deadline) {
-		t.mu.Unlock()
-		return ErrThrottled
-	}
-	// Commit the slot, remembering the boundary it displaced.
-	//
-	// Only the newest reservation is tracked. An earlier version kept a list of
-	// every reservation, which produced repeated defects - unbounded growth,
-	// wall-clock retirement deleting slots from delayed waiters, and compaction
-	// that never actually closed a gap. A single value is enough: it lets the
-	// common cancellation hand its slot back, and when a later caller has already
-	// committed there is nothing safe to do, so the floor stands.
-	t.owner++
-	mine := t.owner
-	t.prevNext = t.next
-	t.next = start.Add(span)
-	seen := t.generation
-	t.mu.Unlock()
+	return span
+}
 
-	if wait <= 0 {
-		// The immediate path gets exactly the same discipline as the timer path: a
-		// generation re-check, a block check and a cancellation check, all under one
-		// lock. It is otherwise a route that can dispatch beside a waiter that
-		// re-anchored the floor while queued reservations expired.
-		t.mu.Lock()
-		if t.generationLocked(seen) {
-			if t.owner == mine {
-				t.prevNext = time.Time{}
-			}
-			t.mu.Unlock()
-			return t.Wait(ctx)
-		}
-		if err := ctx.Err(); err != nil {
-			// Roll back only while this reservation is still the newest. If another
-			// waiter already re-anchored the floor, restoring this caller's stale
-			// prevNext would let the next caller start beside that waiter.
-			if t.generationLocked(seen) {
-				if t.owner == mine {
-					t.prevNext = time.Time{}
-				}
-			} else if t.owner == mine {
-				t.next = t.prevNext
-				t.prevNext = time.Time{}
-			}
-			t.mu.Unlock()
-			return err
-		}
-		if t.blockedLocked() {
-			if t.owner == mine {
-				t.next = t.prevNext
-				t.prevNext = time.Time{}
-			}
-			t.mu.Unlock()
-			return ErrThrottled
-		}
-		// Re-anchor from THIS caller's own slot, not from the queue tail: a later
-		// reservation must not stop this dispatch from recording the interval that
-		// follows it, or the next waiter can start too soon after this one.
-		actual := time.Now()
-		dispatched := actual.Add(span)
-		t.dispatchFloor = dispatched
-		// See scheduleMoved: lateness is measured on actual, the tail on the floor.
-		if t.scheduleMoved(dispatched, actual, start) {
-			t.generation++
-		}
-		if dispatched.After(t.next) {
-			t.next = dispatched
-		}
-		t.mu.Unlock()
-		return nil
-	}
-	timer := time.NewTimer(wait)
+// sleep waits for d, or returns the context error if the caller gives up first.
+//
+// A cancelled caller changes nothing: the floor is only moved by an admitted
+// caller, so a request that never started has consumed no interval and there is
+// nothing to give back. That also removes any way for repeated cancelled or
+// refused callers to push the queue forward and starve later requests.
+func (t *Throttle) sleep(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
-		// Same rule everywhere: roll back only while this reservation is still the
-		// newest. Restoring a stale prevNext after another waiter re-anchored would
-		// let the next caller start before that dispatch's interval elapsed.
-		if !t.rollbackIfNewest(mine) {
-			t.discard(mine)
-		}
 		return ctx.Err()
 	case <-timer.C:
+		return nil
 	}
-	// The wait may have spanned another acquisition, and that one may have
-	// observed a challenge. Returning success here would hand the caller a slot
-	// the process has already decided to refuse, so the block is re-checked once
-	// the wait is over.
-	// The generation check, the block check and the dispatch commitment must all be
-	// ONE critical section. If the generation is validated separately, two waiters
-	// whose timers both elapsed can both see the old value and then dispatch
-	// together; if Observe can interleave, a caller starts during a cooldown.
-	t.mu.Lock()
-	// The timer already fired, but the caller may have been cancelled while this
-	// waiter waited for the lock. Committing a dispatch for a dead request would
-	// hand out a slot and let Acquire start a browser for it.
-	if err := ctx.Err(); err != nil {
-		// Same rule as the immediate path and the requeue path: roll back only
-		// while this reservation is still the newest. If another waiter already
-		// re-anchored the floor, restoring this caller's stale prevNext would let
-		// the next caller start beside that waiter.
-		if t.generationLocked(seen) {
-			if t.owner == mine {
-				t.prevNext = time.Time{}
-			}
-		} else if t.owner == mine {
-			t.next = t.prevNext
-			t.prevNext = time.Time{}
-		}
-		t.mu.Unlock()
-		return err
-	}
-	if t.generationLocked(seen) {
-		// Someone else re-anchored the floor while this caller slept. Drop this
-		// reservation without restoring anything - the newer floor stands - and
-		// re-evaluate against it.
-		if t.owner == mine {
-			t.prevNext = time.Time{}
-		}
-		t.mu.Unlock()
-		return t.Wait(ctx)
-	}
-	if t.blockedLocked() {
-		if t.owner == mine {
-			t.next = t.prevNext
-			t.prevNext = time.Time{}
-		}
-		t.mu.Unlock()
-		return ErrThrottled
-	}
-	// Re-check the real dispatch floor at the moment of dispatch, not only when the
-	// reservation was made. Under scheduler inversion a later waiter can dispatch
-	// first and leave a floor ahead while this caller sleeps; with enough callers
-	// queued the tail can also sit beyond that floor, so nothing else here would
-	// notice and this caller would overwrite the newer floor and return within
-	// MinInterval of an acquisition that is already running.
-	if t.staleBehindNewerDispatch(start) {
-		t.discardLocked(mine)
-		t.mu.Unlock()
-		return t.Wait(ctx)
-	}
-	// Advance the floor from when this caller ACTUALLY starts, not from the slot
-	// it reserved. A goroutine whose timer fires but which is scheduled late would
-	// otherwise let the next reservation be admitted on the ideal timeline, so two
-	// real acquisition starts could be only milliseconds apart - the burst this
-	// throttle exists to prevent, produced by the pacing itself.
-	// Re-check the real dispatch floor at the moment of dispatch, not only when the
-	// reservation was made. Under scheduler inversion a later waiter can dispatch
-	// first and leave a floor ahead while this caller sleeps; with enough callers
-	// queued the tail can also sit beyond that floor, so nothing else here would
-	// notice and this caller would overwrite the newer floor and return within
-	// MinInterval of an acquisition that is already running.
-	if t.staleBehindNewerDispatch(start) {
-		t.discardLocked(mine)
-		t.mu.Unlock()
-		return t.Wait(ctx)
-	}
-	// Re-anchor from THIS caller's own slot, not from the queue tail: a later
-	// reservation must not stop this dispatch from recording the interval that
-	// follows it, or the next waiter can start too soon after this one.
-	actual := time.Now()
-	dispatched := actual.Add(span)
-	t.lastDispatchAt = actual
-	t.dispatchFloor = dispatched
-	// See the immediate path: lateness on actual, the tail on the floor.
-	if t.scheduleMoved(dispatched, actual, start) {
-		t.generation++
-	}
-	if dispatched.After(t.next) {
-		t.next = dispatched
-	}
-	t.mu.Unlock()
-	return nil
-}
-
-// discardLocked drops a reservation without restoring any boundary. The caller must
-// already hold the mutex.
-func (t *Throttle) discardLocked(seq uint64) {
-	if t.owner == seq {
-		t.prevNext = time.Time{}
-	}
-}
-
-// discard drops a reservation without restoring any boundary.
-func (t *Throttle) discard(seq uint64) {
-	if t == nil {
-		return
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.owner == seq {
-		t.prevNext = time.Time{}
-	}
-}
-
-// blockedLocked reports the block state, expiring an elapsed window. The caller
-// must hold the lock.
-func (t *Throttle) blockedLocked() bool {
-	if t.blocked && !t.cooledAt.IsZero() && !time.Now().Before(t.cooledAt) {
-		t.blocked = false
-		t.cooledAt = time.Time{}
-		if t.next.Before(time.Now().Add(t.MinInterval)) {
-			t.next = time.Now().Add(t.MinInterval)
-		}
-	}
-	return t.blocked
-}
-
-// generationLocked reports whether the floor was re-anchored since it was read.
-// The caller must hold the lock.
-func (t *Throttle) generationLocked(seen uint64) bool {
-	return t.generation != seen
-}
-
-// staleBehindNewerDispatch reports whether a real acquisition dispatched after this
-// caller reserved the slot it is about to use. If one did, this caller is second in
-// line no matter how valid its own timer looks: under scheduler inversion the
-// generation, the tail and the admission-time floor can all fail to reveal it, and
-// committing here would start an acquisition beside one already running.
-func (t *Throttle) staleBehindNewerDispatch(start time.Time) bool {
-	return t.lastDispatchAt.After(start)
-}
-
-// scheduleMoved reports whether a dispatch that actually ran at actual, having
-// reserved a slot at start and leaving a floor of dispatched, invalidates the
-// waiters queued behind it.
-//
-// Both interleaveings are real and they pull in opposite directions. Comparing only
-// against the queue tail misses a genuine slip whenever a later reservation has
-// already pushed that tail out, letting the next waiter start right behind a
-// predecessor that ran late. Comparing the floor against the slot with no tolerance
-// counts a single clock tick of goroutine scheduling as a slip, because the floor
-// is a full interval ahead of the dispatch by construction and would clear any
-// tolerance on every single dispatch. So the lateness has to be measured on the
-// instant the dispatch ran, and the tail on the floor it left.
-func (t *Throttle) scheduleMoved(dispatched, actual, start time.Time) bool {
-	return dispatched.After(t.next) || actual.After(start.Add(t.slipTolerance))
-}
-
-// rollbackIfNewest restores the displaced boundary only when this reservation is
-// still the newest. It reports whether it rolled back.
-func (t *Throttle) rollbackIfNewest(seq uint64) bool {
-	if t == nil {
-		return false
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.owner != seq {
-		return false
-	}
-	t.next = t.prevNext
-	t.prevNext = time.Time{}
-	return true
-}
-
-// release hands a committed slot back when no later caller has committed since.
-// When one has, the floor stands: this process cannot tell which boundary the
-// cancelled reservation displaced, and delaying one request is safer than
-// letting two start together.
-func (t *Throttle) release(seq uint64) {
-	if t == nil {
-		return
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.owner == seq {
-		t.next = t.prevNext
-		t.prevNext = time.Time{}
-	}
-}
-
-// nowBlocked reports whether a challenge has put the process into cooldown,
-// after lazily expiring a window that has already elapsed.
-func (t *Throttle) nowBlocked() bool {
-	if t == nil {
-		return false
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.blocked && !t.cooledAt.IsZero() && !time.Now().Before(t.cooledAt) {
-		t.blocked = false
-		t.cooledAt = time.Time{}
-	}
-	return t.blocked
 }
 
 // Observe reports the outcome of an acquisition so the throttle can react.
@@ -531,22 +264,26 @@ func (t *Throttle) Observe(err error) {
 	// knows both notifications belong to the same acquisition. Suppressing it here
 	// instead would be process-wide and would drop the second of two genuinely
 	// distinct challenges.
-	t.blocked = true
-	t.cooledAt = time.Now().Add(t.ChallengeCooldown)
-	// Push the interval floor past the cooldown so work resumes paced.
-	t.next = t.cooledAt.Add(t.MinInterval)
+	//
+	// Note what this does NOT do: it does not push the pacing floor past the end of
+	// the window. The floor belongs to real dispatches only. An earlier version
+	// overwrote it with the cooldown end plus an interval, which made the operator's
+	// configured window a lower bound on the real one rather than the window itself.
+	t.cooldownUntil = time.Now().Add(t.ChallengeCooldown)
 }
 
 // Reset clears a cooldown, for an operator-confirmed recovery. It is not called
 // on the request path: recovery is a time-based decision, not a per-call guess.
+//
+// It does not clear the pacing floor, which records when acquisitions actually
+// started and is not a symptom of anything an operator can confirm.
 func (t *Throttle) Reset() {
 	if t == nil {
 		return
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.blocked = false
-	t.cooledAt = time.Time{}
+	t.cooldownUntil = time.Time{}
 }
 
 // CooldownRemaining reports how long the current refusal lasts, for
@@ -557,10 +294,7 @@ func (t *Throttle) CooldownRemaining() time.Duration {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if !t.blocked || t.cooledAt.IsZero() {
-		return 0
-	}
-	if d := time.Until(t.cooledAt); d > 0 {
+	if d := time.Until(t.cooldownUntil); d > 0 {
 		return d
 	}
 	return 0
