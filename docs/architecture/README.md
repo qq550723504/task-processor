@@ -122,6 +122,13 @@ source of truth for long-lived rules.
 
 ## Supporting Context
 
+- [`account-audit-summary-v1.md`](./account-audit-summary-v1.md)
+  - IMPLEMENTATION_READY #478 four true Account Audit totals over the complete
+    30-day window of current committed owner events, preserving live Organization
+    authorization, canonical operation identity and existing list pagination.
+    Independent Store/Billing history, rollout and product acceptance remain outside
+    this bounded increment.
+
 - [`unified-base-prepaid-resources-v1.md`](./unified-base-prepaid-resources-v1.md)
   - IMPLEMENTATION_READY design basis for #478/#564: current Figma base plan, native Stores, prepaid purchases, real resource events and Product Agent point metering; supersedes subscription/quota/Token entry paths without changing repository package-boundary rules.
 

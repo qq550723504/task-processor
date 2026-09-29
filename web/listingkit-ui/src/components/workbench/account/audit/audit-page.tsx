@@ -34,18 +34,27 @@ export function AuditPage({ expectedUserId }: { expectedUserId: string }) {
 }
 function ScopedAudit({ scope, expectedUserId, organizationId }: { scope: string; expectedUserId: string; organizationId: string }) {
   const [sequence, setSequence] = useState(0);
+  const [scopeError, setScopeError] = useState<string | null>(null);
   return <div className={styles.page}>
     <Card className={styles.coverage}>
       <h2>企业操作审计</h2>
       <p>只读取当前企业已提交的账户资料、成员、额度、模型实际用量、图片 AI 点数扣款与源账号事件。图片生成成功即扣点，后续未采用或图片处理失败不退还；未确认生成的预留不列为扣款。模型用量记录不提供操作人，按操作人筛选时不显示。汇总仅计成功操作，不计用量观察；资源覆盖续费期数与数据分配/回收、AI 月限和图片扣点，尚未包含独立店铺续费与支付记录。</p>
     </Card>
-    <div className={styles.toolbar}><span>当前企业：{organizationId}</span><Button variant="outline" onClick={() => setSequence(value => value + 1)}>刷新记录</Button></div>
-    <AuditSummary key={`summary:${sequence}`} scope={`${scope}:${sequence}`} expectedUserId={expectedUserId} organizationId={organizationId} />
-    <AuditRequests key={sequence} scope={`${scope}:${sequence}`} expectedUserId={expectedUserId} organizationId={organizationId} />
+    <div className={styles.toolbar}><span>当前企业：{organizationId}</span><Button variant="outline" onClick={() => { setScopeError(null); setSequence(value => value + 1); }}>刷新记录</Button></div>
+    {scopeError ? <AuditError code={scopeError} /> : <>
+      <AuditSummary key={`summary:${sequence}`} scope={`${scope}:${sequence}`} expectedUserId={expectedUserId} organizationId={organizationId} onScopeRejected={setScopeError} />
+      <AuditRequests key={sequence} scope={`${scope}:${sequence}`} expectedUserId={expectedUserId} organizationId={organizationId} onScopeRejected={setScopeError} />
+    </>}
   </div>;
 }
-function AuditSummary({ scope, expectedUserId, organizationId }: { scope: string; expectedUserId: string; organizationId: string }) {
+function useAuditScopeRejection(error: unknown, onScopeRejected: (code: string) => void) {
+  useEffect(() => {
+    if (error instanceof AccountReadError && ["AUTHENTICATION_REQUIRED", "IDENTITY_CONTEXT_CHANGED", "PERMISSION_DENIED", "ORGANIZATION_ACCESS_DENIED", "ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_SUSPENDED", "ORGANIZATION_CONTEXT_CHANGED", "ORGANIZATION_SELECTION_REQUIRED"].includes(error.code)) onScopeRejected(error.code);
+  }, [error, onScopeRejected]);
+}
+function AuditSummary({ scope, expectedUserId, organizationId, onScopeRejected }: { scope: string; expectedUserId: string; organizationId: string; onScopeRejected: (code: string) => void }) {
   const query = useQuery({ queryKey: ["account-audit-summary", scope], queryFn: ({ signal }) => getAccountAuditSummary({ expectedUserId, expectedOrganizationId: organizationId, signal }), retry: false, staleTime: 0, gcTime: 0, refetchOnWindowFocus: true, refetchOnReconnect: true });
+  useAuditScopeRejection(query.error, onScopeRejected);
   const data = !query.isPending && !query.isFetching && !query.isError ? query.data : undefined;
   const code = query.error instanceof AccountReadError ? query.error.code : "DEPENDENCY_UNAVAILABLE";
   const missing = code === "SUMMARY_NOT_CONFIGURED" || code === "ACCOUNT_NOT_CONFIGURED";
@@ -63,12 +72,13 @@ function AuditSummary({ scope, expectedUserId, organizationId }: { scope: string
       : query.isError ? <p className={styles.summaryWindow} role="status">{denied ? "汇总读取权限已失效" : missing ? "汇总来源尚未配置完整" : code === "DEADLINE_EXCEEDED" ? "汇总读取超时" : "汇总暂不可用"}，本次未取得完整统计。</p> : null}
   </section>;
 }
-function AuditRequests({ scope, expectedUserId, organizationId }: { scope: string; expectedUserId: string; organizationId: string }) {
+function AuditRequests({ scope, expectedUserId, organizationId, onScopeRejected }: { scope: string; expectedUserId: string; organizationId: string; onScopeRejected: (code: string) => void }) {
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const [actor, setActor] = useState("");
   const [operation, setOperation] = useState<"" | "register" | "enable" | "disable" | "allocate_member_resource" | "reclaim_member_resource" | "set_member_ai_point_limit" | "update" | "invite" | "role" | "remove">("");
   const cursor = cursors[cursors.length - 1];
   const query = useQuery({ queryKey: ["account-audit", scope, cursor, actor, operation], queryFn: ({ signal }) => getAccountAudit({ expectedUserId, expectedOrganizationId: organizationId, cursor, actor: actor || undefined, operation: operation || undefined, signal }), retry: false, staleTime: 0, gcTime: 0, refetchOnWindowFocus: true, refetchOnReconnect: true });
+  useAuditScopeRejection(query.error, onScopeRejected);
   if (query.isPending || query.isFetching) return <ConsoleState kind="loading" title="正在读取操作记录">正在确认访问权限。</ConsoleState>;
   if (query.isError) return <AuditError code={query.error instanceof AccountReadError ? query.error.code : "DEPENDENCY_UNAVAILABLE"} />;
   const data = query.data;
