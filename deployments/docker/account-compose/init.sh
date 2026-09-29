@@ -89,7 +89,7 @@ EOF
  fi
  if [ -f "$state/.init-complete" ]; then echo 'knowledge requires first initialization in a new empty project' >&2; exit 1; fi
  jq --rawfile password /secrets/knowledge-runtime/runtime-password --rawfile access /secrets/knowledge-storage/access-key --rawfile secret /secrets/knowledge-storage/secret-key \
-  '.knowledge = {enabled:true,database:{host:"127.0.0.1",port:5433,user:"knowledge_runtime",password:($password|rtrimstr("\n")),database:"knowledge",maxConnections:4,maxIdleConnections:2},storage:{endpoint:"http://knowledge-objects:9000",region:"us-east-1",bucket:"knowledge",accessKeyId:($access|rtrimstr("\n")),secretAccessKey:($secret|rtrimstr("\n")),mode:"aws"},parserEndpoint:"http://knowledge-parser:9998"}' \
+  '.knowledge = {enabled:true,database:{host:"127.0.0.1",port:5433,user:"knowledge_runtime",password:($password|rtrimstr("\n")),database:"knowledge",maxConnections:4},storage:{endpoint:"http://knowledge-objects:9000",region:"us-east-1",bucket:"knowledge",accessKeyId:($access|rtrimstr("\n")),secretAccessKey:($secret|rtrimstr("\n")),mode:"aws"},parserEndpoint:"http://knowledge-parser:9998"}' \
   "$runtime/current-application.json" > "$runtime/current-application.json.tmp"
  chmod 600 "$runtime/current-application.json.tmp"
  mv "$runtime/current-application.json.tmp" "$runtime/current-application.json"
