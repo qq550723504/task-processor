@@ -40,7 +40,7 @@ func TestBrowserAcquireNormalizesNonpositiveMinimumQuantity(t *testing.T) {
 		}}},
 	})
 	srv := serveFixture(t, page)
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	source := mustSourceForShape(t)
 	evidence, err := client.Acquire(t.Context(), source)
 	require.NoError(t, err, "a zero minimum quantity must not fail the acquisition")
@@ -68,7 +68,7 @@ func TestBrowserAcquireDropsOversizedPriceRanges(t *testing.T) {
 		}}},
 	})
 	srv := serveFixture(t, page)
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
 	require.NoError(t, err)
 	require.Empty(t, evidence.PriceFacts, "a lossy price prefix must not be published")
@@ -84,7 +84,7 @@ window.__INIT_DATA = {"data":{"main":{"data":{"title":"No id custom item",
   "propsList":[{"name":"material","value":"steel"}]}}}};
 </script></body></html>`
 	srv := serveFixture(t, page)
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL + "/offer/981645030344.html"})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL + "/offer/981645030344.html"})
 	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
 	require.NoError(t, err, "a custom item without an inline offer id must still be collected")
 	require.Equal(t, "981645030344", evidence.OfferID)
@@ -103,7 +103,7 @@ window.__INIT_DATA = {"data":{"main":{"data":{
 }}}};
 </script></body></html>`
 	srv := serveFixture(t, page)
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
 	require.NoError(t, err)
 	require.Len(t, evidence.Variants, 1)
@@ -147,7 +147,7 @@ func TestBrowserAcquirePreservesExactLargeMinimumQuantity(t *testing.T) {
 		}}},
 	})
 	srv := serveFixture(t, page)
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
 	require.NoError(t, err)
 	require.NotEmpty(t, evidence.PriceFacts)
@@ -168,7 +168,7 @@ window.__INIT_DATA = {"data":{"main":{"data":{
 }}}};
 </script></body></html>`
 	srv := serveFixture(t, page)
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
 	require.NoError(t, err)
 	require.Len(t, evidence.Variants, 1, "an unusable model must not shadow the complete fallback")
@@ -189,7 +189,7 @@ window.__INIT_DATA = {
 };
 </script></body></html>`
 	srv := serveFixture(t, page)
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
 	require.NoError(t, err)
 	require.Len(t, evidence.Variants, 1, "an empty global model must not shadow the complete one")
@@ -228,7 +228,7 @@ func TestBrowserAcquireBoundsAggregatePriceScan(t *testing.T) {
 		}}}
 	}
 	srv := serveFixture(t, buildContextPage(data))
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
 	require.NoError(t, err)
 	require.Empty(t, evidence.PriceFacts, "exceeding the extraction-wide scan budget must drop the price set")
@@ -265,7 +265,7 @@ window.__INIT_DATA = {
 </script></body></html>`
 	page = strings.Replace(page, "BIG", mustJSON(big), 1)
 	srv := serveFixture(t, page)
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
 	require.NoError(t, err)
 	require.Empty(t, evidence.Variants,
@@ -289,7 +289,7 @@ func TestBrowserAcquireOmitsNoncanonicalMinimumQuantity(t *testing.T) {
 			}}},
 		})
 		srv := serveFixture(t, page)
-		client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+		client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 		source := mustSourceForShape(t)
 		evidence, err := client.Acquire(t.Context(), source)
 		require.NoError(t, err)
@@ -327,7 +327,7 @@ window.__INIT_DATA = {
 </script></body></html>`
 	page = strings.Replace(page, "BIG", mustJSON(big), 1)
 	srv := serveFixture(t, page)
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
 	require.NoError(t, err)
 	require.Empty(t, evidence.Variants,
@@ -386,7 +386,7 @@ func TestBrowserAcquirePreservesExactlyCappedPriceSet(t *testing.T) {
 		"unrelated": map[string]any{"fields": map[string]any{"somethingElse": "x"}},
 	}
 	srv := serveFixture(t, buildContextPage(data))
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
 	require.NoError(t, err)
 	require.Len(t, evidence.PriceFacts, maxPriceFacts,
@@ -421,7 +421,7 @@ func TestBrowserAcquirePreservesSetThatExactlyExhaustsScanBudget(t *testing.T) {
 		"unrelated": map[string]any{"fields": map[string]any{"somethingElse": "x"}},
 	}
 	srv := serveFixture(t, buildContextPage(data))
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
 	require.NoError(t, err)
 	require.Len(t, evidence.PriceFacts, maxPriceFacts,
@@ -453,7 +453,7 @@ func TestBrowserAcquireDropsPrefixWhenPropertyCapIsHit(t *testing.T) {
 		}},
 	}}}
 	srv := serveFixture(t, buildContextPage(data))
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
 	require.NoError(t, err)
 	require.Empty(t, evidence.PriceFacts,
@@ -474,7 +474,7 @@ window.__INIT_DATA = {"data":{"main":{"data":{
 }}}};
 </script></body></html>`
 	srv := serveFixture(t, page)
-	client := New(Options{ExecutablePath: binPath, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: binPath, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
 	require.NoError(t, err)
 	require.Len(t, evidence.Variants, 1, "a model without usable props must not suppress the complete model")
@@ -497,7 +497,7 @@ func TestBrowserAcquireTrimsPaddedMinimumQuantity(t *testing.T) {
 		}}},
 	})
 	srv := serveFixture(t, page)
-	client := New(Options{ExecutablePath: binPath, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: binPath, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	source := mustSourceForShape(t)
 	evidence, err := client.Acquire(t.Context(), source)
 	require.NoError(t, err)
@@ -540,7 +540,7 @@ func TestBrowserAcquireStopsAfterFirstCurrentPriceBlock(t *testing.T) {
 		"third":  mk("13.00"),
 	})
 	srv := serveFixture(t, page)
-	client := New(Options{ExecutablePath: binPathOf(t), Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: binPathOf(t), Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
 	require.NoError(t, err)
 	require.Len(t, evidence.PriceFacts, 1, "only the first currentPrices representation may be read")
@@ -570,7 +570,7 @@ func TestBrowserAcquireDoesNotDoubleChargeThePropertyBudget(t *testing.T) {
 	}
 	data["late"] = mkCurrent("7.00")
 	srv := serveFixture(t, buildContextPage(data))
-	client := New(Options{ExecutablePath: bin, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: bin, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
 	require.NoError(t, err)
 	require.NotEmpty(t, evidence.PriceFacts,

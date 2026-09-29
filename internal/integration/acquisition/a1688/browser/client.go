@@ -11,6 +11,7 @@ package browser
 
 import (
 	"context"
+	stdctx "context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/mxschmitt/playwright-go"
 	sigjson "sigs.k8s.io/json"
+	"sync"
 	"task-processor/internal/product/sourcing"
 )
 
@@ -40,6 +42,10 @@ var (
 	// provider's own egress policy, so the source was never usable rather than
 	// the collector being unavailable.
 	ErrRejected = errors.New("public source rejected by the egress allowlist")
+	// ErrThrottled reports that this collector is refusing work because a recent
+	// challenge put it into cooldown. It is retryable: the caller should come back
+	// after the cooldown rather than treat the source as unavailable.
+	ErrThrottled = errors.New("browser collector in challenge cooldown")
 	// ErrCapacity reports that this collector is already running its maximum
 	// number of concurrent browser acquisitions (design D8).
 	ErrCapacity = errors.New("browser collector at concurrency limit")
@@ -78,6 +84,18 @@ type Options struct {
 	// MaxResponseBytes aborts an allowed subresource whose declared or observed
 	// body exceeds this size, before Chromium materializes it (design D8).
 	MaxResponseBytes int64
+	// Rate floors the collection rate of this collector. Zero values use the
+	// conservative defaults in Throttle; see that type for why the rate is
+	// governed here and not by the number of exit IPs.
+	MinInterval       time.Duration
+	Jitter            float64
+	ChallengeCooldown time.Duration
+	// StartupQuarantine is how long a freshly started collector refuses its first
+	// request, because a restarted process cannot know whether its egress IP was
+	// challenged just before it died. Zero uses the cooldown default.
+	StartupQuarantine time.Duration
+	// CollectionHeadroom is the budget a caller must keep after the rate wait.
+	CollectionHeadroom time.Duration
 	// navigateURLOverride replaces the navigation target. It exists only so the
 	// browser fixture test can drive a real Chromium against a loopback fixture
 	// page; production never sets it (the target is always source.URL).
@@ -160,6 +178,8 @@ type Client struct {
 	// separate Chromium, so a burst across organizations would otherwise exhaust
 	// CPU, memory and the shared egress IP.
 	slots chan struct{}
+	// throttle paces acquisitions and stops the world after a challenge.
+	throttle *Throttle
 }
 
 // The browser provider must satisfy the current owner's acquisition contract.
@@ -171,7 +191,11 @@ var _ sourcing.PublicAcquirer = (*Client)(nil)
 func (c *Client) maxConcurrentInternal() int { return c.opts.maxConcurrent() }
 
 func New(opts Options) *Client {
-	return &Client{opts: opts, slots: make(chan struct{}, opts.maxConcurrent())}
+	return &Client{
+		opts:     opts,
+		slots:    make(chan struct{}, opts.maxConcurrent()),
+		throttle: newThrottle(opts.MinInterval, opts.Jitter, opts.ChallengeCooldown, opts.StartupQuarantine, opts.budget(), opts.CollectionHeadroom),
+	}
 }
 
 // Acquire fetches one anonymous public product page and returns untrusted
@@ -190,7 +214,6 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.opts.budget())
 	defer cancel()
-	deadlineAt, _ := ctx.Deadline()
 
 	// Collector-wide concurrency cap (D8). Taken before any browser work so an
 	// over-capacity burst is rejected instead of launching more Chromium
@@ -204,6 +227,27 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 		return sourcing.AcquisitionEvidence{}, ErrCapacity
 	}
 
+	// Rate gate runs before any browser work so a paced collector never spends
+	// a Chromium on a request the process has already decided to refuse.
+	if err := c.throttle.Wait(ctx); err != nil {
+		return sourcing.AcquisitionEvidence{}, err
+	}
+
+	// The challenge notification is NOT made here. A challenge is known in exactly
+	// one place - the detection site inside collect - which notifies the throttle the
+	// moment it is seen so the cooldown engages while the solve is still running.
+	// Re-reporting the terminal outcome from here would restart that window from the
+	// end of the solve, and it cannot be suppressed here either: collect may return
+	// on a caller cancellation without joining the detection goroutine, so a flag
+	// read here would race with the write that matters and would be false exactly
+	// when it has to be true.
+	evidence, outcome := c.collect(ctx, source)
+	return evidence, outcome
+}
+
+// collect performs one paced acquisition. Its outcome is observed by Acquire.
+func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource) (sourcing.AcquisitionEvidence, error) {
+	deadlineAt, _ := ctx.Deadline()
 	pw, err := playwright.Run()
 	if err != nil {
 		return sourcing.AcquisitionEvidence{}, fmt.Errorf("%w: start playwright: %v", ErrUnavailable, err)
@@ -335,11 +379,40 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 		err        error
 	}
 	phaseDone := make(chan phaseResult, 1)
+	// Once a challenge has been SEEN on this page, any later budget expiry must
+	// still report it. Otherwise a challenge whose automatic attempt happened to
+	// run out of budget is reported as an ordinary timeout, the throttle does not
+	// cool, and the next acquisition walks straight back into the block.
+	// challengeMu covers both the cooldown and the flag, so a reader that sees the
+	// flag is guaranteed to see the cooldown and a reader that does not is looking
+	// at a detection that has not been published yet. Setting them under one lock is
+	// what makes the pair atomic; ordering the two operations only moves the window.
+	var challengeMu sync.Mutex
+	var sawChallenge bool
+	sawChallengeSeen := func() bool {
+		challengeMu.Lock()
+		defer challengeMu.Unlock()
+		return sawChallenge
+	}
 	go func() {
 		// The whole phase is inside the race: the automatic captcha attempt and the
 		// re-check perform further uncancellable protocol calls, so bounding only
 		// the first detection would leave the rest uninterruptible.
 		challenged, err := detectChallenge(page)
+		if challenged {
+			// Engage the cooldown BEFORE publishing the flag. The main select reads
+			// this flag to decide whether to report a challenge, and it can win the
+			// race with this goroutine being rescheduled between the two operations.
+			// Publishing first would let the caller return a joined challenge error
+			// while the throttle is still unblocked, and with any concurrency another
+			// acquisition would then start a browser against an IP already known to be
+			// challenged. In this order a reader that sees the flag is guaranteed to
+			// see the cooldown too; a reader that does not still gets the protection.
+			challengeMu.Lock()
+			c.throttle.Observe(ErrChallenge)
+			sawChallenge = true
+			challengeMu.Unlock()
+		}
 		if err == nil && challenged && !isAuthenticationWall(page) {
 			if _, solveErr := c.trySolve(ctx, page); solveErr != nil && ctx.Err() != nil {
 				phaseDone <- phaseResult{false, ctx.Err()}
@@ -352,8 +425,21 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 	var inspected phaseResult
 	select {
 	case inspected = <-phaseDone:
+		// Both cases can be ready when the solve exhausts the budget. Whichever
+		// wins, an already-seen challenge must survive, or the cooldown is
+		// skipped and the next acquisition walks back into the block.
+		// A challenge was already seen on this page, so ANY terminal context error
+		// from here - deadline or caller cancellation - must still carry it. Without
+		// this, a caller that disconnects mid-solve reports a bare cancellation and
+		// the cooldown is skipped.
+		if sawChallengeSeen() && inspected.err != nil && isTerminalContextErr(inspected.err) {
+			inspected.err = errors.Join(ErrChallenge, inspected.err)
+		}
 	case <-ctx.Done():
 		_ = page.Close()
+		if sawChallengeSeen() {
+			return sourcing.AcquisitionEvidence{}, errors.Join(ErrChallenge, ctx.Err())
+		}
 		return sourcing.AcquisitionEvidence{}, ctx.Err()
 	}
 	challenged, err := inspected.challenged, inspected.err
@@ -713,4 +799,10 @@ func absoluteURL(base, location string) (string, error) {
 		return "", err
 	}
 	return parsedBase.ResolveReference(parsed).String(), nil
+}
+
+// isTerminalContextErr reports whether an error is a deadline or a cancellation
+// rather than a substantive failure.
+func isTerminalContextErr(err error) bool {
+	return errors.Is(err, stdctx.DeadlineExceeded) || errors.Is(err, stdctx.Canceled)
 }
