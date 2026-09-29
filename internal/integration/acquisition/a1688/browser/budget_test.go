@@ -47,14 +47,14 @@ func TestNavigationTimeoutDefaultsWithinBudget(t *testing.T) {
 func TestConcurrentAcquisitionsAreBounded(t *testing.T) {
 	require.Equal(t, 2, Options{}.maxConcurrent(), "the default collector cap must follow design D8 / 12-B2")
 	require.Equal(t, 5, Options{MaxConcurrent: 5}.maxConcurrent())
-	require.Equal(t, DefaultMaxConcurrent, New(Options{}).maxConcurrentInternal())
+	require.Equal(t, DefaultMaxConcurrent, newTestClient(Options{}).maxConcurrentInternal())
 }
 
 // The concurrency slot must be taken before any browser work, so an over-limit
 // request is rejected instead of launching Chromium.
 func TestConcurrencySlotRejectsWhenFull(t *testing.T) {
 	browserPath := fixtureBrowserPath(t)
-	client := New(Options{ExecutablePath: browserPath, MaxConcurrent: 1})
+	client := newTestClient(Options{ExecutablePath: browserPath, MaxConcurrent: 1})
 	client.slots <- struct{}{} // occupy the only slot
 	_, err := client.Acquire(context.Background(), mustCanonicalSource(t))
 	require.ErrorIs(t, err, ErrCapacity)
