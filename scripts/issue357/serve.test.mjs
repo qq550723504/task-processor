@@ -11,7 +11,9 @@ import {json,processIdentity} from './io.mjs';
 
 const supervisor=fileURLToPath(new URL('./serve.mjs',import.meta.url));
 
-for(const currentApplication of [true,false])test(`early startup exit confirms cleanup without masking failure (current=${currentApplication})`,{skip:process.platform!=='win32',timeout:20000},async()=>{
+// CI's native process inspection can take tens of seconds per child. Keep the
+// test deadline separate from the unchanged production graceful-stop deadlines.
+for(const currentApplication of [true,false])test(`early startup exit confirms cleanup without masking failure (current=${currentApplication})`,{skip:process.platform!=='win32',timeout:180000},async()=>{
  const directory=runDirectory(randomUUID());await mkdir(directory,{recursive:true});
  let child;
  try {
@@ -29,7 +31,7 @@ for(const currentApplication of [true,false])test(`early startup exit confirms c
  }
 });
 
-test('startup cleanup requiring forced termination cannot confirm a successful stop',{skip:process.platform!=='win32',timeout:40000},async()=>{
+test('startup cleanup requiring forced termination cannot confirm a successful stop',{skip:process.platform!=='win32',timeout:180000},async()=>{
  const directory=runDirectory(randomUUID());await mkdir(directory,{recursive:true});
  let child;
  try {
