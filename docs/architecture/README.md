@@ -124,8 +124,8 @@ source of truth for long-lived rules.
 
 - [`member-directory-query-v1.md`](./member-directory-query-v1.md)
   - #575 bounded current Membership query increment: complete display-name/login
-    search, native role/state filtering, filtered totals and paging. Design review
-    pending; no new IAM, persistence owner or shared runtime authority.
+    search, native role/state filtering, filtered totals and paging. IMPLEMENTATION_READY;
+    no new IAM, persistence owner or shared runtime authority.
 
 - [`organization-agent-configuration-v1.md`](./organization-agent-configuration-v1.md)
   - APPROVED / IMPLEMENTATION_READY #570 Slice D: enterprise Agent enablement,

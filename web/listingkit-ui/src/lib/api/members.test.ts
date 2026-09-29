@@ -4,6 +4,23 @@ import { getMembers, parseMembers, invitationInput, getMemberOperations, parseMe
 const empty = { schemaVersion: "membership-v1", userId: "actor", organizationId: "org", items: [], total: 0, canManage: false, assignableRoles: [] };
 afterEach(() => vi.unstubAllGlobals());
 describe("membership read boundary", () => {
+  it("sends encoded directory filters and resets only the requested page",async()=>{
+    const fetch=vi.fn().mockResolvedValue(Response.json(empty));vi.stubGlobal("fetch",fetch);
+    await getMembers({expectedUserId:"actor",expectedOrganizationId:"org"},20,{q:"  目标+&%  ",role:"listingkit_operator",state:"inactive"});
+    const url=new URL(fetch.mock.calls[0][0],"http://localhost");
+    expect(url.searchParams.get("q")).toBe("目标+&%");
+    expect(url.searchParams.get("role")).toBe("listingkit_operator");
+    expect(url.searchParams.get("state")).toBe("inactive");
+    expect(url.searchParams.get("offset")).toBe("20");
+  });
+  it("rejects invalid directory query inputs before fetch",async()=>{
+    const fetch=vi.fn();vi.stubGlobal("fetch",fetch);
+    const scope={expectedUserId:"actor",expectedOrganizationId:"org"};
+    for (const q of ["a".repeat(201),"目".repeat(67),"x\u0000", "\ud800"]) await expect(getMembers(scope,0,{q})).rejects.toMatchObject({code:"INVALID_REQUEST"});
+    for (const offset of [-1,10001,0.5]) await expect(getMembers(scope,offset)).rejects.toMatchObject({code:"INVALID_REQUEST"});
+    expect(fetch).not.toHaveBeenCalled();
+    fetch.mockResolvedValue(Response.json(empty));await getMembers(scope,0,{q:"目".repeat(66)+"ab"});expect(fetch).toHaveBeenCalledTimes(1);
+  });
   it("rejects invalid invitation identity before storing a command", () => {
     const input = {email:"test@example.com",firstName:"Test",lastName:"Member",role:"listingkit_viewer"};
     for (const fields of [{email:"test@phone.invalid"},{firstName:"   "},{lastName:"Member\u0001"}]) expect(invitationInput.safeParse({...input,...fields}).success).toBe(false);

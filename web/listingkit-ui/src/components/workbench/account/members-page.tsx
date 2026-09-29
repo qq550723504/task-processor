@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import { Button } from "@/components/ui/button";
 
-import { changeMemberRole, getMember, getMemberOperation, getMemberOperations, getMembers, MemberError, MemberOperation, MemberOperations, MemberRole, MemberScope, removeMember, verifyMemberOperation } from "@/lib/api/members";
+import { changeMemberRole, getMember, getMemberOperation, getMemberOperations, getMembers, MemberError, MemberFilters, memberListFilterSchema, MemberOperation, MemberOperations, MemberRole, MemberScope, removeMember, verifyMemberOperation } from "@/lib/api/members";
 import { Pending, readPending, retainAdvancedReceipt, savePending, terminalReceipt } from "./member-pending";
 import { ConsoleState } from "../console/console-page";
 import { AccountShell } from "./account-shell";
@@ -34,6 +34,10 @@ export function MembersPage({ expectedUserId }: { expectedUserId: string }) {
 
 function ScopedMembers({ scope }: { scope: MemberScope }) {
   const [offset, setOffset] = useState(0); const [selected, setSelected] = useState<string | null>(null);
+  const [filters, setFilters] = useState<MemberFilters>({q:"",role:"",state:""});
+  const [search, setSearch] = useState(""); const [filterError, setFilterError] = useState("");
+  const filtered = !!(filters.q || filters.role || filters.state);
+  const applyFilters = (next:MemberFilters) => { setSelected(null);setOffset(0);setFilters(next);setFilterError(""); };
   const [busy, setBusy] = useState(false); const busyRef = useRef(false); const [error, setError] = useState("");
   const [receipts, setReceipts] = useState<Record<string, MemberOperation>>({});
   const remember = (items: MemberOperation[]) => setReceipts(previous => {
@@ -53,7 +57,7 @@ function ScopedMembers({ scope }: { scope: MemberScope }) {
   const storageKey = `membership.pending:${JSON.stringify([scope.expectedUserId, scope.expectedOrganizationId])}`;
   const raw = useSyncExternalStore(subscribe, () => { try { return sessionStorage.getItem(storageKey); } catch { return "unreadable"; } }, noPending);
   const local = useMemo(() => { try { return {items:readPending(raw),error:false}; } catch { return {items:[] as Pending[],error:true}; } }, [raw]);
-  const query = useQuery({ queryKey: ["members", scope.expectedUserId, scope.expectedOrganizationId, offset], queryFn: ({ signal }) => getMembers({ ...scope, signal }, offset), gcTime: 0, staleTime: 0, retry: false });
+  const query = useQuery({ queryKey: ["members", scope.expectedUserId, scope.expectedOrganizationId, filters, offset], queryFn: async ({ signal }) => { try { return await getMembers({ ...scope, signal }, offset, filters); } catch(failure) { if(!signal.aborted)quarantine(failure);throw failure; } }, gcTime: 0, staleTime: 0, retry: false });
   const ready = query.isSuccess && !query.isFetching && !authorityError;
   const canManage = ready && query.data.canManage;
   const operations = useInfiniteQuery({queryKey:["member-operations",scope.expectedUserId,scope.expectedOrganizationId],initialPageParam:"",getNextPageParam:(page:MemberOperations)=>page.next || undefined,queryFn:async({signal,pageParam})=>{try{const page=await getMemberOperations({...scope,signal},pageParam);if(!signal.aborted)remember(page.items);return page;}catch(failure){if(!signal.aborted)quarantine(failure);throw failure;}},enabled:canManage,gcTime:0,staleTime:0,retry:false});
@@ -91,7 +95,14 @@ function ScopedMembers({ scope }: { scope: MemberScope }) {
     catch { setError("OPERATION_STORAGE_UNAVAILABLE"); }
   };
   return <div className={styles.page}>
-    <div className={styles.toolbar}><p>{ready ? `当前企业 · ${query.data.total} 位成员` : "当前企业成员"}</p><div><Button variant="outline" onClick={() => void refreshMembers()} disabled={busy}>刷新成员</Button></div></div>
+    <div className={styles.toolbar}><p>{ready ? `${filtered ? "筛选结果" : "当前企业"} · ${query.data.total} 位成员` : "当前企业成员"}</p><div><Button variant="outline" onClick={() => void refreshMembers()} disabled={busy}>刷新成员</Button></div></div>
+    <form className={styles.memberFilters} aria-label="成员筛选" onSubmit={event=>{event.preventDefault();const next=memberListFilterSchema.safeParse({...filters,q:search});if(next.success){applyFilters(next.data);setSearch(next.data.q);}else setFilterError("搜索内容过长或包含无效字符，请缩短后重试。");}}>
+      <div className={styles.searchField}><label htmlFor="member-search">搜索成员</label><div className={styles.searchInput}><input id="member-search" value={search} onChange={event=>setSearch(event.target.value)} placeholder="搜索姓名或登录账号" aria-describedby="member-search-hint member-search-error" aria-invalid={!!filterError} disabled={busy || !!authorityError}/><Button type="submit" variant="outline" disabled={busy || !!authorityError}>搜索</Button></div></div>
+      <label>角色筛选<select value={filters.role} onChange={event=>applyFilters({...filters,role:event.target.value as MemberFilters["role"]})} disabled={busy || !!authorityError}><option value="">全部角色</option>{Object.entries(roleNames).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
+      <label>状态筛选<select value={filters.state} onChange={event=>applyFilters({...filters,state:event.target.value as MemberFilters["state"]})} disabled={busy || !!authorityError}><option value="">全部状态</option><option value="active">有效</option><option value="inactive">已停用</option></select></label>
+    </form>
+    <div className={styles.filterHelp}><p id="member-search-hint">搜索当前企业完整目录的姓名和登录账号；手机号或邮箱作为登录账号时可匹配。角色、状态可组合筛选，成员统计仍为企业全量。</p><Button variant="ghost" disabled={busy || !!authorityError} onClick={()=>{setSearch("");applyFilters({q:"",role:"",state:""});}}>清除筛选</Button></div>
+    <p id="member-search-error" className={styles.authorityNote} role={filterError ? "alert" : undefined}>{filterError}</p>
     {error && !authorityError && <MemberFailure code={error} />}
     {local.error && <MemberFailure code="OPERATION_STORAGE_UNAVAILABLE" />}
     {canManage && <section className={styles.panel} aria-label="待处理成员操作">
@@ -120,11 +131,10 @@ function ScopedMembers({ scope }: { scope: MemberScope }) {
     {!ready ? authorityError ? <MemberFailure code={authorityError.code} /> : query.isError ? <MemberFailure code={query.error instanceof MemberError ? query.error.code : "DEPENDENCY_UNAVAILABLE"} /> : <ConsoleState kind="loading" title="正在读取成员">正在确认成员目录与当前权限。</ConsoleState> : <>
       <div className={styles.sectionTabs} role="group" aria-label="成员与权限页面分区"><span aria-current="page">成员管理</span><span>权限范围随成员展示</span></div>
       <MemberStats scope={scope} />
-      <div className={styles.memberFilters} aria-label="成员筛选能力"><label>搜索成员<input disabled placeholder="目录服务未提供搜索" /></label><label>角色筛选<select disabled><option>当前目录未提供筛选</option></select></label><label>状态筛选<select disabled><option>当前目录未提供筛选</option></select></label></div>
       <p className={styles.authorityNote}>权限由当前授权规则计算；最近活跃只覆盖本企业已记录的账户操作。</p>
       {canManage && <InvitationsPanel scope={scope} assignableRoles={query.data.assignableRoles} onChanged={()=>{void query.refetch();void queryClient.invalidateQueries({queryKey:["invitation-summary",scope.expectedUserId,scope.expectedOrganizationId]});}} onAuthorityFailure={quarantine}/> }
       {selected && <MemberDetail key={selected} id={selected} scope={scope} roles={query.data.assignableRoles} disabled={busy || local.error} onClose={() => setSelected(null)} onSubmit={submit} onAuthorityFailure={quarantine} />}
-      {query.data.items.length === 0 ? <ConsoleState kind="empty" title="当前没有可显示的成员">当前企业的成员目录读取成功。</ConsoleState> : <div className={styles.tableWrap} role="region" aria-label="成员表格，可横向滚动" tabIndex={0}><table className={styles.table}><caption className={styles.caption}>当前企业成员</caption><thead><tr><th>成员</th><th>账号</th><th>角色</th><th>权限范围</th><th>状态</th><th>最近活跃</th><th>操作</th></tr></thead><tbody>{query.data.items.map(member => <tr key={member.id}><td><strong>{member.displayName || member.loginName || member.userId}</strong></td><td>{member.loginName || "未提供"}</td><td>{member.roles.map(value => roleNames[value as MemberRole] ?? value).join("、") || "未授予角色"}</td><td><PermissionScope permissions={member.permissions}/></td><td>{member.state === "active" ? "有效" : "已停用"}</td><td><RecentMemberActivity scope={scope} userId={member.userId}/></td><td><Button variant="ghost" onClick={() => { setSelected(member.id); }}>查看详情</Button></td></tr>)}</tbody></table></div>}
+      {query.data.items.length === 0 ? <ConsoleState kind="empty" title={filtered ? "没有匹配的成员" : "当前没有可显示的成员"}>{filtered ? "当前企业目录读取成功，请调整或清除筛选条件。" : "当前企业的成员目录读取成功。"}</ConsoleState> : <div className={styles.tableWrap} role="region" aria-label="成员表格，可横向滚动" tabIndex={0}><table className={styles.table}><caption className={styles.caption}>当前企业成员</caption><thead><tr><th>成员</th><th>账号</th><th>角色</th><th>权限范围</th><th>状态</th><th>最近活跃</th><th>操作</th></tr></thead><tbody>{query.data.items.map(member => <tr key={member.id}><td><strong>{member.displayName || member.loginName || member.userId}</strong></td><td>{member.loginName || "未提供"}</td><td>{member.roles.map(value => roleNames[value as MemberRole] ?? value).join("、") || "未授予角色"}</td><td><PermissionScope permissions={member.permissions}/></td><td>{member.state === "active" ? "有效" : "已停用"}</td><td><RecentMemberActivity scope={scope} userId={member.userId}/></td><td><Button variant="ghost" onClick={() => { setSelected(member.id); }}>查看详情</Button></td></tr>)}</tbody></table></div>}
       <div className={styles.pagination}><Button variant="outline" disabled={offset === 0 || busy} onClick={() => { setSelected(null); setOffset(value => Math.max(0, value - 20)); }}>上一页</Button><span>第 {Math.floor(offset / 20) + 1} 页</span><Button variant="outline" disabled={offset + 20 >= query.data.total || busy} onClick={() => { setSelected(null); setOffset(value => value + 20); }}>下一页</Button></div>
     </>}
   </div>;

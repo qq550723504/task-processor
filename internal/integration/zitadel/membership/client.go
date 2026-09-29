@@ -76,10 +76,6 @@ type assignment struct {
 	} `json:"roles"`
 }
 
-func (c *Client) List(ctx context.Context, organization string, page domain.PageRequest) (domain.Page, error) {
-	return c.list(ctx, organization, page, "")
-}
-
 func (c *Client) list(ctx context.Context, organization string, page domain.PageRequest, assignmentID string, extra ...any) (domain.Page, error) {
 	if c == nil || c.http == nil {
 		return domain.Page{}, domain.ErrUnavailable

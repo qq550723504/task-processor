@@ -1,7 +1,7 @@
 # Member directory query v1
 
 Execution: [#575](https://github.com/qq550723504/task-processor/issues/575).
-Design Basis: Independent Architecture. Admission: NOT_READY; design review pending.
+Design Basis: Independent Architecture. Admission: IMPLEMENTATION_READY.
 Baseline: main `5a32b153b4a73a2072054ec836e46b4ba193eb8e`.
 
 ## Product authority and outcome
@@ -126,4 +126,34 @@ Handoff `/workbench/account/organization/members` using existing login/enterpris
 and normal startup instructions; user/independent verifier confirms actual use separately.
 No merge/deployment/Issue closure authorization in this batch.
 
+### User handoff
+
+Start a separately authorized isolated instance using the existing
+[account Compose instructions](../../deployments/docker/account-compose/README.md).
+Sign in normally, select an authorized enterprise, and open **企业空间 → 成员与权限**
+at `/workbench/account/organization/members`. Enter a name or login account and
+press **搜索**; role and authorization-state selectors apply immediately and combine
+with the submitted search. Changing criteria returns to page one and closes the
+old detail. **清除筛选** restores the full directory. Statistics always cover the full
+enterprise; the result count covers the selected criteria. A member's existing detail
+and resource/management actions remain governed by current capabilities.
+
+Phone/email match only when included in the login account. Contact-profile search,
+custom roles and invitation-state search are not available here. Searches are literal,
+case-insensitive and limited to 200 UTF-8 bytes. A native filtered directory larger
+than 10,000 rows, incomplete response, failed permission probe or exceeded shared
+10-second read budget produces an error; it never becomes a partial result or zero.
+No directory is saved locally; existing identity/directory data stays with ZITADEL.
+This candidate does not update the retained localhost instance or grant product acceptance.
+
 Legacy decision: N/A. Current owner only; no legacy wrapper, adapter, fallback or migration.
+
+## Independent admission review
+
+The original independent reviewer `audit_summary_review` completed round one on
+2026-09-29 against design-only HEAD `ac5414d0b6542eaadfd58c9043cd8d292397af28`,
+document blob `d1de223f72e4fd3ca425aa5a05192b45faf93f42` and the current #575 product
+decision. BLOCKER=0; explicit IMPLEMENTATION_READY. Complete traversal/bounds,
+drift/cancellation/permission probes, Unicode/parameter agreement and UI scope/busy/detail
+regressions are IMPLEMENTATION_TEST within this baseline, not a new IAM design.
+Issue Ready admission must be recorded before production implementation.
