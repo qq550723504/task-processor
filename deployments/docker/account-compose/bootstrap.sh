@@ -28,12 +28,16 @@ store_owner_secret=/store-owner-secret
 store_runtime_secret=/store-runtime-secret
 store_quota_secret=/store-quota-secret
 marker="$state/.bootstrap-complete"
+case "${ACCOUNT_KNOWLEDGE_ENABLED:-}" in ''|1) ;; *) echo 'invalid knowledge opt-in' >&2; exit 1 ;; esac
 case "${ACCOUNT_IMAGE_AGENT_TRIAL:-}" in
   ''|ISOLATED_TRIAL_ONLY) ;;
   *) echo 'invalid image trial confirmation' >&2; exit 1 ;;
 esac
 
 if [ -f "$marker" ]; then
+  if [ "${ACCOUNT_KNOWLEDGE_ENABLED:-}" = 1 ]; then
+    for path in /knowledge-owner-secret/owner-password /knowledge-runtime-secret/runtime-password /knowledge-storage-secret/root-password /knowledge-storage-secret/access-key /knowledge-storage-secret/secret-key; do test -s "$path" || { echo 'Knowledge requires a new empty project' >&2; exit 1; }; done
+  fi
   for path in "$store_owner_secret/store-owner-password" "$store_runtime_secret/store-runtime-password" "$store_quota_secret/store-quota-password"; do test -s "$path" || { echo 'Store Center requires a new empty project' >&2; exit 1; }; done
   test -s "$business_db_admin_secret/admin-password" || { echo 'retained multi-instance project: use its original checkout; create a new project for the consolidated database' >&2; exit 1; }
   for path in \
@@ -65,6 +69,16 @@ write_random() {
   chmod 600 "$2.tmp"
   mv "$2.tmp" "$2"
 }
+
+if [ "${ACCOUNT_KNOWLEDGE_ENABLED:-}" = 1 ]; then
+ mkdir -p /knowledge-owner-secret /knowledge-runtime-secret /knowledge-storage-secret
+ write_random 24 /knowledge-owner-secret/owner-password
+ write_random 24 /knowledge-runtime-secret/runtime-password
+ write_random 24 /knowledge-storage-secret/root-password
+ write_random 12 /knowledge-storage-secret/access-key
+ write_random 24 /knowledge-storage-secret/secret-key
+ chown 70:70 /knowledge-owner-secret/owner-password /knowledge-runtime-secret/runtime-password
+fi
 
 mkdir -p "$store_owner_secret" "$store_runtime_secret" "$store_quota_secret"
 write_random 24 "$store_owner_secret/store-owner-password"

@@ -56,6 +56,10 @@ func execute() error {
 	}
 	return currentapplication.Run(ctx, cfg, logger, currentapplication.Dependencies{
 		IdentityPreflight: currentapplication.VerifyIdentityProvider,
+		NewKnowledge:      prepareKnowledge,
+		OpenKnowledge: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
 		OpenStoreCenter: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
@@ -94,6 +98,9 @@ func execute() error {
 		},
 		NewApplicationWithFeatures: func(ctx context.Context, source, commercial *gorm.DB, features currentapplication.ApplicationFeatures, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
 			options := make([]httpapi.CurrentApplicationOption, 0, 6)
+			if features.Knowledge != nil {
+				options = append(options, httpapi.WithKnowledge(features.Knowledge))
+			}
 			var agentManager *openai.Manager
 			if features.ProductAgent != nil && features.ProductAgent.Enabled {
 				p := features.ProductAgent

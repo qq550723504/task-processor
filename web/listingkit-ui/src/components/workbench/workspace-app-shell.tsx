@@ -17,7 +17,7 @@ const MOBILE_NAVIGATION_ID = "workbench-mobile-navigation";
 const subscribeToHydration = () => () => {};
 const getClientHydrationSnapshot = () => true;
 const getServerHydrationSnapshot = () => false;
-export function WorkspaceAppShell({ children, productAcquisitionAvailable = false }: { children: ReactNode; productAcquisitionAvailable?: boolean }) {
+export function WorkspaceAppShell({ children, productAcquisitionAvailable = false, knowledgeAvailable = false }: { children: ReactNode; productAcquisitionAvailable?: boolean; knowledgeAvailable?: boolean }) {
   const pathname = usePathname() ?? "/workbench";
   const router = useRouter();
   const context = useWorkbenchContext();
@@ -113,7 +113,7 @@ export function WorkspaceAppShell({ children, productAcquisitionAvailable = fals
   }
 
   return (
-    <WorkbenchFrame key={pathname} pathname={pathname} productAcquisitionAvailable={productAcquisitionAvailable}>
+    <WorkbenchFrame key={pathname} pathname={pathname} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable}>
       {context.selectionRequired && !isPersonalAccountRoute && !isBrowserCaptureRoute ? (
         <section
           className="flex min-h-[40vh] items-center justify-center px-6 text-center"
@@ -133,7 +133,7 @@ export function WorkspaceAppShell({ children, productAcquisitionAvailable = fals
   );
 }
 
-function WorkbenchFrame({ children, pathname, productAcquisitionAvailable }: { children: ReactNode; pathname: string; productAcquisitionAvailable: boolean }) {
+function WorkbenchFrame({ children, pathname, productAcquisitionAvailable, knowledgeAvailable }: { children: ReactNode; pathname: string; productAcquisitionAvailable: boolean; knowledgeAvailable: boolean }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const context = useWorkbenchContext();
@@ -147,7 +147,7 @@ function WorkbenchFrame({ children, pathname, productAcquisitionAvailable }: { c
     <div className="console-frame">
       <aside className="console-sidebar">
         <Link href="/workbench" className="console-brand" prefetch={false}><Image src="/console/sumi-logo.png" alt="" width={42} height={42} unoptimized /><span><strong>硕米智能引擎</strong><small>SUMI AI ENGINE</small></span></Link>
-        <ConsoleNavigation key={pathname} pathname={pathname} ariaLabel="工作台导航" productAcquisitionAvailable={productAcquisitionAvailable} />
+        <ConsoleNavigation key={pathname} pathname={pathname} ariaLabel="工作台导航" productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable} />
         <p className="console-sidebar-footer">SUMI AI ENGINE</p>
       </aside>
       <div className="console-body">
@@ -162,7 +162,7 @@ function WorkbenchFrame({ children, pathname, productAcquisitionAvailable }: { c
           </div>
         </header>
         {contextConfirmed && context.effectiveOrganization && context.effectiveOrganization.id !== context.homeOrganizationId ? <div className="console-delegation"><DelegatedOperationIndicator effectiveOrganization={context.effectiveOrganization} homeOrganizationId={context.homeOrganizationId} organizations={context.organizations} /></div> : null}
-        {mobileOpen ? <div className="console-mobile-nav" id={MOBILE_NAVIGATION_ID}><ConsoleNavigation key={pathname} pathname={pathname} ariaLabel="移动工作台导航" onNavigate={closeNavigation} productAcquisitionAvailable={productAcquisitionAvailable} /></div> : null}
+        {mobileOpen ? <div className="console-mobile-nav" id={MOBILE_NAVIGATION_ID}><ConsoleNavigation key={pathname} pathname={pathname} ariaLabel="移动工作台导航" onNavigate={closeNavigation} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable} /></div> : null}
         <main className="console-content" id="console-main" tabIndex={-1}>{children}</main>
       </div>
     </div>

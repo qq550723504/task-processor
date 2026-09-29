@@ -1,0 +1,65 @@
+# Opt in on a new empty account-compose project. No model calls or Agent selection.
+services:
+ runtime-network:
+  networks: [default,knowledge-private]
+ bootstrap:
+  environment: {ACCOUNT_KNOWLEDGE_ENABLED: "1"}
+  volumes:
+   - knowledge-owner-secret:/knowledge-owner-secret
+   - knowledge-runtime-secret:/knowledge-runtime-secret
+   - knowledge-storage-secret:/knowledge-storage-secret
+ business-db:
+  environment: {ACCOUNT_KNOWLEDGE_ENABLED: "1"}
+  volumes:
+   - knowledge-owner-secret:/secrets/knowledge-owner:ro
+   - knowledge-runtime-secret:/secrets/knowledge-runtime:ro
+ schema-init:
+  environment: {ACCOUNT_KNOWLEDGE_ENABLED: "1"}
+  volumes:
+   - knowledge-owner-secret:/secrets/knowledge-owner:ro
+   - knowledge-runtime-secret:/secrets/knowledge-runtime:ro
+   - knowledge-storage-secret:/secrets/knowledge-storage:ro
+  depends_on:
+   knowledge-storage-init: {condition: service_completed_successfully}
+   knowledge-parser: {condition: service_healthy}
+ listingkit-ui:
+  environment: {LISTINGKIT_KNOWLEDGE_ENABLED: "true"}
+ knowledge-objects:
+  build: {context: .,dockerfile: Dockerfile.knowledge-storage,target: server}
+  networks: [knowledge-private]
+  entrypoint: [/bin/sh,-ec]
+  command: ['export MINIO_ROOT_USER=knowledge_local_root; export MINIO_ROOT_PASSWORD="$$(cat /private/root-password)"; exec minio server /data --address :9000']
+  volumes: [knowledge-storage-secret:/private:ro,knowledge-objects:/data]
+  depends_on: {bootstrap: {condition: service_completed_successfully}}
+  healthcheck: {test: [CMD,wget,-q,-O,/dev/null,http://127.0.0.1:9000/minio/health/live],interval: 3s,timeout: 3s,retries: 40}
+ knowledge-storage-init:
+  build: {context: .,dockerfile: Dockerfile.knowledge-storage,target: client}
+  networks: [knowledge-private]
+  entrypoint: [/bin/sh,/init/knowledge-storage-init.sh]
+  volumes: [knowledge-storage-secret:/private:ro,./knowledge-storage-init.sh:/init/knowledge-storage-init.sh:ro,./knowledge-storage-policy.json:/init/policy.json:ro]
+  depends_on: {knowledge-objects: {condition: service_healthy}}
+ knowledge-parser:
+  image: apache/tika@sha256:a8b442501f601fb15015de974f9afe13dd242b0f14e49a2b144fadcb214a555b
+  networks: [knowledge-private]
+  command: [-h,0.0.0.0,-c,/config/knowledge-tika.json]
+  user: "35002:35002"
+  read_only: true
+  tmpfs: ["/tmp:size=256m,uid=35002,gid=35002,mode=0700"]
+  volumes: [./knowledge-tika.json:/config/knowledge-tika.json:ro]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  cpus: 2
+  mem_limit: 2g
+  pids_limit: 128
+  healthcheck:
+   test: [CMD,bash,-ec,'exec 3<>/dev/tcp/127.0.0.1/9998; printf "GET /version HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3; read -r status <&3; [[ "$$status" == *" 200 "* ]]']
+   interval: 5s
+   timeout: 3s
+   retries: 30
+networks:
+ knowledge-private: {internal: true}
+volumes:
+ knowledge-owner-secret: {name: "${COMPOSE_PROJECT_NAME}-knowledge-owner-secret"}
+ knowledge-runtime-secret: {name: "${COMPOSE_PROJECT_NAME}-knowledge-runtime-secret"}
+ knowledge-storage-secret: {name: "${COMPOSE_PROJECT_NAME}-knowledge-storage-secret"}
+ knowledge-objects: {name: "${COMPOSE_PROJECT_NAME}-knowledge-objects"}
