@@ -85,7 +85,7 @@ func TestAcquisitionRuntimePermissionsRejectEscalationAndMissingPrivileges(t *te
 	// grants, not merely pass a catalog privilege query.
 	provider, count, _ := acquisitionFixture(t)
 	permissions, live := acquisitionPermissionDependencies(t)
-	service, err := NewPublicAcquisition(ctx, runtimeDB, live, permissions, provider)
+	service, err := NewPublicAcquisition(ctx, runtimeDB, live, permissions, provider, newTestResourceChargePort(t, runtimeDB))
 	require.NoError(t, err)
 	result, err := service.Acquire(acquisitionIdentity("org-runtime", "actor"), uuid.NewString(), "981645030344")
 	require.NoError(t, err)

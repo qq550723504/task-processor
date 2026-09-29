@@ -53,7 +53,7 @@ func newBrowserPostgresService(t *testing.T, provider sourcing.PublicAcquirer) *
 		return []string{"listingkit_operator"}, nil
 	})
 	require.NoError(t, InstallAcquisitionSchema(db))
-	service, err := NewBrowserPublicAcquisition(context.Background(), db, live, permissions, provider, 90*time.Second)
+	service, err := NewBrowserPublicAcquisition(context.Background(), db, live, permissions, provider, 90*time.Second, newTestResourceChargePort(t, db))
 	require.NoError(t, err)
 	return service
 }
@@ -96,8 +96,8 @@ func TestBrowserPublicAcquisitionPostgresChain(t *testing.T) {
 	require.EqualValues(t, 1, provider.calls.Load())
 }
 
-// A provider-scoped timeout must not admit an operation or leave a row.
-func TestBrowserPublicAcquisitionPostgresProviderTimeoutAdmitsNothing(t *testing.T) {
+// A provider timeout retains the original intent; replay never re-acquires.
+func TestBrowserPublicAcquisitionPostgresProviderTimeoutRetainsUnknownIntent(t *testing.T) {
 	db := acquisitionDatabase(t)
 	provider := &browserProviderStub{delay: 5 * time.Second}
 	permissions, err := authz.NewListingKitAuthorizer(nil, nil)
@@ -106,13 +106,13 @@ func TestBrowserPublicAcquisitionPostgresProviderTimeoutAdmitsNothing(t *testing
 		return []string{"listingkit_operator"}, nil
 	})
 	require.NoError(t, InstallAcquisitionSchema(db))
-	tiny, err := NewBrowserPublicAcquisition(context.Background(), db, live, permissions, provider, 30*time.Millisecond)
+	tiny, err := NewBrowserPublicAcquisition(context.Background(), db, live, permissions, provider, 30*time.Millisecond, newTestResourceChargePort(t, db))
 	require.NoError(t, err)
 	_, err = tiny.Acquire(acquisitionIdentity("org-timeout", "actor-timeout"), uuid.NewString(), "981645030344")
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 
-	// No operation row was admitted.
+	// The durable admitted intent remains UNKNOWN after the child timeout.
 	var count int64
 	require.NoError(t, db.Raw("SELECT count(*) FROM public.product_acquisition_operations WHERE organization_id=?", "org-timeout").Scan(&count).Error)
-	require.EqualValues(t, 0, count)
+	require.EqualValues(t, 1, count)
 }

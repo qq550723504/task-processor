@@ -14,6 +14,7 @@ import (
 	acquisitionpersistence "task-processor/internal/integration/persistence/product/acquisition"
 	catalogpersistence "task-processor/internal/integration/persistence/product/catalog"
 	sourcingpersistence "task-processor/internal/integration/persistence/product/sourcing"
+	"task-processor/internal/ledger/orgresource"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/sourcing"
 )
@@ -33,7 +34,7 @@ func NewInternalProducer(db *gorm.DB, live sourcing.LiveOrganizationAccess, perm
 }
 
 // NewPublicAcquisition admits external public evidence as its own producer.
-func NewPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer) (*AcquisitionService, error) {
+func NewPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer, charges orgresource.ConsumerChargePort) (*AcquisitionService, error) {
 	if ctx == nil || provider == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
@@ -41,7 +42,7 @@ func NewPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOr
 	if err != nil {
 		return nil, err
 	}
-	store, err := sourcingpersistence.NewRepository(db, newCatalogBridge)
+	store, err := sourcingpersistence.NewRepositoryWithAcquisitionGuard(db, newCatalogBridge, newPublicationChargeGuard)
 	if err != nil {
 		return nil, err
 	}
@@ -57,13 +58,17 @@ func NewPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOr
 	if err != nil {
 		return nil, err
 	}
-	return NewAcquisitionService(operations, provider, producer, reader, authorizer)
+	coordinator, err := newAcquisitionChargeCoordinator(operations, charges, permissions, live)
+	if err != nil {
+		return nil, err
+	}
+	return NewAcquisitionService(operations, provider, producer, reader, authorizer, coordinator)
 }
 
 // NewBrowserPublicAcquisition admits the server-side browser provider under the
 // same anonymous public producer, store, and authorization as NewPublicAcquisition.
 // providerBudget bounds only the provider call; publication keeps its own bound.
-func NewBrowserPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer, providerBudget time.Duration) (*BrowserAcquisitionService, error) {
+func NewBrowserPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer, providerBudget time.Duration, charges orgresource.ConsumerChargePort) (*BrowserAcquisitionService, error) {
 	if ctx == nil || provider == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
@@ -71,7 +76,7 @@ func NewBrowserPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing
 	if err != nil {
 		return nil, err
 	}
-	store, err := sourcingpersistence.NewRepository(db, newCatalogBridge)
+	store, err := sourcingpersistence.NewRepositoryWithAcquisitionGuard(db, newCatalogBridge, newPublicationChargeGuard)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +92,46 @@ func NewBrowserPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing
 	if err != nil {
 		return nil, err
 	}
-	return NewBrowserAcquisitionService(operations, provider, producer, reader, authorizer, providerBudget)
+	coordinator, err := newAcquisitionChargeCoordinator(operations, charges, permissions, live)
+	if err != nil {
+		return nil, err
+	}
+	return NewBrowserAcquisitionService(operations, provider, producer, reader, authorizer, providerBudget, coordinator)
+}
+
+func newPublicationChargeGuard(tx *gorm.DB) sourcingpersistence.AcquisitionPublicationGuard {
+	return acquisitionpersistence.NewPublicationChargeGuard(tx)
+}
+
+type publishedAcquisitionReader struct{ core *AcquisitionService }
+
+func (r publishedAcquisitionReader) ReadPublished(ctx context.Context, operationID string) (sourcing.PublishedAcquisition, error) {
+	return r.core.ReadPublished(ctx, operationID)
+}
+
+// Read consumers receive no provider or charge mutation capability.
+func NewPublishedAcquisitionReader(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer) (sourcing.PublishedAcquisitionReader, error) {
+	operations, err := acquisitionpersistence.NewRepository(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	store, err := sourcingpersistence.NewRepository(db, newCatalogBridge)
+	if err != nil {
+		return nil, err
+	}
+	authorizer, err := sourcing.NewContextAuthorizer(live, permissions)
+	if err != nil {
+		return nil, err
+	}
+	publications, err := sourcing.NewInternalReader(authorizer, store)
+	if err != nil {
+		return nil, err
+	}
+	reader, err := catalogpersistence.NewBoundedSnapshotReader(db, sourcing.MaxEncodedSnapshotBytes)
+	if err != nil {
+		return nil, err
+	}
+	return publishedAcquisitionReader{core: &AcquisitionService{operations: operations, publications: publications, reader: reader, authorizer: authorizer}}, nil
 }
 
 // InstallAcquisitionSchema explicitly initializes recovery and current fact owners.

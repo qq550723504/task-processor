@@ -37,11 +37,18 @@ type CatalogBridge interface {
 
 type CatalogBridgeFactory func(*gorm.DB) (CatalogBridge, error)
 
+type AcquisitionPublicationGuard interface {
+	Lock(context.Context, sourcing.AtomicPublication) error
+	Complete(context.Context, sourcing.PublicationReceipt) error
+}
+type AcquisitionPublicationGuardFactory func(*gorm.DB) AcquisitionPublicationGuard
+
 type repository struct {
-	db      *gorm.DB
-	catalog CatalogBridgeFactory
-	fault   func(string) error
-	now     func() time.Time
+	db               *gorm.DB
+	catalog          CatalogBridgeFactory
+	acquisitionGuard AcquisitionPublicationGuardFactory
+	fault            func(string) error
+	now              func() time.Time
 }
 
 type transactionReader struct{ repository *repository }
@@ -51,6 +58,19 @@ func NewRepository(db *gorm.DB, catalog CatalogBridgeFactory) (sourcing.Publicat
 		return nil, sourcing.ErrSourcePublicationUnavailable
 	}
 	return &repository{db: db, catalog: catalog, now: time.Now}, nil
+}
+
+func NewRepositoryWithAcquisitionGuard(db *gorm.DB, catalog CatalogBridgeFactory, guard AcquisitionPublicationGuardFactory) (sourcing.PublicationStore, error) {
+	if guard == nil {
+		return nil, sourcing.ErrSourcePublicationUnavailable
+	}
+	store, err := NewRepository(db, catalog)
+	if err != nil {
+		return nil, err
+	}
+	repository := store.(*repository)
+	repository.acquisitionGuard = guard
+	return repository, nil
 }
 
 // NewTransactionReader binds exact source-evidence reads to a live
@@ -80,7 +100,21 @@ func (r *repository) Publish(ctx context.Context, publication sourcing.AtomicPub
 		return sourcing.PublicationReceipt{}, err
 	}
 	var receipt sourcing.PublicationReceipt
+	charged := publication.Producer.Kind == sourcing.AcquisitionProducerKind || publication.Producer.Kind == sourcing.BrowserAcquisitionProducerKind
+	if charged && r.acquisitionGuard == nil {
+		return receipt, sourcing.ErrSourcePublicationUnavailable
+	}
 	err := r.writeTransaction(ctx, func(tx *gorm.DB) error {
+		var chargeGuard AcquisitionPublicationGuard
+		if charged {
+			chargeGuard = r.acquisitionGuard(tx)
+			if chargeGuard == nil {
+				return sourcing.ErrSourcePublicationUnavailable
+			}
+			if err := chargeGuard.Lock(ctx, publication); err != nil {
+				return err
+			}
+		}
 		if err := advisoryLock(tx, publication.OrganizationID, publication.PublicationID); err != nil {
 			return err
 		}
@@ -101,6 +135,9 @@ func (r *repository) Publish(ctx context.Context, publication sourcing.AtomicPub
 				return err
 			}
 			receipt = verified
+			if chargeGuard != nil {
+				return chargeGuard.Complete(ctx, receipt)
+			}
 			return nil
 		}
 		catalogBridge, err := r.catalog(tx)
@@ -159,6 +196,9 @@ func (r *repository) Publish(ctx context.Context, publication sourcing.AtomicPub
 			return err
 		}
 		receipt = receiptFromRecord(existing)
+		if chargeGuard != nil {
+			return chargeGuard.Complete(ctx, receipt)
+		}
 		return nil
 	})
 	if err != nil {

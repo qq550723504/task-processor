@@ -20,9 +20,9 @@ const resourceQuantity = int64.refine(value => /^(0|[1-9][0-9]*)$/.test(value));
 const resourceType = z.enum(["store_renewal_period", "ai_point", "data_row"]);
 const resourceBase = { resource_type: resourceType, unit: z.enum(["period", "point", "row"]) };
 const resourceBalance = z.discriminatedUnion("state", [
-  z.object({ ...resourceBase, state: z.literal("recorded"), available: resourceQuantity, reserved: resourceQuantity, consumed: resourceQuantity, debt: resourceQuantity, updated_at: resourceTimestamp }).strict(),
-  z.object({ ...resourceBase, state: z.literal("not_recorded"), available: z.null(), reserved: z.null(), consumed: z.null(), debt: z.null(), updated_at: z.null() }).strict(),
-]).refine(value => value.unit === ({ store_renewal_period: "period", ai_point: "point", data_row: "row" } as const)[value.resource_type] && (value.state !== "recorded" || value.debt === "0" || value.available === "0"));
+  z.object({ ...resourceBase, state: z.literal("recorded"), available: resourceQuantity, allocated: resourceQuantity, reserved: resourceQuantity, consumed: resourceQuantity, debt: resourceQuantity, updated_at: resourceTimestamp }).strict(),
+  z.object({ ...resourceBase, state: z.literal("not_recorded"), available: z.null(), allocated: z.null(), reserved: z.null(), consumed: z.null(), debt: z.null(), updated_at: z.null() }).strict(),
+]).refine(value => value.unit === ({ store_renewal_period: "period", ai_point: "point", data_row: "row" } as const)[value.resource_type] && (value.state !== "recorded" || ((value.debt === "0" || value.available === "0") && (value.resource_type !== "ai_point" || value.allocated === "0"))));
 const resourceBalances = z.object({ schema_version: z.literal("organization-resource-balances-v1"), organization_id: id, observed_at: resourceTimestamp, resources: z.array(resourceBalance).length(3) }).strict().refine(value => new Set(value.resources.map(v => v.resource_type)).size === 3);
 export type CommercialResources = z.infer<typeof resourceBalances>;
 export const parseCommercialResources = (value: unknown) => { const parsed = resourceBalances.safeParse(value); return parsed.success ? parsed.data : null; };

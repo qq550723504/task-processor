@@ -11,12 +11,14 @@ type organizationResourceBucketRow struct {
 	OrganizationID string                               `gorm:"column:organization_id;primaryKey;size:128;not null"`
 	ResourceType   string                               `gorm:"column:resource_type;primaryKey;size:64;not null;check:chk_org_resource_bucket_type,resource_type IN ('store_renewal_period','ai_point','data_row')"`
 	Available      int64                                `gorm:"column:available;not null;default:0;check:chk_org_resource_available_nonnegative,available >= 0"`
+	Allocated      int64                                `gorm:"column:allocated;not null;default:0;check:chk_org_resource_allocated,allocated >= 0 AND (resource_type <> 'ai_point' OR allocated = 0)"`
 	Reserved       int64                                `gorm:"column:reserved;not null;default:0;check:chk_org_resource_reserved_nonnegative,reserved >= 0"`
 	Consumed       int64                                `gorm:"column:consumed;not null;default:0;check:chk_org_resource_consumed_nonnegative,consumed >= 0"`
 	CreatedAt      time.Time                            `gorm:"column:created_at;not null;autoCreateTime"`
 	UpdatedAt      time.Time                            `gorm:"column:updated_at;not null;autoUpdateTime"`
 	Reservations   []organizationResourceReservationRow `gorm:"foreignKey:OrganizationID,ResourceType;references:OrganizationID,ResourceType;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT"`
 	Debts          []organizationResourceDebtRow        `gorm:"foreignKey:OrganizationID,ResourceType;references:OrganizationID,ResourceType;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT"`
+	Positions      []memberResourcePositionRow          `gorm:"foreignKey:OrganizationID,ResourceType;references:OrganizationID,ResourceType;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT"`
 }
 
 func (organizationResourceBucketRow) TableName() string {
@@ -68,6 +70,7 @@ type organizationResourceEventRow struct {
 	ResourceType   string    `gorm:"column:resource_type;size:64;not null;index;check:chk_org_resource_event_type,resource_type IN ('store_renewal_period','ai_point','data_row')"`
 	Quantity       int64     `gorm:"column:quantity;not null;check:chk_org_resource_event_quantity,quantity > 0"`
 	AvailableDelta int64     `gorm:"column:available_delta;not null"`
+	AllocatedDelta int64     `gorm:"column:allocated_delta;not null;default:0"`
 	ReservedDelta  int64     `gorm:"column:reserved_delta;not null"`
 	ConsumedDelta  int64     `gorm:"column:consumed_delta;not null"`
 	Reason         string    `gorm:"column:reason;size:96;not null"`
@@ -75,6 +78,7 @@ type organizationResourceEventRow struct {
 	SourceIdentity string    `gorm:"column:source_identity;size:192;not null"`
 	BalanceAfter   int64     `gorm:"column:balance_after;not null;check:chk_org_resource_event_balance_nonnegative,balance_after >= 0"`
 	AvailableAfter int64     `gorm:"column:available_after;not null;default:0;check:chk_org_resource_event_available_nonnegative,available_after >= 0"`
+	AllocatedAfter int64     `gorm:"column:allocated_after;not null;default:0;check:chk_org_resource_event_allocated_nonnegative,allocated_after >= 0"`
 	ReservedAfter  int64     `gorm:"column:reserved_after;not null;default:0;check:chk_org_resource_event_reserved_nonnegative,reserved_after >= 0"`
 	ConsumedAfter  int64     `gorm:"column:consumed_after;not null;default:0;check:chk_org_resource_event_consumed_nonnegative,consumed_after >= 0"`
 	GrossCredit    int64     `gorm:"column:gross_credit;not null;default:0;check:chk_org_resource_event_gross_credit_nonnegative,gross_credit >= 0"`
@@ -88,6 +92,12 @@ func (organizationResourceEventRow) TableName() string {
 }
 
 type organizationResourceReservationRow struct {
+	ChargeBalanceAfter    int64                          `gorm:"column:charge_balance_after;not null;default:0;check:chk_consumer_charge_balance_nonnegative,charge_balance_after >= 0"`
+	ChargeProtocol        string                         `gorm:"column:charge_protocol;size:64;not null;default:''"`
+	ChargeActorID         string                         `gorm:"column:charge_actor_id;size:128;not null;default:''"`
+	ChargeFunding         string                         `gorm:"column:charge_funding;size:64;not null;default:''"`
+	ChargeEvidenceID      string                         `gorm:"column:charge_evidence_id;size:256;not null;default:''"`
+	NextCheckAt           *time.Time                     `gorm:"column:next_check_at;index:idx_consumer_charge_due"`
 	MemberID              string                         `gorm:"column:member_id;size:128"`
 	MemberMonthStart      *time.Time                     `gorm:"column:member_month_start"`
 	MemberLimitVersion    int64                          `gorm:"column:member_limit_version"`
@@ -161,6 +171,19 @@ type memberAIPointMonthRow struct {
 
 func (memberAIPointMonthRow) TableName() string { return "saas_member_ai_point_months" }
 
+type memberResourcePositionRow struct {
+	OrganizationID string    `gorm:"column:organization_id;primaryKey;size:128;not null"`
+	MemberID       string    `gorm:"column:member_id;primaryKey;size:128;not null"`
+	ResourceType   string    `gorm:"column:resource_type;primaryKey;size:64;not null;check:chk_member_resource_type,resource_type IN ('store_renewal_period','data_row')"`
+	Free           int64     `gorm:"column:free;not null;default:0;check:chk_member_resource_free,free >= 0"`
+	Reserved       int64     `gorm:"column:reserved;not null;default:0;check:chk_member_resource_reserved,reserved >= 0"`
+	Consumed       int64     `gorm:"column:consumed;not null;default:0;check:chk_member_resource_consumed,consumed >= 0"`
+	Version        int64     `gorm:"column:version;not null;default:0;check:chk_member_resource_version,version >= 0"`
+	UpdatedAt      time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
+}
+
+func (memberResourcePositionRow) TableName() string { return "saas_member_resource_positions" }
+
 func AutoMigrate(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("organization resource database is required")
@@ -175,5 +198,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&organizationResourceAuditLogRow{},
 		&memberAIPointLimitRow{},
 		&memberAIPointMonthRow{},
+		&memberResourcePositionRow{},
 	)
 }

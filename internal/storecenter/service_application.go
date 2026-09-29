@@ -42,7 +42,8 @@ type ServiceQuantityPolicy interface {
 }
 
 // ServiceLifecycleApplication orders authorization, durable replay and
-// volatile validation around the atomic Store+Resource executor.
+// volatile validation around the admitted lifecycle executor. Current serving
+// composition uses Store-local effects/proofs and independent Resource settlement.
 type ServiceLifecycleApplication struct {
 	stores      ServiceLifecycleStoreReader
 	executor    ServiceLifecycleExecutor

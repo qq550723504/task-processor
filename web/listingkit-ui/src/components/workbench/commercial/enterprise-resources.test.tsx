@@ -10,6 +10,12 @@ let client: QueryClient;
 const tree = (org = "org-A", actor = "actor", roles = "operator") => <QueryClientProvider client={client}><EnterpriseResources key={`${org}:${actor}:${roles}`} userId={actor} organizationId={org} scope={JSON.stringify([actor, org, roles])} sequence={0} showSummary /></QueryClientProvider>;
 beforeEach(() => { client = new QueryClient(); read.mockReset().mockImplementation((_user, org) => Promise.resolve(commercialResourcesFixture(org))); });
 afterEach(() => { cleanup(); client.clear(); });
+it("distinguishes enterprise usable resources from administrator unallocated resources",async()=>{
+ const value=commercialResourcesFixture("org-A");read.mockResolvedValueOnce({...value,resources:value.resources.map(v=>v.resource_type==="store_renewal_period"?{...v,allocated:"2"}:v)});
+ render(tree());const periods=await screen.findByRole("region",{name:"店铺续费期数余额"});
+ expect(await within(periods).findByText("3 期")).toBeVisible();
+ expect(within(periods).getByText("未分配（管理员可用）1 期 · 成员可用 2 期")).toBeVisible();
+});
 it("displays exact balances, missing records and renewal periods with owner units", async () => {
   render(tree());
   const points = await screen.findByRole("region", { name: "AI 点数余额" });

@@ -43,8 +43,8 @@ type inflightEntry struct {
 
 // NewBrowserAcquisitionService builds the browser-backed public acquisition
 // service over the same store/publisher/reader/authorizer as the HTTP path.
-func NewBrowserAcquisitionService(store sourcing.AcquisitionOperationStore, provider sourcing.PublicAcquirer, publisher sourcing.AcquisitionPublisher, reader catalog.CompleteSnapshotReader, authorizer sourcing.PublicationAuthorizer, providerBudget time.Duration) (*BrowserAcquisitionService, error) {
-	core, err := NewAcquisitionService(store, provider, publisher, reader, authorizer)
+func NewBrowserAcquisitionService(store sourcing.AcquisitionOperationStore, provider sourcing.PublicAcquirer, publisher sourcing.AcquisitionPublisher, reader catalog.CompleteSnapshotReader, authorizer sourcing.PublicationAuthorizer, providerBudget time.Duration, charges AcquisitionCharges) (*BrowserAcquisitionService, error) {
+	core, err := NewAcquisitionService(store, provider, publisher, reader, authorizer, charges)
 	if err != nil {
 		return nil, err
 	}
@@ -64,15 +64,12 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 	}
 
 	// Replay first: a durable operation must be resolved without re-acquiring.
-	replay, replayed, err := s.replay(ctx, request)
+	replay, _, err := s.replay(ctx, request)
 	if err != nil {
 		return sourcing.AcquisitionResult{}, err
 	}
 	if replay != nil {
 		return *replay, nil
-	}
-	if replayed {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown
 	}
 
 	// Same-key admission for a first-time request: collapse concurrent attempts
@@ -88,18 +85,32 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 	// its last slot would fail the capacity preflight below and report
 	// ACQUISITION_CAPACITY, even though a replayable operation for its own key
 	// now exists. Replay it instead.
-	if replay, replayed, err := s.replay(ctx, request); err != nil {
+	replay, existing, err := s.replay(ctx, request)
+	if err != nil {
 		return sourcing.AcquisitionResult{}, err
 	} else if replay != nil {
 		return *replay, nil
-	} else if replayed {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown
 	}
 
 	// Bounded capacity preflight so a capped organization does not launch a
-	// browser for every new key (finding #15/#19). StartPrepared stays the
-	// atomic correctness gate.
-	if err := s.capacityAdmitted(ctx, request.Scope); err != nil {
+	// browser for every new key. An existing original uses no additional slot;
+	// Start remains the authoritative claim gate for safe pre-dispatch recovery.
+	if !existing {
+		if err := s.capacityAdmitted(ctx, request.Scope); err != nil {
+			return sourcing.AcquisitionResult{}, err
+		}
+	}
+	op, fetchClaim, err := s.core.operations.Start(ctx, request)
+	if err != nil {
+		return sourcing.AcquisitionResult{}, err
+	}
+	if err := sameAcquisition(request, op); err != nil {
+		return sourcing.AcquisitionResult{}, err
+	}
+	if !fetchClaim {
+		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown
+	}
+	if err := s.core.admitCharge(ctx, op); err != nil {
 		return sourcing.AcquisitionResult{}, err
 	}
 
@@ -112,13 +123,18 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 	}
 	evidence, err := s.provider.Acquire(providerCtx, request.Source)
 	if err != nil {
-		return sourcing.AcquisitionResult{}, s.failFetch(ctx, providerCtx, err)
+		cause := s.failFetch(ctx, providerCtx, err)
+		if ctx.Err() == nil && providerCtx.Err() == nil {
+			_ = s.core.failFetch(ctx, op, err)
+		}
+		return sourcing.AcquisitionResult{}, cause
 	}
 
 	// Server-generated evidence that fails mapping is a provider/parse failure,
 	// not a bad request (finding #6).
 	envelope, err := sourcing.MapAcquisitionEvidence(request.Source, evidence, sourcing.AcquisitionChannelPublicBrowser, request.ID)
 	if err != nil {
+		_ = s.core.failFetch(ctx, op, err)
 		// The provider child budget may already have expired at this point; using
 		// it as the cause would report every post-provider failure as a browser
 		// timeout, hiding the real mapping or availability error.
@@ -129,13 +145,10 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 	}
 	command, err := s.core.prepareCommand(ctx, request.Scope, envelope)
 	if err != nil {
+		_ = s.core.failFetch(ctx, op, err)
 		return sourcing.AcquisitionResult{}, s.failFetch(ctx, ctx, err)
 	}
-	preparedStore, ok := s.core.operations.(sourcing.PreparedAcquisitionOperationStore)
-	if !ok {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnavailable
-	}
-	op, claim, err := preparedStore.StartPrepared(ctx, request, command)
+	op, err = s.core.operations.Prepare(ctx, op, command)
 	if err != nil {
 		return sourcing.AcquisitionResult{}, err
 	}
@@ -143,7 +156,7 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 		return sourcing.AcquisitionResult{}, err
 	}
 	if op.State == sourcing.AcquisitionFailed {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionFailed
+		return sourcing.AcquisitionResult{}, acquisitionFailure(op)
 	}
 	publishClaim := false
 	if op.State == sourcing.AcquisitionPrepared {
@@ -155,10 +168,7 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 			return sourcing.AcquisitionResult{}, err
 		}
 	}
-	// A newly admitted operation is not a replay. Match the existing acquisition
-	// convention (replayed := !claim) so a first-time browser acquisition is not
-	// reported to clients as an idempotent replay.
-	return s.core.resolve(ctx, op, publishClaim, !claim)
+	return s.core.resolve(ctx, op, publishClaim, existing)
 }
 
 // replay resolves a durable operation without acquiring. A same-key
@@ -177,23 +187,21 @@ func (s *BrowserAcquisitionService) replay(ctx context.Context, request sourcing
 		return nil, false, err
 	}
 	if op.State == sourcing.AcquisitionAcquiring || op.Command == nil {
-		// A durable row that exists but has no command is a terminal or in-flight
-		// state left by another path (for example the HTTP provider, before the
-		// collector was enabled). Re-acquiring would spend browser and shared-IP
-		// capacity only for StartPrepared to rediscover the same row, so the
-		// existing outcome is reported instead of launching a browser.
 		if op.State == sourcing.AcquisitionFailed {
 			// Surface the stored terminal failure. Reporting it as merely
 			// "replayed" would make the caller answer OUTCOME_UNKNOWN instead of the
 			// failure that actually happened, which is the wrong attribution for
 			// every retry after a provider cutover.
-			return nil, false, sourcing.ErrAcquisitionFailed
+			return nil, false, acquisitionFailure(op)
 		}
-		// acquiring with no command: report it as an in-flight request rather than
-		// starting a competing acquisition for the same key.
+		// Start alone can grant recovery of an expired, unbound original. An
+		// active or already-bound operation never grants another provider call.
 		return nil, true, nil
 	}
 	if op.State == sourcing.AcquisitionPrepared {
+		if err := s.core.admitCharge(ctx, op); err != nil {
+			return nil, false, err
+		}
 		if err := s.core.authorizeScope(ctx, op.Scope); err != nil {
 			return nil, false, err
 		}

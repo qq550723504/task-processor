@@ -17,7 +17,7 @@ export function StoreStateFacts({ store }: { store: WorkbenchStore }) {
           {" 至 "}<time dateTime={store.serviceExpiresAt}>{store.serviceExpiresAt}</time>
         </p>
       ) : null}
-      <p>平台连接及店铺服务激活、续费尚未开放。</p>
+      <p>平台连接按官方授权结果显示；开通和续费按实际可用期数扣减。</p>
     </div>
   );
 }

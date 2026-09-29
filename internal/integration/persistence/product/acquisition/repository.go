@@ -57,7 +57,7 @@ func InstallSchema(db *gorm.DB) error {
 	if db == nil || db.Dialector.Name() != "postgres" {
 		return sourcing.ErrAcquisitionUnavailable
 	}
-	return db.Exec(`CREATE TABLE IF NOT EXISTS public.product_acquisition_operations (
+	if err := db.Exec(`CREATE TABLE IF NOT EXISTS public.product_acquisition_operations (
  organization_id varchar(128) NOT NULL,actor_id varchar(128) NOT NULL,
  idempotency_key uuid NOT NULL,operation_id uuid NOT NULL,
  offer_id varchar(20) NOT NULL,source_url varchar(128) NOT NULL,
@@ -73,7 +73,10 @@ func InstallSchema(db *gorm.DB) error {
  CONSTRAINT acq_state_command CHECK(
  (state='acquiring' AND command IS NULL AND command_hash='') OR
  (state IN ('prepared','publishing','published') AND command IS NOT NULL AND length(command_hash)=64) OR
- (state='failed' AND ((command IS NULL AND command_hash='') OR (command IS NOT NULL AND length(command_hash)=64)))))`).Error
+ (state='failed' AND ((command IS NULL AND command_hash='') OR (command IS NOT NULL AND length(command_hash)=64)))))`).Error; err != nil {
+		return err
+	}
+	return installChargeSchema(db)
 }
 
 func NewRepository(ctx context.Context, db *gorm.DB) (*Repository, error) {
@@ -106,6 +109,9 @@ func NewRepository(ctx context.Context, db *gorm.DB) (*Repository, error) {
 		if expectedDefinitions[definition.Name] != definition.Definition {
 			return nil, sourcing.ErrAcquisitionUnavailable
 		}
+	}
+	if err := verifyChargeSchema(ctx, db); err != nil {
+		return nil, err
 	}
 	return &Repository{db: db}, nil
 }
@@ -142,17 +148,19 @@ func (r *Repository) Start(ctx context.Context, requested sourcing.AcquisitionOp
 			if op.Source != requested.Source || op.Fingerprint != requested.Fingerprint || op.CaptureSHA256 != requested.CaptureSHA256 {
 				return sourcing.ErrAcquisitionConflict
 			}
-			if op.State != sourcing.AcquisitionAcquiring {
-				return nil
-			}
-			result := tx.Exec("UPDATE "+table+" SET fence=fence+1,lease_until=clock_timestamp()+interval '30 seconds' WHERE organization_id=? AND actor_id=? AND idempotency_key=? AND state='acquiring' AND command IS NULL AND lease_until<clock_timestamp() AND fence=?", op.Scope.OrganizationID, op.Scope.ActorID, op.Key, op.Fence)
-			if result.Error != nil {
+			// Dispatch requires a bound reservation. Under the same operation lock,
+			// only an expired, still-unbound original can receive a fresh fence.
+			// Old workers can no longer bind that fence and cannot dispatch late.
+			// A bound operation remains UNKNOWN regardless of lease expiry.
+			updated := tx.Exec("UPDATE "+table+" AS op SET fence=fence+1,lease_until=clock_timestamp()+interval '30 seconds' WHERE organization_id=? AND actor_id=? AND operation_id=? AND state='acquiring' AND fence=? AND fence<? AND lease_until<=clock_timestamp() AND NOT EXISTS (SELECT 1 FROM "+chargeTable+" AS charge WHERE charge.organization_id=op.organization_id AND charge.actor_id=op.actor_id AND charge.operation_id=op.operation_id AND charge.reservation_id IS NOT NULL)", op.Scope.OrganizationID, op.Scope.ActorID, op.ID, op.Fence, int64(math.MaxInt64))
+			if updated.Error != nil {
 				return sourcing.ErrAcquisitionUnavailable
 			}
-			claim = result.RowsAffected == 1
-			if claim {
-				op, e = read(tx, requested.Scope, "idempotency_key", requested.Key, false)
+			if updated.RowsAffected == 0 {
+				return nil
 			}
+			op, e = read(tx, requested.Scope, "idempotency_key", requested.Key, false)
+			claim = e == nil
 			return e
 		}
 		if !errors.Is(e, sourcing.ErrAcquisitionNotFound) {
@@ -198,18 +206,7 @@ func (r *Repository) StartPrepared(ctx context.Context, requested sourcing.Acqui
 			if op.Source != requested.Source || op.Fingerprint != requested.Fingerprint || op.CaptureSHA256 != requested.CaptureSHA256 {
 				return sourcing.ErrAcquisitionConflict
 			}
-			if op.State != sourcing.AcquisitionAcquiring {
-				return nil
-			}
-			result := tx.Exec("UPDATE "+table+" SET fence=fence+1,lease_until=clock_timestamp()+interval '30 seconds',command=?,command_hash=?,state='prepared' WHERE organization_id=? AND actor_id=? AND idempotency_key=? AND state='acquiring' AND command IS NULL AND lease_until<clock_timestamp() AND fence=?", raw, digest(raw), op.Scope.OrganizationID, op.Scope.ActorID, op.Key, op.Fence)
-			if result.Error != nil {
-				return sourcing.ErrAcquisitionUnavailable
-			}
-			claim = result.RowsAffected == 1
-			if claim {
-				op, e = read(tx, requested.Scope, "idempotency_key", requested.Key, false)
-			}
-			return e
+			return nil
 		}
 		if !errors.Is(e, sourcing.ErrAcquisitionNotFound) {
 			return e
@@ -336,11 +333,14 @@ func (r *Repository) Finish(ctx context.Context, requested sourcing.AcquisitionO
 		if op.State == state && op.FailureCode == code {
 			return nil
 		}
-		if op.State != sourcing.AcquisitionPublishing && !(op.State == sourcing.AcquisitionAcquiring && state == sourcing.AcquisitionFailed) {
+		if op.State != sourcing.AcquisitionPublishing && !((op.State == sourcing.AcquisitionAcquiring || op.State == sourcing.AcquisitionPrepared) && state == sourcing.AcquisitionFailed) {
 			return sourcing.ErrAcquisitionFence
 		}
 		if e := tx.Exec("UPDATE "+table+" SET state=?,failure_code=? WHERE organization_id=? AND actor_id=? AND idempotency_key=? AND fence=?", state, code, op.Scope.OrganizationID, op.Scope.ActorID, op.Key, op.Fence).Error; e != nil {
 			return sourcing.ErrAcquisitionUnavailable
+		}
+		if state == sourcing.AcquisitionFailed {
+			return markChargeFailure(tx, op, code)
 		}
 		return nil
 	})
@@ -463,7 +463,7 @@ func canonicalUUID(key string) bool {
 func digest(raw []byte) string { sum := sha256.Sum256(raw); return hex.EncodeToString(sum[:]) }
 func validFailure(code string) bool {
 	switch code {
-	case "SOURCE_UNAVAILABLE", "INVALID_SOURCE", "SOURCE_TOO_LARGE", "PUBLICATION_CONFLICT":
+	case "SOURCE_UNAVAILABLE", "INVALID_SOURCE", "SOURCE_TOO_LARGE", "PUBLICATION_CONFLICT", "DATA_QUOTA_INSUFFICIENT":
 		return true
 	}
 	return false

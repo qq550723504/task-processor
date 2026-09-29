@@ -23,7 +23,7 @@ export function EnterpriseResources({ userId, organizationId, scope, sequence, s
   const balance = (kind: CommercialResources["resources"][number]["resource_type"]) => data?.resources.find(v => v.resource_type === kind);
   const values = definitions.map(definition => {
     const resource = balance(definition.type);
-    return { ...definition, resource, value: resource?.state === "recorded" ? `${resource.available} ${definition.unit}` : resource?.state === "not_recorded" ? "尚无资源记录" : fallback };
+    return { ...definition, resource, value: resource?.state === "recorded" ? `${BigInt(resource.available) + BigInt(resource.allocated)} ${definition.unit}` : resource?.state === "not_recorded" ? "尚无资源记录" : fallback };
   });
   return <div className={styles.stack}>
     {loading ? <p role="status">正在读取当前企业资源余额</p> : !data ? <p role="alert">{errors[code] ?? "资源响应无效"}：本次未取得余额，请确认企业后刷新。</p> : <p className={styles.observation}>资源观察时间：<time dateTime={data.observed_at}>{data.observed_at.replace("T", " ").replace(/Z$/, " UTC")}</time></p>}
@@ -31,6 +31,7 @@ export function EnterpriseResources({ userId, organizationId, scope, sequence, s
     <div className={styles.threeColumns}>{values.map(card => <Card role="region" aria-label={`${card.name}余额`} className={`${styles.resourceCard} ${styles[card.color]}`} key={card.type}>
       <div className={styles.cardHeading}><h3>{card.name}</h3><span>{card.resource?.state === "recorded" ? "已记录" : card.resource?.state === "not_recorded" ? "尚无记录" : fallback}</span></div>
       <p className={styles.resourceValue}>{card.value}</p>
+      {card.resource?.state === "recorded" && card.type !== "ai_point" ? <p className={styles.subtle}>未分配（管理员可用）{card.resource.available} {card.unit} · 成员可用 {card.resource.allocated} {card.unit}</p> : null}
       <ul>
         {card.resource?.state === "recorded" ? <><li><Image src={`/console/commercial/bullet-${card.color}.svg`} alt="" width={5} height={5} unoptimized /><span>预留 {card.resource.reserved} {card.unit} · 已消费 {card.resource.consumed} {card.unit}</span></li>{BigInt(card.resource.debt) > BigInt(0) ? <li><span>待偿还 {card.resource.debt} {card.unit}</span></li> : null}</> : null}
         <li><Image src={`/console/commercial/bullet-${card.color}.svg`} alt="" width={5} height={5} unoptimized /><span>{card.note}</span></li>

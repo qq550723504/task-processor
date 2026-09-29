@@ -28,6 +28,14 @@ type protocolError struct {
 func mapStoreError(err error) protocolError {
 	response := protocolError{Status: http.StatusServiceUnavailable, Code: "DEPENDENCY_UNAVAILABLE", Message: "A required dependency is unavailable", FieldErrors: []FieldError{}}
 	switch {
+	case errors.Is(err, storecenter.ErrOfficialExchangeUnknown):
+		response.Code, response.Message = "STORE_AUTHORIZATION_OUTCOME_UNKNOWN", "Authorization result is unknown; explicit new consent is required"
+	case errors.Is(err, storecenter.ErrOfficialConnectionUnavailable):
+		response.Code, response.Message = "STORE_OFFICIAL_SETUP_UNAVAILABLE", "Official Store connection configuration or provider is unavailable"
+	case errors.Is(err, storecenter.ErrOfficialAuthorizationRejected):
+		response.Status, response.Code, response.Message = http.StatusUnprocessableEntity, "STORE_AUTHORIZATION_REJECTED", "Store authorization was rejected or expired"
+	case errors.Is(err, storecenter.ErrServiceChargeUnknown):
+		response.Code, response.Message = "STORE_SERVICE_OUTCOME_UNKNOWN", "Store service outcome is still being checked"
 	case errors.Is(err, storecenter.ErrNotFound):
 		response.Status, response.Code, response.Message = http.StatusNotFound, "STORE_NOT_FOUND", "Store was not found"
 	case errors.Is(err, storecenter.ErrAlreadyExists):

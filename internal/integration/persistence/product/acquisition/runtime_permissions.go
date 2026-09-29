@@ -60,6 +60,7 @@ const publicationSchemaQuery = `WITH shared(name,kind,required) AS (VALUES
 // operation, but forbidden column grants must still cause startup to fail.
 const admittedPrivileges = `(VALUES
  ('product_acquisition_operations','SELECT'),('product_acquisition_operations','INSERT'),('product_acquisition_operations','UPDATE'),
+ ('product_acquisition_charge_intents','SELECT'),('product_acquisition_charge_intents','INSERT'),('product_acquisition_charge_intents','UPDATE'),
  ('product_source_publications','SELECT'),('product_source_publications','INSERT'),
  ('product_source_publication_receipts','SELECT'),('product_source_publication_receipts','INSERT'),
  ('product_snapshot_versions','SELECT'),('product_snapshot_versions','INSERT'),
@@ -121,7 +122,7 @@ func GrantRuntimePermissions(ctx context.Context, db *gorm.DB) error {
 			"REVOKE ALL PRIVILEGES ON SCHEMA public FROM PUBLIC,source_acquisition_runtime",
 			"GRANT USAGE ON SCHEMA public TO source_acquisition_runtime",
 			"REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM source_acquisition_runtime",
-			"GRANT SELECT,INSERT,UPDATE ON public.product_acquisition_operations,public.product_snapshot_heads TO source_acquisition_runtime",
+			"GRANT SELECT,INSERT,UPDATE ON public.product_acquisition_operations,public.product_acquisition_charge_intents,public.product_snapshot_heads TO source_acquisition_runtime",
 			"GRANT SELECT,INSERT ON public.product_source_publications,public.product_source_publication_receipts,public.product_snapshot_versions TO source_acquisition_runtime",
 		}
 		for _, statement := range statements {
@@ -134,7 +135,7 @@ func GrantRuntimePermissions(ctx context.Context, db *gorm.DB) error {
 }
 
 // VerifyRuntimePermissions reuses the current application's catalog-based
-// least-privilege check, narrowed to the five Product acquisition tables.
+// least-privilege check, narrowed to the six Product acquisition tables.
 // It performs no grant, repair, DDL, business write or provider access.
 func VerifyRuntimePermissions(ctx context.Context, db *gorm.DB) error {
 	if ctx == nil || db == nil || db.Dialector.Name() != "postgres" {

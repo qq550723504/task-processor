@@ -334,6 +334,7 @@ export async function activateWorkbenchStoreService(
   version: number,
   idempotencyKey: string,
   expectedOrganizationId: string,
+  expectedUserId: string,
 ): Promise<WorkbenchStoreServiceLifecycleResult> {
   return storeServiceLifecycleAction(
     storeId,
@@ -342,6 +343,7 @@ export async function activateWorkbenchStoreService(
     version,
     idempotencyKey,
     expectedOrganizationId,
+    expectedUserId,
   );
 }
 
@@ -351,6 +353,7 @@ export async function renewWorkbenchStoreService(
   version: number,
   idempotencyKey: string,
   expectedOrganizationId: string,
+  expectedUserId: string,
 ): Promise<WorkbenchStoreServiceLifecycleResult> {
   return storeServiceLifecycleAction(
     storeId,
@@ -359,6 +362,7 @@ export async function renewWorkbenchStoreService(
     version,
     idempotencyKey,
     expectedOrganizationId,
+    expectedUserId,
   );
 }
 
@@ -368,6 +372,7 @@ export async function reactivateWorkbenchStoreService(
   version: number,
   idempotencyKey: string,
   expectedOrganizationId: string,
+  expectedUserId: string,
 ): Promise<WorkbenchStoreServiceLifecycleResult> {
   return storeServiceLifecycleAction(
     storeId,
@@ -376,6 +381,7 @@ export async function reactivateWorkbenchStoreService(
     version,
     idempotencyKey,
     expectedOrganizationId,
+    expectedUserId,
   );
 }
 
@@ -426,6 +432,7 @@ function storeServiceLifecycleAction(
   version: number,
   idempotencyKey: string,
   expectedOrganizationId: string,
+  expectedUserId: string,
 ) {
   const parsedId = parseInput(canonicalUUIDSchema, storeId);
   const parsedKey = parseInput(canonicalUUIDSchema, idempotencyKey);
@@ -437,6 +444,7 @@ function storeServiceLifecycleAction(
         "Content-Type": "application/json",
         "Idempotency-Key": parsedKey,
         "If-Match": ifMatch(version),
+        "X-Expected-User-ID": parseInput(expectedOrganizationIdSchema,expectedUserId),
       },
       body: JSON.stringify(payload),
     },

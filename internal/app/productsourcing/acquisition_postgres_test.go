@@ -91,7 +91,7 @@ func acquisitionFixture(t *testing.T) (sourcing.PublicAcquirer, *atomic.Int32, f
 }
 
 func acquisitionIdentity(org, actor string) context.Context {
-	return authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: org, EffectiveOrganizationID: org, UserID: actor, TokenExpiresAt: time.Now().Add(time.Hour)})
+	return authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: org, EffectiveOrganizationID: org, EffectiveMemberID: "membership:" + actor, UserID: actor, TokenExpiresAt: time.Now().Add(time.Hour)})
 }
 
 func TestAcquisitionBusinessChainPublishesExactVersionsAndObservesRevocation(t *testing.T) {
@@ -106,13 +106,13 @@ func TestAcquisitionBusinessChainPublishesExactVersionsAndObservesRevocation(t *
 		}
 		return []string{"listingkit_operator"}, nil
 	})
-	_, err = NewPublicAcquisition(context.Background(), db, live, permissions, provider)
+	_, err = NewPublicAcquisition(context.Background(), db, live, permissions, provider, newTestResourceChargePort(t, db))
 	require.Error(t, err)
 	var tables int64
 	require.NoError(t, db.Raw("SELECT count(*) FROM information_schema.tables WHERE table_schema='public'").Scan(&tables).Error)
 	require.Zero(t, tables, "ordinary construction never installs schema")
 	require.NoError(t, InstallAcquisitionSchema(db))
-	service, err := NewPublicAcquisition(context.Background(), db, live, permissions, provider)
+	service, err := NewPublicAcquisition(context.Background(), db, live, permissions, provider, newTestResourceChargePort(t, db))
 	require.NoError(t, err)
 	ctx := acquisitionIdentity("org-a", "actor-a")
 	key := uuid.NewString()
@@ -190,7 +190,7 @@ func TestAcquisitionBusinessChainRecoversLostResponseUsingFrozenCommand(t *testi
 	permissions, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
 	live := liveRolesFunc(func(context.Context, string, string) ([]string, error) { return []string{"listingkit_operator"}, nil })
-	service, err := NewPublicAcquisition(context.Background(), db, live, permissions, provider)
+	service, err := NewPublicAcquisition(context.Background(), db, live, permissions, provider, newTestResourceChargePort(t, db))
 	require.NoError(t, err)
 	lost := &acquisitionLostPublicationResponse{AcquisitionPublisher: service.publisher}
 	service.publisher = lost
@@ -200,13 +200,13 @@ func TestAcquisitionBusinessChainRecoversLostResponseUsingFrozenCommand(t *testi
 	require.ErrorIs(t, err, sourcing.ErrAcquisitionUnknown)
 	op, err := service.operations.ByKey(ctx, sourcing.PublicationScope{OrganizationID: "org-recovery", ActorID: "actor"}, key)
 	require.NoError(t, err)
-	require.Equal(t, sourcing.AcquisitionPublishing, op.State)
+	require.Equal(t, sourcing.AcquisitionPublished, op.State)
 	raw, err := json.Marshal(op.Command)
 	require.NoError(t, err)
 	require.Equal(t, lost.command, raw)
 	// Rebuild all application/persistence owners. There is no provider or base
 	// reader available to the recovery call, and no final table was seeded.
-	rebuilt, err := NewPublicAcquisition(context.Background(), db, live, permissions, provider)
+	rebuilt, err := NewPublicAcquisition(context.Background(), db, live, permissions, provider, newTestResourceChargePort(t, db))
 	require.NoError(t, err)
 	rebuilt.provider = nil
 	rebuilt.reader = nil

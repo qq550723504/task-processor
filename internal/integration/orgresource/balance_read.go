@@ -19,17 +19,17 @@ func (r *GormRepository) ReadBalances(ctx context.Context, organization string) 
 	// One statement observes a consistent bucket/debt snapshot without write locks.
 	// The independent debt join also detects debt whose bucket is missing.
 	var rows []struct {
-		ResourceType                  orgresource.ResourceType
-		BucketOrganization            *string
-		Available, Reserved, Consumed *int64
-		DebtOrganization              *string
-		Amount                        *int64
-		UpdatedAt                     *time.Time
+		ResourceType                             orgresource.ResourceType
+		BucketOrganization                       *string
+		Available, Allocated, Reserved, Consumed *int64
+		DebtOrganization                         *string
+		Amount                                   *int64
+		UpdatedAt                                *time.Time
 	}
 	err := r.db.WithContext(ctx).Raw(`
  WITH resource_types(resource_type) AS (VALUES ('store_renewal_period'),('ai_point'),('data_row'))
  SELECT t.resource_type, b.organization_id AS bucket_organization,
- b.available, b.reserved, b.consumed, b.updated_at,
+ b.available, b.allocated, b.reserved, b.consumed, b.updated_at,
  d.organization_id AS debt_organization, d.amount
  FROM resource_types t
  LEFT JOIN saas_organization_resource_buckets b ON b.organization_id = ? AND b.resource_type = t.resource_type
@@ -62,6 +62,9 @@ func (r *GormRepository) ReadBalances(ctx context.Context, organization string) 
 				return orgresource.Balances{}, orgresource.ErrBalanceUnavailable
 			}
 		} else {
+			if row.Allocated == nil || *row.Allocated < 0 || (row.ResourceType == orgresource.ResourceAIPoint && *row.Allocated != 0) {
+				return orgresource.Balances{}, orgresource.ErrBalanceUnavailable
+			}
 			if *row.BucketOrganization != organization || row.Available == nil || row.Reserved == nil || row.Consumed == nil || *row.Available < 0 || *row.Reserved < 0 || *row.Consumed < 0 || row.UpdatedAt == nil || row.UpdatedAt.IsZero() || row.UpdatedAt.Year() < 1 || row.UpdatedAt.Year() > 9999 {
 				return orgresource.Balances{}, orgresource.ErrBalanceUnavailable
 			}
@@ -79,6 +82,8 @@ func (r *GormRepository) ReadBalances(ctx context.Context, organization string) 
 			updated := row.UpdatedAt.UTC()
 			balance.State = "recorded"
 			balance.Available = &available
+			allocated := strconv.FormatInt(*row.Allocated, 10)
+			balance.Allocated = &allocated
 			balance.Reserved = &reserved
 			balance.Consumed = &consumed
 			balance.Debt = &amount
