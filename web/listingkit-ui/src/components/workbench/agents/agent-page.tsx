@@ -49,7 +49,7 @@ const capabilityNames: Record<string, string> = {
   "image.generate": "图片生成",
   "platform.write": "平台写入",
 };
-export function configurationError(error: unknown) {
+function configurationError(error: unknown) {
   const code =
     error instanceof ConfigurationError ? error.code : "DEPENDENCY_UNAVAILABLE";
   return (
