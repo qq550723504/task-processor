@@ -812,3 +812,24 @@ func TestThrottleOnTimeDispatchDoesNotInvalidateWaiters(t *testing.T) {
 			"a queued waiter must not be pushed an extra interval out by an on-time dispatch")
 	}
 }
+
+// A dispatch that is a clock tick late but still lands inside the existing queue
+// tail has not moved the schedule, and must not push the waiters behind it a full
+// extra interval. A generous bound is used because the property under test is that
+// a request that fits the budget is not refused, not that a specific timing holds.
+func TestThrottleMinimallyLateDispatchDoesNotInvalidateWaiters(t *testing.T) {
+	interval := 20 * time.Millisecond
+	budget := 400 * time.Millisecond
+	th := newThrottle(interval, 0, 0, -1, budget, budget/4)
+	require.NoError(t, th.Wait(context.Background()))
+
+	for i := 0; i < 3; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), budget)
+		start := time.Now()
+		require.NoError(t, th.Wait(ctx),
+			"a minimally late dispatch must not refuse the waiter behind it")
+		require.Less(t, time.Since(start), budget,
+			"the waiter must complete inside its own budget")
+		cancel()
+	}
+}

@@ -255,14 +255,12 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		// reservation must not stop this dispatch from recording the interval that
 		// follows it, or the next waiter can start too soon after this one.
 		dispatched := time.Now().Add(span)
-		slipped := time.Now().After(start)
 		t.dispatchFloor = dispatched
-		// Bump the generation only when this dispatch actually MOVED the schedule:
-		// advancing the queue tail, or happening later than the slot it reserved.
-		// An on-time dispatch that leaves the tail alone does not invalidate a
-		// waiter's still-valid timer, and treating that as stale would push the
-		// waiter a full extra interval out.
-		if dispatched.After(t.next) || slipped {
+		// A dispatch changes the schedule only when it moves the queue tail. A waiter
+		// that is a clock tick late but still lands inside the existing tail has not
+		// moved anything, and treating that as a change would invalidate waiters
+		// whose timers are still valid and push each of them a full extra interval.
+		if dispatched.After(t.next) {
 			t.generation++
 		}
 		if dispatched.After(t.next) {
@@ -339,10 +337,9 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	// reservation must not stop this dispatch from recording the interval that
 	// follows it, or the next waiter can start too soon after this one.
 	dispatched := time.Now().Add(span)
-	slipped := time.Now().After(start)
 	t.dispatchFloor = dispatched
-	// Bump only when the schedule really moved - see the immediate path.
-	if dispatched.After(t.next) || slipped {
+	// Only a tail move is a schedule change - see the immediate path.
+	if dispatched.After(t.next) {
 		t.generation++
 	}
 	if dispatched.After(t.next) {

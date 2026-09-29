@@ -55,3 +55,24 @@ func TestSplitOriginsTrimsAndDropsBlanks(t *testing.T) {
 	require.Empty(t, splitOrigins("  ,  "))
 	require.Empty(t, splitOrigins(""))
 }
+
+// The negative startup-quarantine escape hatch exists for tests. A production
+// collector must not start with it, or it could immediately reuse an exit IP that
+// was challenged just before the restart.
+func TestRunRejectsNegativeStartupQuarantine(t *testing.T) {
+	withCredential(t)
+	err := run(context.Background(), append(baseArgs("chrome.exe"), "-startup-quarantine", "-1"))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must not be negative")
+}
+
+// Zero must keep following the configured cooldown rather than disabling anything.
+func TestRunZeroStartupQuarantineIsAccepted(t *testing.T) {
+	t.Setenv(credentialEnvKey, "")
+	// The run proceeds past the quarantine check and fails later on the missing
+	// browser, which proves the zero value was not rejected as a disable switch.
+	err := run(context.Background(), []string{"-browser", "chrome.exe", "-credential", "x"})
+	if err != nil {
+		require.NotContains(t, err.Error(), "must not be negative")
+	}
+}

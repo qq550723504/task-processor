@@ -52,7 +52,7 @@ type options struct {
 	allowedOrigins    string
 	shutdownTimeout   time.Duration
 	minInterval       time.Duration
-	startupQuarantine time.Duration
+	startupQuarantine int64
 	jitter            float64
 	challengeCooldown time.Duration
 }
@@ -69,7 +69,7 @@ func run(ctx context.Context, args []string) error {
 	fs.DurationVar(&opts.minInterval, "min-interval", browser.DefaultMinInterval, "floor between acquisition starts; the 1688 challenge is frequency-triggered, so this is the primary control")
 	fs.Float64Var(&opts.jitter, "jitter", browser.DefaultJitterFraction, "random extra fraction of min-interval, so collectors do not synchronise")
 	fs.DurationVar(&opts.challengeCooldown, "challenge-cooldown", browser.DefaultChallengeCooldown, "how long to refuse work after a challenge is observed")
-	fs.DurationVar(&opts.startupQuarantine, "startup-quarantine", 0, "how long a freshly started collector refuses its first request; 0 follows -challenge-cooldown, negative disables it")
+	fs.Int64Var(&opts.startupQuarantine, "startup-quarantine", 0, "how long a freshly started collector refuses its first request; 0 follows -challenge-cooldown")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -81,6 +81,13 @@ func run(ctx context.Context, args []string) error {
 	// history, letting any co-located process or operator impersonate the
 	// application and spend the shared browser/IP budget.
 	credential := strings.TrimSpace(os.Getenv(credentialEnvKey))
+	// The negative escape hatch on the quarantine exists for tests only. Accepting
+	// it here would let an operator start with no restart protection and immediately
+	// reuse an exit IP that was challenged moments earlier, which is exactly the
+	// invariant the quarantine exists to provide.
+	if opts.startupQuarantine < 0 {
+		return fmt.Errorf("-startup-quarantine must not be negative")
+	}
 	if credential == "" {
 		// Fail closed: never start a collector whose callers cannot be verified.
 		return fmt.Errorf("caller admission credential is required (set $%s)", credentialEnvKey)
@@ -101,7 +108,7 @@ func run(ctx context.Context, args []string) error {
 		MinInterval:       opts.minInterval,
 		Jitter:            opts.jitter,
 		ChallengeCooldown: opts.challengeCooldown,
-		StartupQuarantine: opts.startupQuarantine,
+		StartupQuarantine: time.Duration(opts.startupQuarantine),
 	})
 	handler, err := browsercollector.Handler(browsercollector.Options{
 		Provider: provider,
