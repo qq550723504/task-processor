@@ -44,7 +44,7 @@ services:
   command: [-h,0.0.0.0,-c,/config/knowledge-tika.json]
   user: "35002:35002"
   read_only: true
-  tmpfs: [/tmp:size=256m,uid=35002,gid=35002,mode=0700]
+  tmpfs: ["/tmp:size=256m,uid=35002,gid=35002,mode=0700"]
   volumes: [./knowledge-tika.json:/config/knowledge-tika.json:ro]
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
