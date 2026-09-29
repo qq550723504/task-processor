@@ -1,15 +1,17 @@
 # Organization Agent Configuration V1 — Slice D
 
-> Status: **DRAFT / NOT_IMPLEMENTATION_READY**
+> Status: **APPROVED / IMPLEMENTATION_READY**
 >
 > Design Basis: **Independent Architecture**, a bounded increment over #556.
 > Issue: #570. Product parent: #555. AI Workbench parent: #298.
 > Inspected code: `main @ 204aef668ac4f8a4361da229895417ebb78a1fdc` (2026-09-29).
 >
-> This is a review candidate, not an approved implementation or release gate.
-> D0 changes documentation only. Independent Architecture Review, applicable CI,
-> explicit IMPLEMENTATION_READY admission and architecture merge precede production work.
-> Merge, Issue closure, deployment, real enterprise data and paid providers are not authorized.
+> Final reviewed contract HEAD: `88b2be970b470fab45d1897d89b41de4061020ec`.
+> Targeted review on that HEAD found no major issues after the P1 rollout blocker was fixed;
+> exact-head CI `36566072746` completed SUCCESS including Required CI Gate.
+> This status-only admission changes no architecture contract. Production implementation may
+> begin only after this architecture PR is merged to main. Merge, Issue closure, deployment,
+> real enterprise data and paid providers remain separately authorized.
 
 ## 1. Product outcome and authority
 
