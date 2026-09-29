@@ -176,3 +176,48 @@ it("keeps a near-limit file from exceeding the whole multipart request budget",a
  expect(screen.getByRole("button",{name:"上传并处理"})).toBeDisabled();expect(screen.getByText("文件接近大小上限，请缩小一点后上传。")).toBeVisible();
  expect(requests.every(init=>init.method!=="POST")).toBe(true);unmount();
 });
+const pickerSource={id:sourceId,knowledgeBaseId:baseId,name:"产品资料",state:"ACTIVE",version:1,latestRevision:old,currentReadableRevision:old,createdBy:"reader",updatedBy:"reader",createdAt:timestamp,updatedAt:timestamp};
+it.each(["new upload","replacement"])("clears the native file picker after a successful %s",async(mode)=>{
+ vi.stubGlobal("fetch",vi.fn(async(url:string,init?:RequestInit)=>{
+ if(url==="/api/workbench/context")return Response.json(context);
+ if(init?.method==="POST")return Response.json({source:pickerSource,revision:old},{status:201});
+ return Response.json(url.endsWith("/sources")?{items:[pickerSource]}:base);
+ }));const unmount=mount(baseId);await screen.findByText("产品资料");
+ if(mode==="replacement")await userEvent.click(screen.getByRole("button",{name:"重新上传"}));
+ const picker=screen.getByLabelText(mode==="replacement"?"替换：产品资料":"上传新资料") as HTMLInputElement;
+ const file=new File(["hello"],"brand.txt",{type:"text/plain"});await userEvent.upload(picker,file);expect(picker.files).toHaveLength(1);
+ await userEvent.click(screen.getByRole("button",{name:mode==="replacement"?"提交新版本":"上传并处理"}));await screen.findByText("操作已保存。");
+ expect(picker).toHaveValue("");expect(picker.files).toHaveLength(0);expect(screen.getByRole("button",{name:"上传并处理"})).toBeDisabled();
+ await userEvent.upload(screen.getByLabelText("上传新资料"),file);expect(screen.getByRole("button",{name:"上传并处理"})).toBeEnabled();unmount();
+});
+it("allows the same file to be selected again in the native file picker after success",async()=>{
+ vi.stubGlobal("fetch",vi.fn(async(url:string,init?:RequestInit)=>{
+ if(url==="/api/workbench/context")return Response.json(context);
+ if(init?.method==="POST")return Response.json({source:pickerSource,revision:old},{status:201});
+ return Response.json(url.endsWith("/sources")?{items:[pickerSource]}:base);
+ }));const unmount=mount(baseId);await screen.findByText("产品资料");const picker=screen.getByLabelText("上传新资料");
+ const file=new File(["hello"],"brand.txt",{type:"text/plain"});await userEvent.upload(picker,file);await userEvent.click(screen.getByRole("button",{name:"上传并处理"}));await screen.findByText("操作已保存。");
+ expect(screen.getByRole("button",{name:"上传并处理"})).toBeDisabled();await userEvent.upload(picker,file);expect(screen.getByRole("button",{name:"上传并处理"})).toBeEnabled();unmount();
+});
+it.each(["上传资料","重新上传","取消替换"])("clears the native file picker when choosing %s",async(action)=>{
+ vi.stubGlobal("fetch",vi.fn(async(url:string)=>{
+ if(url==="/api/workbench/context")return Response.json(context);return Response.json(url.endsWith("/sources")?{items:[pickerSource]}:base);
+ }));const unmount=mount(baseId);await screen.findByText("产品资料");
+ if(action==="取消替换")await userEvent.click(screen.getByRole("button",{name:"重新上传"}));
+ const picker=screen.getByLabelText(action==="取消替换"?"替换：产品资料":"上传新资料") as HTMLInputElement;
+ const file=new File(["hello"],"brand.txt",{type:"text/plain"});await userEvent.upload(picker,file);expect(picker.files).toHaveLength(1);
+ await userEvent.click(screen.getByRole("button",{name:action}));expect(picker).toHaveValue("");expect(picker.files).toHaveLength(0);
+ const replacement=action==="重新上传";await userEvent.upload(screen.getByLabelText(replacement?"替换：产品资料":"上传新资料"),file);
+ expect(screen.getByRole("button",{name:replacement?"提交新版本":"上传并处理"})).toBeEnabled();unmount();
+});
+it("keeps the native file picker and original upload during UNKNOWN retry",async()=>{
+ const keys:string[]=[],bodies:FormData[]=[];
+ vi.stubGlobal("fetch",vi.fn(async(url:string,init?:RequestInit)=>{
+ if(url==="/api/workbench/context")return Response.json(context);
+ if(init?.method==="POST"){keys.push(new Headers(init.headers).get("Idempotency-Key")!);bodies.push(init.body as FormData);return keys.length===1?Response.json({code:"OUTCOME_UNKNOWN"},{status:503}):Response.json({source:pickerSource,revision:old},{status:201});}
+ return Response.json(url.endsWith("/sources")?{items:[pickerSource]}:base);
+ }));const unmount=mount(baseId);await screen.findByText("产品资料");const picker=screen.getByLabelText("上传新资料") as HTMLInputElement;
+ await userEvent.upload(picker,new File(["hello"],"brand.txt",{type:"text/plain"}));await userEvent.click(screen.getByRole("button",{name:"上传并处理"}));await screen.findByRole("button",{name:"重试同一次操作"});
+ expect(picker.files).toHaveLength(1);expect(picker.value).toContain("brand.txt");expect(picker).toBeDisabled();expect(screen.getByRole("button",{name:"重新上传"})).toBeDisabled();
+ await userEvent.click(screen.getByRole("button",{name:"重试同一次操作"}));await screen.findByText("操作已保存。");expect(keys).toHaveLength(2);expect(keys[1]).toBe(keys[0]);expect(bodies[1]).toBe(bodies[0]);expect((bodies[1].get("file") as File).name).toBe("brand.txt");expect(picker).toHaveValue("");expect(picker.files).toHaveLength(0);unmount();
+});
