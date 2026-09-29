@@ -7,9 +7,10 @@ const reference = z.string().uuid();
 const resourceReference = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
 const version = z.string().regex(/^[1-9][0-9]{0,18}$/);
 const sourceOperation = z.enum(["register", "enable", "disable"]);
-const resourceOperation = z.enum(["set_target", "revoke"]);
+const resourceOperation = z.enum(["allocate_member_resource", "reclaim_member_resource", "set_member_ai_point_limit"]);
 const profileOperation = z.literal("update");
 const membershipOperation = z.enum(["invite", "role", "remove"]);
+const auditOperation = z.union([sourceOperation, resourceOperation, profileOperation, membershipOperation]);
 const sourceEvent = z.object({
   eventType: z.literal("source_account.operation_committed"),
   actor: z.string().min(1).max(256).regex(/^[^\x00-\x1f\x7f]+$/),
@@ -18,14 +19,23 @@ const sourceEvent = z.object({
   operation: sourceOperation, result: z.literal("succeeded"),
   relation: z.object({ type: z.literal("source_account_version"), reference, version }).strict(),
 }).strict().refine(value => value.objectReference === value.relation.reference);
-const resourceEvent = z.object({
-  eventType: z.literal("account_member_token_allocation.changed"),
+const resourceFields = {
   actor: z.string().min(1).max(256).regex(/^[^\x00-\x1f\x7f]+$/),
   time: z.string().max(40).datetime({ precision: null }),
-  objectType: z.literal("member_token_allocation"), objectReference: resourceReference,
-  operation: resourceOperation, result: z.literal("succeeded"),
-  relation: z.object({ type: z.literal("member_token_allocation_version"), reference: resourceReference, version }).strict(),
-}).strict().refine(value => value.objectReference === value.relation.reference);
+  objectReference: resourceReference, result: z.literal("succeeded"),
+  relation: z.object({ type: z.literal("organization_resource_operation"), reference: resourceReference, version }).strict(),
+};
+const exactNonnegative = z.string().refine(value => /^(0|[1-9][0-9]{0,18})$/.test(value) && BigInt(value) <= BigInt("9223372036854775807"));
+const resourceEvent = z.object({
+  ...resourceFields, eventType: z.literal("account_member_resource.changed"), objectType: z.literal("member_resource"),
+  operation: z.enum(["allocate_member_resource", "reclaim_member_resource"]),
+  resource: z.object({ type: z.enum(["store_renewal_period", "data_row"]), quantity: exactNonnegative.refine(value => value !== "0") }).strict(),
+}).strict();
+const limitEvent = z.object({
+  ...resourceFields, eventType: z.literal("account_member_ai_point_limit.changed"), objectType: z.literal("member_ai_point_limit"),
+  operation: z.literal("set_member_ai_point_limit"),
+  resource: z.object({ type: z.literal("ai_point"), quantity: exactNonnegative }).strict(),
+}).strict();
 const profileEvent = z.object({
   eventType: z.literal("account_business_profile.updated"),
   actor: z.string().min(1).max(256).regex(/^[^\x00-\x1f\x7f]+$/),
@@ -58,27 +68,9 @@ const pointEvent = z.object({
   relation: z.object({ type: z.literal("organization_resource_event"), reference: resourceReference, version: z.literal("") }).strict(),
   points: z.object({ memberId: resourceReference, quantity: z.string().refine(value => /^[1-9][0-9]{0,18}$/.test(value) && BigInt(value) <= BigInt("9223372036854775807")), priceVersion: z.string().min(1).max(192).regex(/^[^\x00-\x1f\x7f]+$/).refine(value => value.trim() === value), intentId: resourceReference }).strict(),
 }).strict();
-const event = z.union([sourceEvent, resourceEvent, profileEvent, membershipEvent, usageEvent, pointEvent]);
+const event = z.union([sourceEvent, resourceEvent, limitEvent, profileEvent, membershipEvent, usageEvent, pointEvent]);
 const cursor = z.string().min(1).max(2048).regex(/^[A-Za-z0-9_-]+$/);
-const priorSource = z.enum([
-  "source_account_committed_operations",
-  "source_account_committed_operations+account_member_token_audit",
-  "source_account_committed_operations+account_business_profile_audit",
-  "source_account_committed_operations+organization_member_audit",
-  "source_account_committed_operations+account_member_token_audit+account_business_profile_audit",
-  "source_account_committed_operations+account_member_token_audit+organization_member_audit",
-  "source_account_committed_operations+account_business_profile_audit+organization_member_audit",
-  "source_account_committed_operations+account_member_token_audit+account_business_profile_audit+organization_member_audit",
-  "source_account_committed_operations+ai_invocations",
-  "source_account_committed_operations+account_member_token_audit+ai_invocations",
-  "source_account_committed_operations+account_business_profile_audit+ai_invocations",
-  "source_account_committed_operations+organization_member_audit+ai_invocations",
-  "source_account_committed_operations+account_member_token_audit+account_business_profile_audit+ai_invocations",
-  "source_account_committed_operations+account_member_token_audit+organization_member_audit+ai_invocations",
-  "source_account_committed_operations+account_business_profile_audit+organization_member_audit+ai_invocations",
-  "source_account_committed_operations+account_member_token_audit+account_business_profile_audit+organization_member_audit+ai_invocations",
-]);
-const source = z.string().refine(value => priorSource.safeParse(value).success || value.endsWith("+image_ai_point_debits") && priorSource.safeParse(value.slice(0, -"+image_ai_point_debits".length)).success);
+const source = z.string().regex(/^source_account_committed_operations(\+account_business_profile_audit)?(\+organization_member_audit)?(\+ai_invocations)?(\+image_ai_point_debits)?(\+member_resource_audit)?$/);
 const page = z.object({
   schemaVersion: z.literal("account-audit-v1"), userId: identity, effectiveOrganizationId: identity,
   source, items: z.array(event).max(100), nextCursor: cursor.nullable(),
@@ -91,9 +83,9 @@ export function parseAccountAudit(value: unknown): AccountAuditPage {
   if (!parsed.success) throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE");
   return parsed.data;
 }
-export type AuditOptions = { expectedUserId: string; expectedOrganizationId: string; limit?: number; cursor?: string; actor?: string; operation?: z.infer<typeof sourceOperation> | z.infer<typeof resourceOperation> | z.infer<typeof profileOperation> | z.infer<typeof membershipOperation>; signal?: AbortSignal };
+export type AuditOptions = { expectedUserId: string; expectedOrganizationId: string; limit?: number; cursor?: string; actor?: string; operation?: z.infer<typeof auditOperation>; signal?: AbortSignal };
 export function auditQuery(limit = 20, after?: string, actor?: string, kind?: AuditOptions["operation"]): string {
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || after !== undefined && !cursor.safeParse(after).success) throw new AccountReadError(400, "INVALID_REQUEST");
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || after !== undefined && !cursor.safeParse(after).success || kind !== undefined && !auditOperation.safeParse(kind).success) throw new AccountReadError(400, "INVALID_REQUEST");
   const query = new URLSearchParams({ limit: String(limit) });
   if (after !== undefined) query.set("cursor", after);
   if (actor !== undefined && actor !== "") query.set("actor", actor);

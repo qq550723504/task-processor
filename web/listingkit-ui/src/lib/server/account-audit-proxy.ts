@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { AccountReadError, accountErrorCode } from "@/lib/api/account";
-import { AUDIT_RESPONSE_MAX_BYTES, auditQuery, parseAccountAudit } from "@/lib/api/account-audit";
+import { AUDIT_RESPONSE_MAX_BYTES, auditQuery, parseAccountAudit, type AuditOptions } from "@/lib/api/account-audit";
 import { readBoundedStrictJSON } from "@/lib/api/strict-json-response";
 import { accountFailure } from "./account-proxy";
 import { WORKBENCH_COOKIE_NAME } from "./workbench-proxy";
 
 const validID = (value: string | undefined): value is string => !!value && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
-const validOperation = (value: string | undefined): value is "register" | "enable" | "disable" | "set_target" | "revoke" | "update" | "invite" | "role" | "remove" => !!value && ["register", "enable", "disable", "set_target", "revoke", "update", "invite", "role", "remove"].includes(value);
+const validOperation = (value: string | undefined): value is NonNullable<AuditOptions["operation"]> => !!value && ["register", "enable", "disable", "allocate_member_resource", "reclaim_member_resource", "set_member_ai_point_limit", "update", "invite", "role", "remove"].includes(value);
 function origin(): string | null {
   try {
     const raw = process.env.LISTINGKIT_SERVICE_API_BASE?.trim(); if (!raw) return null;

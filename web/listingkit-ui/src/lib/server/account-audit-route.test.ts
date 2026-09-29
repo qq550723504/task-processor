@@ -12,6 +12,20 @@ function request(query = "?limit=20", headers: Record<string, string | undefined
 beforeEach(() => { state.user = "u1"; state.token = "fixture-token"; state.blocked = false; vi.stubEnv("LISTINGKIT_SERVICE_API_BASE", "http://127.0.0.1:8085/api/v1"); });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); });
 describe("audit BFF exported route", () => {
+  it.each(["allocate_member_resource", "reclaim_member_resource", "set_member_ai_point_limit"])("forwards current member resource operation %s and its strict facts", async operation => {
+    const cap = operation === "set_member_ai_point_limit";
+    const item = { eventType: cap ? "account_member_ai_point_limit.changed" : "account_member_resource.changed", actor: "actor-1", time: "2026-09-29T08:00:00Z", objectType: cap ? "member_ai_point_limit" : "member_resource", objectReference: "member-1", operation, result: "succeeded", relation: { type: "organization_resource_operation", reference: "op-1", version: "1" }, resource: { type: cap ? "ai_point" : "data_row", quantity: "1000" } };
+    const fetch = vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+member_resource_audit", items: [item] })); vi.stubGlobal("fetch", fetch);
+    const response = await GET(request(`?actor=actor-1&operation=${operation}`));
+    expect(response.status).toBe(200);
+    expect(fetch.mock.calls[0][0]).toContain(`actor=actor-1&operation=${operation}`);
+    expect((await response.json()).items).toEqual([item]);
+  });
+  it.each(["set_target", "revoke"])("rejects retired token operation %s", async operation => {
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    expect((await GET(request(`?operation=${operation}`))).status).toBe(400);
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it("forwards only server bearer, resolved selection and bounded query", async () => {
     const fetch = vi.fn().mockResolvedValue(Response.json(empty)); vi.stubGlobal("fetch", fetch);
     const result = await GET(request("?limit=20", { Authorization: "Bearer attacker", "X-Requested-Organization-ID": "attacker" }));

@@ -87,6 +87,13 @@ Out of Scope: 新订阅等级、升级／降级／按比例计费、自动续费
 Account audit 提取仍有效的 profile/membership/Resource/AI 审计读，停止查询旧 Token allocation 事件。
 现有消费者的新资源明细从 Resource events 读取；不通过读取动作结算、修正或 seed 数据。
 
+当前成员资源审计读映射（复用上述 owner 与 Account Audit AdditionalHistory，不改变写入合同）：
+
+- 只读 Resource 已有 `succeeded` operation 及其原 audit snapshot。期数/数据分配和回收数量取同企业、同操作的原资源事件，成员和版本取原不可变 receipt；AI 月限取原 MemberLimitSnapshot，不用当前限额覆盖历史。
+- 投影 `account_member_resource.changed` 与 `account_member_ai_point_limit.changed`；`resource.type/quantity` 分别为原转移量或原配置月限（整数十进制字符串，月限允许 0）。relation 绑定原 Resource operation ID 与原成员版本。actor 保留提交审计 actor。
+- 沿现有 Account Audit GET、实时企业 read 准入、同源 BFF 和表格；原 actor 筛选及三项当前操作筛选、按审计时间/ID 的 Resource 流位置参与既有多源分页，cursor 绑定企业及筛选。原提交事实不完整时明确 unavailable，不伪造空历史或当前余额。
+- 不新增 schema、审计写入、状态机、IAM、恢复/计费协议或统计聚合；旧 Token audit DTO、读取与筛选退役，无兼容回退。
+
 ## 4. 店铺记录 Hard-Cut 与单库事务
 
 旧订阅 store_count reserve/commit/deallocate、租约和补偿被 **RETIRE**。

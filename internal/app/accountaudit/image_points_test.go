@@ -36,7 +36,7 @@ func TestImagePointAuditMergesAcrossPagesAndBindsActorAndOrganization(t *testing
 		{OrganizationID: "B", EventID: "point-1", ActorID: "other", MemberID: "member", RunID: "run-2", IntentID: "intent-2", PriceVersion: "price-1", Points: 12, CreatedAt: now.Add(-2 * time.Second)},
 	}}
 	usage := &usageHistoryStub{events: []UsageAuditEvent{{OrganizationID: "B", EventID: "token-2", MemberID: "member", InvocationID: "inv-1", Quantity: 7, Time: now.Add(-time.Second)}}}
-	query, err := NewWithImagePointAuditSources(&historyStub{}, nil, nil, nil, usage, points)
+	query, err := NewCurrentAuditSources(&historyStub{}, nil, nil, usage, points, nil)
 	require.NoError(t, err)
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "actor", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: now.Add(time.Hour)})
 	cursor := ""
