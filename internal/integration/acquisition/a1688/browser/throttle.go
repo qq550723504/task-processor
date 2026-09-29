@@ -346,11 +346,33 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		t.mu.Unlock()
 		return ErrThrottled
 	}
+	// Re-check the real dispatch floor at the moment of dispatch, not only when the
+	// reservation was made. Under scheduler inversion a later waiter can dispatch
+	// first and leave a floor ahead while this caller sleeps; with enough callers
+	// queued the tail can also sit beyond that floor, so nothing else here would
+	// notice and this caller would overwrite the newer floor and return within
+	// MinInterval of an acquisition that is already running.
+	if t.staleBehindNewerDispatch(start) {
+		t.discardLocked(mine)
+		t.mu.Unlock()
+		return t.Wait(ctx)
+	}
 	// Advance the floor from when this caller ACTUALLY starts, not from the slot
 	// it reserved. A goroutine whose timer fires but which is scheduled late would
 	// otherwise let the next reservation be admitted on the ideal timeline, so two
 	// real acquisition starts could be only milliseconds apart - the burst this
 	// throttle exists to prevent, produced by the pacing itself.
+	// Re-check the real dispatch floor at the moment of dispatch, not only when the
+	// reservation was made. Under scheduler inversion a later waiter can dispatch
+	// first and leave a floor ahead while this caller sleeps; with enough callers
+	// queued the tail can also sit beyond that floor, so nothing else here would
+	// notice and this caller would overwrite the newer floor and return within
+	// MinInterval of an acquisition that is already running.
+	if t.staleBehindNewerDispatch(start) {
+		t.discardLocked(mine)
+		t.mu.Unlock()
+		return t.Wait(ctx)
+	}
 	// Re-anchor from THIS caller's own slot, not from the queue tail: a later
 	// reservation must not stop this dispatch from recording the interval that
 	// follows it, or the next waiter can start too soon after this one.
@@ -406,6 +428,15 @@ func (t *Throttle) blockedLocked() bool {
 // The caller must hold the lock.
 func (t *Throttle) generationLocked(seen uint64) bool {
 	return t.generation != seen
+}
+
+// staleBehindNewerDispatch reports whether a real acquisition dispatched after this
+// caller reserved the slot it is about to use. If one did, this caller is second in
+// line no matter how valid its own timer looks: under scheduler inversion the
+// generation, the tail and the admission-time floor can all fail to reveal it, and
+// committing here would start an acquisition beside one already running.
+func (t *Throttle) staleBehindNewerDispatch(start time.Time) bool {
+	return t.lastDispatchAt.After(start)
 }
 
 // scheduleMoved reports whether a dispatch that actually ran at actual, having

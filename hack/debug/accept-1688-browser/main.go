@@ -26,6 +26,8 @@ func main() {
 	browserPath := flag.String("browser", "", "path to the Chromium binary")
 	headless := flag.Bool("headless", true, "run headless")
 	timeout := flag.Duration("timeout", 120*time.Second, "acquisition budget")
+	startupQuarantine := flag.Duration("startup-quarantine", 0,
+		"how long to refuse the first request; the production default is the full challenge cooldown, which is not what an acceptance run wants")
 	flag.Parse()
 
 	if *offer == "" {
@@ -52,6 +54,13 @@ func main() {
 		Headless:       *headless,
 		Budget:         *timeout,
 		AllowedOrigins: browser.DefaultAllowedOrigins,
+		// This runner is an operator-invoked acceptance check against the real
+		// network, not a production collector. The production default deliberately
+		// quarantines a freshly started process for the full challenge cooldown, so
+		// leaving this unset would refuse the very request the runner exists to
+		// make, and no amount of context timeout would reach Chromium. The choice is
+		// explicit here rather than inherited.
+		StartupQuarantine: *startupQuarantine,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout+30*time.Second)

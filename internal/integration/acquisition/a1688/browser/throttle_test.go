@@ -961,3 +961,30 @@ func TestThrottleLateWaiterDoesNotOverwriteNewerDispatchFloor(t *testing.T) {
 	require.GreaterOrEqual(t, time.Since(start), interval*3/4,
 		"a waiter behind a real dispatch must not start beside it")
 }
+
+// The real dispatch floor has to be re-checked when the waiter commits, not only
+// when it reserved. With enough callers queued the tail can sit beyond that floor
+// while a later waiter dispatches first, so nothing at reservation time reveals the
+// inversion and the sleeping waiter would otherwise overwrite the newer floor and
+// return within the interval of an acquisition already running.
+//
+// The rule is unit tested directly. I could not build a deterministic end-to-end
+// reproduction of the interleaving - the admission floor and the queue tail both
+// stay consistent under every ordering I could set up by hand - so this covers the
+// decision, not the schedule that produces it.
+func TestThrottleStaleBehindNewerDispatch(t *testing.T) {
+	base := time.Now()
+	th := newThrottle(50*time.Millisecond, 0, 0, -1, time.Second, time.Second/4)
+
+	// No dispatch has run yet.
+	require.False(t, th.staleBehindNewerDispatch(base))
+
+	// A real dispatch ran after this caller reserved its slot: it is now second.
+	th.lastDispatchAt = base.Add(time.Millisecond)
+	require.True(t, th.staleBehindNewerDispatch(base))
+
+	// A real dispatch ran before this caller reserved: it is genuinely first.
+	th.lastDispatchAt = base.Add(-time.Millisecond)
+	require.False(t, th.staleBehindNewerDispatch(base),
+		"a caller that reserved after the dispatch is still next in line")
+}
