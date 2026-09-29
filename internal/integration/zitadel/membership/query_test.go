@@ -198,11 +198,10 @@ func TestDirectoryQueryTenThousandBoundarySharesOneDeadline(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"pagination": map[string]string{"totalResult": "10000"}, "authorizations": rows})
 	}))
 	defer server.Close()
-	started := time.Now()
 	var deadline time.Time
 	transport := transportFunc(func(r *http.Request) (*http.Response, error) {
 		current, ok := r.Context().Deadline()
-		if !ok || current.After(started.Add(10*time.Second)) {
+		if !ok || time.Until(current) > 10*time.Second {
 			t.Errorf("missing bounded deadline: %v", current)
 		}
 		if deadline.IsZero() {
