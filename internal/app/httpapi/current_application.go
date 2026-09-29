@@ -783,6 +783,7 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	if includeAudit {
 		expected[currentApplicationRoute{Method: http.MethodGet, Path: accountAuditPath}] = struct{}{}
+		expected[currentApplicationRoute{Method: http.MethodGet, Path: accountAuditPath + "/summary"}] = struct{}{}
 	}
 	if includeMembership {
 		for _, route := range currentMembershipRoutes {
@@ -869,7 +870,7 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 				return errors.New("member AI point limit route loses live permission boundary")
 			}
 		}
-		if descriptor.Path == accountAuditPath && (descriptor.Method != http.MethodGet || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionWorkbenchSourceAccountRead || descriptor.OrganizationTargetResolver == nil || !descriptor.RejectUnreadRequestBody || descriptor.RequestTimeout != 10*time.Second) {
+		if (descriptor.Path == accountAuditPath || descriptor.Path == accountAuditPath+"/summary") && (descriptor.Method != http.MethodGet || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionWorkbenchSourceAccountRead || descriptor.OrganizationTargetResolver == nil || !descriptor.RejectUnreadRequestBody || descriptor.RequestTimeout != 10*time.Second) {
 			return errors.New("current account audit descriptor does not preserve fresh read authorization")
 		}
 		route := currentApplicationRoute{Method: descriptor.Method, Path: descriptor.Path}

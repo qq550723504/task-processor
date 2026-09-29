@@ -49,7 +49,7 @@ func TestCurrentApplicationAuditMembershipRouteCombinations(t *testing.T) {
 				want := 10
 				if includeAudit {
 					routes = append(routes, audit.Routes()...)
-					want++
+					want += 2
 				}
 				if includeMembership {
 					routes = append(routes, members.Routes()...)
@@ -166,7 +166,7 @@ func TestCurrentApplicationAuditFactoryAdmission(t *testing.T) {
 	if defaultCurrentApplicationFactories(context.Background()).buildAccountAudit == nil {
 		t.Fatal("default application omitted audit factory")
 	}
-	for _, mode := range []string{"enabled", "error", "nil", "missing-route", "wrong-permission"} {
+	for _, mode := range []string{"enabled", "error", "nil", "missing-route", "wrong-permission", "missing-summary", "summary-wrong-permission"} {
 		t.Run(mode, func(t *testing.T) {
 			cfg := currentApplicationTestConfig()
 			sourceDB := &gorm.DB{}
@@ -224,6 +224,12 @@ func (m currentAuditTestModule) Register(registry *kernelmodule.Registry) error 
 		return err
 	}
 	routes := other.Routes()
+	if m.mode == "missing-summary" {
+		routes = routes[:1]
+	}
+	if m.mode == "summary-wrong-permission" {
+		routes[1].Permission = authz.PermissionWorkbenchSourceAccountManage
+	}
 	if m.mode == "wrong-permission" {
 		routes[0].Permission = authz.PermissionWorkbenchSourceAccountManage
 	}
@@ -239,7 +245,7 @@ func TestCurrentApplicationAuditRequiresExactDescriptor(t *testing.T) {
 	for _, route := range currentWorkbenchApplicationRoutes {
 		base = append(base, httproute.Descriptor{Method: route.Method, Path: route.Path})
 	}
-	valid := append(append([]httproute.Descriptor{}, base...), audit.Routes()[0])
+	valid := append(append([]httproute.Descriptor{}, base...), audit.Routes()...)
 	if err := validateCurrentApplicationRoutes(valid, true, false); err != nil {
 		t.Fatal(err)
 	}

@@ -312,6 +312,9 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 		if merged[i].kind != merged[j].kind {
 			return merged[i].kind < merged[j].kind
 		}
+		if merged[i].source != nil && merged[j].source != nil {
+			return merged[j].source.Before(*merged[i].source)
+		}
 		return merged[i].key > merged[j].key
 	})
 	mergedTruncated := len(merged) > limit

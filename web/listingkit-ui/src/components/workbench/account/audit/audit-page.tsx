@@ -6,7 +6,7 @@ import { useWorkbenchContext } from "@/components/providers/workbench-context-pr
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AccountReadError } from "@/lib/api/account";
-import { getAccountAudit } from "@/lib/api/account-audit";
+import { getAccountAudit, getAccountAuditSummary } from "@/lib/api/account-audit";
 import { ConsoleState } from "../../console/console-page";
 import styles from "./audit.module.css";
 
@@ -34,27 +34,56 @@ export function AuditPage({ expectedUserId }: { expectedUserId: string }) {
 }
 function ScopedAudit({ scope, expectedUserId, organizationId }: { scope: string; expectedUserId: string; organizationId: string }) {
   const [sequence, setSequence] = useState(0);
+  const [scopeError, setScopeError] = useState<string | null>(null);
   return <div className={styles.page}>
     <Card className={styles.coverage}>
       <h2>企业操作审计</h2>
-      <p>只读取当前企业已提交的账户资料、成员、额度、模型实际用量、图片 AI 点数扣款与源账号事件。图片生成成功即扣点，后续未采用或图片处理失败不退还；未确认生成的预留不列为扣款。模型用量记录不提供操作人，按操作人筛选时不显示。</p>
+      <p>只读取当前企业已提交的账户资料、成员、额度、模型实际用量、图片 AI 点数扣款与源账号事件。图片生成成功即扣点，后续未采用或图片处理失败不退还；未确认生成的预留不列为扣款。模型用量记录不提供操作人，按操作人筛选时不显示。汇总仅计成功操作，不计用量观察；资源覆盖续费期数与数据分配/回收、AI 月限和图片扣点，尚未包含独立店铺续费与支付记录。</p>
     </Card>
-    <div className={styles.toolbar}><span>当前企业：{organizationId}</span><Button variant="outline" onClick={() => setSequence(value => value + 1)}>刷新记录</Button></div>
-    <AuditRequests key={sequence} scope={`${scope}:${sequence}`} expectedUserId={expectedUserId} organizationId={organizationId} />
+    <div className={styles.toolbar}><span>当前企业：{organizationId}</span><Button variant="outline" onClick={() => { setScopeError(null); setSequence(value => value + 1); }}>刷新记录</Button></div>
+    {scopeError ? <AuditError code={scopeError} /> : <>
+      <AuditSummary key={`summary:${sequence}`} scope={`${scope}:${sequence}`} expectedUserId={expectedUserId} organizationId={organizationId} onScopeRejected={setScopeError} />
+      <AuditRequests key={sequence} scope={`${scope}:${sequence}`} expectedUserId={expectedUserId} organizationId={organizationId} onScopeRejected={setScopeError} />
+    </>}
   </div>;
 }
-function AuditRequests({ scope, expectedUserId, organizationId }: { scope: string; expectedUserId: string; organizationId: string }) {
+function useAuditScopeRejection(error: unknown, onScopeRejected: (code: string) => void) {
+  useEffect(() => {
+    if (error instanceof AccountReadError && ["AUTHENTICATION_REQUIRED", "IDENTITY_CONTEXT_CHANGED", "PERMISSION_DENIED", "ORGANIZATION_ACCESS_DENIED", "ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_SUSPENDED", "ORGANIZATION_CONTEXT_CHANGED", "ORGANIZATION_SELECTION_REQUIRED"].includes(error.code)) onScopeRejected(error.code);
+  }, [error, onScopeRejected]);
+}
+function AuditSummary({ scope, expectedUserId, organizationId, onScopeRejected }: { scope: string; expectedUserId: string; organizationId: string; onScopeRejected: (code: string) => void }) {
+  const query = useQuery({ queryKey: ["account-audit-summary", scope], queryFn: ({ signal }) => getAccountAuditSummary({ expectedUserId, expectedOrganizationId: organizationId, signal }), retry: false, staleTime: 0, gcTime: 0, refetchOnWindowFocus: true, refetchOnReconnect: true });
+  useAuditScopeRejection(query.error, onScopeRejected);
+  const data = !query.isPending && !query.isFetching && !query.isError ? query.data : undefined;
+  const code = query.error instanceof AccountReadError ? query.error.code : "DEPENDENCY_UNAVAILABLE";
+  const missing = code === "SUMMARY_NOT_CONFIGURED" || code === "ACCOUNT_NOT_CONFIGURED";
+  const denied = ["AUTHENTICATION_REQUIRED", "PERMISSION_DENIED", "ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED", "ORGANIZATION_SUSPENDED"].includes(code);
+  const unavailable = query.isPending || query.isFetching ? "读取中" : missing ? "未配置" : "读取失败";
+  const metrics = [
+    ["operations", "近 30 天操作", "当前范围内已提交的成功操作"],
+    ["members", "成员变更", "邀请、移除与角色调整"],
+    ["permissions", "权限变更", "角色调整，已包含于成员变更"],
+    ["resources", "资源与续费", "期数/数据分配回收、月限与图片扣点"],
+  ] as const;
+  return <section aria-label="审计汇总">
+    <div className={styles.metrics}>{metrics.map(([key, title, description]) => <article key={key}><span>{title}</span><strong>{data ? BigInt(data.counts[key]).toLocaleString("zh-CN") : unavailable}</strong><small>{description}</small></article>)}</div>
+    {data ? <p className={styles.summaryWindow}>统计区间：<time dateTime={data.window.from}>{new Date(data.window.from).toLocaleString("zh-CN", { timeZone: "Asia/Singapore", hour12: false })}</time> 至 <time dateTime={data.window.asOf}>{new Date(data.window.asOf).toLocaleString("zh-CN", { timeZone: "Asia/Singapore", hour12: false })}</time>（不含截止时刻，UTC+8）。四项均为近 30 天完整记录，不随列表筛选或页码变化。</p>
+      : query.isError ? <p className={styles.summaryWindow} role="status">{denied ? "汇总读取权限已失效" : missing ? "汇总来源尚未配置完整" : code === "DEADLINE_EXCEEDED" ? "汇总读取超时" : "汇总暂不可用"}，本次未取得完整统计。</p> : null}
+  </section>;
+}
+function AuditRequests({ scope, expectedUserId, organizationId, onScopeRejected }: { scope: string; expectedUserId: string; organizationId: string; onScopeRejected: (code: string) => void }) {
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const [actor, setActor] = useState("");
   const [operation, setOperation] = useState<"" | "register" | "enable" | "disable" | "allocate_member_resource" | "reclaim_member_resource" | "set_member_ai_point_limit" | "update" | "invite" | "role" | "remove">("");
   const cursor = cursors[cursors.length - 1];
   const query = useQuery({ queryKey: ["account-audit", scope, cursor, actor, operation], queryFn: ({ signal }) => getAccountAudit({ expectedUserId, expectedOrganizationId: organizationId, cursor, actor: actor || undefined, operation: operation || undefined, signal }), retry: false, staleTime: 0, gcTime: 0, refetchOnWindowFocus: true, refetchOnReconnect: true });
+  useAuditScopeRejection(query.error, onScopeRejected);
   if (query.isPending || query.isFetching) return <ConsoleState kind="loading" title="正在读取操作记录">正在确认访问权限。</ConsoleState>;
   if (query.isError) return <AuditError code={query.error instanceof AccountReadError ? query.error.code : "DEPENDENCY_UNAVAILABLE"} />;
   const data = query.data;
   const operationNames = { register: "登记源账号", enable: "启用源账号", disable: "停用源账号", allocate_member_resource: "分配成员资源", reclaim_member_resource: "回收成员资源", set_member_ai_point_limit: "设置成员 AI 月度上限", update: "更新账户资料", invite: "邀请成员", role: "更新成员角色", remove: "移除成员" };
   return <>
-    <section className={styles.metrics} aria-label="审计汇总"><article><span>近 30 天操作</span><strong>未提供</strong><small>审计 owner 未返回按时间汇总</small></article><article><span>成员变更</span><strong>未提供</strong><small>当前接口只返回逐条事件</small></article><article><span>权限变更</span><strong>未提供</strong><small>当前接口只返回逐条事件</small></article><article><span>资源与续费</span><strong>未提供</strong><small>当前接口只返回逐条事件</small></article></section>
     <form className={styles.filters} onSubmit={event => { event.preventDefault(); setCursors([undefined]); }}>
       <label className={styles.search}>搜索操作内容 / 对象 <input disabled placeholder="审计接口未提供内容搜索" /></label>
       <label>时间范围 <select disabled><option>时间筛选暂不可用</option></select></label>

@@ -42,6 +42,32 @@ connection remains unavailable until an approved application is configured. Real
 provider calls and payment acceptance are not implied by local tests.
 
 
+## Account operation summary (#478)
+
+The entry is `/workbench/account/organization/audit`. Sign in through the normal
+OIDC flow, select an authorized organization, and open **企业空间 → 操作记录**.
+The existing **刷新记录** action rereads both the list and its four summary cards.
+Each card covers the same rolling 30 days, using the original operation time
+in `[asOf - 30 days, asOf)`. Paging and actor/operation filters affect only the list.
+
+Counts come from the existing committed SourceAccount, profile, membership and
+Resource owners; no summary table, cache, seeding or additional schema setup is
+needed. Members include invitations, removals and role changes; permissions are
+the role-change subset. Resource coverage is member period/data transfers, AI
+monthly limits and committed image point debits. Separate Store renewal and
+payment histories are not included; observed model usage is not counted as a
+successful operation. The page states this coverage explicitly.
+
+An empty, fully read history displays `0`. Missing owner configuration displays
+**未配置**; failures and timeouts clear counts. Dependency failures preserve each
+read's own result. An explicit identity, organization or authorization rejection
+clears both reads and cancels pending requests. Data remains in each original owner.
+Backend/BFF requests use fresh authorization and `private, no-store` responses.
+
+Use the normal new-project/private `.env` setup and startup commands below from
+this checkout; use unique project names, ports, volumes and identities. This
+change does not update an existing retained instance or authorize deployment.
+
 ## Enterprise wallet top-up (optional, #481)
 
 The normal entry is `/workbench/plans/top-up`. A current organization administrator

@@ -138,6 +138,9 @@ func TestAccountAuditHTTPUsesFreshOrgReadPermission(t *testing.T) {
 		}
 	}
 	before := history.calls
+	if w := get("B", "/summary", true); w.Code != 503 || !strings.Contains(w.Body.String(), "SUMMARY_NOT_CONFIGURED") || strings.Contains(w.Body.String(), "\"counts\"") {
+		t.Fatalf("missing summary source must be distinct from zero: %d %s", w.Code, w.Body.String())
+	}
 	if w := get("A", "", true); w.Code != 403 {
 		t.Fatalf("cross org %d", w.Code)
 	}
