@@ -358,13 +358,22 @@ revision, inserts immutable metadata, and commits. Concurrent matching attempts 
 same row; different normalized commands conflict. No AgentRunID is needed to create it.
 
 Adoption first compares the normalized command and exact binding, then uses stored effective
-values; no re-resolution of latest defaults, template head or deployment limits. Fresh security
-checks remain mandatory. A missing/corrupt snapshot is an integrity error, not permission to
-reconstruct one from current settings. A durable snapshot is **not** an execution permit.
+values; no re-resolution of latest defaults or template head. The snapshot preserves the
+original effective limits for history/replay, but those stored limits are **not** authority to
+exceed subsequently tightened deployment hard ceilings. Fresh security checks remain mandatory.
+A missing/corrupt snapshot is an integrity error, not permission to reconstruct one from current
+settings. A durable snapshot is **not** an execution permit.
 
 T2 uses the stored selected Base ID and existing #558 identity/selection contract. Knowledge
 alone materializes/adopts its exact immutable bundle. T3 occurs after both receipts exist and
-initial input bounds are checked. No transaction spans T2, provider I/O or another database.
+initial input bounds are checked. **Before the first Claim is allowed to acquire work, T3 also
+loads the current code-owned hard ceilings for this exact Agent definition and verifies that the
+snapshot's frozen Limits are still admissible.** The check is monotonic: each frozen limit must
+be less than or equal to the corresponding current maximum; a later relaxation never enlarges
+the frozen Request. If any current maximum was tightened below the snapshot value, T3 returns
+409 `CONFIGURATION_CHANGED`, performs zero Claim/provider work, and requires a new explicit
+confirmation/request key. It must not silently clamp, regenerate the snapshot, or mutate the
+same-key Request. No transaction spans T2, provider I/O or another database.
 
 Snapshots are immutable retained metadata, with no ACTIVE/RUNNING/FAILED lifecycle, lease,
 outbox or recovery worker. A pre-Claim crash resumes through the same explicit Start key;
@@ -404,13 +413,25 @@ existing Claim implementation; do not copy its SQL/state machine. Nested helpers
 commit the outer transaction early. Run acquisition is true only after the outer commit.
 
 For a new Start: verify ENABLED and snapshot.activation_epoch == current activation_epoch;
-lock/check the selected template is still ACTIVE, then execute existing Claim. Updates of
-safe template/default preferences do not change the snapshot. Template archive before Claim
-blocks new use. Resume checks current ENABLED but does **not** require the old start epoch;
-an explicitly resumed admitted run may continue after disable then re-enable. Existing run
-revision/phase/checkpoint conditions still apply. Lock order: OrganizationAgent → template
-(for new starts) → run. Configuration writers use the same local owner order after their
-command-key claim. Run outcome Commit does not require an activation lock or current enablement.
+lock/check the selected template is still ACTIVE; re-resolve the current code-owned hard
+ceilings for the exact stored Agent definition and require the frozen Request Limits to remain
+within those ceilings; only then execute existing Claim. This is an admission check, not
+re-resolution of template defaults or a mutation of the frozen Request. Tightened ceilings
+that make the old snapshot inadmissible return 409 `CONFIGURATION_CHANGED` with zero Claim
+or provider work. Relaxed ceilings do not upgrade the snapshot: the original smaller limits
+remain in the run fingerprint and execution budget. Updates of safe template/default
+preferences do not change the snapshot. Template archive before Claim blocks new use.
+
+Resume also rechecks current ENABLED and the current hard ceilings against the run's exact
+frozen Limits before acquiring resumed work, but does **not** require the old start epoch; an
+explicitly resumed admitted run may continue after disable then re-enable only when its frozen
+limits are still admissible. If ceilings tightened below them, Resume returns
+`CONFIGURATION_CHANGED` and leaves the interrupted run/checkpoint unchanged for explicit
+operator/user resolution; it does not clamp limits, rebuild Request or dispatch a model call.
+Existing run revision/phase/checkpoint conditions still apply. Lock order: OrganizationAgent →
+template (for new starts) → run. Configuration writers use the same local owner order after
+their command-key claim. Run outcome Commit does not require an activation lock or current
+enablement.
 
 A duplicate Start discovering an already-existing matching run returns acquired=false before
 checking current activation/template status; it cannot be converted to Resume implicitly.
@@ -421,7 +442,10 @@ Its fresh identity/domain authorization and exact input comparison still execute
 | Disable commits before a new Claim | Claim denied, zero provider work. Prepared snapshot/bundle cannot override it. |
 | New Claim commits before disable | That already-admitted bounded execution may finish under its original deadline/budget and ongoing domain/Knowledge checks. No new run is admitted afterward. |
 | Snapshot prepared → disable → re-enable → first Claim | Epoch mismatch; 409 `CONFIGURATION_CHANGED`. Explicit new confirmation/key required, no silent snapshot regeneration. |
-| Disable versus Resume | Same row-lock ordering: Resume-claim first may execute its bounded continuation; disable first denies new work. |
+| Snapshot prepared → deployment hard ceilings tighten before first Claim | T3 rejects with 409 `CONFIGURATION_CHANGED`; zero Claim/provider work. Same key cannot be rebound or silently clamped; user must reconfirm with a new key/snapshot. |
+| Snapshot prepared → deployment hard ceilings relax before first Claim | Claim may proceed with the original frozen, smaller Limits. The relaxed ceiling does not enlarge this run. |
+| Disable versus Resume | Same row-lock ordering: Resume-claim first may execute its bounded continuation only if its frozen Limits still fit current hard ceilings; disable first denies new work. |
+| Interrupted run → hard ceilings tighten before Resume | Resume returns `CONFIGURATION_CHANGED`, preserves the original run/checkpoint unchanged, and dispatches nothing. |
 | Disable after model dispatch | Existing AI invocation usage/UNKNOWN/point settlement and final run Commit still converge; no automatic retry/refund/cancellation here. |
 | Read result / submit an existing reviewable result / existing Review / Apply | Keep original fresh domain authorization and exact binding. Disable alone does not revoke product evidence or create a new approval gate. |
 | External Organization/member/permission revoke | Existing fresh auth checks govern; no claim of an atomic transaction with external ZITADEL. |
@@ -571,8 +595,8 @@ risk-matched tests to the existing owners/isolated PostgreSQL/controlled-model f
 | Ownership / comparable Request | Generic Agent/Eino has no config/DB import; Request equality/fingerprint/2 MiB checks hold; only approved definition supplies tools. |
 | Isolation / permissions | Cross-org/actor config refs and run reads denied; configure-only cannot execute; viewer cannot inspect Product/Knowledge; real effective-org role mapping tested. |
 | Config transactions | Concurrent first enable, update CAS, same-key changed body, lost response after later update, default↔archive race, object/audit atomic rollback. |
-| Snapshot / replay | T1→T2 and T2→T3 failure, same-key exact adoption, template/default change, explicit no-Knowledge despite template default, changed selection conflict. |
-| Activation ordering | Disable-first zero model work; Claim-first only already-admitted bounded work; disable/re-enable ABA; Resume ordering; receipt/Review still independently authorized. |
+| Snapshot / replay | T1→T2 and T2→T3 failure, same-key exact adoption, template/default change, explicit no-Knowledge despite template default, changed selection conflict; current hard-ceiling tighten-before-first-Claim rejects without Claim/dispatch, while relaxation preserves the original smaller limits. |
+| Activation / admission ordering | Disable-first zero model work; Claim-first only already-admitted bounded work; disable/re-enable ABA; Resume ordering; tightened ceilings before Resume reject with checkpoint unchanged and zero dispatch; receipt/Review still independently authorized. |
 | Existing fences | Knowledge revoke/disable/permit, full-prompt quote, point/UNKNOWN non-redispatch and Review/Apply evidence separation retained, reusing unchanged valid evidence. |
 | Projection / UI | Optional Knowledge does not disable title generation; image/write NOT_SUPPORTED; no paid GET; org switch/late response isolation; real save/refetch and desktop/narrow path. |
 | Rollout | Empty install no implicit activation; missing schema/readiness fail closed; no unguarded alternate route or destructive fallback. |
