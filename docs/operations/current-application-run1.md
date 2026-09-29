@@ -11,6 +11,15 @@
 > the question left on the commercial side is a different one, owned by `listingsubscription`.
 > Do not widen RUN-1's schema or grant scope to follow production.
 
+> **Current decision (2026-09-29, #541)**: fix the obsolete manifest field within
+> #541. RUN-1 omits both `commercialDatabase` and `commercialOwnerDatabase`; it
+> does not rename the field or upgrade a role. Keep the existing source-account,
+> account-profile and verification ACL checks and commercial grants unchanged.
+> A (account/verification composition) and B (commercial test-binding contract)
+> remain separate owner questions, not prerequisites for this manifest repair.
+> FULL, egress proxy configuration and real acquisition success are outside this
+> startup acceptance.
+
 
 This runbook owns an isolated, disposable acceptance environment for Issue #390.
 It is not a deployment path and never targets shared or production resources.
@@ -54,15 +63,18 @@ These failures do not automatically destroy retained resources or facts.
 ## Runtime boundary
 
 The serving process is built by `go build ./cmd/current-application`. It accepts
-only an absolute private JSON manifest, listens on `127.0.0.1`, and assembles the
-four current identity/effective-organization/account routes, the commercial
-overview read, and the five admitted SA1 routes. It does not call the legacy
-default HTTP composition.
+only an absolute private JSON manifest and listens on `127.0.0.1`. Its default
+composition includes identity/effective-organization/account routes, SA1,
+account profile and subject verification using the source-account pool, plus
+the unified commercial overview. The authoritative route inventory is
+`internal/app/httpapi/current_application.go`; optional owners are not enabled
+by this launcher. It does not call the legacy default HTTP composition.
 
 Schema installation runs separately before the first start from a run-private
 working directory with an allowlisted environment; the launcher rejects every
 `.env` location the existing schema tool could inspect. Serving opens only
-the existing database through two roles:
+the existing database through `sourceAccountDatabase`, using only
+`source_account_runtime`. The harness retains these existing roles/grants:
 
 - `source_account_runtime`: `CONNECT`, schema `USAGE`, resource
   `SELECT/INSERT/UPDATE`, and operation `SELECT/INSERT`, **plus** — in
@@ -75,24 +87,30 @@ the existing database through two roles:
   are installed by the SA1 schema initializer; it is the grant that was missing.
   A launch **without** `--current-application` does not receive them, because that
   composition is not verified against them.
-- `commercial_runtime`: the boundary `listingsubscription` verifies — `SELECT` on the
-  commercial tables plus `INSERT`/`UPDATE` on the usage and audit writers. It is
-  **not** a read-only *grant*, though the role keeps a read-only session setting:
-  the startup preflight checks ACL grants, not that setting, and the repository's
-  own permission test starts the binary with `default_transaction_read_only=on`.
+- `commercial_runtime`: existing commercial SELECT and usage/audit INSERT/UPDATE
+  grants are retained. RUN-1's normal application does not connect this role.
+  `VerifyCommercialReadSchema` checks a wider runtime contract only through the
+  test-binding helper `buildCommercialReadModuleFromDatabase`; it is not a
+  preflight on the normal `buildUnifiedCommercialRead` composition. The role's
+  read-only session setting does not replace ACL verification in that helper.
 - `commercial_reader`: the legacy/default composition's read-only role, retained
   so that a launch without `--current-application` has the role it names.
 
 The bootstrap token, database owner credentials and Login V2 service credentials
 stay in run-private control files and are not present in the serving manifest.
-The manifest rejects DSN-delimiter characters and any role name other than the
-two admitted roles. Startup verifies official same-origin OIDC discovery, exact
-required/forbidden database privileges and current schemas before binding the
-listener. A provider outage or an under/over-privileged role therefore fails
-startup and leaves the facts untouched.
+The manifest rejects unknown fields (including the removed `commercialDatabase`)
+and DSN-delimiter characters. `sourceAccountDatabase` must name
+`source_account_runtime`. An explicitly supplied `commercialOwnerDatabase`
+requires `commercial_owner_runtime` and enables separate owner capabilities;
+RUN-1 supplies neither that block nor `productAcquisitionDatabase`. Startup
+verifies official same-origin OIDC discovery and the source-account pool's exact
+required/forbidden privileges and schemas before binding the listener. A provider
+outage or under/over-privileged source-account role fails startup and leaves the
+facts untouched. There is no commercial startup ACL preflight in this composition.
 
 The permission preflight inventories every user table in the admitted `public`
-schema, including migration tables and additional tables. It compares PostgreSQL
+schema for the source-account pool, including migration tables and additional
+tables. It compares PostgreSQL
 effective table and column privileges (including inherited and PUBLIC grants) with the exact
 table/privilege grants above. Other tables may exist, but neither role may have
 unadmitted table or column privileges on them. For SELECT/INSERT/UPDATE/REFERENCES,
@@ -103,9 +121,13 @@ including MAINTAIN on PostgreSQL 17; ordinary system catalog access is excluded
 from this business-table inventory. Preflight only reads catalogs and schema: it
 does not grant, revoke, alter or repair permissions.
 
-Commercial overview queries explicitly address these same four `public` tables,
-regardless of a connection's `search_path` or same-named tables in another schema.
-Missing public tables or SELECT privileges fail closed; shadow facts are never a fallback.
+The authenticated commercial overview returns `unified-base-prepaid-v1`. With
+commercial and store owners absent, `resources` and `store_services` each have
+`state: "unavailable"` and `value: null`. A successful authenticated overview
+request proves route/authentication behavior; it does not prove balance, quota,
+store facts or any commercial success path. The retained subscription fixture
+tables are not used as a fallback. B's wider test-only runtime contract remains
+unchanged pending its owner decision.
 
 ## End-to-end acceptance
 
@@ -116,8 +138,15 @@ node web/listingkit-ui/scripts/current-application-final-acceptance.mjs <40-char
 ```
 
 This exercises official ZITADEL Login V2 and Auth.js authorization-code/PKCE
-sessions, account and commercial reads, the actual SA2 TypeScript client and
+sessions, account reads and the authenticated commercial `unavailable` response,
+the actual SA2 TypeScript client and
 Workbench BFF, SA1 writes/reads/isolation/role denial/idempotency, application
 stop with retained resources, and two fact-preserving starts. The runner always
 attempts the separate owned-resource destroy step, deletes the temporary Auth.js
 cookie handoff, and never logs credentials or tokens.
+
+The source-account required/forbidden permission checks remain exercised. The
+runner no longer expects grants on the unconnected `commercial_runtime` role to
+block startup; this removes an obsolete RUN-1 assertion, not the commercial
+permission matrix or its dedicated safety tests. Implementer checks and CI are
+development evidence; independent validation/user trial is still required.

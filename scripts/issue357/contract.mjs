@@ -11,6 +11,12 @@ export function childEnvironment(source=process.env) {
   return Object.fromEntries(Object.entries(source).filter(([key])=>allowed.has(key.toLowerCase())));
 }
 export const secret = () => `Z9!${randomBytes(24).toString('hex')}`;
+export function currentApplicationConfig(m,apps) {
+  return {schemaVersion:1,
+    listen:{host:'127.0.0.1',port:m.ports.go},
+    identity:{issuerURL:m.origins.issuer,authorizationAPIURL:m.origins.issuer,clientID:apps.APIClientID,clientSecret:apps.APIClientSecret,projectID:m.projectId},
+    sourceAccountDatabase:{host:'127.0.0.1',port:m.ports.database,user:'source_account_runtime',password:m.secrets.sourceRuntime,database:'issue357',maxConnections:4}};
+}
 export function makeManifest(runId,ports,sourceSha,webSha) {
   const directory=runDirectory(runId);
   return {schemaVersion:'issue357-v1',runId,directory,project:`issue357-${runId}`,status:'creating',sourceSha,webSha,ports,

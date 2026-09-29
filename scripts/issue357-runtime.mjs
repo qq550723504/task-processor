@@ -4,7 +4,7 @@ import {spawn} from 'node:child_process';
 import {readFile,writeFile,mkdir,copyFile,symlink,unlink,rm,lstat} from 'node:fs/promises';
 import {dirname,join,resolve,relative} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {makeManifest,validateManifest,childEnvironment,ownedResource,label,runDirectory} from './issue357/contract.mjs';
+import {makeManifest,validateManifest,childEnvironment,ownedResource,label,runDirectory,currentApplicationConfig} from './issue357/contract.mjs';
 import {composeConfiguration,proxyConfiguration,images} from './issue357/compose.mjs';
 import {run,json,readJSON,save,load,privateDirectory,port,until,processIdentity,sameProcess,lock,pause,dockerEndpoint} from './issue357/io.mjs';
 import {provider,createSubjects,grantSubjects,authorizationControl} from './issue357/provider.mjs';
@@ -70,7 +70,7 @@ async function startApplications(m) {
  let goService={binary:binary(m),goArgs:['-test.run=^TestIssue357Serve$','-test.timeout=24h'],goEnvironment:{ISSUE357_INPUT_FILE:join(m.directory,'runtime.json')}};
  if(currentMode(m)) {
   const currentConfig=join(m.directory,'current-application.json');
-  await json(currentConfig,{schemaVersion:1,listen:{host:'127.0.0.1',port:m.ports.go},identity:{issuerURL:m.origins.issuer,authorizationAPIURL:m.origins.issuer,clientID:apps.APIClientID,clientSecret:apps.APIClientSecret,projectID:m.projectId},sourceAccountDatabase:{host:'127.0.0.1',port:m.ports.database,user:'source_account_runtime',password:m.secrets.sourceRuntime,database:'issue357',maxConnections:4},commercialDatabase:{host:'127.0.0.1',port:m.ports.database,user:'commercial_runtime',password:m.secrets.reader,database:'issue357',maxConnections:4}});
+  await json(currentConfig,currentApplicationConfig(m,apps));
   goService={binary:applicationBinary(m),goArgs:['-config',currentConfig,'-shutdown-file',join(m.directory,'stop-go')],goEnvironment:{},goReadyFromPort:true,goPort:m.ports.go};
  }
  await json(join(m.directory,'services.json'),{...goService,uiDirectory:ui,webPort:m.ports.web,nextEnvironment});

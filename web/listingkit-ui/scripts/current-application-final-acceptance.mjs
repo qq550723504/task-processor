@@ -147,7 +147,12 @@ try {
   const sessions = { admin: { subject: adminLogin.subject, cookie: adminLogin.cookie }, viewer: { subject: viewerLogin.subject, cookie: viewerLogin.cookie } };
   const adminHeaders = { Cookie: `${sessions.admin.cookie}; shuomi_effective_organization=${manifest.organizations.B.id}`, Origin: manifest.origins.web, "Sec-Fetch-Site": "same-origin", "X-Expected-User-ID": manifest.users.admin.id, "X-Expected-Organization-ID": manifest.organizations.B.id };
   assert.equal((await fetch(`${manifest.origins.web}/api/account/profile`, { headers: adminHeaders })).status, 200);
-  assert.equal((await fetch(`${manifest.origins.web}/api/workbench/commercial/overview`, { headers: adminHeaders })).status, 200);
+  const overviewResponse = await fetch(`${manifest.origins.web}/api/workbench/commercial/overview`, { headers: adminHeaders });
+  assert.equal(overviewResponse.status, 200);
+  const overview = await overviewResponse.json();
+  assert.equal(overview.schema_version, "unified-base-prepaid-v1");
+  assert.deepEqual(overview.resources, { state: "unavailable", value: null });
+  assert.deepEqual(overview.store_services, { state: "unavailable", value: null });
   assert.equal((await fetch(`${manifest.origins.go}/api/v1/workbench/source-accounts`)).status, 401);
   const paths = await runClient(manifest, sessions, "create");
   await control("revoke", "--user", "admin", "--org", "B");
@@ -176,11 +181,6 @@ try {
   await control("source-cross-grant");
   await assert.rejects(control("start"));
   await control("source-cross-restore");
-  await control("start");
-  await control("stop");
-  await control("commercial-cross-grant");
-  await assert.rejects(control("start"));
-  await control("commercial-cross-restore");
   await control("start");
   const postCrossOwnerLogin = await login(manifest, "admin");
   sessions.admin = { subject: postCrossOwnerLogin.subject, cookie: postCrossOwnerLogin.cookie };
