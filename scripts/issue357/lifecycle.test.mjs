@@ -5,7 +5,7 @@ import {mkdir,writeFile,rm,lstat,readFile,rename} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {join} from 'node:path';
-import {lock,processIdentity,pause,json} from './io.mjs';
+import {lock,processIdentity,pause,json,run} from './io.mjs';
 import {runDirectory} from './contract.mjs';
 
 test('simultaneous stale-lock recovery never admits two controllers', {skip:process.platform!=='win32'}, async()=>{
@@ -20,6 +20,23 @@ test('simultaneous stale-lock recovery never admits two controllers', {skip:proc
 });
 test('process inspection failure cannot be interpreted as confirmed absence',async()=>{
  await assert.rejects(()=>processIdentity(2147483647,async()=>{throw new Error('inspection failed')}),/inspection failed/);
+});
+
+for(const identity of [{pid:123,started:'1',path:null},{pid:123,path:'node.exe'},{pid:456,started:'1',path:'node.exe'}])test('an incomplete or wrong process snapshot cannot establish ownership',async()=>{
+ await assert.rejects(()=>processIdentity(123,async()=>JSON.stringify(identity)),/PROCESS_IDENTITY_UNAVAILABLE/);
+});
+
+test('a process exiting during native path inspection is confirmed absent',{skip:process.platform!=='win32'},async()=>{
+ const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{windowsHide:true,stdio:'ignore'});
+ const done=once(child,'close');await once(child,'spawn');
+ try {
+  const identity=await processIdentity(child.pid,async(command,args)=>{
+   const inspected=[...args];
+   inspected[inspected.length-1]=inspected.at(-1).replace('path=$p.Path','path=$(& { $started=$p.StartTime.ToUniversalTime().Ticks.ToString(); $p.Kill(); $p.WaitForExit(); $p.Path })');
+   return run(command,inspected);
+  });
+  assert.equal(identity,null);
+ }finally{if(child.exitCode===null&&child.signalCode===null)child.kill();await done}
 });
 
 test('atomic rename failure erases its secret temporary file',{skip:process.platform!=='win32'},async()=>{

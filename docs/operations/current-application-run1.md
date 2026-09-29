@@ -60,6 +60,13 @@ after a failed start cannot confirm successful shutdown, the retained state is
 `stop-failed`, with both start and stop failures recorded; another start is denied.
 These failures do not automatically destroy retained resources or facts.
 
+A rejected current-application startup still exits nonzero and never publishes
+READY. Its supervisor confirms child shutdown before writing the stop receipt.
+If every spawned child exited without forced termination, the receipt records
+`startupFailed: true` and successful cleanup; after the controller independently
+checks process identities and released ports, the existing `start-failed` retry
+path remains available. An unconfirmed or forced shutdown remains a failed stop.
+
 ## Runtime boundary
 
 The serving process is built by `go build ./cmd/current-application`. It accepts
@@ -112,7 +119,8 @@ The permission preflight inventories every user table in the admitted `public`
 schema for the source-account pool, including migration tables and additional
 tables. It compares PostgreSQL
 effective table and column privileges (including inherited and PUBLIC grants) with the exact
-table/privilege grants above. Other tables may exist, but neither role may have
+table/privilege grants above. Other tables may exist, but the source-account
+runtime role may not have
 unadmitted table or column privileges on them. For SELECT/INSERT/UPDATE/REFERENCES,
 PostgreSQL's effective any-column check includes whole-table and column-only grants;
 the required whole-table grants remain mandatory and cannot be replaced by column grants.

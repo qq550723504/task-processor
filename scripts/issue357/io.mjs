@@ -61,8 +61,11 @@ export async function until(fn,name,timeout=300000) {
 export async function processIdentity(pid,inspectProcess=run) {
  assert.ok(Number.isInteger(pid)&&pid>0,'INVALID_PROCESS');
  if(process.platform==='win32') {
-  const output=await inspectProcess('powershell.exe',['-NoProfile','-NonInteractive','-Command',`$ErrorActionPreference='Stop'; try { $p=[Diagnostics.Process]::GetProcessById(${pid}) } catch [ArgumentException] { [Console]::WriteLine('null'); exit 0 }; @{pid=$p.Id;started=$p.StartTime.ToUniversalTime().Ticks.ToString();path=$p.Path} | ConvertTo-Json -Compress`]);
-  return JSON.parse(output);
+  const output=await inspectProcess('powershell.exe',['-NoProfile','-NonInteractive','-Command',`$ErrorActionPreference='Stop'; try { $p=[Diagnostics.Process]::GetProcessById(${pid}) } catch [ArgumentException] { [Console]::WriteLine('null'); exit 0 }; try { $started=$p.StartTime.ToUniversalTime().Ticks.ToString(); $path=$p.Path; if($p.HasExited) { [Console]::WriteLine('null'); exit 0 } } catch { if($p.HasExited) { [Console]::WriteLine('null'); exit 0 }; throw }; @{pid=$p.Id;started=$started;path=$path} | ConvertTo-Json -Compress`]);
+  const identity=JSON.parse(output);
+  if(identity===null)return null;
+  assert.ok(identity?.pid===pid&&typeof identity.started==='string'&&/^[1-9][0-9]*$/.test(identity.started)&&typeof identity.path==='string'&&identity.path.length>0,'PROCESS_IDENTITY_UNAVAILABLE');
+  return identity;
  }
  throw new Error('NOT_SUPPORTED: Windows process ownership validation required');
 }
