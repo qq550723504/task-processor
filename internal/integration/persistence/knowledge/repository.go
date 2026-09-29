@@ -21,7 +21,7 @@ func safe(err error) error {
 	if err == nil {
 		return nil
 	}
-	for _, known := range []error{k.ErrInvalid, k.ErrNotFound, k.ErrConflict, k.ErrInactive, k.ErrSourceLimit, k.ErrRevisionBusy, k.ErrNotReadable, k.ErrLeaseLost, k.ErrIntegrity} {
+	for _, known := range []error{k.ErrInvalid, k.ErrNotFound, k.ErrConflict, k.ErrInactive, k.ErrSourceLimit, k.ErrRevisionBusy, k.ErrNotReadable, k.ErrLeaseLost, k.ErrIntegrity, k.ErrContextTooLarge, k.ErrForbidden} {
 		if errors.Is(err, known) {
 			return known
 		}
@@ -123,7 +123,10 @@ func (r *Repository) Apply(ctx context.Context, c k.Command) (result k.Result, r
 					}
 					base.Name = c.Name
 				} else if base.State == k.Active {
-					base.State = k.Disabled
+					base.State, err = disableState(tx, org, base.ID, "", now)
+					if err != nil {
+						return err
+					}
 					base.FenceVersion++
 				}
 				base.Version++
@@ -176,7 +179,10 @@ func (r *Repository) Apply(ctx context.Context, c k.Command) (result k.Result, r
 				}
 				if c.Kind == "source_disable" {
 					if source.State == k.Active {
-						source.State = k.Disabled
+						source.State, err = disableState(tx, org, base.ID, source.ID, now)
+						if err != nil {
+							return err
+						}
 						source.FenceVersion++
 					}
 					if err := tx.Exec("UPDATE public.knowledge_sources SET state=?,version=?,fence_version=?,updated_by=?,updated_at=? WHERE organization_id=? AND id=?", source.State, source.Version, source.FenceVersion, actor, now, org, source.ID).Error; err != nil {

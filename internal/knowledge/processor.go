@@ -39,6 +39,11 @@ func (p *Processor) Run(ctx context.Context) error {
 	}
 }
 func (p *Processor) Sweep(ctx context.Context) error {
+	if recovery, ok := p.repo.(DispatchPermitRecovery); ok {
+		if err := recovery.RecoverExpiredDispatchPermits(ctx); err != nil {
+			return err
+		}
+	}
 	// Claim only immediately runnable work: queued jobs must not consume leases.
 	revisions, err := p.repo.ClaimProcessing(ctx, p.owner+":"+uuid.NewString(), 2)
 	if err != nil {

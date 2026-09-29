@@ -6,6 +6,11 @@
 每个知识库最多 4 份 ACTIVE 资料；TXT、Markdown 直接规范化，文本 PDF/DOCX 使用固定 Tika 4.0.0 提取。
 不包含 OCR、模板、向量检索、Agent 选择或模型调用，资料不会自动用于 AI。
 
+#558 的冻结执行上下文、Citation 与本地 dispatch permit 接口见
+[Knowledge context 消费说明](../../../docs/engineering/knowledge-context-consumption.md)。
+它仍不开放 Agent/模型入口；#559 负责后续接线。新 schema 仅用于新的空项目，
+已初始化的 #557 试用项目继续使用其匹配镜像，不能就地追加本切片表或重建该保留实例。
+
 ## 启动与入口
 
 沿用 [账户中心启动说明](README.md) 中的环境变量、独立端口、首次初始化和登录方式。

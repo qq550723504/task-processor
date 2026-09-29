@@ -208,6 +208,9 @@ func (h *Handler) mutate(c *gin.Context, kind string) {
 	if kind == "base_create" {
 		status = 201
 	}
+	if result.Base != nil && result.Base.State == knowledge.Disabling || result.Source != nil && result.Source.State == knowledge.Disabling {
+		status = http.StatusAccepted
+	}
 	c.JSON(status, publicResult(result))
 }
 func (h *Handler) CreateBase(c *gin.Context)    { h.mutate(c, "base_create") }
