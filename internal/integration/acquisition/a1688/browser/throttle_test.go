@@ -684,10 +684,11 @@ func TestThrottleCancelledCallerCommitsNothing(t *testing.T) {
 
 	// The next caller is still paced from the previous real dispatch, not from the
 	// abandoned one.
-	start := time.Now()
 	require.NoError(t, th.Wait(context.Background()))
-	require.Greater(t, time.Since(start), interval/2,
-		"an abandoned wait must not shorten the floor for the next caller")
+	// Scheduling and assertion overhead reduce the remaining wait below half
+	// the interval. Check the committed dispatch against the original floor.
+	require.False(t, floor().Add(-interval).Before(before),
+		"the next real dispatch must respect the original floor")
 }
 
 // When the cooldown is SHORTER than the interval, expiry must not discard the
