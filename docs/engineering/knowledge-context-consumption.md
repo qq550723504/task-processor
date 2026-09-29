@@ -150,6 +150,11 @@ existing prohibition on redispatch after provider UNKNOWN. Same-Organization rol
 changes clear protected display, including late responses; regrant cannot revive
 cached names or excerpts without a new authorized read.
 
+The optional Knowledge selector uses the existing list API's pagination to reach
+active bases beyond the first page, with bounded reads on explicit navigation.
+Changing pages clears the previous selection and readable-version preview; a
+failed/denied page read clears protected names and cannot authorize generation.
+
 The governed text adapter reads the exact bundle at Quote, Decide and the existing
 BeforeDispatch hook. Full protected content participates in prompt bounds, quote
 identity and prompt/input hashes. BeforeDispatch acquires the existing Knowledge

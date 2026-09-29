@@ -9,13 +9,15 @@ export function TitleAgentConfirmation({scope,organization,platform,knowledgeAva
  const dialog=useRef<HTMLDialogElement>(null),cancelButton=useRef<HTMLButtonElement>(null),request=useRef<AbortController|null>(null);
  const id=useId();
  const [useKnowledge,setUseKnowledge]=useState(false),[bases,setBases]=useState<z.infer<typeof basesSchema>["items"]>([]),[baseId,setBaseId]=useState(""),[sources,setSources]=useState<KnowledgeSource[]>([]),[loading,setLoading]=useState(false),[failure,setFailure]=useState("");
+ const [pagination,setPagination]=useState<z.infer<typeof basesSchema>["pagination"]|null>(null);
  useEffect(()=>{const previous=document.activeElement,element=dialog.current;element?.showModal();cancelButton.current?.focus();return()=>{request.current?.abort();element?.close();if(previous instanceof HTMLElement&&previous.isConnected)previous.focus()};},[]);
- async function load(selection?:string) {
+ async function load(selection?:string,page=1) {
   request.current?.abort();const controller=new AbortController();request.current=controller;setLoading(true);setFailure("");
+  if(!selection){setBases([]);setBaseId("");setSources([]);}
   try {
    if(selection) {const result=await knowledgeRequest(scope,`knowledge-bases/${selection}/sources`,sourcesSchema,{signal:controller.signal});if(!controller.signal.aborted)setSources(result.items);}
-   else {const result=await knowledgeRequest(scope,"knowledge-bases?page=1&pageSize=100",basesSchema,{signal:controller.signal});if(!controller.signal.aborted)setBases(result.items.filter(base=>base.state==="ACTIVE"));}
-  }catch(error){if(!controller.signal.aborted){setBases([]);setBaseId("");setSources([]);setFailure(error instanceof KnowledgeError&&error.status===403?"当前身份无权读取企业知识。":"企业知识当前不可用，请稍后重试或明确选择不使用知识。");}}
+   else {const result=await knowledgeRequest(scope,`knowledge-bases?page=${page}&pageSize=100`,basesSchema,{signal:controller.signal});if(!controller.signal.aborted){setBases(result.items.filter(base=>base.state==="ACTIVE"));setPagination(result.pagination);}}
+  }catch(error){if(!controller.signal.aborted){setBases([]);setBaseId("");setSources([]);setPagination(null);setFailure(error instanceof KnowledgeError&&error.status===403?"当前身份无权读取企业知识。":"企业知识当前不可用，请稍后重试或明确选择不使用知识。");}}
   finally{if(!controller.signal.aborted)setLoading(false);}
  }
  const activeSources=sources.filter(source=>source.state==="ACTIVE");
@@ -27,7 +29,8 @@ export function TitleAgentConfirmation({scope,organization,platform,knowledgeAva
   {knowledgeAvailable&&knowledgeReadable?<label className="mt-4 flex items-center gap-2"><input type="checkbox" checked={useKnowledge} onChange={event=>{setUseKnowledge(event.target.checked);setBaseId("");setSources([]);setFailure("");if(event.target.checked)void load();else{request.current?.abort();setLoading(false)}}}/>使用企业知识（可选）</label>:<p>{knowledgeAvailable?"当前身份无权读取企业知识；本次可不使用知识。":"当前环境未开放企业知识；本次仅使用商品证据。"}</p>}
   {useKnowledge&&<div className="mt-4 rounded-lg border border-border bg-secondary p-4">
    <label htmlFor={`${id}-base`}>企业知识库</label><select id={`${id}-base`} className="mt-2 block w-full rounded-lg border border-border bg-background p-2" value={baseId} disabled={loading} onChange={event=>{setBaseId(event.target.value);setSources([]);if(event.target.value)void load(event.target.value)}}><option value="">请选择知识库</option>{bases.map(base=><option key={base.id} value={base.id}>{base.name}</option>)}</select>
-   {loading?<p role="status">正在读取知识与版本…</p>:failure?<p role="alert">{failure}</p>:baseId?<><ul className="mt-3 space-y-2">{activeSources.map(source=><li key={source.id}>{source.name} · {source.currentReadableRevision?`v${source.currentReadableRevision.number} · ${source.currentReadableRevision.state==="PARTIAL"?"部分解析可用":"可读"}`:"尚无可读版本"}</li>)}</ul>{!ready&&<p>所选知识库当前未就绪，不能发送。请选择其他知识库，或取消使用企业知识。</p>}</>:!bases.length?<p>没有当前可用的知识库。</p>:null}
+   {loading?<p role="status">正在读取知识与版本…</p>:failure?<p role="alert">{failure}</p>:baseId?<><ul className="mt-3 space-y-2">{activeSources.map(source=><li key={source.id}>{source.name} · {source.currentReadableRevision?`v${source.currentReadableRevision.number} · ${source.currentReadableRevision.state==="PARTIAL"?"部分解析可用":"可读"}`:"尚无可读版本"}</li>)}</ul>{!ready&&<p>所选知识库当前未就绪，不能发送。请选择其他知识库，或取消使用企业知识。</p>}</>:!bases.length?<p>本页没有当前可用的知识库。</p>:null}
+   {pagination&&pagination.total>pagination.pageSize&&<nav aria-label="知识库分页" className="mt-3 flex flex-wrap items-center gap-3"><Button variant="outline" disabled={loading||pagination.page===1} onClick={()=>void load(undefined,pagination.page-1)}>上一页</Button><span>第 {pagination.page} 页 · 共 {pagination.total} 个</span><Button variant="outline" disabled={loading||pagination.page*pagination.pageSize>=pagination.total} onClick={()=>void load(undefined,pagination.page+1)}>下一页</Button></nav>}
    <p>确认后服务端冻结实际采用的版本；若完整内容超限，将明确拒绝，不会截断或切换知识。</p>
   </div>}
   <div className={styles.actions}><Button ref={cancelButton} variant="outline" onClick={onCancel}>取消</Button><Button disabled={useKnowledge&&!ready} onClick={()=>onConfirm(useKnowledge?baseId:undefined)}>确认生成</Button></div>
