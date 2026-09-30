@@ -122,6 +122,11 @@ source of truth for long-lived rules.
 
 ## Supporting Context
 
+- [`issue-36-completed-work-store-scope.md`](./issue-36-completed-work-store-scope.md)
+  - IMPLEMENTATION_READY #36 bounded completed-work v2 projection of Listing's
+    historical Store ID and local preparation action; no Store name read,
+    remote publication claim, or Product Review dependency.
+
 - [`member-directory-query-v1.md`](./member-directory-query-v1.md)
   - #575 bounded current Membership query increment: complete display-name/login
     search, native role/state filtering, filtered totals and paging. IMPLEMENTATION_READY;
