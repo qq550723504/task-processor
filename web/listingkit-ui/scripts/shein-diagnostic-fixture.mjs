@@ -156,14 +156,16 @@ try {
       const secondWork = await check("completed work second page", await completed("owner", `source=listing-local-preparation&limit=20&cursor=${encodeURIComponent(firstWork.next_cursor)}`), 200);
       assert.deepEqual([...firstWork.items, ...secondWork.items].map((item) => item.source_record_id), [...ownerFirst.items, ...ownerSecond.items].map((item) => item.record_id));
       assert.equal(firstWork.coverage, "listing-local-preparation-only");
-      assert.equal(firstWork.projection_version, "1");
+      assert.equal(firstWork.projection_version, "2");
       assert.equal(new Set([...firstWork.items, ...secondWork.items].map((item) => item.source_record_id)).size, seed.recordCount);
-      for (const item of firstWork.items) {
+      for (const [index, item] of firstWork.items.entries()) {
         assert.equal(item.completion_basis, "local_record_committed");
-        assert.equal(item.work_scope, "general");
+        assert.equal(item.work_scope, "store");
+        assert.equal(item.store_id, ownerFirst.items[index].store_id);
+        assert.equal(item.action, ownerFirst.items[index].action);
         assert.equal(item.title, "准备商品上架资料");
         assert.equal(item.result.href, `/workbench/shein-records/${item.source_record_id}/diagnostic`);
-        for (const key of ["task_id", "store_id", "status", "progress", "operation_id", "owner_user_id"]) assert.ok(!(key in item));
+        for (const key of ["task_id", "store_name", "status", "progress", "operation_id", "owner_user_id"]) assert.ok(!(key in item));
       }
       const adminWork = await check("completed admin current organization", await completed("admin", "source=listing-local-preparation&limit=100"), 200);
       assert.equal(adminWork.items.length, seed.recordCount + seed.otherRecordCount + 1);
@@ -171,7 +173,7 @@ try {
       assert.equal(otherWork.items.length, seed.otherRecordCount);
       assert.ok(otherWork.items.every((item) => !firstWork.items.some((owner) => owner.source_record_id === item.source_record_id)));
       const emptyWork = await check("completed empty keeps coverage", await completed("owner", undefined, "100"), 200);
-      assert.deepEqual(emptyWork, { projection_version: "1", coverage: "listing-local-preparation-only", items: [], next_cursor: null });
+      assert.deepEqual(emptyWork, { projection_version: "2", coverage: "listing-local-preparation-only", items: [], next_cursor: null });
       const foreignWork = await check("completed second nonempty organization", await completed("owner", undefined, "300"), 200);
       assert.deepEqual(foreignWork.items.map((item) => item.source_record_id), [seed.organization300RecordId]);
       await check("completed scope cursor rejected", await completed("owner", `source=listing-local-preparation&cursor=${encodeURIComponent(firstWork.next_cursor)}`, "100"), 400, "invalid_request");

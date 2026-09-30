@@ -1,7 +1,9 @@
 # Completed local preparation work
 
-This is a read-only product projection for Issue #340, consumed by the task
-center in #328. It is not a BusinessTask, AgentRun or generic producer registry.
+This read-only projection was introduced by Issue #340 and consumed by the task
+center in #328. Issue #36 updates its current Store attribution contract to v2;
+the bounded design is in `docs/architecture/issue-36-completed-work-store-scope.md`.
+It is not a BusinessTask, AgentRun or generic producer registry.
 
 ## Source and meaning
 
@@ -12,7 +14,11 @@ returns the same committed record. The isolated collection has no historical
 imports or backfills. Within that approved source, a visible record proves
 `local_record_committed`; no extra operation lookup, payload read or table is
 needed. This does not prove review approval, publishability, remote publication
-or completion of a broader business process. Production admission is unchanged.
+or completion of a broader business process. The validated immutable Input
+includes the historical Store ID and `save_draft` or `publish` preparation
+action; neither action is a remote submission receipt. Product title Review
+and Apply are a separate Product Review/Catalog flow sharing the task-center
+navigation. Production admission is unchanged.
 
 ## Request and trust boundary
 
@@ -28,6 +34,8 @@ manual redirects, no-store, strict JSON and current Go read authorization.
 Go scopes each page and cursor anchor by organization/owner; admin only has its
 existing organization scope. CachedRead semantics and revocation behavior are
 unchanged. Non-200 responses, including cleared cookies, are returned unchanged.
+The historical Store ID already in authorized Listing metadata does not grant
+`workbench.store.read`; this projection does not fetch Store name/current status.
 
 The same 15-second BFF deadline covers authentication, upstream and projection;
 there is no reset for mapping. Abort propagates throughout. Both input and mapped
@@ -49,12 +57,14 @@ is HTTP 504 / `DEADLINE_EXCEEDED` (existing lower-level deadline errors retain
 their existing code). Client cancellation retains the signal reason, usually
 AbortError, and does not become an empty list. No new client timer is installed.
 
-The list has `projection_version: "1"`,
+The list has `projection_version: "2"`,
 `coverage: "listing-local-preparation-only"`, `items`, and `next_cursor`.
 Empty pages still carry coverage. Items contain only the original metadata
 (with `source_record_id` and exact string `snapshot_version`), fixed source
-kind/type, title/summary, SHEIN platform, general work scope and completion basis.
-There is no task_id, Store association, lifecycle status, count or progress.
+kind/type, title/summary, SHEIN platform, `work_scope: "store"`, canonical
+`store_id`, `action: "save_draft" | "publish"`, and completion basis. Missing or
+invalid Store/action facts fail closed; there is no `general` fallback. There is
+no task_id, Store name/status, remote submission result, count or progress.
 `result.href` must equal `/workbench/shein-records/{source_record_id}/diagnostic`
 for the same validated UUID. Opening that result always reauthorizes; appearing
 in the list grants no future access. The mistaken draft URL has no compatibility
@@ -86,7 +96,8 @@ Create `stop-fixture` in its `controlDirectory` for normal verified cleanup, or
 send SIGINT. Maximum serving lifetime is 30 minutes. A stopped fixture has no
 live URL. No real IAM, production schema/wiring/data, model or deployment is used.
 
-Independent narrow review reached IMPLEMENTATION_READY. Query preservation,
+The original #340 narrow review reached IMPLEMENTATION_READY; the current #36
+Store projection design was separately reviewed and admitted. Query preservation,
 shared deadline, revocation cookies, actual byte bounds, source/href binding and
 real PG read-only/replay proofs are IMPLEMENTATION_TEST requirements, verified
 in unit/route tests and the shared launcher. Original modes remain available.

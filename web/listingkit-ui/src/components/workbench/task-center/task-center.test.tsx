@@ -4,13 +4,13 @@ import { afterEach, expect, it, vi } from "vitest";
 import { TaskCenterLayout } from "./task-center-layout";
 import { CompletedWorkResults, WorkResultDetail } from "./completed-work-results";
 
-// Approved #340 C340-H1 synthetic component DTO, not a backend or runtime fallback.
+// Synthetic v2 component DTO, not a backend or runtime fallback.
 const fixture = {
-  projection_version: "1", coverage: "listing-local-preparation-only",
+  projection_version: "2", coverage: "listing-local-preparation-only",
   items: ["12345678-1234-1234-1234-123456789abc", "12345678-1234-1234-1234-123456789abd"].map((id, index) => ({
     source_type: "listing-local-preparation", source_kind: "shein-local-record",
     title: "准备商品上架资料", summary: "本地资料已创建；诊断和发布是后续独立操作",
-    platform: "SHEIN", work_scope: "general", completion_basis: "local_record_committed",
+    platform: "SHEIN", work_scope: "store", store_id: "11111111-1111-4111-8111-111111111111", action: "publish", completion_basis: "local_record_committed",
     source_record_id: id, product_key: `synthetic-product-${index}`, snapshot_version: "9007199254740993",
     country: "US", language: "en", created_at: "2026-09-06T00:00:00Z",
     result: { kind: "shein-diagnostic", href: `/workbench/shein-records/${id}/diagnostic` },
@@ -42,6 +42,8 @@ it("states bounded coverage and does not fabricate global metrics or lifecycle a
   expect(screen.getByText(/仅覆盖本地资料准备完成记录/)).toBeVisible();
   expect(screen.getByText(/不代表诊断通过或可发布/)).toBeVisible();
   expect(screen.getByRole("link", { name: "已完成" })).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("heading", { name: "当前企业" })).toBeVisible();
+  expect(screen.queryByText("通用业务")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: /搜索任务/ })).toBeDisabled();
   expect(screen.getByRole("button", { name: /向硕米发起任务/ })).toBeDisabled();
   expect(screen.queryByText(/3 \/ 5|5 \/ 5/)).not.toBeInTheDocument();
