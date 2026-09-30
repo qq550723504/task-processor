@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getAccountAudit, parseAccountAudit } from "./account-audit";
+import { auditQuery, getAccountAudit, parseAccountAudit } from "./account-audit";
 
 // Synthetic transport fixtures; these do not stand in for source integration.
 const empty = { schemaVersion: "account-audit-v1", userId: "user-1", effectiveOrganizationId: "B", source: "source_account_committed_operations", items: [], nextCursor: null };
@@ -8,6 +8,19 @@ const reference = "0198d4f0-0000-7000-8000-000000000001";
 const committed = { eventType: "source_account.operation_committed", actor: "actor-2", time: "2026-09-12T00:00:00Z", objectType: "source_account", objectReference: reference, operation: "disable", result: "succeeded", relation: { type: "source_account_version", reference, version: "2" } };
 afterEach(() => vi.unstubAllGlobals());
 describe("account audit query boundary", () => {
+  it("keeps the longest supported cursor and filter combination within the shared query budget", () => {
+    const query = auditQuery(100, "a".repeat(3072), "b".repeat(128), "disable", "q".repeat(80), "m".repeat(128), "30d");
+    expect(query.length).toBeLessThanOrEqual(4096);
+  });
+  it("forwards bounded content, period and target member with the current audit scope", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json(empty));
+    vi.stubGlobal("fetch", fetch);
+    await getAccountAudit({ ...options, content: "模型实际用量", period: "30d", memberId: "member-1" });
+    const url = new URL(String(fetch.mock.calls[0][0]), "http://localhost");
+    expect(url.searchParams.get("query")).toBe("模型实际用量");
+    expect(url.searchParams.get("period")).toBe("30d");
+    expect(url.searchParams.get("member")).toBe("member-1");
+  });
   it("reads committed member allocations and monthly caps as current resource facts", async () => {
     const transfer = { eventType: "account_member_resource.changed", actor: "actor-1", time: "2026-09-29T08:00:00Z", objectType: "member_resource", objectReference: "member-1", operation: "allocate_member_resource", result: "succeeded", relation: { type: "organization_resource_operation", reference: "allocate-1", version: "1" }, resource: { type: "data_row", quantity: "100" } };
     const cap = { ...transfer, eventType: "account_member_ai_point_limit.changed", objectType: "member_ai_point_limit", operation: "set_member_ai_point_limit", relation: { ...transfer.relation, reference: "cap-1" }, resource: { type: "ai_point", quantity: "0" } };

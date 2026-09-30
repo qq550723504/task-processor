@@ -28,5 +28,7 @@
 .filters label { display: grid; gap: 6px; color: var(--muted-foreground); font-size: 12px; }
 .filters input, .filters select { min-height: 36px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); color: var(--foreground); padding: 0 10px; }
 .filters input:disabled, .filters select:disabled { cursor: not-allowed; opacity: .7; color: var(--muted-foreground); }
+.filterHint { color: var(--muted-foreground); font-size: 12px; line-height: 1.6; margin: -6px 0 14px; }
+.filterError { color: var(--destructive); font-size: 12px; margin: -6px 0 14px; }
 @media (max-width: 1050px) { .filters { grid-template-columns: repeat(3, minmax(0, 1fr)); } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .panel { padding: 8px; } .coverage { padding: 16px; } .metrics { grid-template-columns: 1fr; } .filters { grid-template-columns: 1fr; } .pagination { justify-content: flex-start; } .pagination span { width: 100%; } }

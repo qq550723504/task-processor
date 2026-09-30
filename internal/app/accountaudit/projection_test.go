@@ -5,11 +5,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"task-processor/internal/authidentity"
+	"task-processor/internal/ledger/orgresource"
 	registry "task-processor/internal/sourceaccountregistry"
 )
 
@@ -25,6 +27,18 @@ type usageHistoryStub struct {
 	calls  int
 }
 type pagingSourceHistory struct{ events []registry.CommittedOperation }
+type failSecondHistory struct {
+	first registry.HistoryPage
+	calls int
+}
+
+func (s *failSecondHistory) List(_ context.Context, _ registry.HistoryRequest) (registry.HistoryPage, error) {
+	s.calls++
+	if s.calls == 1 {
+		return s.first, nil
+	}
+	return registry.HistoryPage{}, registry.ErrUnavailable
+}
 
 func (s pagingSourceHistory) List(_ context.Context, request registry.HistoryRequest) (registry.HistoryPage, error) {
 	page := registry.HistoryPage{Items: []registry.CommittedOperation{}}
@@ -73,6 +87,124 @@ func TestProjectionInterleavesSourceAndUsageAcrossCursorsWithoutLoss(t *testing.
 	want := "0198d4f0-0000-7000-8000-000000000004,e-3,0198d4f0-0000-7000-8000-000000000002,e-1"
 	if strings.Join(seen, ",") != want {
 		t.Fatalf("seen %v, want %s", seen, want)
+	}
+}
+
+func TestFilteredProjectionScansSparseUsageAcrossBatchesWithoutFalseEmptyPage(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	items := make([]UsageAuditEvent, 0, 156)
+	for index := 0; index < 156; index++ {
+		member := "other"
+		if index == 112 || index == 154 {
+			member = "target"
+		}
+		items = append(items, UsageAuditEvent{OrganizationID: "B", EventID: strconv.Itoa(200 - index), MemberID: member, InvocationID: "inv-" + strconv.Itoa(index), Quantity: 7, Time: now.Add(-time.Duration(index+1) * time.Second)})
+	}
+	source := pagingSourceHistory{events: []registry.CommittedOperation{{OrganizationID: "B", AccountID: "0198d4f0-0000-7000-8000-000000000004", ActorSubject: "target", Kind: registry.OperationDisable, Version: 2, OccurredAt: now}}}
+	usage := &usageHistoryStub{events: items}
+	query, err := NewCurrentAuditSources(source, &additionalHistoryStub{}, &additionalHistoryStub{}, usage, pointHistoryStub{}, &additionalHistoryStub{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: now.Add(time.Hour)})
+	filter := Filter{Content: "模型实际用量", MemberID: "target", Period: "all"}
+	first, err := query.ReadFiltered(ctx, 1, "", filter)
+	if err != nil || len(first.Items) != 1 || first.Items[0].ObjectReference != "inv-112" || first.NextCursor == nil {
+		t.Fatalf("first sparse page=%+v err=%v", first, err)
+	}
+	if _, err := query.ReadFiltered(ctx, 1, *first.NextCursor, Filter{Content: "模型实际用量", MemberID: "other", Period: "all"}); !errors.Is(err, registry.ErrInvalid) {
+		t.Fatalf("changed member accepted old cursor: %v", err)
+	}
+	if _, err := query.ReadFiltered(ctx, 1, *first.NextCursor, Filter{Content: "模型实际用量", MemberID: "target", Period: "7d"}); !errors.Is(err, registry.ErrInvalid) {
+		t.Fatalf("changed period accepted old cursor: %v", err)
+	}
+	second, err := query.ReadFiltered(ctx, 1, *first.NextCursor, filter)
+	if err != nil || len(second.Items) != 1 || second.Items[0].ObjectReference != "inv-154" || second.NextCursor != nil {
+		t.Fatalf("second sparse page=%+v err=%v", second, err)
+	}
+	actorOnly, err := query.ReadFiltered(ctx, 20, "", Filter{Content: "停用源账号", MemberID: "target", Period: "all"})
+	if err != nil || len(actorOnly.Items) != 0 || actorOnly.NextCursor != nil {
+		t.Fatalf("actor misread as affected member: %+v err=%v", actorOnly, err)
+	}
+}
+
+func TestFilteredProjectionUsesCurrentOwnerTimeAndDisplayedResourceContent(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	resource := &additionalHistoryStub{page: AdditionalAuditPage{Items: []AdditionalAuditEvent{{EventType: "account_member_resource.changed", ObjectType: "member_resource", ObjectReference: "member-1", Actor: "actor", Operation: "allocate_member_resource", Version: 1, Key: "1", RelationReference: "op-1", Time: now.Add(-time.Hour), Resource: &ResourceDetail{Type: "store_renewal_period", Quantity: "8"}}}}}
+	profile := &additionalHistoryStub{page: AdditionalAuditPage{Items: []AdditionalAuditEvent{{EventType: "account_business_profile.updated", ObjectType: "account_business_profile", ObjectReference: "member-1", Actor: "actor", Operation: "update", Version: 1, Key: "1", Time: now.Add(-8 * 24 * time.Hour)}}}}
+	query, err := NewCurrentAuditSources(&historyStub{}, profile, &additionalHistoryStub{}, &usageHistoryStub{}, pointHistoryStub{}, resource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: now.Add(time.Hour)})
+	recent, err := query.ReadFiltered(ctx, 20, "", Filter{MemberID: "member-1", Content: "分配续费期数：8 期", Period: "7d"})
+	if err != nil || len(recent.Items) != 1 || recent.Items[0].ObjectType != "member_resource" {
+		t.Fatalf("recent=%+v err=%v", recent, err)
+	}
+	old, err := query.ReadFiltered(ctx, 20, "", Filter{MemberID: "member-1", Content: "更新账户资料", Period: "7d"})
+	if err != nil || len(old.Items) != 0 {
+		t.Fatalf("old=%+v err=%v", old, err)
+	}
+	all, err := query.ReadFiltered(ctx, 20, "", Filter{MemberID: "member-1", Content: "更新账户资料", Period: "all"})
+	if err != nil || len(all.Items) != 1 || all.Items[0].ObjectType != "account_business_profile" {
+		t.Fatalf("all=%+v err=%v", all, err)
+	}
+}
+
+func TestFilteredProjectionCursorFitsLongestSupportedFilterAndSixSourcePositions(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	filter := Filter{ActorSubject: strings.Repeat("a", 128), Content: strings.Repeat("q", 80), MemberID: strings.Repeat("m", 128), Period: "all", AsOf: now.Format(time.RFC3339Nano)}
+	state := cursorState{
+		source:     &registry.HistoryPosition{OccurredAt: now, AccountID: "0198d4f0-0000-7000-8000-000000000004", Version: 9223372036854775807},
+		profile:    &AuditPosition{CreatedAt: now, Key: "9223372036854775807"},
+		membership: &AuditPosition{CreatedAt: now, Key: strings.Repeat("x", 550)},
+		usage:      &AuditPosition{CreatedAt: now, Key: strings.Repeat("u", 160)},
+		points:     &orgresource.ImagePointAuditPosition{CreatedAt: now, EventID: strings.Repeat("p", 128)},
+		resources:  &AuditPosition{CreatedAt: now, Key: "9223372036854775807"},
+	}
+	cursor, err := encodeCursor(state, strings.Repeat("o", 128), filter)
+	if err != nil || len(cursor) > 3072 {
+		t.Fatalf("cursor len=%d err=%v", len(cursor), err)
+	}
+	if _, err := parseCursor(cursor, strings.Repeat("o", 128), filter); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFilteredProjectionDoesNotReturnPartialMatchesAfterLaterSourceFailure(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	const targetID = "0198d4f0-0000-7000-8000-000000000001"
+	const otherID = "0198d4f0-0000-7000-8000-000000000002"
+	items := make([]registry.CommittedOperation, 100)
+	for index := range items {
+		id := otherID
+		if index == 0 {
+			id = targetID
+		}
+		items[index] = registry.CommittedOperation{OrganizationID: "B", AccountID: id, ActorSubject: "actor", Kind: registry.OperationDisable, Version: 2, OccurredAt: now.Add(-time.Duration(index+1) * time.Second)}
+	}
+	position := items[99].Position()
+	history := &failSecondHistory{first: registry.HistoryPage{Items: items, Next: &position}}
+	query, err := NewCurrentAuditSources(history, &additionalHistoryStub{}, &additionalHistoryStub{}, &usageHistoryStub{}, pointHistoryStub{}, &additionalHistoryStub{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: now.Add(time.Hour)})
+	page, err := query.ReadFiltered(ctx, 1, "", Filter{Content: targetID, Period: "all"})
+	if !errors.Is(err, registry.ErrUnavailable) || page.SchemaVersion != "" || len(page.Items) != 0 || history.calls != 2 {
+		t.Fatalf("partial result escaped: page=%+v err=%v calls=%d", page, err, history.calls)
+	}
+}
+
+func TestFilteredProjectionRejectsIncompleteOwnerSetInsteadOfClaimingNoMatches(t *testing.T) {
+	query, err := New(&historyStub{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: time.Now().Add(time.Hour)})
+	page, err := query.ReadFiltered(ctx, 20, "", Filter{Content: "成员", Period: "all"})
+	if !errors.Is(err, registry.ErrUnavailable) || page.SchemaVersion != "" {
+		t.Fatalf("incomplete source set became success: %+v err=%v", page, err)
 	}
 }
 

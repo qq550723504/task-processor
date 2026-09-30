@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -52,4 +53,26 @@ func TestNativeUsageAuditMergesIndependentOwnersWithStableScopedPages(t *testing
 	empty, err := reader.ListObservedAIUsageAudit(context.Background(), "empty", 2, nil)
 	require.NoError(t, err)
 	require.Empty(t, empty.Items)
+}
+
+func TestNativeUsageAuditReadsPastOwnerFiftyRowLimit(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "usage.db")), &gorm.Config{})
+	require.NoError(t, err)
+	pool, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { pool.Close() })
+	require.NoError(t, aistore.AutoMigrateInvocationLedger(db))
+	recorder := aistore.NewGormInvocationRecorder(db)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	for index := 0; index < 51; index++ {
+		fact := aicapability.InvocationRecord{InvocationID: fmt.Sprintf("inv-%03d", index), TenantID: "org", UserID: "actor", MemberID: "member", InputHash: "input", StartedAt: now.Add(-2 * time.Hour), FinishedAt: now.Add(time.Duration(index) * time.Second), Operation: aicapability.OperationProductAgentDecision, Outcome: aicapability.InvocationSucceeded, UsageKnown: true, PromptTokens: 2, CompletionTokens: 3, TotalTokens: 5}
+		require.NoError(t, recorder.RecordInvocation(context.Background(), fact))
+	}
+	reader := aiUsageAuditReader{sources: invocationAuditSources{"product": db}}
+	page, err := reader.ListObservedAIUsageAudit(context.Background(), "org", 100, nil)
+	require.NoError(t, err)
+	require.Len(t, page.Items, 51)
+	require.Nil(t, page.Next)
+	require.Equal(t, "product:inv-050", page.Items[0].EventID)
+	require.Equal(t, "product:inv-000", page.Items[50].EventID)
 }

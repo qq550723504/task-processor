@@ -23,6 +23,22 @@ function mount() {
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); state.context = { user: { id: "u1" }, effectiveOrganization: { id: "B" }, roles: ["listingkit_viewer"], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null }; });
 describe("audit page", () => {
+  it("starts at thirty days and applies content, all-time and historical target ID to the full query", async () => {
+    const calls: string[] = [];
+    stubAuditList(async url => { calls.push(url); return Response.json(empty); });
+    mount();
+    await screen.findByRole("table", { name: "操作记录" });
+    expect(new URL(calls[0], "http://localhost").searchParams.get("period")).toBe("30d");
+    await userEvent.type(screen.getByRole("textbox", { name: /搜索操作内容/ }), "模型实际用量");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "时间范围" }), "all");
+    await userEvent.type(screen.getByRole("textbox", { name: /成员筛选/ }), "removed-member");
+    await userEvent.click(screen.getByRole("button", { name: "应用筛选" }));
+    await waitFor(() => expect(calls.length).toBeGreaterThan(1));
+    const selected = new URL(calls.at(-1)!, "http://localhost");
+    expect(selected.searchParams.get("query")).toBe("模型实际用量");
+    expect(selected.searchParams.get("period")).toBe("all");
+    expect(selected.searchParams.get("member")).toBe("removed-member");
+  });
   it("shows the original member resource quantity and monthly cap in the audit table", async () => {
     const allocation = { eventType: "account_member_resource.changed", actor: "operator-B", time: "2026-09-29T08:00:00Z", objectType: "member_resource", objectReference: "member-1", operation: "allocate_member_resource", result: "succeeded", relation: { type: "organization_resource_operation", reference: "allocate-1", version: "1" }, resource: { type: "store_renewal_period", quantity: "1" } };
     const reclaim = { ...allocation, operation: "reclaim_member_resource", relation: { ...allocation.relation, reference: "reclaim-1", version: "2" }, resource: { type: "data_row", quantity: "100" } };
@@ -34,6 +50,7 @@ describe("audit page", () => {
     expect(within(table).getByText("回收数据额度：100 条")).toBeVisible();
     expect(within(table).getByText("设置成员 AI 月度上限：1000 点/月")).toBeVisible();
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "操作类型" }), "reclaim_member_resource");
+    await userEvent.click(screen.getByRole("button", { name: "应用筛选" }));
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toContain("operation=reclaim_member_resource"));
   });
   it("shows image AI points separately from token consumption in the existing table", async () => {
@@ -120,6 +137,7 @@ describe("real audit summary", () => {
   await userEvent.click(screen.getByRole("button", { name: "下一页" }));
   expect(await screen.findByText(/第 2 页/)).toBeVisible();
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "操作类型" }), "role");
+  await userEvent.click(screen.getByRole("button", { name: "应用筛选" }));
   expect(await screen.findByText(/第 1 页/)).toBeVisible();
   expect(within(metrics).getByText("120")).toBeVisible();
   expect(calls.filter(url => url === "/api/account/audit/summary")).toHaveLength(1);

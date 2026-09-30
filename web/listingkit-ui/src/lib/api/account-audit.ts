@@ -72,7 +72,7 @@ const pointEvent = z.object({
   points: z.object({ memberId: resourceReference, quantity: z.string().refine(value => /^[1-9][0-9]{0,18}$/.test(value) && BigInt(value) <= BigInt("9223372036854775807")), priceVersion: z.string().min(1).max(192).regex(/^[^\x00-\x1f\x7f]+$/).refine(value => value.trim() === value), intentId: resourceReference }).strict(),
 }).strict();
 const event = z.union([sourceEvent, resourceEvent, limitEvent, profileEvent, membershipEvent, usageEvent, pointEvent]);
-const cursor = z.string().min(1).max(2048).regex(/^[A-Za-z0-9_-]+$/);
+const cursor = z.string().min(1).max(3072).regex(/^[A-Za-z0-9_-]+$/);
 const source = z.string().regex(/^source_account_committed_operations(\+account_business_profile_audit)?(\+organization_member_audit)?(\+ai_invocations)?(\+image_ai_point_debits)?(\+member_resource_audit)?$/);
 const page = z.object({
   schemaVersion: z.literal("account-audit-v1"), userId: identity, effectiveOrganizationId: identity,
@@ -100,13 +100,17 @@ export function parseAccountAudit(value: unknown): AccountAuditPage {
   if (!parsed.success) throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE");
   return parsed.data;
 }
-export type AuditOptions = { expectedUserId: string; expectedOrganizationId: string; limit?: number; cursor?: string; actor?: string; operation?: z.infer<typeof auditOperation>; signal?: AbortSignal };
-export function auditQuery(limit = 20, after?: string, actor?: string, kind?: AuditOptions["operation"]): string {
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || after !== undefined && !cursor.safeParse(after).success || kind !== undefined && !auditOperation.safeParse(kind).success) throw new AccountReadError(400, "INVALID_REQUEST");
+export type AuditOptions = { expectedUserId: string; expectedOrganizationId: string; limit?: number; cursor?: string; actor?: string; operation?: z.infer<typeof auditOperation>; content?: string; memberId?: string; period?: "7d" | "30d" | "all"; signal?: AbortSignal };
+export function auditQuery(limit = 20, after?: string, actor?: string, kind?: AuditOptions["operation"], content?: string, memberId?: string, period?: AuditOptions["period"]): string {
+  const normalizedContent = content?.trim();
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || after !== undefined && !cursor.safeParse(after).success || kind !== undefined && !auditOperation.safeParse(kind).success || actor !== undefined && actor !== "" && !identity.safeParse(actor).success || memberId !== undefined && memberId !== "" && !identity.safeParse(memberId).success || content !== undefined && (!normalizedContent || new TextEncoder().encode(normalizedContent).length > 80 || /[\x00-\x1f\x7f]/.test(normalizedContent)) || period !== undefined && !["7d", "30d", "all"].includes(period)) throw new AccountReadError(400, "INVALID_REQUEST");
   const query = new URLSearchParams({ limit: String(limit) });
   if (after !== undefined) query.set("cursor", after);
   if (actor !== undefined && actor !== "") query.set("actor", actor);
   if (kind !== undefined) query.set("operation", kind);
+  if (normalizedContent) query.set("query", normalizedContent);
+  if (memberId) query.set("member", memberId);
+  if (period) query.set("period", period);
   return query.toString();
 }
 export async function getAccountAudit(options: AuditOptions): Promise<AccountAuditPage> {
@@ -118,7 +122,7 @@ export async function getAccountAuditSummary(options: Pick<AuditOptions, "expect
 async function readAccountAudit(options: AuditOptions, isSummary: boolean): Promise<AccountAuditPage | AccountAuditSummary> {
   if (!identity.safeParse(options.expectedUserId).success) throw new AccountReadError(409, "IDENTITY_CONTEXT_CHANGED");
   if (!identity.safeParse(options.expectedOrganizationId).success) throw new AccountReadError(409, "ORGANIZATION_SELECTION_REQUIRED");
-  const path = isSummary ? "/api/account/audit/summary" : `/api/account/audit?${auditQuery(options.limit, options.cursor, options.actor, options.operation)}`;
+  const path = isSummary ? "/api/account/audit/summary" : `/api/account/audit?${auditQuery(options.limit, options.cursor, options.actor, options.operation, options.content, options.memberId, options.period)}`;
   const controller = new AbortController();
   const abort = () => controller.abort();
   options.signal?.addEventListener("abort", abort, { once: true });

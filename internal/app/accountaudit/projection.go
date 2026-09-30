@@ -9,7 +9,10 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"task-processor/internal/authidentity"
 	"task-processor/internal/ledger/orgresource"
@@ -71,6 +74,10 @@ type Filter struct {
 	ResourceOperation   string
 	ProfileOperation    string
 	MembershipOperation string
+	Content             string
+	MemberID            string
+	Period              string
+	AsOf                string
 }
 
 func New(history History) (*Query, error) {
@@ -131,6 +138,7 @@ type Page struct {
 	Source                  string  `json:"source"`
 	Items                   []Event `json:"items"`
 	NextCursor              *string `json:"nextCursor"`
+	positions               []string
 }
 type positionWire struct {
 	Organization        string          `json:"org"`
@@ -140,6 +148,10 @@ type positionWire struct {
 	ResourceOperation   string          `json:"resourceOperation,omitempty"`
 	ProfileOperation    string          `json:"profileOperation,omitempty"`
 	MembershipOperation string          `json:"membershipOperation,omitempty"`
+	Content             string          `json:"query,omitempty"`
+	MemberID            string          `json:"member,omitempty"`
+	Period              string          `json:"period,omitempty"`
+	AsOf                string          `json:"asOf,omitempty"`
 	Profile             *auditCursor    `json:"profile,omitempty"`
 	Membership          *auditCursor    `json:"membership,omitempty"`
 	Usage               *auditCursor    `json:"usage,omitempty"`
@@ -172,6 +184,155 @@ func (q *Query) Read(ctx context.Context, limit int, cursor string) (Page, error
 }
 
 func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filter Filter) (Page, error) {
+	if limit < 1 || limit > registry.MaxPageLimit {
+		return Page{}, registry.ErrInvalid
+	}
+	filter.Content = strings.TrimSpace(filter.Content)
+	if len(filter.Content) > 80 || !utf8.ValidString(filter.Content) || filter.MemberID != "" && !authidentity.IsBoundedIdentifier(filter.MemberID) {
+		return Page{}, registry.ErrInvalid
+	}
+	for _, ch := range filter.Content {
+		if unicode.IsControl(ch) {
+			return Page{}, registry.ErrInvalid
+		}
+	}
+	switch filter.Period {
+	case "", "7d", "30d", "all":
+	default:
+		return Page{}, registry.ErrInvalid
+	}
+	active := filter.Content != "" || filter.MemberID != "" || filter.Period != ""
+	if !active {
+		return q.readBatch(ctx, limit, cursor, filter)
+	}
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+	if !ok || identity.TokenExpiresAt.IsZero() || !time.Now().Before(identity.TokenExpiresAt) {
+		return Page{}, registry.ErrAuthenticationRequired
+	}
+	if identity.EffectiveOrganizationID == "" || identity.TenantID != identity.EffectiveOrganizationID {
+		return Page{}, registry.ErrForbidden
+	}
+	if q == nil || summaryMissing(q.history) || summaryMissing(q.profile) || summaryMissing(q.membership) || summaryMissing(q.usage) || summaryMissing(q.points) || summaryMissing(q.resources) {
+		return Page{}, registry.ErrUnavailable
+	}
+	if cursor == "" {
+		filter.AsOf = time.Now().UTC().Truncate(time.Microsecond).Format(time.RFC3339Nano)
+	} else {
+		wire, err := decodeCursor(cursor)
+		if err != nil {
+			return Page{}, err
+		}
+		filter.AsOf = wire.AsOf
+	}
+	asOf, err := time.Parse(time.RFC3339Nano, filter.AsOf)
+	if err != nil || asOf.IsZero() {
+		return Page{}, registry.ErrInvalid
+	}
+	var result Page
+	var from time.Time
+	if filter.Period == "7d" {
+		from = asOf.Add(-7 * 24 * time.Hour)
+	}
+	if filter.Period == "30d" {
+		from = asOf.Add(-30 * 24 * time.Hour)
+	}
+	var lastMatchPosition string
+	position := cursor
+	for {
+		batch, err := q.readBatch(ctx, registry.MaxPageLimit, position, filter)
+		if err != nil {
+			return Page{}, err
+		}
+		if result.SchemaVersion == "" {
+			result = Page{SchemaVersion: batch.SchemaVersion, UserID: batch.UserID, EffectiveOrganizationID: batch.EffectiveOrganizationID, Source: batch.Source, Items: []Event{}}
+		}
+		for index, event := range batch.Items {
+			if !from.IsZero() && event.Time.Before(from) {
+				return result, nil
+			}
+			if !matchesAuditEvent(event, filter, asOf) {
+				continue
+			}
+			if len(result.Items) == limit {
+				result.NextCursor = &lastMatchPosition
+				return result, nil
+			}
+			result.Items = append(result.Items, event)
+			lastMatchPosition = batch.positions[index]
+		}
+		if batch.NextCursor == nil {
+			return result, nil
+		}
+		if len(batch.Items) == 0 || *batch.NextCursor == position {
+			return Page{}, registry.ErrUnavailable
+		}
+		position = *batch.NextCursor
+	}
+}
+
+func matchesAuditEvent(event Event, filter Filter, asOf time.Time) bool {
+	if !event.Time.Before(asOf) {
+		return false
+	}
+	if filter.Period == "7d" && event.Time.Before(asOf.Add(-7*24*time.Hour)) || filter.Period == "30d" && event.Time.Before(asOf.Add(-30*24*time.Hour)) {
+		return false
+	}
+	if filter.MemberID != "" {
+		member := ""
+		switch event.EventType {
+		case "account_business_profile.updated", "organization_membership.changed", "account_member_resource.changed", "account_member_ai_point_limit.changed":
+			member = event.ObjectReference
+		case "ai_invocation.usage_observed":
+			if event.Usage != nil {
+				member = event.Usage.MemberID
+			}
+		case "account_ai_points.committed":
+			if event.Points != nil {
+				member = event.Points.MemberID
+			}
+		}
+		if member != filter.MemberID {
+			return false
+		}
+	}
+	if filter.Content == "" {
+		return true
+	}
+	fields := []string{event.ObjectType, event.ObjectReference, event.Operation, event.Relation.Reference}
+	switch event.EventType {
+	case "source_account.operation_committed":
+		fields = append(fields, "源账号", "源账号 "+event.ObjectReference, map[string]string{"register": "登记源账号", "enable": "启用源账号", "disable": "停用源账号"}[event.Operation])
+	case "account_business_profile.updated":
+		fields = append(fields, "账户资料", "账户资料 "+event.ObjectReference, "更新账户资料")
+	case "organization_membership.changed":
+		fields = append(fields, "成员与权限", "成员 "+event.ObjectReference, map[string]string{"invite": "邀请成员", "role": "更新成员角色", "remove": "移除成员"}[event.Operation])
+	case "account_member_resource.changed", "account_member_ai_point_limit.changed":
+		fields = append(fields, "资源与额度", "成员 "+event.ObjectReference, event.Resource.Quantity, string(event.Resource.Type))
+		if event.EventType == "account_member_ai_point_limit.changed" {
+			fields = append(fields, "设置成员 AI 月度上限", "设置成员 AI 月度上限："+event.Resource.Quantity+" 点/月")
+		} else {
+			verb := map[string]string{"allocate_member_resource": "分配", "reclaim_member_resource": "回收"}[event.Operation]
+			if event.Resource.Type == orgresource.ResourceStoreRenewalPeriod {
+				fields = append(fields, "续费期数", verb+"续费期数："+event.Resource.Quantity+" 期")
+			} else {
+				fields = append(fields, "数据额度", verb+"数据额度："+event.Resource.Quantity+" 条")
+			}
+		}
+	case "ai_invocation.usage_observed":
+		fields = append(fields, "资源与额度", "模型实际用量", "模型实际用量："+strconv.FormatInt(event.Usage.Quantity, 10)+" Token", "成员 "+event.Usage.MemberID)
+	case "account_ai_points.committed":
+		fields = append(fields, "资源与额度", "图片 AI 点数已扣", "图片 AI 点数已扣："+event.Points.Quantity, "成员 "+event.Points.MemberID)
+	}
+	needle := strings.ToLower(filter.Content)
+	for _, field := range fields {
+		if strings.Contains(strings.ToLower(field), needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func (q *Query) readBatch(ctx context.Context, limit int, cursor string, filter Filter) (Page, error) {
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
 	if !ok || identity.TokenExpiresAt.IsZero() || !time.Now().Before(identity.TokenExpiresAt) {
 		return Page{}, registry.ErrAuthenticationRequired
@@ -343,6 +504,11 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 		if item.points != nil {
 			nextState.points = item.points
 		}
+		position, positionErr := encodeCursor(nextState, identity.EffectiveOrganizationID, filter)
+		if positionErr != nil {
+			return Page{}, positionErr
+		}
+		result.positions = append(result.positions, position)
 	}
 	if len(profilePage.Items) > 0 {
 		result.Source += "+account_business_profile_audit"
@@ -364,47 +530,67 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 	// cursor still needs to carry the last emitted position from both streams
 	// so the events beyond the merge boundary remain reachable.
 	if mergedTruncated || history.Next != nil || resourcePage.Next != nil || profilePage.Next != nil || membershipPage.Next != nil || usagePage.Next != nil || pointPage.Next != nil {
-		wire := positionWire{Organization: identity.EffectiveOrganizationID, Actor: filter.ActorSubject, Kind: string(filter.Kind), ResourceOperation: filter.ResourceOperation, ProfileOperation: filter.ProfileOperation, MembershipOperation: filter.MembershipOperation}
-		if nextState.source != nil {
-			wire.Source = &sourcePosition{Time: nextState.source.OccurredAt.UTC(), Account: nextState.source.AccountID, Version: strconv.FormatInt(nextState.source.Version, 10)}
-		}
-		if nextState.resources != nil {
-			wire.Resources = &auditCursor{Time: nextState.resources.CreatedAt.UTC().Format(time.RFC3339Nano), Key: nextState.resources.Key}
-		}
-		if nextState.profile != nil {
-			wire.Profile = &auditCursor{Time: nextState.profile.CreatedAt.UTC().Format(time.RFC3339Nano), Key: nextState.profile.Key}
-		}
-		if nextState.membership != nil {
-			wire.Membership = &auditCursor{Time: nextState.membership.CreatedAt.UTC().Format(time.RFC3339Nano), Key: nextState.membership.Key}
-		}
-		if nextState.usage != nil {
-			wire.Usage = &auditCursor{Time: nextState.usage.CreatedAt.UTC().Format(time.RFC3339Nano), Key: nextState.usage.Key}
-		}
-		if nextState.points != nil {
-			wire.Points = &auditCursor{Time: nextState.points.CreatedAt.UTC().Format(time.RFC3339Nano), Key: nextState.points.EventID}
-		}
-		data, err := json.Marshal(wire)
-		if err != nil {
+		if len(result.positions) == 0 {
 			return Page{}, registry.ErrUnavailable
 		}
-		value := base64.RawURLEncoding.EncodeToString(data)
-		result.NextCursor = &value
+		result.NextCursor = &result.positions[len(result.positions)-1]
 	}
 	return result, nil
+}
+func encodeCursor(state cursorState, organization string, filter Filter) (string, error) {
+	wire := positionWire{Organization: organization, Actor: filter.ActorSubject, Kind: string(filter.Kind), ResourceOperation: filter.ResourceOperation, ProfileOperation: filter.ProfileOperation, MembershipOperation: filter.MembershipOperation, Content: filter.Content, MemberID: filter.MemberID, Period: filter.Period, AsOf: filter.AsOf}
+	if state.source != nil {
+		wire.Source = &sourcePosition{Time: state.source.OccurredAt.UTC(), Account: state.source.AccountID, Version: strconv.FormatInt(state.source.Version, 10)}
+	}
+	if state.resources != nil {
+		wire.Resources = &auditCursor{Time: state.resources.CreatedAt.UTC().Format(time.RFC3339Nano), Key: state.resources.Key}
+	}
+	if state.profile != nil {
+		wire.Profile = &auditCursor{Time: state.profile.CreatedAt.UTC().Format(time.RFC3339Nano), Key: state.profile.Key}
+	}
+	if state.membership != nil {
+		wire.Membership = &auditCursor{Time: state.membership.CreatedAt.UTC().Format(time.RFC3339Nano), Key: state.membership.Key}
+	}
+	if state.usage != nil {
+		wire.Usage = &auditCursor{Time: state.usage.CreatedAt.UTC().Format(time.RFC3339Nano), Key: state.usage.Key}
+	}
+	if state.points != nil {
+		wire.Points = &auditCursor{Time: state.points.CreatedAt.UTC().Format(time.RFC3339Nano), Key: state.points.EventID}
+	}
+	data, err := json.Marshal(wire)
+	if err != nil {
+		return "", registry.ErrUnavailable
+	}
+	value := base64.RawURLEncoding.EncodeToString(data)
+	if len(value) > 3072 {
+		return "", registry.ErrUnavailable
+	}
+	return value, nil
+}
+func decodeCursor(value string) (positionWire, error) {
+	if len(value) > 3072 {
+		return positionWire{}, registry.ErrInvalid
+	}
+	data, err := base64.RawURLEncoding.Strict().DecodeString(value)
+	if err != nil {
+		return positionWire{}, registry.ErrInvalid
+	}
+	var wire positionWire
+	if json.Unmarshal(data, &wire) != nil {
+		return positionWire{}, registry.ErrInvalid
+	}
+	canonical, err := json.Marshal(wire)
+	if err != nil || base64.RawURLEncoding.EncodeToString(canonical) != value {
+		return positionWire{}, registry.ErrInvalid
+	}
+	return wire, nil
 }
 func parseCursor(value, organization string, filter Filter) (cursorState, error) {
 	if value == "" {
 		return cursorState{}, nil
 	}
-	if len(value) > 2048 {
-		return cursorState{}, registry.ErrInvalid
-	}
-	data, err := base64.RawURLEncoding.Strict().DecodeString(value)
-	if err != nil {
-		return cursorState{}, registry.ErrInvalid
-	}
-	var wire positionWire
-	if json.Unmarshal(data, &wire) != nil || wire.Organization != organization || wire.Actor != filter.ActorSubject || wire.Kind != string(filter.Kind) || wire.ResourceOperation != filter.ResourceOperation || wire.ProfileOperation != filter.ProfileOperation || wire.MembershipOperation != filter.MembershipOperation || wire.Source == nil && wire.Resources == nil && wire.Profile == nil && wire.Membership == nil && wire.Usage == nil && wire.Points == nil {
+	wire, err := decodeCursor(value)
+	if err != nil || wire.Organization != organization || wire.Actor != filter.ActorSubject || wire.Kind != string(filter.Kind) || wire.ResourceOperation != filter.ResourceOperation || wire.ProfileOperation != filter.ProfileOperation || wire.MembershipOperation != filter.MembershipOperation || wire.Content != filter.Content || wire.MemberID != filter.MemberID || wire.Period != filter.Period || wire.AsOf != filter.AsOf || wire.Source == nil && wire.Resources == nil && wire.Profile == nil && wire.Membership == nil && wire.Usage == nil && wire.Points == nil {
 		return cursorState{}, registry.ErrInvalid
 	}
 	state := cursorState{}
@@ -457,10 +643,6 @@ func parseCursor(value, organization string, filter Filter) (cursorState, error)
 	}
 	// A canonical re-encoding rejects unknown/duplicate fields, alternate JSON
 	// spellings, trailing data and noncanonical encodings without retaining input.
-	canonical, err := json.Marshal(wire)
-	if err != nil || base64.RawURLEncoding.EncodeToString(canonical) != value {
-		return cursorState{}, registry.ErrInvalid
-	}
 	return state, nil
 }
 
