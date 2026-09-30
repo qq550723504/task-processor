@@ -274,8 +274,9 @@ PlanningCommand {
   conversation_id
   request_fingerprint
   user_message_id
+  source_sequence           # exact Conversation sequence assigned to this USER message
   planner_invocation_id     # deterministic SHA-256 over scoped command identity
-  planner_input_hash
+  planner_input_hash        # canonical history/work-scope envelope through source_sequence
   planner_started_at        # database time frozen once
   planner_deadline          # frozen bounded attempt deadline
   state                     READY_TO_DISPATCH | COMPLETE |
@@ -291,11 +292,18 @@ PlanningCommand {
 browser/provider ID. Same key + same fingerprint therefore always addresses the same AI
 invocation identity. Same key + changed content/scope is `IDEMPOTENCY_CONFLICT`.
 
+The T0 transaction allocates the message sequence under the Conversation row lock and builds the
+canonical planner input from immutable messages with `sequence <= source_sequence` plus the
+exact selected work-scope fields. It stores the resulting `planner_input_hash`. Later messages
+are never incorporated into a replay of this command. A same-key replay reconstructs that exact
+bounded history prefix and must match the frozen hash before it can approach the AI claim.
+
 The durable dispatch algorithm is:
 
 ```text
 T0 transaction:
-   create/adopt USER message + PlanningCommand(READY_TO_DISPATCH, deterministic invocation)
+   create/adopt USER message + source_sequence
+   + PlanningCommand(READY_TO_DISPATCH, deterministic invocation, exact input hash)
 → outside transaction call Planner with that exact invocation identity
 → Planner atomically ClaimInvocation in the existing AI invocation owner
      acquired=true  => this caller alone may reserve + attempt provider transport
@@ -403,9 +411,13 @@ internal/aicapability/store
 internal/integration/orgresource
   GormModelInvocationRepository
     → same ResourceAIPoint/member-limit owner
-    → ReadModelInvocation accepts only the two admitted priced-text operations
+    → existing model invocation fact reader is generalized only enough to return either
+      admitted priced-text operation and validate its operation-specific identity
+    → readFact accepts exactly product_agent_decision | aiworkbench_chat_plan
     → Product Agent reservation BusinessScope = real AgentRunID
     → Chat planner reservation BusinessScope = "chat-plan:" + invocation_id
+    → the same operation-aware BusinessScope function is used when creating and replay-validating
+      the reservation receipt
     → existing reserve/finalize/idempotency/resource events remain unchanged
 
 internal/integration/aiworkbench/grsaitext
@@ -421,6 +433,8 @@ internal/integration/aiworkbench/grsaitext
 
 internal/app/httpapi current application assembly
   existing AI manager/recorder/resource adapter + fresh identity
+    → planner-specific ModelInvocationAuthorizer adapter
+       (fresh current identity + same org/user/member + workbench.chat.use)
     → aiworkbench Planner adapter
     → aiworkbench Service
     → aiworkbench/httpapi
@@ -444,6 +458,10 @@ The planner's exact `InvocationRecord` binds:
 
 This is enough for the existing AI invocation and Resource owners to reject identity drift and
 to reserve/settle the same enterprise/member point pool without inventing a Chat ledger.
+The existing `ModelInvocationAuthorizer` seam is reused: Product Agent keeps its current
+authorizer, while Workbench supplies a narrow planner authorizer that fresh-resolves the same
+effective Organization/member and requires `workbench.chat.use`. It does not create a new IAM
+decision or imply `workbench.agent.use`.
 
 The adapter must preserve:
 
@@ -491,7 +509,11 @@ ExecutionProposal {
 }
 ```
 
-The proposal is immutable.
+The proposal is immutable. If Knowledge is selected, READY construction calls the Knowledge
+owner's `ObserveSelection` after the planner returns and before the assistant/proposal
+transaction commits. If the selection is not currently readable, the assistant may explain the
+failure but no READY proposal is stored. The observer returns only the revision-set identity,
+never document text.
 
 A new user message makes an older proposal stale for confirmation because
 `source_sequence` is no longer the latest Conversation message sequence. Metadata-only changes
@@ -579,7 +601,10 @@ is Later.
 
 The explicit confirm operation uses its `Idempotency-Key` as the Product Agent
 `Request.Key`. Its confirmation fingerprint is the exact
-`(conversation_id, proposal_id, proposal_digest, execution_request_key)` request identity.
+`(conversation_id, proposal_id, execution_request_key)` **wire request identity**. The
+immutable `proposal_digest` is stored on the BusinessTask and integrity-checked only on the
+first-create path; same-key replay therefore does not need to load or freshness-check the
+proposal before it can identify the existing receipt.
 
 **Replay lookup precedes proposal/dependency freshness checks.**
 
