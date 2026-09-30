@@ -33,7 +33,12 @@ type Member struct {
 	Permissions     []string `json:"permissions"`
 }
 
-type PageRequest struct{ Limit, Offset int }
+type PageRequest struct {
+	Limit, Offset int
+	Filter        ListFilter
+}
+
+type ListFilter struct{ Search, Role, State string }
 type Page struct {
 	Items []Member
 	Total int

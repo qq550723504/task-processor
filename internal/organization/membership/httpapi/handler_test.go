@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,24 @@ import (
 type directory struct {
 	calls int
 	err   error
+}
+
+func TestDirectoryQueryParameterBounds(t *testing.T) {
+	for _, query := range []string{"q=a&q=b", "role=", "role=platform_admin", "role=listingkit_viewer&role=listingkit_admin", "state=pending", "state=", "q=%00", "q=%FF", "q=%zz", "q=" + url.QueryEscape(strings.Repeat("目", 67)), "q=" + strings.Repeat("a", 201), "q=x&projectId=other", "q=x;state=active", "q=" + strings.Repeat("a", 2049)} {
+		u := &url.URL{RawQuery: query}
+		if _, err := parsePage(u); err != membership.ErrInvalidRequest {
+			t.Fatalf("accepted query %q: %v", query, err)
+		}
+	}
+	for _, query := range []string{"q=", "q=+++", "q=" + url.QueryEscape(strings.Repeat("目", 66)+"ab")} {
+		if _, err := parsePage(&url.URL{RawQuery: query}); err != nil {
+			t.Fatalf("rejected valid query %q: %v", query, err)
+		}
+	}
+	p, err := parsePage(&url.URL{RawQuery: "limit=1&offset=20&q=%E7%9B%AE%E6%A0%87&role=listingkit_operator&state=inactive"})
+	if err != nil || p.Limit != 1 || p.Offset != 20 || p.Filter.Search != "目标" || p.Filter.Role != "listingkit_operator" || p.Filter.State != "inactive" {
+		t.Fatalf("lost query: %+v %v", p, err)
+	}
 }
 
 func TestCommandRoutesHaveExactManagePermission(t *testing.T) {
@@ -57,6 +76,7 @@ func TestReadHTTPBoundary(t *testing.T) {
 		status, calls               int
 	}{
 		{"list", "/api/v1/account/members", "org-b", "", "listingkit_viewer", 200, 1},
+		{"filtered list", "/api/v1/account/members?q=Member&role=listingkit_viewer&state=active", "org-b", "", "listingkit_viewer", 200, 1},
 		{"detail absent", "/api/v1/account/members/absent", "org-b", "", "listingkit_operator", 404, 1},
 		{"no selector", "/api/v1/account/members", "", "", "listingkit_viewer", 400, 0},
 		{"different selector", "/api/v1/account/members", "org-a", "", "listingkit_viewer", 403, 0},
