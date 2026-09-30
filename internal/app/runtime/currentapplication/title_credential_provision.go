@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
@@ -141,7 +142,9 @@ func SaveTitleCredential(ctx context.Context, cfg *Config, input TitleCredential
 		if !result.Enabled {
 			return nil
 		}
-		manager, err := openai.NewManager(&openai.ManagerConfig{Clients: map[string]*openai.ClientConfig{input.ClientName: openai.NewClientConfig("", "", "", 25)}, ConfigResolver: openai.NewOrganizationOnlyCredentialResolver(tx)})
+		log := logrus.New()
+		log.SetOutput(io.Discard)
+		manager, err := openai.NewManager(&openai.ManagerConfig{Logger: openai.AdaptLogrus(log.WithField("component", "title-credential-provision")), Clients: map[string]*openai.ClientConfig{input.ClientName: openai.NewClientConfig("", "", "", 25)}, ConfigResolver: openai.NewOrganizationOnlyCredentialResolver(tx)})
 		if err != nil {
 			return err
 		}

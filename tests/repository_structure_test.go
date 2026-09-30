@@ -28,6 +28,7 @@ func maintainedOperationalCommands() map[string]struct{} {
 		"listingkit-schema-migrate":           {},
 		"playwright-installer":                {},
 		"product-listing-api-schema-migrate":  {},
+		"product-agent-credential-provision":  {},
 		"product-acquisition-init":            {},
 		"shein-import-platform-recovery":      {},
 		"shein-login-worker":                  {},

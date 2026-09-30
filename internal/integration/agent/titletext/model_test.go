@@ -208,6 +208,17 @@ func TestAgentTextModelRouteReadinessSeparatesRolloutFromCredentialRepair(t *tes
 	}
 }
 
+func TestAgentTextModelRejectsPromptBeyondAdmittedInputWindowBeforeClaim(t *testing.T) {
+	m, ctx, in, ledger, calls, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`)
+	policy := m.policies["org"]
+	policy.InputWindowTokens = 4096
+	m.policies["org"] = policy
+	in.UserFeedback = strings.Repeat("A", 5000)
+	if _, err := m.Quote(ctx, in); !errors.Is(err, openai.ErrTextInput) || ledger.claims != 0 || calls.Load() != 0 {
+		t.Fatalf("oversized route prompt was admitted: %v, claims=%d calls=%d", err, ledger.claims, calls.Load())
+	}
+}
+
 func TestAgentTextModelPointTariffRequiredBeforeClaimAndFrozenInFact(t *testing.T) {
 	m, ctx, in, ledger, calls, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`)
 	policy := m.policies["org"]

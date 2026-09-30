@@ -141,6 +141,7 @@ func NewAgentTextModel(manager *openai.Manager, ledger AgentInvocationLedger, po
 
 const agentInputWindow int64 = 1048576
 const agentOutputWindow int64 = 65536
+const agentPromptFramingAllowance = 1024
 
 const agentTextSystem = `You diagnose an exact saved product and propose ONLY a title change for human review.
 Return one JSON object matching this shape, with no markdown: {"Kind":"tool|propose|interrupt","Tool":{"ID":"allowed tool ID","Version":"exact allowed version"},"Candidate":{"Changes":[{"Field":"title","Value":"suggested title","EvidenceIDs":["source evidence ID"]}]},"Unresolved":["missing facts"],"Confidence":[{"Field":"title","Value":0.0,"Known":true}]}.
@@ -274,7 +275,10 @@ func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (prep
 	}
 	encoded, err := json.Marshal(p.request)
 	// Leave room for the SDK envelope; the transport checks the actual wire too.
-	if err != nil || len(encoded) > openai.MaxTextPromptBytes-4096 {
+	// A UTF-8 byte can contribute at most one byte-level token. Count the
+	// entire escaped request envelope and reserve room for chat framing so a
+	// smaller admitted model is rejected before claim and quota reservation.
+	if err != nil || len(encoded) > openai.MaxTextPromptBytes-4096 || int64(len(encoded)+agentPromptFramingAllowance) > policy.InputWindowTokens {
 		return p, openai.ErrTextInput
 	}
 	reference, _ := json.Marshal(struct {
