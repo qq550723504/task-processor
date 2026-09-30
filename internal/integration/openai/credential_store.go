@@ -32,10 +32,17 @@ func (AIClientCredential) TableName() string {
 type GormCredentialResolver struct {
 	db                *gorm.DB
 	organizationScope bool
+	organizationOnly  bool
 }
 
 func NewOrganizationCredentialResolver(db *gorm.DB) *GormCredentialResolver {
 	return &GormCredentialResolver{db: db, organizationScope: true}
+}
+
+// NewOrganizationOnlyCredentialResolver selects only the organization row.
+// It is used when a member must not override a deployment-admitted route.
+func NewOrganizationOnlyCredentialResolver(db *gorm.DB) *GormCredentialResolver {
+	return &GormCredentialResolver{db: db, organizationScope: true, organizationOnly: true}
 }
 
 func NewGormCredentialResolver(db *gorm.DB) *GormCredentialResolver {
@@ -113,7 +120,7 @@ func (r *GormCredentialResolver) ResolveClientConfig(ctx context.Context, client
 	}
 	identity := IdentityFromContext(ctx)
 	if r.organizationScope {
-		if identity.TenantID == "" || identity.UserID == "" {
+		if identity.TenantID == "" || (!r.organizationOnly && identity.UserID == "") {
 			return nil, ErrClientConfigurationUnavailable
 		}
 	}
@@ -123,7 +130,7 @@ func (r *GormCredentialResolver) ResolveClientConfig(ctx context.Context, client
 	if tenantID == "" || clientName == "" {
 		return nil, nil
 	}
-	if userID != "" {
+	if userID != "" && !r.organizationOnly {
 		credential, err := r.findCredential(ctx, tenantID, userID, clientName)
 		if err != nil {
 			return nil, err
