@@ -18,7 +18,7 @@
 | --- | --- | --- |
 | Store Center | 当前店铺名称、生命周期和连接状态的唯一 owner；Store read 需独立 `workbench.store.read` | 不读取、不缓存名称或状态；不修改 Store |
 | Listing Record | 创建时验证当前企业的 canonical `store_id` 与 SHEIN 平台，持久化不可变 Input；`action` 只允许 `save_draft` / `publish`；本地创建与离线诊断均不执行平台提交 | 不改 Go 创建、SQL、状态或集合；把既有 metadata 如实传递 |
-| Go collection | `GET /api/v1/listing/shein-records` 返回已提交的 `record_id/product_key/snapshot_version/store_id/country/language/action/created_at`；服务校验 Listing read，SQL 按 organization/owner 限定，管理员保留原组织范围和 cursor anchor 检查 | 不扩大读取范围或权限 |
+| Go collection | `GET /api/listing/shein-records`（`sheinRecordPath`，同源 BFF 转发的实际 Go 路径）返回已提交的 `record_id/product_key/snapshot_version/store_id/country/language/action/created_at`；服务校验 Listing read，SQL 按 organization/owner 限定，管理员保留原组织范围和 cursor anchor 检查 | 不扩大读取范围或权限 |
 | 同源 BFF | Auth.js/session → 受控 Listing upstream → 严格解析 → 只读投影；原组织断言、header/origin/redirect、错误及撤权 cookie、15 秒总 deadline 和 128 KiB 输入/输出上限 | 将当前真实 source 字段加入严格 schema，投影 v2 |
 | Task Center | 已完成页消费 typed client、行/详情/诊断链接；共享范围卡目前写死“通用业务” | 按每条记录显示 Store ID/动作，范围卡陈述当前企业与逐条归属 |
 
@@ -73,6 +73,8 @@
 
 Legacy decision: **RETIRE** 旧 `general-only` 投影假设、相关旧 DTO/fixture 文案；**EXTRACT** 其中仍正确的已提交本地记录含义、受控只读 BFF/诊断链接、分页与权限行为到当前 v2。Current owner：Listing Record 保持 record/历史 Store ID；Store Center 保持实时店铺名称/状态；completed-work 仅作无事实写入的消费投影。Cutover/deletion condition：v2 BFF、typed client、UI、fixture 与说明在同一候选切换后，不再由当前路径使用 v1/general 测试预期或 fallback。不得重新引入旧 Task-first 产品模型、双事实源或旧数据迁移。
 
-实现者先用现有测试为真实 Go `store_id/action` 200 响应与错误范围/文案写 RED，确认旧 BFF 的 502 和旧错误展示，再作最小修复；不创建新 runner 或专项验收平台。相关检验包含：严格解析/缺失与未知动作拒绝、v2 DTO 与固定诊断 URL、`save_draft`/`publish` 不宣称远端成功、空页/跨页/同店与多店、列表与详情同 ID、共享卡/待确认不假设 Store、非 200/撤权 cookie/取消/超时/跨企业与迟到响应。使用现有隔离 PostgreSQL/合成账号 fixture 与 `product-title-review-ui.mjs`、`title-review-ui-regression.mjs` 两条浏览器脚本检验真实入口和标题审核独立路径；真实 IAM、平台、共享环境和产品试用未运行则保持 `NOT_RUN`。开发自检/CI 不能签发用户验收。
+实现者先用现有测试为真实 Go `store_id/action` 200 响应与错误范围/文案写 RED，确认旧 BFF 的 502 和旧错误展示，再作最小修复；不创建新 runner 或专项验收平台。相关检验包含：严格解析/缺失与未知动作拒绝、v2 DTO 与固定诊断 URL、`save_draft`/`publish` 不宣称远端成功、空页/跨页/同店与多店、列表与详情同 ID、共享卡/待确认不假设 Store、非 200/撤权 cookie/取消/超时/跨企业与迟到响应。
+
+现有浏览器证据按两条独立业务链执行：先用 #344 的隔离 `product-title-review-fixture.mjs --serve` 运行 `product-title-review-ui.mjs` 主流程，再对**同一隔离数据库**运行 `product-title-review-ui-lifecycle.mjs`，覆盖切企业、取消、卸载后晚到真实响应及切换身份重新授权；该 fixture 的独立 API 检查覆盖 LiveWrite 撤权。主流程真实改变提案状态，完整重跑须新建 fixture。另用 #340 的独立 `shein-diagnostic-fixture.mjs --serve --completed-work` 运行 `title-review-ui-regression.mjs`，核对已完成条目→详情→诊断及宽/窄屏；不能把这条回归当作 Product Review 生命周期证据。两种 fixture 均只用隔离 PostgreSQL 与合成身份/外部替身，须记录实际 SHA、正常停机与清理；真实 IAM、平台、共享环境和产品试用未运行则保持 `NOT_RUN`。开发自检/CI 不能签发用户验收。
 
 独立 Reviewer 先读 #36 当前决定和上述两个独立领域流程，核对 v2 是否准确表达 Listing 历史归属且不越过 Store read，确认无项目定义的 BLOCKER 后，在**本文件与 #36 均显式记录 `IMPLEMENTATION_READY`**。该门槛前不得改生产 DTO/BFF/UI。最终候选再按准确 HEAD 检查真实 diff 和已运行路径；本文件不批准合并、部署、关 Issue 或真实数据操作。
