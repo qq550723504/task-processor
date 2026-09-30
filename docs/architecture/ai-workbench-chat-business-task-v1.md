@@ -257,43 +257,79 @@ Sequence allocation locks the Conversation row and monotonically increments `nex
 A metadata-only favorite/title operation does not change message sequence and therefore does not
 invalidate an execution proposal.
 
-### 5.3 Message idempotency and planning command
+### 5.3 Message idempotency and durable pre-dispatch state
 
 Every user-message mutation requires one canonical UUID `Idempotency-Key`.
 
-A command receipt owns:
+The first transaction locks the Conversation and atomically appends the USER message plus a
+planning command. The command freezes a deterministic planner invocation identity **before any
+provider dispatch can be claimed**:
 
 ```text
-(org, actor, key)
-operation
-conversation_id
-request_fingerprint
-user_message_id
-planner_invocation_id?
-outcome             COMPLETE | PLANNER_UNKNOWN | FAILED_BEFORE_DISPATCH
-assistant_message_id?
-proposal_id?
-committed_at
+PlanningCommand {
+  organization_id
+  actor_id
+  idempotency_key
+  operation                chat_message_plan
+  conversation_id
+  request_fingerprint
+  user_message_id
+  planner_invocation_id     # deterministic SHA-256 over scoped command identity
+  planner_input_hash
+  planner_started_at        # database time frozen once
+  planner_deadline          # frozen bounded attempt deadline
+  state                     READY_TO_DISPATCH | COMPLETE |
+                            FAILED_BEFORE_DISPATCH | PLANNER_UNKNOWN
+  assistant_message_id?
+  proposal_id?
+  committed_at?
+}
 ```
 
-Same key + same fingerprint replays the same receipt. Same key + changed content/scope is
-`IDEMPOTENCY_CONFLICT`.
+`planner_invocation_id` is derived from the exact
+`(organization, actor, conversation, idempotency_key, request_fingerprint)` tuple. It is not a
+browser/provider ID. Same key + same fingerprint therefore always addresses the same AI
+invocation identity. Same key + changed content/scope is `IDEMPOTENCY_CONFLICT`.
 
-The user message commits **before** the planning provider call. It is therefore durable even if
-planning fails.
+The durable dispatch algorithm is:
 
-No hidden provider retry/fallback is introduced:
+```text
+T0 transaction:
+   create/adopt USER message + PlanningCommand(READY_TO_DISPATCH, deterministic invocation)
+→ outside transaction call Planner with that exact invocation identity
+→ Planner atomically ClaimInvocation in the existing AI invocation owner
+     acquired=true  => this caller alone may reserve + attempt provider transport
+     acquired=false => zero provider transport; inspect exact existing invocation
+→ Workbench terminal CAS:
+     known success             => append one ASSISTANT message + optional proposal + COMPLETE
+     authoritative no-dispatch => FAILED_BEFORE_DISPATCH
+     unresolved dispatch after bounded deadline/grace => PLANNER_UNKNOWN
+```
 
-- known success -> append one assistant message and optional immutable proposal;
-- known no-dispatch failure -> record `FAILED_BEFORE_DISPATCH`, no assistant/proposal;
-- provider/usage outcome unknown -> record `PLANNER_UNKNOWN`, no assistant/proposal and no
-  automatic re-dispatch under this key;
-- same-key replay of UNKNOWN returns UNKNOWN;
-- a user may explicitly send a new message/new key later, which is a new paid planning intent.
+Important replay rules:
 
-Provider invocation, reservation, usage settlement and UNKNOWN remain owned by current
-AI Capability/commercial owners. The Workbench receipt only records the outcome observed by
-this Chat operation.
+- if T0 never committed, there is no message/command;
+- if T0 committed but no AI invocation fact exists, the call is **definitely undispatched** and
+  same-key replay may safely attempt the existing AI `ClaimInvocation`;
+- if an exact AI invocation fact exists with outcome `dispatched`, no Workbench path may issue
+  another provider call. Before `planner_deadline + terminal-write-grace` the request projects
+  `PLANNER_PENDING`; after that bound it CAS-terminalizes the Workbench command as
+  `PLANNER_UNKNOWN`;
+- if the AI invocation becomes terminal but the Workbench assistant/proposal commit was lost,
+  Workbench still does **not** redispatch because the AI ledger does not persist provider text.
+  Until the same bounded grace expires it remains PENDING so the original writer can finish;
+  afterwards it becomes `PLANNER_UNKNOWN`;
+- terminal Workbench receipts replay exactly and never call the planner;
+- a user may explicitly send a new message/new key after UNKNOWN; that is a new paid planning
+  intent, never a retry of the old invocation.
+
+This intentionally preserves the existing AI owner's conservative dispatch boundary: once
+`ClaimInvocation` exists, a crash cannot prove whether transport crossed the process boundary,
+so the old invocation is never re-sent.
+
+Provider invocation, reservation, usage settlement and dispatch UNKNOWN remain owned by current
+AI Capability/commercial owners. The Workbench command owns only message/product replay and the
+bounded PENDING→UNKNOWN decision above.
 
 ## 6. Chat planner contract
 
@@ -337,19 +373,86 @@ PlanningDecision {
 Server code constructs the typed `ExecutionProposal` by combining a READY decision with exact
 freshly authorized work-scope facts.
 
-### 6.2 AI governance
+### 6.2 AI governance — exact existing-owner extension
 
-Implement `aiworkbench.Planner` as a narrow port. The concrete Integration adapter reuses the
-existing AI Capability/provider configuration, invocation recorder and commercial point/usage
-ownership.
+Implement `aiworkbench.Planner` as a narrow provider-neutral port. Do **not** reuse
+`grsaitext.AgentTextModel`: that adapter is deliberately AgentRun/tool-shaped and rejects an
+empty Tool set.
 
-It must preserve:
+The minimal admitted extension is:
+
+```text
+internal/aicapability
+  + CapabilityAIWorkbenchChatPlanning = "aiworkbench.chat_planning"
+  + OperationAIWorkbenchChatPlan      = "aiworkbench_chat_plan"
+  + existing InvocationDispatchClaimer / Recorder / ReplayReader
+  + existing usage reservation/settlement
+
+internal/aicapability/store
+  GormInvocationRecorder
+    → same ai_invocations table
+    → ClaimInvocation / FindInvocation / RecordInvocation
+    → priced-text validation accepts exactly:
+         product_agent_decision
+         aiworkbench_chat_plan
+    → planner operation requires AgentRunID == "" and BusinessTaskID == ""
+      while existing Product Agent operation still requires its real AgentRunID
+    → observed-usage structured-output failure is admitted for planner so real token usage
+      is billed even when PlanningDecision JSON is invalid
+
+internal/integration/orgresource
+  GormModelInvocationRepository
+    → same ResourceAIPoint/member-limit owner
+    → ReadModelInvocation accepts only the two admitted priced-text operations
+    → Product Agent reservation BusinessScope = real AgentRunID
+    → Chat planner reservation BusinessScope = "chat-plan:" + invocation_id
+    → existing reserve/finalize/idempotency/resource events remain unchanged
+
+internal/integration/aiworkbench/grsaitext
+  Planner
+    → uses existing openai.Manager + Organization credential resolver
+    → uses the same admitted text route/model and a trusted PlannerPolicy
+    → no Eino, no Commerce Tool definitions, no Knowledge reader
+    → ClaimInvocation
+    → existing ResourceAIPoint reservation
+    → one CompleteText transport
+    → RecordInvocation terminal observation/usage
+    → strict bounded PlanningDecision
+
+internal/app/httpapi current application assembly
+  existing AI manager/recorder/resource adapter + fresh identity
+    → aiworkbench Planner adapter
+    → aiworkbench Service
+    → aiworkbench/httpapi
+```
+
+`PlannerPolicy` is trusted deployment configuration, not browser/model input. It freezes the
+same style of admitted route, point tariff, currency cost estimate, input/output bounds,
+configuration version and code-owned prompt version used by the current governed text path. V1
+may use the same configured provider/model as the Product title Agent, but it has a distinct
+operation/capability/prompt identity and cannot inherit Agent tools.
+
+The planner's exact `InvocationRecord` binds:
+
+- deterministic Workbench `planner_invocation_id`;
+- current Organization/user/effective member;
+- `OperationAIWorkbenchChatPlan`;
+- `CapabilityAIWorkbenchChatPlanning`;
+- exact `planner_input_hash`, prompt/policy/configuration versions and admitted route;
+- frozen point tariff and token maxima;
+- the T0 `planner_started_at`.
+
+This is enough for the existing AI invocation and Resource owners to reject identity drift and
+to reserve/settle the same enterprise/member point pool without inventing a Chat ledger.
+
+The adapter must preserve:
 
 - one provider send maximum per message command;
 - no silent retry/fallback;
-- current model configuration and dispatch authorization;
-- conservative quote/reservation before dispatch;
-- observed usage settlement or current UNKNOWN semantics;
+- current Organization-scoped credential resolution;
+- current route/configuration recheck before transport;
+- conservative ResourceAIPoint reservation before transport;
+- observed usage settlement or existing durable dispatch UNKNOWN;
 - current Organization/member accounting;
 - bounded timeout/input/output;
 - no provider-specific types in `aiworkbench`.
@@ -380,7 +483,10 @@ ExecutionProposal {
   observed_agent_revision
   observed_activation_epoch
   template_ref?
-  knowledge_base_id?
+  knowledge_selection_ref? {
+    knowledge_base_id
+    revision_set_digest
+  }
   created_at
 }
 ```
@@ -400,11 +506,36 @@ Before confirmation, the server freshly validates:
 - existing `listingkit.admin.write`;
 - Agent is still enabled and its activation epoch/revision has not invalidated the proposal;
 - exact template is still active when present;
-- exact optional Knowledge selection is currently readable/active;
+- exact optional Knowledge selection is currently readable/active **and has the same observed
+  revision-set digest**;
 - current AI/point/resource prerequisites.
 
-Any material difference returns `PROPOSAL_STALE` or the current specific authorization/
-availability error. The server never silently rewrites the proposal to “latest”.
+Knowledge owner adds one narrow metadata contract:
+
+```text
+KnowledgeSelectionObserver.ObserveSelection(scope, base_id)
+  -> SelectionRevisionSetRef{BaseID, Digest}
+```
+
+The digest is computed by the Knowledge owner over the current active/readable set, sorted by
+Source ID, including Base fence, Source ID + fence, current-readable Revision ID and parsed-text
+content digest. The observer returns no document text.
+
+For Chat-backed execution, `knowledge.ContextRequest` also carries the proposal's
+`ExpectedRevisionSetDigest`. The existing Knowledge `Materialize` transaction, while holding
+the same Base/Source lifecycle locks used to choose readable revisions, recomputes the
+revision-set digest and rejects a mismatch with `KNOWLEDGE_SELECTION_CHANGED` **before** it
+creates/adopts a bundle. The expected digest participates in the materialization fingerprint.
+Existing non-Chat Product Agent callers may omit the expected digest and keep their current
+“materialize current readable set” semantics.
+
+Therefore there is no observe→materialize TOCTOU: the proposal stores the observed identity for
+display/staleness, and the actual Knowledge owner enforces that exact identity while selecting
+the revisions that enter the bundle.
+
+Any material difference returns `PROPOSAL_STALE`, `KNOWLEDGE_SELECTION_CHANGED` or the
+current specific authorization/availability error. The server never silently rewrites the
+proposal to “latest”.
 
 Template default Knowledge remains only UI prefill. If the proposal has no Knowledge selection,
 execution remains no-Knowledge.
@@ -447,22 +578,38 @@ is Later.
 ### 8.2 Confirmation and handoff ordering
 
 The explicit confirm operation uses its `Idempotency-Key` as the Product Agent
-`Request.Key`.
+`Request.Key`. Its confirmation fingerprint is the exact
+`(conversation_id, proposal_id, proposal_digest, execution_request_key)` request identity.
 
-Ordering:
+**Replay lookup precedes proposal/dependency freshness checks.**
 
 ```text
-fresh authorization + proposal stale check
-  → existing AgentConfig Prepare using exact proposal + request key
-  → existing Knowledge materialize/adopt if selected
-  → existing complete-prompt Quote preflight (no reservation/provider send)
-  → build exact agent.Request and digest
-  → T1 create/adopt BusinessTask
-  → T2 existing Runtime.Start
-       → existing AgentConfig Guard
-       → existing Store.Claim
-       → current runtime/model/tools
+fresh verified identity / Effective Organization / workbench.chat.use
+  → lookup BusinessTask by (org, actor, execution_request_key)
+      found:
+        compare stored confirmation_fingerprint
+          mismatch → IDEMPOTENCY_CONFLICT
+          match    → return the existing BusinessTask + current safe projection
+                     (no proposal-stale / Agent-enabled / template / Knowledge preflight)
+      not found:
+        → verify Conversation ACTIVE + proposal is latest/exact
+        → existing Product + workbench.agent.use + listingkit.admin.write authorization
+        → existing AgentConfig Prepare using exact proposal + request key
+        → existing Knowledge Materialize with ExpectedRevisionSetDigest if selected
+        → existing complete-prompt Quote preflight (no reservation/provider send)
+        → build exact agent.Request and digest
+        → T1 create BusinessTask
+        → T2 existing Runtime.Start
+             → existing AgentConfig Guard
+             → existing Store.Claim
+             → current runtime/model/tools
 ```
+
+The existing-task replay still freshly authorizes the caller as the original
+Organization/actor and `workbench.chat.use`/task ownership. It does **not** require the Agent,
+template or Knowledge to remain executable merely to return an already committed receipt.
+Protected Product/Knowledge/Review details in the projection are independently reauthorized and
+redacted when unavailable.
 
 Why T1 and T2 are deliberately **not** one transaction:
 
@@ -486,32 +633,78 @@ execution identity is `IDEMPOTENCY_CONFLICT`.
 | before config/Knowledge preflight completes | no BusinessTask, no Agent Claim/provider work |
 | after immutable config/Knowledge refs, before T1 | no BusinessTask; same confirm key adopts exact refs on retry |
 | after T1, before Agent Claim | BusinessTask remains; projection = `ERROR / START_NOT_CLAIMED`; explicit retry-start may continue exact handoff |
-| Agent Claim committed, HTTP response lost | task read resolves exact run; retry-start/confirm adopts same Agent receipt; no duplicate run |
+| Agent Claim committed and terminal Commit exists, HTTP response lost | same-key confirm/task read resolves exact terminal run; no duplicate run |
+| process crashes after Agent Claim while durable row is still RUNNING | never call Start again for that claimed run. Before the original run deadline + grace, project RUNNING/uncertain. After the bound, use the Agent owner's stale-running finalizer (§8.5); terminalize to `execution_outcome_unknown` with zero redispatch. |
 | Guard rejects activation/template/ceiling after T1 | task remains ERROR with safe reason; no Claim/provider work |
 | model outcome UNKNOWN after Claim | Agent owner remains UNKNOWN authority; task projects ERROR/unknown, no Chat retry owner |
 | process restart | Conversation/Task survive; exact Task refs reconstruct the same Request and existing Store remains run authority |
 
 No automatic background retry/reconciler is introduced.
 
-### 8.4 Explicit retry-start
+### 8.4 Explicit start/reconcile action
 
-Provide a bounded user action only for a BusinessTask whose exact Agent execution has not been
-claimed:
+Provide one bounded action:
 
 ```text
 POST /api/v1/workbench/tasks/{task_id}/start
 ```
 
 It accepts no replacement Product/template/Knowledge selection and no new execution key.
-The server:
 
-1. fresh-authorizes the exact Task scope;
-2. reloads exact proposal/config/context refs;
-3. rebuilds the same Agent Request and verifies `execution_request_digest`;
-4. calls existing `Runtime.Start`.
+The server fresh-authorizes the exact Task scope, rebuilds/verifies the exact stored Request, and
+then branches on the current Agent owner:
 
-If the proposal/config is no longer admissible, it fails visibly. Changing scope/config requires
-a new Chat proposal and new BusinessTask.
+1. **no exact AgentRun exists**: call existing `Runtime.Start`; all current Guard checks still
+   apply;
+2. **exact AgentRun is terminal/interrupted/review-required**: return its current projection;
+   never call Start again;
+3. **exact AgentRun is RUNNING and still inside its original deadline + grace**: return RUNNING /
+   operation-in-progress; zero redispatch;
+4. **exact AgentRun is RUNNING past deadline + grace**: call the Agent stale-running finalizer
+   in §8.5; zero redispatch.
+
+Changing scope/config requires a new Chat proposal and new BusinessTask.
+
+### 8.5 Existing Agent owner: stale RUNNING terminalization
+
+The current Runtime persists `RUNNING` in `Store.Claim` before synchronous graph execution and
+persists its terminal/checkpoint state only at final `Store.Commit`. A process crash can
+therefore leave a durable RUNNING row forever. Slice E does not reinterpret that row as safe to
+resume or Start again.
+
+Add one bounded owner operation to `internal/agent` / existing PostgreSQL Agent store:
+
+```text
+StopReason:
+  execution_outcome_unknown
+
+RunningFinalizer.FinalizeExpiredRunning(
+  scope, exact binding, request_key, observed_revision, now
+) -> Record
+```
+
+Contract:
+
+- it never invokes model/tools/provider and never reconstructs an Eino graph;
+- it is eligible only when the exact durable row is still `RUNNING`;
+- `now` must be later than the persisted `Deadline + 30s` commit grace;
+- it locks/CASes the same run row at the observed revision;
+- it preserves RunID, Scope, Request, Fingerprint, StartedAt, Deadline and all durable fields;
+- it writes `STOPPED / execution_outcome_unknown`, increments Revision and stores no checkpoint;
+- it does not invent a `PendingInvocationID` or provider outcome that was never durable;
+- if the normal Runtime terminal Commit won first, the finalizer returns/adopts that terminal
+  record;
+- if the finalizer wins, any late Runtime Commit loses CAS and cannot rewrite the terminal fact.
+
+This is a minimal repair of the existing Agent owner's crash window, not a Workbench recovery
+engine. It is triggered only by an explicit Task start/reconcile action (and may also be tested
+directly); V1 adds no background scanner/reconciler.
+
+A task terminalized this way is `ERROR / EXECUTION_OUTCOME_UNKNOWN`. The same BusinessTask may
+never execute again because provider/tool side effects during the lost process are not safely
+known. The user must create/confirm a **new BusinessTask/new execution key** if they decide to
+try the business goal again. Existing AI invocation/provider recovery, when available, remains
+its own owner and does not grant Agent redispatch.
 
 ## 9. BusinessTaskProjection — no second runtime state machine
 
@@ -534,10 +727,12 @@ Deterministic precedence:
 3. exact Review `pending|accepted` -> WAITING_CONFIRMATION;
 4. Agent `human_review_required` -> WAITING_CONFIRMATION;
 5. Agent `interrupted` -> PAUSED;
-6. Agent `running` -> RUNNING;
-7. Agent `stopped` -> ERROR with safe stop-reason mapping;
-8. BusinessTask exists but no exact AgentRun -> ERROR / START_NOT_CLAIMED;
-9. owner facts are corrupt/unavailable -> projection unavailable; never invent success.
+6. Agent `running` and now <= persisted Deadline + 30s grace -> RUNNING;
+7. Agent `running` past Deadline + grace -> ERROR / EXECUTION_OUTCOME_UNKNOWN with only the
+   explicit start/reconcile action; projection itself does not mutate the run;
+8. Agent `stopped` -> ERROR with safe stop-reason mapping;
+9. BusinessTask exists but no exact AgentRun -> ERROR / START_NOT_CLAIMED;
+10. owner facts are corrupt/unavailable -> projection unavailable; never invent success.
 
 An accepted Review without Apply remains WAITING_CONFIRMATION because the explicit Product write
 has not happened.
@@ -745,14 +940,20 @@ No fake task count, progress percentage, elapsed estimate, Store association or 
 | --- | --- |
 | duplicate Conversation create | same key/same fingerprint replays same Conversation |
 | same key changed create/message | 409 IDEMPOTENCY_CONFLICT |
-| duplicate user message | one USER message, at most one planning dispatch |
+| duplicate user message | one USER message; deterministic planner invocation; existing AI ClaimInvocation grants at most one provider attempt |
+| crash after USER/command commit but before AI Claim | exact AI invocation absent proves no dispatch; same-key replay may safely claim once |
+| concurrent planner request loses AI Claim | zero provider send; returns PENDING/terminal replay from same invocation identity |
 | planner no-dispatch failure | durable user message + failure receipt; no assistant/proposal |
-| planner outcome unknown | durable user message + UNKNOWN receipt; no automatic re-dispatch |
+| planner invocation remains dispatched past deadline/grace | durable user message + PLANNER_UNKNOWN; no automatic re-dispatch |
+| terminal AI fact but assistant/proposal commit was lost | bounded PENDING then PLANNER_UNKNOWN; provider output is not fabricated or re-sent |
 | new user message after READY proposal | old proposal becomes PROPOSAL_STALE |
-| Agent/template/Knowledge changes before confirm | fail before BusinessTask or return stale/owner error |
-| task T1 commit then process crash | task projects START_NOT_CLAIMED; explicit retry-start uses same exact handoff |
+| selected Knowledge readable revision set changes before confirm | Knowledge Materialize rejects expected revision-set digest before BusinessTask |
+| first-time Agent/template/Knowledge changes before confirm | fail before BusinessTask or return stale/owner error |
+| same-key confirm after BusinessTask already committed | existing Task/fingerprint is resolved before proposal freshness; return receipt/projection even if later message/disable/change occurred |
+| task T1 commit then process crash before Claim | task projects START_NOT_CLAIMED; explicit start uses same exact handoff |
 | Guard rejects after T1 | task ERROR; zero new provider work |
-| Agent Claim succeeds then HTTP response lost | task resolves same AgentRun; retry adopts receipt |
+| Agent terminal Commit exists then HTTP response lost | task resolves same terminal AgentRun; retry adopts receipt |
+| process crash after Agent Claim leaves RUNNING | no Start/Resume redispatch; RUNNING until deadline+grace, then explicit Agent-owner CAS finalizes execution_outcome_unknown |
 | Agent interrupted | PAUSED; existing Resume action only |
 | Review pending/accepted | WAITING_CONFIRMATION |
 | Review rejected | COMPLETED / rejected |
@@ -812,9 +1013,10 @@ Implementation must use existing test infrastructure; do not build a new verific
 | --- | --- |
 | Domain contracts | Conversation append-only/CAS/bounds; proposal immutable/digest/staleness; Task exact identities. |
 | PostgreSQL | real isolated PG schema/ACL; org+actor isolation; command idempotency; concurrent sequence allocation; task same-key replay. |
-| Planner | no tools; max one dispatch/key; no-dispatch vs UNKNOWN; current AI usage/points; strict structured output. |
-| Confirm | stale Product/Agent/template/Knowledge; config/Knowledge exact refs; T1 task then T2 Claim crash windows; same-key adoption. |
-| Agent integration | no duplicate run; guarded Start/Resume unchanged; ceiling/disable/Knowledge fences still block work. |
+| Planner | deterministic pre-dispatch invocation identity; concurrent same-key claim; crash before/after AI Claim; no tools; max one provider attempt/key; no-dispatch vs PENDING/UNKNOWN; new planning operation through current AI invocation + ResourceAIPoint owners; strict structured output. |
+| Knowledge proposal fence | revision-set observer digest; source promotion after READY; Materialize expected-digest check under lifecycle locks; no-Knowledge unchanged. |
+| Confirm | existing-task replay before stale checks; changed same-key conflict; stale Product/Agent/template/Knowledge on first confirm; config/Knowledge exact refs; T1 task then T2 Claim crash windows. |
+| Agent integration | no duplicate run; crash after Claim leaves RUNNING; before deadline no redispatch; after grace stale-running CAS finalizer; late normal Commit race; ceiling/disable/Knowledge fences unchanged. |
 | Projection | exact precedence for running/interrupted/review states/stopped/no-run/UNKNOWN; protected detail redaction. |
 | Review | run -> existing review operation correlation; pending/accepted/rejected/applied mapping; Apply remains current owner. |
 | HTTP/RBAC | strict JSON/limits/ETag/idempotency; other actor/org unknown-equivalent; read vs use vs execution permissions. |
@@ -828,11 +1030,12 @@ NOT_RUN unless separately authorized.
 ## 20. Architecture admission checklist
 
 - [x] Product outcome and one executable V1 kind are bounded.
-- [x] Conversation/messages/idempotency/UNKNOWN semantics are frozen.
-- [x] Planner is no-tool/no-side-effect and reuses existing AI governance.
-- [x] ExecutionProposal exact/stale semantics are frozen.
+- [x] Conversation/messages idempotency has a deterministic durable pre-dispatch planner identity and bounded PENDING/UNKNOWN replay.
+- [x] Planner no-tool path has an implementable contract → existing AI invocation/resource owners → adapter → application injection → consumer map.
+- [x] ExecutionProposal exact/stale semantics include Knowledge readable revision-set identity enforced by the Knowledge owner.
 - [x] BusinessTask fact boundary is intent/handoff only, not runtime lifecycle.
-- [x] BusinessTask → existing Agent Start crash/replay semantics are frozen without Saga.
+- [x] Same-key confirmation resolves an existing BusinessTask before first-time freshness checks.
+- [x] BusinessTask → Agent Start crash/replay includes the existing Agent Claim-before-Commit crash window and non-redispatching stale-running finalization.
 - [x] deterministic Task projection precedence is frozen.
 - [x] Product Review correlation stays with Review owner.
 - [x] Task Center cutover preserves truthful current source projections without migration.
