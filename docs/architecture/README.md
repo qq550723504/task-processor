@@ -137,11 +137,11 @@ source of truth for long-lived rules.
     to main; rollout/provider use remain separately gated.
 
 - [`product-agent-text-provider-neutral-v1.md`](./product-agent-text-provider-neutral-v1.md)
-  - DRAFT / NOT IMPLEMENTATION_READY #573 candidate for organization-scoped,
+  - IMPLEMENTATION_READY #573 architecture for organization-scoped,
     provider-neutral title text admission over OpenAI-compatible routes. The
     user's new supplier decision supersedes the old GRSAI-only requirement;
-    actual text execution waits for independent architecture review and
-    route-specific metering, limits, pricing and paid-call authorization.
+    actual paid execution still requires route-specific metering, limits,
+    pricing and paid-call authorization.
 
 - [`account-audit-summary-v1.md`](./account-audit-summary-v1.md)
   - IMPLEMENTATION_READY #478 four true Account Audit totals over the complete
