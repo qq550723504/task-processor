@@ -21,6 +21,64 @@ beforeAll(() => {
 });
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); vi.restoreAllMocks(); state.switching = false; state.org = "org";state.counts={total:1,active:1,administrators:0,inactive:0}; sessionStorage.clear(); });
 function page(client = new QueryClient()) { vi.stubGlobal("fetch",withAdditionalReads(globalThis.fetch)); clients.push(client); return <QueryClientProvider client={client}><MembersPage expectedUserId="actor" /></QueryClientProvider>; }
+it("opens directory search and both filters for read-only members",async()=>{
+  vi.stubGlobal("fetch",vi.fn().mockResolvedValue(Response.json(result)));render(page());
+  await screen.findByText("成员甲");
+  expect(screen.getByRole("textbox",{name:"搜索成员"})).toBeEnabled();
+  expect(screen.getByRole("combobox",{name:"角色筛选"})).toBeEnabled();
+  expect(screen.getByRole("combobox",{name:"状态筛选"})).toBeEnabled();
+});
+it("searches beyond page one, combines filters, and keeps controls after zero matches",async()=>{
+  const last={...result.items[0],id:"grant-last",userId:"member-last",displayName:"目录目标",roles:["listingkit_operator"]};
+  const calls=vi.fn((path:string)=>{
+    const url=new URL(path,"http://localhost");const q=url.searchParams.get("q");
+    if(url.pathname.endsWith("/grant-last"))return Promise.resolve(Response.json({...result,items:[last]}));
+    if(q==="missing")return Promise.resolve(Response.json({...result,total:0,items:[]}));
+    if(q==="目标")return Promise.resolve(Response.json({...result,total:1,items:[last]}));
+    return Promise.resolve(Response.json({...result,total:21,items:url.searchParams.get("offset")==="20"?[last]:result.items}));
+  });
+  vi.stubGlobal("fetch",calls);render(page());const user=userEvent.setup();
+  await user.click(await screen.findByRole("button",{name:"下一页"}));
+  expect(await screen.findByText("目录目标")).toBeVisible();
+  await user.type(screen.getByRole("textbox",{name:"搜索成员"}),"目标");
+  await user.click(screen.getByRole("button",{name:"搜索"}));
+  await waitFor(()=>expect(screen.getByText("第 1 页")).toBeVisible());
+  await user.selectOptions(screen.getByRole("combobox",{name:"角色筛选"}),"listingkit_operator");
+  await user.selectOptions(screen.getByRole("combobox",{name:"状态筛选"}),"active");
+  await waitFor(()=>expect(calls.mock.calls.some(([path])=>{const p=new URL(path,"http://localhost").searchParams;return p.get("q")==="目标"&&p.get("role")==="listingkit_operator"&&p.get("state")==="active"&&p.get("offset")==="0";})).toBe(true));
+  expect(await screen.findByText("筛选结果 · 1 位成员")).toBeVisible();
+  await user.click(screen.getByRole("button",{name:"查看详情"}));
+  await waitFor(()=>expect(calls.mock.calls.some(([path])=>path.endsWith("/grant-last"))).toBe(true));
+  await user.clear(screen.getByRole("textbox",{name:"搜索成员"}));await user.type(screen.getByRole("textbox",{name:"搜索成员"}),"missing");await user.click(screen.getByRole("button",{name:"搜索"}));
+  expect(await screen.findByRole("heading",{name:"没有匹配的成员"})).toBeVisible();
+  expect(screen.queryByText("目录目标")).not.toBeInTheDocument();
+  expect(screen.getByRole("combobox",{name:"角色筛选"})).toBeEnabled();
+  await user.click(screen.getByRole("button",{name:"清除筛选"}));
+  expect(await screen.findByText("成员甲")).toBeVisible();expect(screen.getByRole("textbox",{name:"搜索成员"})).toHaveValue("");
+  expect(screen.getByRole("combobox",{name:"角色筛选"})).toHaveValue("");expect(screen.getByRole("combobox",{name:"状态筛选"})).toHaveValue("");
+});
+it("cancels old filter results and leaves controls usable after read failure",async()=>{
+  let complete!:(response:Response)=>void;let oldSignal:AbortSignal|undefined;
+  vi.stubGlobal("fetch",vi.fn((path:string,init?:RequestInit)=>{
+    const q=new URL(path,"http://localhost").searchParams.get("q");
+    if(q==="old"){oldSignal=init?.signal as AbortSignal;return new Promise<Response>(resolve=>{complete=resolve;});}
+    if(q==="failed")return Promise.resolve(Response.json({code:"DEPENDENCY_UNAVAILABLE",message:"",requestId:"",fieldErrors:[]},{status:503}));
+    if(q==="new")return Promise.resolve(Response.json({...result,items:[{...result.items[0],displayName:"新查询成员"}]}));
+    return Promise.resolve(Response.json(result));
+  }));
+  render(page());const user=userEvent.setup();await screen.findByText("成员甲");
+  const input=screen.getByRole("textbox",{name:"搜索成员"});
+  await user.type(input,"old");await user.click(screen.getByRole("button",{name:"搜索"}));
+  expect(screen.queryByText("成员甲")).not.toBeInTheDocument();
+  await user.clear(input);await user.type(input,"new");await user.click(screen.getByRole("button",{name:"搜索"}));
+  expect(await screen.findByText("新查询成员")).toBeVisible();expect(oldSignal?.aborted).toBe(true);
+  await act(async()=>complete(Response.json({...result,items:[{...result.items[0],displayName:"旧查询成员"}]})));
+  expect(screen.queryByText("旧查询成员")).not.toBeInTheDocument();
+  await user.clear(input);await user.type(input,"failed");await user.click(screen.getByRole("button",{name:"搜索"}));
+  expect(await screen.findByRole("heading",{name:"成员服务暂不可用"})).toBeVisible();
+  expect(screen.queryByText("新查询成员")).not.toBeInTheDocument();expect(input).toBeEnabled();
+  await user.click(screen.getByRole("button",{name:"清除筛选"}));expect(await screen.findByText("成员甲")).toBeVisible();
+});
 it("does not report an unread retained receipt as UNKNOWN after returning to the page", async () => {
   const unknown = "4841d296-ef14-4c16-8d25-a7667e534feb", completed = "ea0390e6-6fd0-4834-8e9c-277caf59c122";
   const retained = JSON.stringify([unknown, completed].map((key, index) => ({key, kind:"role", target:`grant-${index}`, input:{role:"listingkit_operator",expectedVersion:"a".repeat(64)}})));
@@ -228,6 +286,32 @@ it("clears the member directory immediately during an org switch", async () => {
   const tree = page(); const view = render(tree); expect(await screen.findByText("成员甲")).toBeVisible();
   state.switching = true; view.rerender(page());
   expect(screen.queryByText("成员甲")).not.toBeInTheDocument();
+});
+it("resets applied filters and search draft when the enterprise changes", async () => {
+  const calls=vi.fn((path:string,init?:RequestInit)=>Promise.resolve(Response.json({...result,organizationId:(init?.headers as Headers).get("X-Expected-Organization-ID"),items:[{...result.items[0],organizationId:(init?.headers as Headers).get("X-Expected-Organization-ID")}]})));
+  vi.stubGlobal("fetch",calls);const client=new QueryClient();const view=render(page(client));const user=userEvent.setup();
+  await screen.findByText("成员甲");await user.type(screen.getByRole("textbox",{name:"搜索成员"}),"成员");await user.click(screen.getByRole("button",{name:"搜索"}));
+  await user.selectOptions(screen.getByRole("combobox",{name:"角色筛选"}),"listingkit_viewer");await user.selectOptions(screen.getByRole("combobox",{name:"状态筛选"}),"active");
+  await screen.findByText("筛选结果 · 1 位成员");
+  state.org="new-org";view.rerender(page(client));await screen.findByText("成员甲");
+  expect(screen.getByRole("textbox",{name:"搜索成员"})).toHaveValue("");expect(screen.getByRole("combobox",{name:"角色筛选"})).toHaveValue("");expect(screen.getByRole("combobox",{name:"状态筛选"})).toHaveValue("");
+  const requests=calls.mock.calls.filter(([,init])=>(init?.headers as Headers).get("X-Expected-Organization-ID")==="new-org");
+  expect(requests.length).toBeGreaterThan(0);expect(requests[0][0]).toBe("/api/account/members?limit=20&offset=0");
+});
+it("keeps filter changes disabled during an existing member role mutation", async () => {
+  let finish!:(response:Response)=>void;
+  const directory={...result,canManage:true,assignableRoles:["listingkit_viewer","listingkit_operator"],items:[{...result.items[0],canChangeRole:true}]};
+  vi.stubGlobal("fetch",withAdditionalReads(vi.fn((path:string,init?:RequestInit)=>{
+    if(init?.method==="POST")return new Promise<Response>(resolve=>{finish=resolve;});
+    if(path.includes("member-operations"))return Promise.resolve(Response.json({schemaVersion:"membership-operations-v1",userId:"actor",organizationId:"org",items:[],next:""}));
+    return Promise.resolve(Response.json(directory));
+  })));
+  render(page());const user=userEvent.setup();await user.click(await screen.findByRole("button",{name:"查看详情"}));
+  await user.selectOptions(await screen.findByRole("combobox",{name:"新的成员角色"}),"listingkit_operator");await user.click(screen.getByRole("button",{name:"保存角色"}));
+  await waitFor(()=>expect(finish).toBeDefined());
+  expect(screen.getByRole("textbox",{name:"搜索成员"})).toBeDisabled();expect(screen.getByRole("combobox",{name:"角色筛选"})).toBeDisabled();expect(screen.getByRole("combobox",{name:"状态筛选"})).toBeDisabled();expect(screen.getByRole("button",{name:"清除筛选"})).toBeDisabled();
+  await act(async()=>finish(Response.json({code:"DEPENDENCY_UNAVAILABLE",message:"",requestId:"",fieldErrors:[]},{status:503})));
+  await waitFor(()=>expect(screen.getByRole("textbox",{name:"搜索成员"})).toBeEnabled());
 });
 it("sends an invitation after StrictMode effect replay and keeps original-key recovery usable", async () => {
   const calls = vi.fn().mockImplementation((_url, init) => Promise.resolve(init.method === "POST" ? Response.json({code:"DEPENDENCY_UNAVAILABLE",message:"",requestId:"",fieldErrors:[]},{status:503}) : Response.json({...result,canManage:true,assignableRoles:["listingkit_viewer"]})));

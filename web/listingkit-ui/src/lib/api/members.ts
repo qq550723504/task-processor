@@ -123,6 +123,13 @@ export function parseMemberOperations(value: unknown): MemberOperations {
   return parsed.data;
 }
 export type MemberRole = z.infer<typeof role>;
+export const memberListFilterSchema = z.object({
+  q: text(200).refine(value => !/[\p{Cc}\uD800-\uDFFF]/u.test(value))
+    .transform(value => value.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, "")).default(""),
+  role: z.union([role,z.literal("")]).default(""),
+  state: z.enum(["","active","inactive"]).default(""),
+}).strict();
+export type MemberFilters = z.infer<typeof memberListFilterSchema>;
 export type MemberScope = {
   expectedUserId: string;
   expectedOrganizationId: string;
@@ -193,9 +200,13 @@ export const invitationInput = z
 export const roleInput = z.object({ role, expectedVersion: version }).strict();
 export const removeInput = z.object({ expectedVersion: version }).strict();
 
-export function getMembers(scope: MemberScope, offset = 0): Promise<Members> {
+export async function getMembers(scope: MemberScope, offset = 0, filters: Partial<MemberFilters> = {}): Promise<Members> {
+  const parsed = memberListFilterSchema.safeParse(filters);
+  if (!parsed.success || !Number.isInteger(offset) || offset < 0 || offset > 10000) throw new MemberError(400,"INVALID_REQUEST");
+  const query = new URLSearchParams({limit:"20",offset:String(offset)});
+  for (const [key,value] of Object.entries(parsed.data)) if (value) query.set(key,value);
   return requestMembers(
-    `/members?limit=20&offset=${offset}`,
+    `/members?${query}`,
     scope,
     "GET",
     parseMembers,

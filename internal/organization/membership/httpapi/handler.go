@@ -86,7 +86,7 @@ func (h *Handler) Read(c *gin.Context) {
 
 func parsePage(u *url.URL) (membership.PageRequest, error) {
 	page := membership.PageRequest{Limit: 20}
-	if len(u.RawQuery) > 128 || u.ForceQuery {
+	if len(u.RawQuery) > 2048 || u.ForceQuery {
 		return page, membership.ErrInvalidRequest
 	}
 	query, err := url.ParseQuery(u.RawQuery)
@@ -94,7 +94,28 @@ func parsePage(u *url.URL) (membership.PageRequest, error) {
 		return page, membership.ErrInvalidRequest
 	}
 	for key, values := range query {
-		if (key != "limit" && key != "offset") || len(values) != 1 || values[0] == "" {
+		if len(values) != 1 {
+			return page, membership.ErrInvalidRequest
+		}
+		switch key {
+		case "q":
+			page.Filter.Search = values[0]
+			continue
+		case "role", "state":
+			if values[0] == "" {
+				return page, membership.ErrInvalidRequest
+			}
+			if key == "role" {
+				page.Filter.Role = values[0]
+			} else {
+				page.Filter.State = values[0]
+			}
+			continue
+		case "limit", "offset":
+			if values[0] == "" {
+				return page, membership.ErrInvalidRequest
+			}
+		default:
 			return page, membership.ErrInvalidRequest
 		}
 		for _, c := range values[0] {
@@ -112,10 +133,7 @@ func parsePage(u *url.URL) (membership.PageRequest, error) {
 			page.Offset = value
 		}
 	}
-	if page.Limit < 1 || page.Limit > 100 || page.Offset < 0 || page.Offset > 10000 {
-		return page, membership.ErrInvalidRequest
-	}
-	return page, nil
+	return page.Normalize()
 }
 
 func respond(c *gin.Context, result any, err error) {

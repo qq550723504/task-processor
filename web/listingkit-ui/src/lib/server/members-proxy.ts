@@ -4,6 +4,7 @@ import {
   memberSummarySchema,
   memberErrorCode,
   memberId,
+  memberListFilterSchema,
   parseMemberOperation,
   parseMemberOperations,
   parseMembers,
@@ -98,14 +99,15 @@ function endpoint(url: URL, method: string) {
     return { path, operation: false, operations: true, schema: null };
   }
   if (method === "GET" && parts[0] === "members" && parts.length === 1) {
-    if (url.search.length > 128) return null;
+    if (url.search.length > 2049 || url.search.includes(";")) return null;
+    try { for (const part of url.search.slice(1).split("&")) decodeURIComponent(part.replace(/\+/g," ")); } catch { return null; }
     for (const [key, value] of url.searchParams) {
-      if (
-        !["limit", "offset"].includes(key) ||
-        url.searchParams.getAll(key).length !== 1 ||
-        !/^\d+$/.test(value)
-      )
-        return null;
+      if (url.searchParams.getAll(key).length !== 1) return null;
+      if (["q","role","state"].includes(key)) {
+        if (key !== "q" && value === "") return null;
+        continue;
+      }
+      if (!["limit","offset"].includes(key) || !/^\d+$/.test(value)) return null;
       const n = Number(value);
       if (
         (key === "limit" && (n < 1 || n > 100)) ||
@@ -113,6 +115,7 @@ function endpoint(url: URL, method: string) {
       )
         return null;
     }
+    if (!memberListFilterSchema.safeParse({q:url.searchParams.get("q") ?? "",role:url.searchParams.get("role") ?? "",state:url.searchParams.get("state") ?? ""}).success) return null;
     return { path, operation: false, schema: null };
   }
   if (url.search) return null;
