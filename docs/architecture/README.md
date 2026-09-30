@@ -122,6 +122,11 @@ source of truth for long-lived rules.
 
 ## Supporting Context
 
+- [`member-directory-query-v1.md`](./member-directory-query-v1.md)
+  - #575 bounded current Membership query increment: complete display-name/login
+    search, native role/state filtering, filtered totals and paging. IMPLEMENTATION_READY;
+    no new IAM, persistence owner or shared runtime authority.
+
 - [`organization-agent-configuration-v1.md`](./organization-agent-configuration-v1.md)
   - APPROVED / IMPLEMENTATION_READY #570 Slice D: enterprise Agent enablement,
     immutable templates/defaults and start snapshots, capability projections,

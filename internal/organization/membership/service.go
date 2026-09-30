@@ -60,8 +60,9 @@ func (s *Service) List(ctx context.Context, page PageRequest) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if page.Limit < 1 || page.Limit > 100 || page.Offset < 0 || page.Offset > 10000 {
-		return Result{}, ErrInvalidRequest
+	page, err = page.Normalize()
+	if err != nil {
+		return Result{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -78,7 +79,7 @@ func (s *Service) List(ctx context.Context, page PageRequest) (Result, error) {
 	seen := make(map[string]bool)
 	items := make([]Member, 0, len(listed.Items))
 	for _, member := range listed.Items {
-		if !authidentity.IsBoundedIdentifier(member.ID) || !authidentity.IsBoundedIdentifier(member.UserID) || member.OrganizationID != identity.EffectiveOrganizationID || member.ProjectID != s.projectID || seen[member.ID] {
+		if !authidentity.IsBoundedIdentifier(member.ID) || !authidentity.IsBoundedIdentifier(member.UserID) || member.OrganizationID != identity.EffectiveOrganizationID || member.ProjectID != s.projectID || seen[member.ID] || !page.Filter.Matches(member) {
 			return Result{}, ErrInvalidResponse
 		}
 		seen[member.ID] = true
