@@ -29,6 +29,7 @@ var ErrTextNotDispatched = errors.New("text provider request was not dispatched"
 type TextCompletionRequest struct {
 	System, Prompt      string
 	MaximumOutputTokens int
+	OutputLimitField    string
 	// BeforeDispatch rechecks the consumer's live authorization after queueing.
 	// It is an in-process callback, never serialized into provider input.
 	BeforeDispatch func() error `json:"-"`
@@ -39,6 +40,14 @@ type TextCompletionRequest struct {
 type TextCompletionResult struct {
 	ChatCompletionResponse
 	UsageKnown bool
+}
+
+// TextRouteDetails exposes only non-secret configuration needed to match the
+// operator's evidence to the actual endpoint and protocol.
+type TextRouteDetails struct {
+	Route    EffectiveClientRoute
+	Endpoint string
+	APIStyle string
 }
 
 // UsesOrganizationCredentials reports whether absent organization credentials
@@ -53,12 +62,32 @@ func (m *Manager) UsesOrganizationCredentials() bool {
 	return ok && resolver != nil && resolver.organizationScope
 }
 
+// UsesOrganizationOnlyCredentials requires the title route to ignore member
+// overrides while retaining the resolver's fail-closed organization scope.
+func (m *Manager) UsesOrganizationOnlyCredentials() bool {
+	if m == nil {
+		return false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	resolver, ok := m.configResolver.(*GormCredentialResolver)
+	return ok && resolver != nil && resolver.organizationScope && resolver.organizationOnly
+}
+
 func (m *Manager) ResolveTextRoute(ctx context.Context, name string) (EffectiveClientRoute, error) {
-	resolved, err := m.resolveTextConfiguration(ctx, name)
+	details, err := m.ResolveTextRouteDetails(ctx, name)
 	if err != nil {
 		return EffectiveClientRoute{}, err
 	}
-	return resolved.route, nil
+	return details.Route, nil
+}
+
+func (m *Manager) ResolveTextRouteDetails(ctx context.Context, name string) (TextRouteDetails, error) {
+	resolved, err := m.resolveTextConfiguration(ctx, name)
+	if err != nil {
+		return TextRouteDetails{}, err
+	}
+	return TextRouteDetails{Route: resolved.route, Endpoint: resolved.config.BaseURL, APIStyle: resolved.config.APIStyle}, nil
 }
 
 func (m *Manager) resolveTextConfiguration(ctx context.Context, name string) (effectiveClientConfiguration, error) {
@@ -94,7 +123,7 @@ func (m *Manager) CompleteText(ctx context.Context, name string, expected Effect
 			resultErr = errors.Join(ErrTextNotDispatched, resultErr)
 		}
 	}()
-	if input.System == "" || input.Prompt == "" || input.MaximumOutputTokens <= 0 || input.MaximumOutputTokens > 65536 {
+	if input.System == "" || input.Prompt == "" || input.MaximumOutputTokens <= 0 || input.MaximumOutputTokens > 65536 || (input.OutputLimitField != "" && input.OutputLimitField != "max_tokens" && input.OutputLimitField != "max_completion_tokens") {
 		return nil, ErrTextInput
 	}
 	wire, err := json.Marshal(input)
@@ -156,10 +185,16 @@ func completeTextOnce(ctx context.Context, config *ClientConfig, input TextCompl
 	capture := &boundedTextHTTPClient{client: httpClient}
 	sdkConfig.HTTPClient = capture
 	sdk := goopenai.NewClientWithConfig(sdkConfig)
-	response, err := sdk.CreateChatCompletion(ctx, goopenai.ChatCompletionRequest{
-		Model: config.Model, MaxTokens: input.MaximumOutputTokens, Stream: false,
+	request := goopenai.ChatCompletionRequest{
+		Model: config.Model, Stream: false,
 		Messages: []goopenai.ChatCompletionMessage{{Role: "system", Content: input.System}, {Role: "user", Content: input.Prompt}},
-	})
+	}
+	if input.OutputLimitField == "max_completion_tokens" {
+		request.MaxCompletionTokens = input.MaximumOutputTokens
+	} else {
+		request.MaxTokens = input.MaximumOutputTokens
+	}
+	response, err := sdk.CreateChatCompletion(ctx, request)
 	if err != nil {
 		// Raw provider error bodies/URLs can include sensitive input. Only a safe
 		// classification leaves this seam; dispatch/usage ownership stays upstream.
@@ -178,7 +213,7 @@ type boundedTextHTTPClient struct {
 }
 
 func (c *boundedTextHTTPClient) Do(request *http.Request) (*http.Response, error) {
-	// GRSAI requires an explicit stream boolean. The existing SDK marks false
+	// Admitted compatible routes require an explicit stream boolean. The SDK marks false
 	// omitempty, so add only this wire field while retaining SDK serialization,
 	// authentication and response handling. Bound the actual outbound envelope.
 	input, err := io.ReadAll(io.LimitReader(request.Body, MaxTextPromptBytes+1))

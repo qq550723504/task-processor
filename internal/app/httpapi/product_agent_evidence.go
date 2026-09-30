@@ -5,7 +5,7 @@ import (
 
 	"task-processor/internal/agent"
 	"task-processor/internal/commercetool"
-	"task-processor/internal/integration/agent/grsaitext"
+	"task-processor/internal/integration/agent/titletext"
 	"task-processor/internal/product/catalog/tools/canonicalinspect"
 	"task-processor/internal/product/enrichment"
 )
@@ -18,7 +18,7 @@ func agentCandidateEvidenceObserved(b agent.Binding, candidate enrichment.Candid
 		if item.Tool != canonicalinspect.Definition().Ref || item.CallID == "" || item.AuditStatus != commercetool.AuditStatusRecorded || item.InvocationID != "" {
 			continue
 		}
-		raw, err := grsaitext.EvidenceForPrompt(item.Output)
+		raw, err := titletext.EvidenceForPrompt(item.Output)
 		if err != nil {
 			continue
 		}

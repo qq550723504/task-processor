@@ -61,4 +61,4 @@ existing organization credential + operator-controlled text admission profiles
 
 实现自检应覆盖部署者写入组织凭据后当前应用实际读取同一 `ProductAgentDB` 行、轮换使旧 quote 失效且不泄露 Key；两个企业各自使用不同供应商身份/模型的受控兼容服务，验证 Quote、Decide、发送前重查与 ledger 的真实路由归属及跨企业隔离；同企业成员行不能覆盖标题组织行，组织行缺失/禁用时不可落到成员行或全局配置；`text.generate` 的 `AVAILABLE`、`NEEDS_CONFIGURATION`、`UNAVAILABLE` 与可修复来源一致；配置或价格切换在 claim 前失败；usage 缺失、超过上界及发送后未知保持未决；不支持的按次/附加收费 route 在 claim 前拒绝；权限撤销不发送；原 GRSAI 路径不回归。仅 fixture 的第二供应商验证可替换性，不宣称其真实服务可用。实际 GRSAI 或另一供应商的付费试用还需该 route 的可信上界与计量证据、产品点数费率、调用预算和单独授权。用户试用标题→Review→Apply 的结果与实现自检/CI 分开记录。
 
-当前状态：可进入按合同实现；尚无新增生产代码、schema、付费调用或用户验收。
+当前状态：按合同实现的代码候选已在 PR #580；没有新增 schema、付费调用或用户验收。每条实际供应商 route 仍须完成准入证据、点数费率、预算及调用授权。

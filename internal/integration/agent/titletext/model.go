@@ -1,4 +1,4 @@
-package grsaitext
+package titletext
 
 import (
 	"context"
@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"reflect"
+	"strings"
 	"time"
 
 	"task-processor/internal/agent"
@@ -26,6 +28,11 @@ import (
 type AgentTextPolicy struct {
 	PointPricing                                                       *aicapability.ModelPointTariff `json:"pointPricing,omitempty"`
 	ClientName, PolicyVersion, PricingVersion, BoundEvidence, Currency string
+	ProviderID                                                         string
+	Endpoint, APIStyle                                                 string
+	OutputLimitField                                                   string
+	InputWindowTokens, OutputWindowTokens                              int64
+	MaximumOutputTokens                                                int
 	InputMicrosPerMillion, OutputMicrosPerMillion                      int64
 	AdmittedRoute                                                      openai.EffectiveClientRoute
 }
@@ -39,8 +46,48 @@ func (p AgentTextPolicy) ValidatePointPricing() error {
 	if !p.PointPricing.Valid() {
 		return agent.ErrUnavailable
 	}
-	_, err := p.PointPricing.Points(agentInputWindow, agentOutputWindow)
+	_, err := p.PointPricing.Points(p.InputWindowTokens, p.OutputWindowTokens)
 	return err
+}
+
+func (p AgentTextPolicy) Validate() error {
+	for _, value := range []string{p.ClientName, p.PolicyVersion, p.PricingVersion, p.BoundEvidence, p.ProviderID} {
+		if !agent.ValidID(value) {
+			return agent.ErrUnavailable
+		}
+	}
+	if len(p.Currency) != 3 || (p.OutputLimitField != "max_tokens" && p.OutputLimitField != "max_completion_tokens") || p.InputWindowTokens <= 0 || p.InputWindowTokens > agentInputWindow || p.OutputWindowTokens <= 0 || p.OutputWindowTokens > agentOutputWindow || p.MaximumOutputTokens <= 0 || int64(p.MaximumOutputTokens) > p.OutputWindowTokens {
+		return agent.ErrUnavailable
+	}
+	if p.InputMicrosPerMillion <= 0 || p.InputMicrosPerMillion > 1e12 || p.OutputMicrosPerMillion <= 0 || p.OutputMicrosPerMillion > 1e12 || p.PointPricing == nil || p.ValidatePointPricing() != nil {
+		return agent.ErrUnavailable
+	}
+	if p.AdmittedRoute.ModelID == "" || p.AdmittedRoute.CredentialReference != p.ClientName || p.AdmittedRoute.ConfigurationVersion == "" || (p.AdmittedRoute.ProviderID != "openai" && p.AdmittedRoute.ProviderID != p.ProviderID) {
+		return agent.ErrUnavailable
+	}
+	if len(p.Endpoint) > 2048 || strings.TrimSpace(p.Endpoint) != p.Endpoint || !supportedTextAPIStyle(p.APIStyle) {
+		return agent.ErrUnavailable
+	}
+	endpoint, err := url.Parse(p.Endpoint)
+	if err != nil || endpoint.Hostname() == "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" || (endpoint.Scheme != "https" && (endpoint.Scheme != "http" || !isLoopbackTextEndpoint(endpoint.Hostname()))) {
+		return agent.ErrUnavailable
+	}
+	return nil
+}
+
+func (p AgentTextPolicy) UpperBound() (tokens, costMicros int64, err error) {
+	if err := p.Validate(); err != nil {
+		return 0, 0, err
+	}
+	return p.InputWindowTokens + p.OutputWindowTokens, cost(p, p.InputWindowTokens, p.OutputWindowTokens), nil
+}
+
+func supportedTextAPIStyle(style string) bool {
+	return style == "openai" || style == "openai-compatible" || style == "grsai"
+}
+
+func isLoopbackTextEndpoint(host string) bool {
+	return strings.EqualFold(host, "localhost") || host == "127.0.0.1" || host == "::1"
 }
 
 type AgentInvocationLedger interface {
@@ -53,28 +100,33 @@ type AgentTextModel struct {
 	knowledge     KnowledgeContext
 	manager       *openai.Manager
 	ledger        AgentInvocationLedger
-	policy        AgentTextPolicy
+	policies      map[string]AgentTextPolicy
 	tools         []commercetool.ToolRef
 	freshIdentity func(context.Context) (authidentity.AuthenticatedIdentity, error)
 }
 
-func NewAgentTextModel(manager *openai.Manager, ledger AgentInvocationLedger, policy AgentTextPolicy, tools []commercetool.ToolRef, freshIdentity func(context.Context) (authidentity.AuthenticatedIdentity, error), contexts ...KnowledgeContext) (*AgentTextModel, error) {
+func NewAgentTextModel(manager *openai.Manager, ledger AgentInvocationLedger, policies map[string]AgentTextPolicy, tools []commercetool.ToolRef, freshIdentity func(context.Context) (authidentity.AuthenticatedIdentity, error), contexts ...KnowledgeContext) (*AgentTextModel, error) {
 	if manager == nil || ledger == nil || freshIdentity == nil || len(tools) == 0 {
 		return nil, agent.ErrUnavailable
 	}
 	// This consumer requires current Organization credentials, with no global
 	// credential fallback. Unit tests also use the real scoped resolver.
-	if !manager.UsesOrganizationCredentials() {
+	if !manager.UsesOrganizationOnlyCredentials() {
 		return nil, agent.ErrUnavailable
 	}
-	if policy.PointPricing != nil {
-		if policy.ValidatePointPricing() != nil {
+	if len(policies) == 0 || len(policies) > 64 {
+		return nil, agent.ErrUnavailable
+	}
+	frozenPolicies := make(map[string]AgentTextPolicy, len(policies))
+	for organizationID, policy := range policies {
+		if !agent.ValidID(organizationID) || policy.Validate() != nil {
 			return nil, agent.ErrUnavailable
 		}
 		frozen := *policy.PointPricing
 		policy.PointPricing = &frozen
+		frozenPolicies[organizationID] = policy
 	}
-	model := &AgentTextModel{manager: manager, ledger: ledger, policy: policy, tools: append([]commercetool.ToolRef(nil), tools...), freshIdentity: freshIdentity}
+	model := &AgentTextModel{manager: manager, ledger: ledger, policies: frozenPolicies, tools: append([]commercetool.ToolRef(nil), tools...), freshIdentity: freshIdentity}
 	if len(contexts) > 1 {
 		return nil, agent.ErrUnavailable
 	}
@@ -101,9 +153,77 @@ type preparedAgentText struct {
 	knowledge *k.ContextBundle
 	ctx       context.Context
 	identity  authidentity.AuthenticatedIdentity
+	policy    AgentTextPolicy
 	route     openai.EffectiveClientRoute
 	request   openai.TextCompletionRequest
 	quote     agent.Quote
+}
+
+type TextRouteReadiness string
+
+const (
+	TextRouteAvailable          TextRouteReadiness = "AVAILABLE"
+	TextRouteNeedsConfiguration TextRouteReadiness = "NEEDS_CONFIGURATION"
+	TextRouteUnavailable        TextRouteReadiness = "UNAVAILABLE"
+)
+
+// RouteReadiness projects only the current organization's admission state.
+// Invocation still rechecks authorization, route, points and budget at send.
+func (m *AgentTextModel) RouteReadiness(ctx context.Context) TextRouteReadiness {
+	_, readiness := m.resolveAdmission(ctx)
+	return readiness
+}
+
+// RouteReadinessForVerifiedOrganization checks a separately verified current
+// organization without requiring the actor's title-execution permission.
+func (m *AgentTextModel) RouteReadinessForVerifiedOrganization(ctx context.Context, organizationID string) TextRouteReadiness {
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+	if !ok || identity.TenantID != organizationID || identity.EffectiveOrganizationID != organizationID || !identity.TokenExpiresAt.After(time.Now()) {
+		return TextRouteUnavailable
+	}
+	_, _, readiness := m.checkPolicyRoute(ctx, organizationID)
+	return readiness
+}
+
+func (m *AgentTextModel) checkPolicyRoute(ctx context.Context, organizationID string) (AgentTextPolicy, openai.EffectiveClientRoute, TextRouteReadiness) {
+	if m == nil || m.manager == nil || !m.manager.UsesOrganizationOnlyCredentials() || ctx == nil || ctx.Err() != nil {
+		return AgentTextPolicy{}, openai.EffectiveClientRoute{}, TextRouteUnavailable
+	}
+	policy, found := m.policies[organizationID]
+	if !found || policy.Validate() != nil {
+		return AgentTextPolicy{}, openai.EffectiveClientRoute{}, TextRouteUnavailable
+	}
+	details, err := m.manager.ResolveTextRouteDetails(ctx, policy.ClientName)
+	if err != nil {
+		if errors.Is(err, openai.ErrClientConfigurationUnavailable) || errors.Is(err, openai.ErrClientConfigurationUnsupported) {
+			return policy, openai.EffectiveClientRoute{}, TextRouteNeedsConfiguration
+		}
+		return policy, openai.EffectiveClientRoute{}, TextRouteUnavailable
+	}
+	if details.Route != policy.AdmittedRoute || details.Endpoint != policy.Endpoint || details.APIStyle != policy.APIStyle {
+		return policy, details.Route, TextRouteNeedsConfiguration
+	}
+	return policy, details.Route, TextRouteAvailable
+}
+
+func (m *AgentTextModel) resolveAdmission(ctx context.Context) (preparedAgentText, TextRouteReadiness) {
+	var p preparedAgentText
+	if m == nil || m.manager == nil || !m.manager.UsesOrganizationOnlyCredentials() || ctx == nil || ctx.Err() != nil {
+		return p, TextRouteUnavailable
+	}
+	original, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+	if !ok || original.TenantID != original.EffectiveOrganizationID {
+		return p, TextRouteUnavailable
+	}
+	identity, err := m.freshIdentity(ctx)
+	if err != nil || identity.UserID != original.UserID || identity.TenantID != original.EffectiveOrganizationID || identity.EffectiveOrganizationID != identity.TenantID || !agent.ValidID(identity.EffectiveMemberID) || !identity.TokenExpiresAt.After(time.Now()) {
+		return p, TextRouteUnavailable
+	}
+	p.identity = identity
+	p.ctx = authidentity.WithAuthenticatedIdentity(ctx, identity)
+	var readiness TextRouteReadiness
+	p.policy, p.route, readiness = m.checkPolicyRoute(p.ctx, identity.EffectiveOrganizationID)
+	return p, readiness
 }
 
 func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (preparedAgentText, error) {
@@ -111,39 +231,25 @@ func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (prep
 	if !in.ContextSnapshotRef.ValidOrAbsent() {
 		return p, agent.ErrInvalid
 	}
-	if m == nil || !m.manager.UsesOrganizationCredentials() || ctx == nil || ctx.Err() != nil || !in.Binding.Valid() || in.PolicyVersion != m.policy.PolicyVersion || !agent.ValidID(in.AgentRunID) || !agent.ValidID(in.PromptVersion) {
+	if ctx == nil || ctx.Err() != nil || !in.Binding.Valid() || !agent.ValidID(in.AgentRunID) || !agent.ValidID(in.PromptVersion) {
 		return p, agent.ErrInvalid
 	}
-	if m.policy.PointPricing == nil || !m.policy.PointPricing.Valid() {
+	var readiness TextRouteReadiness
+	p, readiness = m.resolveAdmission(ctx)
+	if readiness != TextRouteAvailable {
 		return p, agent.ErrUnavailable
 	}
-	if _, err := m.policy.PointPricing.Points(agentInputWindow, agentOutputWindow); err != nil {
-		return p, agent.ErrUnavailable
+	policy := p.policy
+	if in.PolicyVersion != policy.PolicyVersion {
+		return p, agent.ErrInvalid
 	}
-	for _, s := range []string{m.policy.ClientName, m.policy.PolicyVersion, m.policy.PricingVersion, m.policy.BoundEvidence} {
-		if !agent.ValidID(s) {
-			return p, agent.ErrUnavailable
-		}
-	}
-	if len(m.policy.Currency) != 3 || m.policy.InputMicrosPerMillion <= 0 || m.policy.OutputMicrosPerMillion <= 0 || m.policy.InputMicrosPerMillion > 1e12 || m.policy.OutputMicrosPerMillion > 1e12 {
-		return p, agent.ErrUnavailable
-	}
-	original, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
-	identity, err := m.freshIdentity(ctx)
-	if err != nil || !ok || identity.UserID != original.UserID || identity.TenantID != original.EffectiveOrganizationID || identity.EffectiveOrganizationID != identity.TenantID || !agent.ValidID(identity.EffectiveMemberID) || !identity.TokenExpiresAt.After(time.Now()) {
-		return p, agent.ErrUnavailable
-	}
-	p.identity = identity
-	p.ctx = authidentity.WithAuthenticatedIdentity(ctx, identity)
-	p.route, err = m.manager.ResolveTextRoute(p.ctx, m.policy.ClientName)
-	if err != nil || p.route.ProviderID != "grsai" || p.route.ModelID != "gemini-2.5-flash" || p.route != m.policy.AdmittedRoute {
-		return p, agent.ErrUnavailable
-	}
+	identity := p.identity
 	// InvocationID and UpperBound are assigned by runtime after Quote. Everything
 	// the model can consume, including allowed tools, is otherwise hashed whole.
 	in.InvocationID = ""
 	in.UpperBound = agent.Quote{}
 	in.History = append([]agent.Observation(nil), in.History...)
+	var err error
 	for n := range in.History {
 		in.History[n].Output, err = EvidenceForPrompt(in.History[n].Output)
 		if err != nil {
@@ -162,7 +268,7 @@ func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (prep
 	if err != nil {
 		return p, agent.ErrInvalid
 	}
-	p.request = openai.TextCompletionRequest{System: agentTextSystem, Prompt: string(wire), MaximumOutputTokens: 8192}
+	p.request = openai.TextCompletionRequest{System: agentTextSystem, Prompt: string(wire), MaximumOutputTokens: policy.MaximumOutputTokens, OutputLimitField: policy.OutputLimitField}
 	if p.knowledge != nil {
 		p.request.System += "\n" + knowledgeTextSystem
 	}
@@ -176,15 +282,15 @@ func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (prep
 		Route              openai.EffectiveClientRoute
 		Policy             AgentTextPolicy
 		Request            openai.TextCompletionRequest
-	}{identity.TenantID, identity.UserID, identity.EffectiveMemberID, p.route, m.policy, p.request})
-	p.quote = agent.Quote{Tokens: agentInputWindow + agentOutputWindow, CostMicros: m.cost(agentInputWindow, agentOutputWindow), Currency: m.policy.Currency, Known: true, Reference: agentTextHash(reference)}
+	}{identity.TenantID, identity.UserID, identity.EffectiveMemberID, p.route, policy, p.request})
+	p.quote = agent.Quote{Tokens: policy.InputWindowTokens + policy.OutputWindowTokens, CostMicros: cost(policy, policy.InputWindowTokens, policy.OutputWindowTokens), Currency: policy.Currency, Known: true, Reference: agentTextHash(reference)}
 	return p, nil
 }
 
-func (m *AgentTextModel) cost(input, output int64) int64 {
+func cost(policy AgentTextPolicy, input, output int64) int64 {
 	// Each term is rounded UP, avoiding free fractional tokens. Policy limits
 	// and model window bounds make multiplication safe in int64.
-	return (input*m.policy.InputMicrosPerMillion+999999)/1000000 + (output*m.policy.OutputMicrosPerMillion+999999)/1000000
+	return (input*policy.InputMicrosPerMillion+999999)/1000000 + (output*policy.OutputMicrosPerMillion+999999)/1000000
 }
 
 func agentTextHash(raw []byte) string { sum := sha256.Sum256(raw); return hex.EncodeToString(sum[:]) }
@@ -202,9 +308,9 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 	}
 	now := time.Now().UTC()
 	record := aicapability.InvocationRecord{InvocationID: in.InvocationID, AgentRunID: in.AgentRunID, TenantID: p.identity.TenantID, UserID: p.identity.UserID, MemberID: p.identity.EffectiveMemberID, BusinessTaskID: in.Binding.ContextID, TraceID: in.TraceID,
-		PointTariff: *m.policy.PointPricing, MaximumPromptTokens: agentInputWindow, MaximumCompletionTokens: agentOutputWindow,
-		Capability: aicapability.CapabilityProductEnrichText, Operation: aicapability.OperationProductAgentDecision, ProviderID: p.route.ProviderID, ModelID: p.route.ModelID, CredentialReference: p.route.CredentialReference, ConfigurationVersion: p.route.ConfigurationVersion,
-		PolicyVersion: m.policy.PricingVersion, PromptKey: in.AgentID, PromptVersion: in.PromptVersion, PromptHash: agentTextHash([]byte(p.request.System + p.request.Prompt)), InputHash: p.quote.Reference, StartedAt: now, Attempt: 1, Outcome: aicapability.InvocationDispatched, Currency: m.policy.Currency}
+		PointTariff: *p.policy.PointPricing, MaximumPromptTokens: p.policy.InputWindowTokens, MaximumCompletionTokens: p.policy.OutputWindowTokens,
+		Capability: aicapability.CapabilityProductEnrichText, Operation: aicapability.OperationProductAgentDecision, ProviderID: p.policy.ProviderID, ModelID: p.route.ModelID, CredentialReference: p.route.CredentialReference, ConfigurationVersion: p.route.ConfigurationVersion,
+		PolicyVersion: p.policy.PricingVersion, PromptKey: in.AgentID, PromptVersion: in.PromptVersion, PromptHash: agentTextHash([]byte(p.request.System + p.request.Prompt)), InputHash: p.quote.Reference, StartedAt: now, Attempt: 1, Outcome: aicapability.InvocationDispatched, Currency: p.policy.Currency}
 	acquired, err := m.ledger.ClaimInvocation(p.ctx, record)
 	if err != nil || !acquired {
 		return result, agent.ErrUnavailable
@@ -230,13 +336,13 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 		}
 		return nil
 	}
-	response, err := m.manager.CompleteText(p.ctx, m.policy.ClientName, p.route, p.request)
+	response, err := m.manager.CompleteText(p.ctx, p.policy.ClientName, p.route, p.request)
 	m.releaseKnowledge(ctx, permit)
 	permit = k.DispatchPermit{}
 	if errors.Is(err, openai.ErrTextNotDispatched) {
 		return m.notDispatched(ctx, record, "rejected_before_dispatch")
 	}
-	if err != nil || response == nil || !response.UsageKnown || response.Usage.PromptTokens > int(agentInputWindow) || response.Usage.CompletionTokens > int(agentOutputWindow) {
+	if err != nil || response == nil || !response.UsageKnown || response.Usage.PromptTokens > int(p.policy.InputWindowTokens) || response.Usage.CompletionTokens > int(p.policy.OutputWindowTokens) {
 		return result, openai.ErrTextOutcomeUnknown
 	}
 	record.FinishedAt = time.Now().UTC()
@@ -246,7 +352,7 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 	record.CompletionTokens = response.Usage.CompletionTokens
 	record.TotalTokens = response.Usage.TotalTokens
 	record.EstimatedCostKnown = true
-	record.EstimatedCostMicros = m.cost(int64(record.PromptTokens), int64(record.CompletionTokens))
+	record.EstimatedCostMicros = cost(p.policy, int64(record.PromptTokens), int64(record.CompletionTokens))
 	record.Outcome = aicapability.InvocationUsageObservedFailed
 	record.ErrorCategory = aicapability.ErrorStructuredOutputInvalid
 	var action agent.Action
