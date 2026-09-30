@@ -1,6 +1,6 @@
 # #36 已完成本地资料的店铺归属投影
 
-> 状态：**REVIEW_CANDIDATE，尚未 IMPLEMENTATION_READY**（2026-09-30）。本文件是正式业务代码修改前的 Independent Architecture Design Basis；独立评审及 Issue 明确放行前只允许调查与已授权的 test-only 工作。
+> 状态：**IMPLEMENTATION_READY**（2026-09-30）。独立评审按设计修订提交 `222255bcff7442ed779c9c5bd219fd93129619ef` 复核两处增量后确认无未解决 Architecture BLOCKER，见 [#36 独立评审结论](https://github.com/qq550723504/task-processor/issues/36#issuecomment-5902352747)。这仅准入本文件限定的正式实现；当前 502 和真实浏览器/产品验收仍未通过。
 
 ## 用户结果与依据
 
@@ -77,4 +77,4 @@ Legacy decision: **RETIRE** 旧 `general-only` 投影假设、相关旧 DTO/fixt
 
 现有浏览器证据按两条独立业务链执行：先用 #344 的隔离 `product-title-review-fixture.mjs --serve` 运行 `product-title-review-ui.mjs` 主流程，再对**同一隔离数据库**运行 `product-title-review-ui-lifecycle.mjs`，覆盖切企业、取消、卸载后晚到真实响应及切换身份重新授权；该 fixture 的独立 API 检查覆盖 LiveWrite 撤权。主流程真实改变提案状态，完整重跑须新建 fixture。另用 #340 的独立 `shein-diagnostic-fixture.mjs --serve --completed-work` 运行 `title-review-ui-regression.mjs`，核对已完成条目→详情→诊断及宽/窄屏；不能把这条回归当作 Product Review 生命周期证据。两种 fixture 均只用隔离 PostgreSQL 与合成身份/外部替身，须记录实际 SHA、正常停机与清理；真实 IAM、平台、共享环境和产品试用未运行则保持 `NOT_RUN`。开发自检/CI 不能签发用户验收。
 
-独立 Reviewer 先读 #36 当前决定和上述两个独立领域流程，核对 v2 是否准确表达 Listing 历史归属且不越过 Store read，确认无项目定义的 BLOCKER 后，在**本文件与 #36 均显式记录 `IMPLEMENTATION_READY`**。该门槛前不得改生产 DTO/BFF/UI。最终候选再按准确 HEAD 检查真实 diff 和已运行路径；本文件不批准合并、部署、关 Issue 或真实数据操作。
+独立 Reviewer 已读 #36 当前决定和上述两个独立领域流程，按 `222255bcff7442ed779c9c5bd219fd93129619ef` 核对 v2 的 Listing 历史归属、Store read 边界、本地 `action` 语义、Go 实际路径和现有三条浏览器脚本；两处文档问题均归为 `IMPLEMENTATION_TEST` 并已修订，未发现未解决 Architecture BLOCKER。评审证据见 [#36 评论](https://github.com/qq550723504/task-processor/issues/36#issuecomment-5902352747)。本文件与 #36 均显式 `IMPLEMENTATION_READY` 后，Writer 才可按本设计 TDD 实现。最终候选再按准确 HEAD 检查真实 diff 和已运行路径；本文件不批准合并、部署、关 Issue 或真实数据操作。
