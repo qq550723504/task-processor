@@ -144,7 +144,7 @@ source of truth for long-lived rules.
     this bounded increment.
 
 - [`account-audit-filters-v1.md`](./account-audit-filters-v1.md)
-  - DESIGN_REVIEW_PENDING #581: bounded cross-source content, time and affected
+  - IMPLEMENTATION_READY #581: bounded cross-source content, time and affected
     member filters with complete matching pagination and unchanged fact owners.
 
 - [`unified-base-prepaid-resources-v1.md`](./unified-base-prepaid-resources-v1.md)
