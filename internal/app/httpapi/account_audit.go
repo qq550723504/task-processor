@@ -43,6 +43,10 @@ type invocationAuditSources map[string]*gorm.DB
 
 type aiUsageAuditReader struct{ sources invocationAuditSources }
 
+func (r aiUsageAuditReader) Complete() bool {
+	return r.sources["image"] != nil && r.sources["product"] != nil
+}
+
 func (r aiUsageAuditReader) ListObservedAIUsageAudit(ctx context.Context, org string, limit int, after *accountaudit.AuditPosition) (accountaudit.UsageAuditPage, error) {
 	if limit < 1 || limit > registry.MaxPageLimit {
 		return accountaudit.UsageAuditPage{}, registry.ErrInvalid

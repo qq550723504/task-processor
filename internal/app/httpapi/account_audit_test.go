@@ -29,6 +29,13 @@ type auditHTTPHistory struct {
 
 type imagePointAuditHTTPHistory struct{ calls int }
 
+type completeEmptyUsageAuditHTTP struct{}
+
+func (completeEmptyUsageAuditHTTP) Complete() bool { return true }
+func (completeEmptyUsageAuditHTTP) ListObservedAIUsageAudit(context.Context, string, int, *accountaudit.AuditPosition) (accountaudit.UsageAuditPage, error) {
+	return accountaudit.UsageAuditPage{Items: []accountaudit.UsageAuditEvent{}}, nil
+}
+
 func TestAccountAuditFilterInputAcceptsBoundedSearchTimeAndTargetMember(t *testing.T) {
 	values := url.Values{"query": {"模型实际用量"}, "period": {"30d"}, "member": {"member-1"}, "actor": {"actor-1"}}
 	if _, _, err := accountAuditPageInput(values.Encode()); err != nil {
@@ -60,7 +67,7 @@ func (h *imagePointAuditHTTPHistory) ListImagePointDebits(_ context.Context, org
 
 func TestAccountAuditHTTPProjectsImagePointsUnderLiveOrgPermission(t *testing.T) {
 	points := &imagePointAuditHTTPHistory{}
-	query, err := accountaudit.NewCurrentAuditSources(&auditHTTPHistory{}, emptyAdditionalAuditHTTP{}, emptyAdditionalAuditHTTP{}, aiUsageAuditReader{}, points, emptyAdditionalAuditHTTP{})
+	query, err := accountaudit.NewCurrentAuditSources(&auditHTTPHistory{}, emptyAdditionalAuditHTTP{}, emptyAdditionalAuditHTTP{}, completeEmptyUsageAuditHTTP{}, points, emptyAdditionalAuditHTTP{})
 	if err != nil {
 		t.Fatal(err)
 	}

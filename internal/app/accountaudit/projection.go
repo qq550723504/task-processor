@@ -14,10 +14,14 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"golang.org/x/text/cases"
+
 	"task-processor/internal/authidentity"
 	"task-processor/internal/ledger/orgresource"
 	registry "task-processor/internal/sourceaccountregistry"
 )
+
+var auditSearchFold = cases.Fold()
 
 type History interface {
 	List(context.Context, registry.HistoryRequest) (registry.HistoryPage, error)
@@ -56,6 +60,8 @@ type UsageAuditPage struct {
 }
 type UsageHistory interface {
 	ListObservedAIUsageAudit(context.Context, string, int, *AuditPosition) (UsageAuditPage, error)
+	// Complete reports whether all current AI usage namespaces can be read.
+	Complete() bool
 }
 type Query struct {
 	history    History
@@ -212,7 +218,7 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 	if identity.EffectiveOrganizationID == "" || identity.TenantID != identity.EffectiveOrganizationID {
 		return Page{}, registry.ErrForbidden
 	}
-	if q == nil || summaryMissing(q.history) || summaryMissing(q.profile) || summaryMissing(q.membership) || summaryMissing(q.usage) || summaryMissing(q.points) || summaryMissing(q.resources) {
+	if q == nil || summaryMissing(q.history) || summaryMissing(q.profile) || summaryMissing(q.membership) || summaryMissing(q.usage) || !q.usage.Complete() || summaryMissing(q.points) || summaryMissing(q.resources) {
 		return Page{}, registry.ErrUnavailable
 	}
 	if cursor == "" {
@@ -323,9 +329,9 @@ func matchesAuditEvent(event Event, filter Filter, asOf time.Time) bool {
 	case "account_ai_points.committed":
 		fields = append(fields, "资源与额度", "图片 AI 点数已扣", "图片 AI 点数已扣："+event.Points.Quantity, "成员 "+event.Points.MemberID)
 	}
-	needle := strings.ToLower(filter.Content)
+	needle := auditSearchFold.String(filter.Content)
 	for _, field := range fields {
-		if strings.Contains(strings.ToLower(field), needle) {
+		if strings.Contains(auditSearchFold.String(field), needle) {
 			return true
 		}
 	}

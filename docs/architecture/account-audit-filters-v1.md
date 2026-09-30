@@ -32,7 +32,7 @@ Account Audit 只读投影按原 owner 的稳定时间/键降序批量读取，�
 
 Fact owner 保持 source-account、accountprofile、organization membership、AI invocation usage、orgresource 图片点数/成员资源各自数据库/事件；Account Audit 不拥有新事实。读取合同 → `accountaudit.Query.ReadFiltered` → `accountAuditModule` `GET /api/v1/account/audit` → Auth.js BFF `GET /api/account/audit` → strict typed client → AuditPage。只扩展同一路由的 `query/period/member` 参数；四卡 `GET .../summary` 和现有事实 payload 不变。以原 `source_account.read`、VerifiedIdentity、LiveWrite fresh organization resolver、source owner read 授权，每次分页重新校验；查询字段不影响权限。选择历史成员不能访问该用户所属其他企业，因为每源先由当前组织限定，再匹配 ID。
 
-请求大小预算需覆盖六源位置游标、URL 编码查询和成员 ID；实现采用游标最多3072字符、URL query 最多4096字符，HTTP、BFF、client 对齐并测试最长合法组合，超界统一 `INVALID_REQUEST`。当前 `source` 字段固定带源账号前缀，其他后缀取决于读取页的源数据；它不证明全量搜索完整性。跨源缺源/查询错误、身份过期、组织撤权和结果校验失败均 fail closed，不返回已经扫描的部分匹配；正常空历史和失败区分。前端请求 cache key 包含全部筛选/游标/企业/身份；加载期间隐藏旧结果，summary 保持独立可读。
+请求大小预算需覆盖六源位置游标、URL 编码查询和成员 ID；实现采用游标最多3072字符、URL query 最多4096字符，HTTP、BFF、client 对齐并测试最长合法组合，超界统一 `INVALID_REQUEST`。当前 `source` 字段固定带源账号前缀，其他后缀取决于读取页的源数据；它不证明全量搜索完整性。跨源缺源/查询错误、身份过期、组织撤权和结果校验失败均 fail closed，不返回已经扫描的部分匹配；AI 用量读取须同时具备 image/product 两个当前 namespace 的 owner pool，缺任一 pool 时筛选请求返回不可用，不能将未启用或未接入的来源当成历史为空；这不改变现有不带本次筛选条件的列表及独立 summary 路径。两个 pool 均存在而组织无记录才是真实空历史。前端请求 cache key 包含全部筛选/游标/企业/身份；加载期间隐藏旧结果，summary 保持独立可读。
 
 不新增持久化、事务、状态机、补偿、retry/UNKNOWN owner、provider 调用或不可安全重复的副作用。Legacy decision：N/A；仅消费当前 owner，不接入已 RETIRE 的旧 Audit/Task 抽象。若实现发现需改变现有权限、事实 owner 或恢复协议，停止生产修改并重新走适用设计准入。
 

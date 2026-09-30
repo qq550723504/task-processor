@@ -13,6 +13,26 @@ import (
 	"time"
 )
 
+func TestNativeUsageAuditCoverageRequiresBothCurrentNamespaces(t *testing.T) {
+	image, product := &gorm.DB{}, &gorm.DB{}
+	for _, test := range []struct {
+		name     string
+		sources  invocationAuditSources
+		complete bool
+	}{
+		{name: "nil"},
+		{name: "empty", sources: invocationAuditSources{}},
+		{name: "image only", sources: invocationAuditSources{"image": image}},
+		{name: "product only", sources: invocationAuditSources{"product": product}},
+		{name: "nil image", sources: invocationAuditSources{"image": nil, "product": product}},
+		{name: "both", sources: invocationAuditSources{"image": image, "product": product}, complete: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.complete, (aiUsageAuditReader{sources: test.sources}).Complete())
+		})
+	}
+}
+
 func TestNativeUsageAuditMergesIndependentOwnersWithStableScopedPages(t *testing.T) {
 	sources := invocationAuditSources{}
 	now := time.Now().UTC().Truncate(time.Microsecond)

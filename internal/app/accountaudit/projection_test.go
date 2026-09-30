@@ -23,13 +23,45 @@ type historyStub struct {
 
 type additionalHistoryStub struct{ page AdditionalAuditPage }
 type usageHistoryStub struct {
-	events []UsageAuditEvent
-	calls  int
+	events     []UsageAuditEvent
+	calls      int
+	incomplete bool
 }
+
+func (s *usageHistoryStub) Complete() bool { return !s.incomplete }
+
+func TestFilteredProjectionRejectsIncompleteAIUsageCoverage(t *testing.T) {
+	query, err := NewCurrentAuditSources(&historyStub{}, &additionalHistoryStub{}, &additionalHistoryStub{}, &usageHistoryStub{incomplete: true}, pointHistoryStub{}, &additionalHistoryStub{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := query.ReadFiltered(summaryContext(), 20, "", Filter{Period: "all"})
+	if !errors.Is(err, registry.ErrUnavailable) || len(page.Items) != 0 {
+		t.Fatalf("incomplete AI usage source must fail closed: page=%+v err=%v", page, err)
+	}
+}
+
 type pagingSourceHistory struct{ events []registry.CommittedOperation }
 type failSecondHistory struct {
 	first registry.HistoryPage
 	calls int
+}
+
+func TestFilteredProjectionContentUsesUnicodeCaseFold(t *testing.T) {
+	asOf := time.Now().UTC()
+	for _, test := range []struct {
+		name, reference, query string
+	}{
+		{name: "greek final sigma", reference: "ΟΣ", query: "ος"},
+		{name: "long s", reference: "S", query: "ſ"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			event := Event{EventType: "account_member_resource.changed", Time: asOf.Add(-time.Second), Relation: Relation{Reference: "operation-" + test.reference}, Resource: &ResourceDetail{Type: orgresource.ResourceStoreRenewalPeriod, Quantity: "1"}}
+			if !matchesAuditEvent(event, Filter{Content: test.query}, asOf) {
+				t.Fatalf("visible operation reference %q must match case-folded query %q", event.Relation.Reference, test.query)
+			}
+		})
+	}
 }
 
 func (s *failSecondHistory) List(_ context.Context, _ registry.HistoryRequest) (registry.HistoryPage, error) {
