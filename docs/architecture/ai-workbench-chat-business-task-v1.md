@@ -8,6 +8,8 @@
 > Delivered implementation dependency: #573 / PR #574.
 > Inspected baseline: `main @ df41c7863d7b152d7e826753d08c52810f5dc9df` (2026-09-29).
 > Matching #574 push/main CI `36593853258`: **SUCCESS**.
+> Provider-portability decision: user explicitly requires no single LLM vendor lock-in
+> and approved Eino model interfaces + eino-ext on 2026-09-30; see §1.2 and §6.
 >
 > This document is a D0 review candidate. It changes no production schema/API/UI.
 > Production Writer remains blocked until this architecture reaches
@@ -30,7 +32,6 @@ path without creating a second Agent, Workflow, Review or business-fact system.
   → existing product.title.agent Start
   → Task Center projects existing AgentRun + Product Review
   → existing Human Review / explicit Apply
-  → Chat/Task detail show current truthful result
 ```
 
 Applicable product authorities:
@@ -63,6 +64,8 @@ In scope:
 - new/recent/favorite Chat conversations;
 - durable owner-scoped Conversation/message history;
 - one no-tool Chat planning capability;
+- provider-neutral model access for Planner and the existing title Agent through Eino
+  model components and selected eino-ext implementations, governed by current AI owners;
 - immutable typed execution proposals;
 - explicit execution confirmation;
 - durable BusinessTask intent + exact execution identity;
@@ -78,7 +81,7 @@ Out of scope:
 - Multi-Agent/router/planner selecting arbitrary Agents;
 - arbitrary Tool calls from Chat;
 - prompt/Tool allowlist/AgentDefinition editing;
-- BYOK/custom endpoint management;
+- BYOK/custom endpoint management UI, user/model-supplied credentials or arbitrary model routing;
 - image Agent orchestration;
 - platform remote write/publish;
 - embeddings/vector search;
@@ -88,6 +91,28 @@ Out of scope:
 - new Temporal/queue/retry/Saga/recovery platform;
 - new IAM/Review/audit/billing owner;
 - legacy Task migration/backfill/dual-write/synchronization.
+
+### 1.2 Provider portability is a current requirement
+
+The user explicitly rejected a permanent dependency on GRSAI or a fixed model. The approved
+product direction is **Eino standard model interface + eino-ext provider implementations +
+existing AI Capability governance**, not another vendor-specific Planner.
+
+For the Slice E implementation, §6 supersedes the earlier proposal to create
+`internal/integration/aiworkbench/grsaitext.Planner` and to require the same GRSAI/model route
+as the current Product Agent. The GRSAI-only checks in the existing implementation and the
+historical route choice in `product-agent-runtime-contract.md` describe that delivered baseline;
+they are not a permanent product requirement for this new path. Their authorization, budget,
+usage, Knowledge and UNKNOWN guarantees remain mandatory.
+
+Planner uses Eino's model component directly, without an Eino execution graph or fake AgentRun.
+Product Agent keeps its existing Eino graph and `agent.GovernedModel` contract. Both consume the
+same governed model integration; they may select different admitted models. GRSAI may remain
+one qualified configured service, never the sole supported service or an implicit fallback.
+
+Managed route configuration is not BYOK. Only operator-approved, organization-scoped route and
+credential facts may select an implementation. No model key, endpoint or SDK option is accepted
+from a Conversation, AgentTemplate or browser execution payload.
 
 ## 2. Verified current-state map
 
@@ -102,6 +127,8 @@ Out of scope:
 | Agent D stores exact configuration snapshots and exposes exact recent-run identity | Proposal/Task must carry exact refs, never “current default” as durable execution meaning. |
 | Product Agent route requires `workbench.agent.use` plus current `listingkit.admin.write` | Chat permission never replaces domain execution authorization. |
 | Product Review owns pending/accepted/rejected/applied + Apply receipt | Task state is a projection over Review, never a copied approval state machine. |
+| Current `grsaitext.AgentTextModel` checks GRSAI and a fixed Gemini model; current text Manager is protocol-restricted | Reuse/extract governance and credential ownership, not those hardcoded consumer/transport constraints. |
+| Repository pins Eino `v0.9.21`; provider components are not yet qualified for this path | Use the standard model interface; lock and test selected eino-ext modules during implementation, not `@latest` in production. |
 | Legacy Task-first Product UI / generic Task Dashboard is RETIRE | No BusinessTask ↔ legacy Task adapter, migration or fallback. |
 
 ## 3. Ownership and dependency direction
@@ -154,21 +181,19 @@ It does not own Chat or BusinessTask rules.
 Dependency direction:
 
 ```text
-aiworkbench
-  -> narrow AgentConfig/Product/Review/Agent read/action ports
-  -> planning port
-
-integration/persistence/aiworkbench
-  -> aiworkbench contracts
-
-integration/aiworkbench/<provider adapter>
-  -> existing AI Capability/provider/usage owners
-
-app/httpapi
-  -> aiworkbench/httpapi + concrete adapters
+aiworkbench -> narrow planning / AgentConfig / Product / Review / Agent ports
+integration/persistence/aiworkbench -> aiworkbench contracts
+integration/aiworkbench/einoplanner -> aiworkbench.Planner + aicapability.GovernedText
+integration/agent/einomodel -> agent.GovernedModel + aicapability.GovernedText
+integration/aicapability/einomodel
+  -> aicapability contracts + Eino model.BaseChatModel + selected eino-ext components
+app/httpapi -> feature HTTP + explicit owner/adapter injection
 ```
 
-The generic `internal/agent` package never imports `aiworkbench`.
+These new names are proposed implementation contracts, not claims that the packages already
+exist. `aicapability.GovernedText` is a bounded extension of the current AI owner, not a new model
+platform. Domain packages do not import Eino or vendor SDK types. The generic `internal/agent`
+package never imports `aiworkbench`.
 
 ## 4. Persistence placement and runtime role
 
@@ -277,6 +302,7 @@ PlanningCommand {
   source_sequence           # exact Conversation sequence assigned to this USER message
   planner_invocation_id     # deterministic SHA-256 over scoped command identity
   planner_input_hash        # canonical history/work-scope envelope through source_sequence
+  planner_model_profile     # non-secret exact route/policy snapshot described in §6.3
   planner_started_at        # database time frozen once
   planner_deadline          # frozen bounded attempt deadline
   state                     READY_TO_DISPATCH | COMPLETE |
@@ -298,14 +324,21 @@ exact selected work-scope fields. It stores the resulting `planner_input_hash`. 
 are never incorporated into a replay of this command. A same-key replay reconstructs that exact
 bounded history prefix and must match the frozen hash before it can approach the AI claim.
 
+The trusted model profile is resolved without provider I/O and persisted with T0 before a
+command can become READY_TO_DISPATCH. If no admissible profile is available, persist the user
+message with FAILED_BEFORE_DISPATCH; do not silently choose a fallback. A retry first adopts the
+stored command/profile rather than selecting a new current route. Invocation input identity
+also binds the exact profile digest and fully serialized model input; see §6.3.
+
 The durable dispatch algorithm is:
 
 ```text
 T0 transaction:
    create/adopt USER message + source_sequence
-   + PlanningCommand(READY_TO_DISPATCH, deterministic invocation, exact input hash)
+   + PlanningCommand(READY_TO_DISPATCH, deterministic invocation, exact input/profile)
 → outside transaction call Planner with that exact invocation identity
-→ Planner atomically ClaimInvocation in the existing AI invocation owner
+→ Planner calls the shared governed text executor
+→ executor atomically ClaimInvocation in the existing AI invocation owner
      acquired=true  => this caller alone may reserve + attempt provider transport
      acquired=false => zero provider transport; inspect exact existing invocation
 → Workbench terminal CAS:
@@ -318,7 +351,8 @@ Important replay rules:
 
 - if T0 never committed, there is no message/command;
 - if T0 committed but no AI invocation fact exists, the call is **definitely undispatched** and
-  same-key replay may safely attempt the existing AI `ClaimInvocation`;
+  same-key replay may safely attempt the existing AI `ClaimInvocation`, using its original
+  profile and only while its deadline and current authorization still permit dispatch;
 - if an exact AI invocation fact exists with outcome `dispatched`, no Workbench path may issue
   another provider call. Before `planner_deadline + terminal-write-grace` the request projects
   `PLANNER_PENDING`; after that bound it CAS-terminalizes the Workbench command as
@@ -339,7 +373,7 @@ Provider invocation, reservation, usage settlement and dispatch UNKNOWN remain o
 AI Capability/commercial owners. The Workbench command owns only message/product replay and the
 bounded PENDING→UNKNOWN decision above.
 
-## 6. Chat planner contract
+## 6. Chat planner and provider-neutral model contract
 
 ### 6.1 No tools and no execution authority
 
@@ -349,12 +383,13 @@ Planning is:
 bounded Conversation text
 + fixed capability description
 + explicit user-selected work scope
-  -> governed planning model
+  -> governed Eino model component
   -> Clarification | ReadyPlan
 ```
 
 The planning model receives **no Commerce Tool Registry**, no arbitrary tool schema and no
-execution credential. It does not invoke AgentRuntime or Product mutation.
+execution credential. It does not invoke AgentRuntime or Product mutation. Using Eino's
+`model.BaseChatModel` does not require an execution graph or AgentRun.
 
 V1 explicit work scope is browser-selected then server-authorized:
 
@@ -366,7 +401,7 @@ knowledge_selection?  exact KnowledgeBase ID, omission = no Knowledge
 ```
 
 The model is not allowed to select Product, Organization, Agent ID, Tool, template ID,
-KnowledgeBase ID or platform. Those are explicit user/server facts.
+KnowledgeBase ID, platform, provider or model. Those are explicit user/server facts.
 
 The model returns only a strict bounded shape:
 
@@ -381,101 +416,246 @@ PlanningDecision {
 Server code constructs the typed `ExecutionProposal` by combining a READY decision with exact
 freshly authorized work-scope facts.
 
-### 6.2 AI governance — exact existing-owner extension
+A `BaseChatModel`-typed variable is not proof that the concrete model is tool-free. Planner
+construction must use an unbound instance, never a mutable instance shared with Agent tool
+binding. Reject tool messages, ToolCalls, multimodal output and non-admitted structured output;
+never pass browser/model-controlled `model.Option`, provider extras, WithTools or BindTools.
+The V1 path uses non-streaming Generate; streaming support in the interface is not an additional
+product commitment. Framework callbacks must not export prompts, Knowledge, secrets or raw
+provider bodies; existing metadata-only audit remains the authority.
 
-Implement `aiworkbench.Planner` as a narrow provider-neutral port. Do **not** reuse
-`grsaitext.AgentTextModel`: that adapter is deliberately AgentRun/tool-shaped and rejects an
-empty Tool set.
+### 6.2 Contract → implementation → injection → consumer
 
-The minimal admitted extension is:
+The following are proposed bounded extensions, not claims of existing implementation:
+
+| Contract / owner | Concrete implementation and injection | Consumer |
+| --- | --- | --- |
+| `aiworkbench.Planner` | `internal/integration/aiworkbench/einoplanner`: bounded input mapping and strict PlanningDecision parsing; receives `aicapability.GovernedText` | Chat message service |
+| `agent.GovernedModel` | `internal/integration/agent/einomodel`: extract current title prompt/evidence/citation/Quote semantics; receives the same governed text service | Existing Product Agent Eino runtime |
+| `aicapability.GovernedText` | `internal/integration/aicapability/einomodel`: Quote/Generate orchestration over current route, identity, invocation and resource ports; Eino message mapping stays here | Both bounded consumer adapters |
+| Eino `model.BaseChatModel` | Code-owned factory in that Integration package constructs selected `eino-ext/components/model/*` implementations with scoped credentials and guarded HTTP transport | Governed text executor only |
+| Current credential/configuration owner | Extract its organization-scoped credential lookup into a provider-neutral port; keep existing persistence ownership and fail-closed version checks | Route resolution and model construction |
+| Existing invocation/resource owners | Same `ai_invocations`, dispatch claim, observed usage and ResourceAIPoint reserve/finalize | Governed text executor |
+| Existing Knowledge owner | Exact bundle reads/citation validation and final dispatch permits; no retrieval in Planner | Product Agent model adapter + guarded handoff |
+
+The factory is a small code-owned constructor allowlist, not a new provider registry service,
+plugin platform, provider-management schema or credential database. Provider-specific imports,
+serialization and SDK configuration stay below the business interfaces. Eino and eino-ext
+already provide the model abstraction/implementations; do not recreate a parallel ChatModel SDK.
+
+Selected component families include `eino-ext/components/model/openai` for qualified
+OpenAI-compatible protocols and native components such as `claude`, `gemini` or `ark` when
+admitted. Protocol compatibility does not imply common service ownership: keep actual
+provider/service identity separate from adapter kind and model identity. A native provider
+must not be forced through GRSAI or an OpenAI-compatible intermediary.
+
+The existing `openai.Manager.CompleteText` / `grsaitext.AgentTextModel` are **not** mandatory
+wrappers around the new factory. Extract still-valid configuration/credential, bounded queue,
+fresh authorization, dispatch/usage and Knowledge behavior to the current owners' narrow
+ports. Do not stack a second SDK call, queue, ledger or fallback under those old wrappers.
+
+Application assembly explicitly injects the scoped resolver, frozen policy, current recorder,
+resource adapter, bounded concurrency control, guarded transport and factory into GovernedText;
+then injects consumer-specific adapters into Chat and Product Agent. Constructors do not
+contact a model, open a second accounting database or install schema.
+
+Existing-owner extensions remain bounded:
 
 ```text
 internal/aicapability
   + CapabilityAIWorkbenchChatPlanning = "aiworkbench.chat_planning"
   + OperationAIWorkbenchChatPlan      = "aiworkbench_chat_plan"
-  + existing InvocationDispatchClaimer / Recorder / ReplayReader
-  + existing usage reservation/settlement
+  + provider-neutral GovernedText Quote/Generate and non-secret model profile contracts
+  + existing InvocationDispatchClaimer / Recorder / ReplayReader / usage interfaces
 
 internal/aicapability/store
-  GormInvocationRecorder
-    → same ai_invocations table
-    → ClaimInvocation / FindInvocation / RecordInvocation
-    → priced-text validation accepts exactly:
-         product_agent_decision
-         aiworkbench_chat_plan
-    → planner operation requires AgentRunID == "" and BusinessTaskID == ""
-      while existing Product Agent operation still requires its real AgentRunID
-    → observed-usage structured-output failure is admitted for planner so real token usage
-      is billed even when PlanningDecision JSON is invalid
+  same ai_invocations table
+  priced-text validation explicitly admits product_agent_decision | aiworkbench_chat_plan
+  planner requires AgentRunID == "" and BusinessTaskID == ""
+  Product Agent still requires its real AgentRunID
+  identity/fingerprint includes the frozen profile, not a mutable route alias
+  observed-usage invalid output is billable for either admitted operation
 
 internal/integration/orgresource
-  GormModelInvocationRepository
-    → same ResourceAIPoint/member-limit owner
-    → existing model invocation fact reader is generalized only enough to return either
-      admitted priced-text operation and validate its operation-specific identity
-    → readFact accepts exactly product_agent_decision | aiworkbench_chat_plan
-    → Product Agent reservation BusinessScope = real AgentRunID
-    → Chat planner reservation BusinessScope = "chat-plan:" + invocation_id
-    → the same operation-aware BusinessScope function is used when creating and replay-validating
-      the reservation receipt
-    → existing reserve/finalize/idempotency/resource events remain unchanged
-
-internal/integration/aiworkbench/grsaitext
-  Planner
-    → uses existing openai.Manager + Organization credential resolver
-    → uses the same admitted text route/model and a trusted PlannerPolicy
-    → no Eino, no Commerce Tool definitions, no Knowledge reader
-    → ClaimInvocation
-    → existing ResourceAIPoint reservation
-    → one CompleteText transport
-    → RecordInvocation terminal observation/usage
-    → strict bounded PlanningDecision
-
-internal/app/httpapi current application assembly
-  existing AI manager/recorder/resource adapter + fresh identity
-    → planner-specific ModelInvocationAuthorizer adapter
-       (fresh current identity + same org/user/member + workbench.chat.use)
-    → aiworkbench Planner adapter
-    → aiworkbench Service
-    → aiworkbench/httpapi
+  same ResourceAIPoint/member-limit owner
+  readFact and native fact reader validate the two operation-specific identities
+  Product Agent BusinessScope = real AgentRunID
+  Planner BusinessScope = "chat-plan:" + invocation_id
+  one operation-aware BusinessScope function for reservation and replay validation
+  no new Chat ledger; no invented credit or free call
 ```
 
-`PlannerPolicy` is trusted deployment configuration, not browser/model input. It freezes the
-same style of admitted route, point tariff, currency cost estimate, input/output bounds,
-configuration version and code-owned prompt version used by the current governed text path. V1
-may use the same configured provider/model as the Product title Agent, but it has a distinct
-operation/capability/prompt identity and cannot inherit Agent tools.
-
-The planner's exact `InvocationRecord` binds:
-
-- deterministic Workbench `planner_invocation_id`;
-- current Organization/user/effective member;
-- `OperationAIWorkbenchChatPlan`;
-- `CapabilityAIWorkbenchChatPlanning`;
-- exact `planner_input_hash`, prompt/policy/configuration versions and admitted route;
-- frozen point tariff and token maxima;
-- the T0 `planner_started_at`.
-
-This is enough for the existing AI invocation and Resource owners to reject identity drift and
-to reserve/settle the same enterprise/member point pool without inventing a Chat ledger.
-The existing `ModelInvocationAuthorizer` seam is reused: Product Agent keeps its current
-authorizer, while Workbench supplies a narrow planner authorizer that fresh-resolves the same
-effective Organization/member and requires `workbench.chat.use`. It does not create a new IAM
-decision or imply `workbench.agent.use`.
-
-The adapter must preserve:
-
-- one provider send maximum per message command;
-- no silent retry/fallback;
-- current Organization-scoped credential resolution;
-- current route/configuration recheck before transport;
-- conservative ResourceAIPoint reservation before transport;
-- observed usage settlement or existing durable dispatch UNKNOWN;
-- current Organization/member accounting;
-- bounded timeout/input/output;
-- no provider-specific types in `aiworkbench`.
-
+Use the existing `ModelInvocationAuthorizer` seam. Product Agent retains its current domain/
+Agent permissions; Planner fresh-resolves the same org/user/member and requires
+`workbench.chat.use`. The shared executor cannot infer one consumer's permission from the other.
 Planning inability never creates a BusinessTask or AgentRun.
+
+### 6.3 Frozen model profile, not a fixed vendor
+
+AI Capability owns a typed, non-secret snapshot of an admitted route and policy:
+
+```text
+ModelProfile {
+  profile_id / configuration_version
+  provider_id / adapter_kind / model_id
+  endpoint_identity_digest
+  credential_reference / credential_version
+  routing_policy_version / adapter_policy_version
+  prompt_version / output_schema_version
+  usage_mapping_version / cost_pricing_version
+  point_tariff
+  maximum_prompt_tokens / maximum_completion_tokens
+  maximum_input_bytes / maximum_output_bytes / deadline_bound
+}
+```
+
+This is an immutable use-time snapshot of existing configuration facts, not a second editable
+configuration owner. Credential references are opaque; secret values and raw endpoint URLs
+never enter Conversation, BusinessTask, AgentRun payloads or ordinary logs.
+
+New calls may resolve a different admitted provider/model by configuration. A command already
+prepared or claimed cannot change provider, model, endpoint identity, credential version,
+pricing, bounds, prompt or output schema under the same invocation identity. Planner stores
+its exact profile with the T0 command. InputHash binds org/user/member, operation, exact
+history/work-scope input, profile digest and complete serialized model input. Native invocation
+metadata preserves these exact facts for observation, settlement and owner recovery. Extend
+safe metadata/fingerprint validation in the current invocation owner where a field is not yet
+represented; do not infer it later from mutable defaults or store provider payloads there.
+
+Existing invocation/Workbench receipts are looked up and fingerprint-checked before resolving
+a new route. A matching receipt can be read even if its provider is now unavailable, subject
+to current read authorization. This does not authorize new dispatch. Before every new transport
+handoff recheck current organization/member permission, route/credential version, availability
+and applicable hard ceilings. A mismatch fails closed; do not silently clamp or choose another
+model. Relaxing current limits does not enlarge a prepared request.
+
+For Product Agent, resolve and show the exact execution model profile at execution confirmation.
+Store it within the existing AgentConfig start snapshot, so ConfigurationSnapshotRef/digest and
+the existing Agent Request fingerprint bind it for the whole run, including Resume. Carry the
+existing opaque ConfigurationSnapshotRef into `agent.ModelInput` as a narrow additive field;
+the model adapter loads the profile from AgentConfig, rather than importing provider fields
+into the generic runtime or consulting latest defaults at every model step. Template tables do
+not become a model/key store. Both direct title execution and Chat-confirmed title execution
+use this same snapshot/adapter path.
+
+The proposal's execution profile is distinct from the already-used planning profile. Confirmation
+may not substitute a different execution profile after the user saw the proposal. Store its
+non-secret profile/digest in ExecutionProposal, validate it before first-time confirmation, and
+include it in the resulting configuration snapshot. A changed profile requires new explicit
+confirmation/proposal; an already committed task still replays first as specified in §8.2.
+
+### 6.4 One invocation, at most one transport attempt
+
+`BaseChatModel.Generate` alone is not a dispatch, billing or retry contract. The shared governed
+executor, not the component or callback framework, owns this sequence:
+
+```text
+exact immutable input/profile + fresh consumer authorization
+→ existing native ClaimInvocation (only acquired=true grants work)
+→ existing ResourceAIPoint reservation
+→ existing bounded rate/concurrency admission
+→ final transport gate: fresh auth + exact route/credential + deadline/byte bounds
+→ Product Agent only: acquire current Knowledge dispatch permit for exact bundle
+→ one outbound generation attempt through the selected eino-ext component
+→ typed usage/dispatch observation
+→ existing native terminal fact and resource settlement/release
+```
+
+Quote is side-effect-free with respect to model dispatch, reservations and invocation claims.
+It accounts for the complete actual message envelope, current context and configured token/
+byte limits, including bounded SDK serialization overhead; it cannot be a provider-name check.
+Existing exact Quote equality/preflight semantics still apply.
+
+All selected components must use an injected, invocation-bound transport wrapper at the actual
+HTTP handoff. It rechecks after SDK/application queueing, allows at most one underlying model
+request per acquired invocation, rejects redirects/retries before any additional network send,
+and bounds outbound/inbound bytes. Disable SDK retries where the pinned version exposes the
+setting; the transport guard remains required so hidden retries cannot bypass the contract.
+An OnStart callback or one Generate call is not a substitute. No automatic cross-provider
+fallback, speculative parallel generation or output-repair model call is admitted.
+
+The existing Knowledge permit must be acquired immediately before that guarded handoff and
+released through its current bounded cleanup on every outcome. Keep the existing maximum
+provider deadline compatible with the current Knowledge permit lease; do not lengthen it as a
+side effect of changing SDKs. Waiting past a deadline or losing permissions permits no send.
+
+Before handoff, a proven rejection is NOT_DISPATCHED; release only the current invocation's
+reservation through the existing owner after a durable no-send fact. After handoff, an
+ambiguous network/SDK/parse result is OUTCOME_UNKNOWN, even when no response was received.
+A rejected second SDK attempt never erases uncertainty from the first. Only current owner
+recovery with real evidence may settle that uncertainty; Workbench must not refund, reset an
+invocation ID or switch providers. No component lacking controllable transport can be admitted.
+
+Callbacks/tracing are metadata-only. No prompt, full model response, hidden reasoning, provider
+error body, credential or Knowledge text is exported to an extension observability backend.
+Model instances/options are never shared mutably across organizations or consumers.
+
+### 6.5 Capability and usage normalization
+
+The factory admits a route only when its adapter policy proves bounded text generation,
+strict output validation, complete input/output accounting, zero additional transport attempts,
+explicit scoped credentials and the final-handoff gate. Features such as JSON Schema, native
+tools, reasoning and cached-token reporting differ by component; a common interface alone
+proves none of them. JSON mode may help, but server-side strict schema/size/role validation
+remains required and invalid output never causes an automatic repair call.
+
+`schema.Message.ResponseMeta.Usage` is optional. A non-nil struct or integer zero is not enough
+to prove raw counters were present. Normalize provider usage with a versioned policy and, where
+needed, bounded in-memory transport observation of counter presence. Persist only safe typed
+usage/metadata, never the raw body. Missing/inconsistent counters remain UNKNOWN, not free.
+
+Preserve separately:
+
+- provider-reported usage with its known/missing semantics;
+- canonical input/output counts accepted by the current invocation/resource owner;
+- provider cost estimate under the frozen cost policy;
+- customer AI points under the frozen PointTariff.
+
+Cache read/write and reasoning tokens must not be double-counted or dropped. Do not blindly
+assume every native provider's total has the same meaning. V1 admits only configurations whose
+observed billable categories can be mapped correctly to the existing input/output tariff and
+cost contracts. Unmodeled features are disabled or the route is unavailable; adding a native
+adapter does not authorize changing billing rules. Invalid structured output with trustworthy
+usage remains observed_usage_failed and is settled once by the current owner.
+
+### 6.6 Product Agent cutover and validation scope
+
+Do not solve portability only for Chat while leaving every executable title task locked to a
+vendor. In the admitted implementation batch, replace the title-model adapter's GRSAI/fixed-
+model dependency with `integration/agent/einomodel`, backed by the same governed executor.
+Extract the existing prompt/evidence projection, deterministic candidate/citation validation,
+Quote/limits, identity and UNKNOWN logic; do not delete those checks to make another SDK work.
+The Eino graph, Store.Claim/Commit, Tool Registry, domain validation and Human Review remain their
+current owners. Native provider tool execution remains disabled; the existing graph alone
+interprets validated action JSON against its code-owned allowlist.
+
+This draft does not assert that current GRSAI code is already portable. Cutover must cover both
+direct and Chat-originated execution. Retire the replaced vendor-specific model consumer after
+callers switch; do not retain a second implicit fallback path. GRSAI can instead be an explicitly
+qualified route via an appropriate component. No historical run/snapshot is silently rewritten.
+Missing new profile metadata on an old prepared request requires fresh explicit confirmation;
+old claimed records remain readable but cannot acquire new model work through an unprofiled
+compatibility path. Actual environment/data changes require separate authorization.
+
+A minimal portability proof uses two real eino-ext component implementations against isolated
+synthetic transports, not two fakes of our own interface. The initial contract-test pair is an
+OpenAI-compatible component and a native Claude component; neither requires live credentials
+or paid calls. The same Planner and title-model consumer code must pass with both, without
+vendor conditionals. Other components may be added only through the same bounded qualification;
+this does not require connecting every provider before delivery.
+
+Pin each selected component module/version and dependency graph compatible with the repository's
+Eino version. Compilation, transport-request counts, counter-presence mapping and scoped
+credential/Knowledge gates must be tested at those exact versions. No dependency upgrade or
+multi-provider runtime success is claimed by this D0.
+
+Primary upstream references checked for this design (not runtime qualification evidence):
+
+- [Eino model interface at v0.9.21](https://github.com/cloudwego/eino/blob/v0.9.21/components/model/interface.go): BaseChatModel and separate tool-binding interfaces.
+- [Eino response metadata](https://github.com/cloudwego/eino/blob/v0.9.21/schema/message.go): optional Usage and token detail fields.
+- [eino-ext component overview](https://github.com/cloudwego/eino-ext): official model implementations.
+- [OpenAI-compatible component](https://github.com/cloudwego/eino-ext/blob/main/components/model/openai/chatmodel.go) and [module](https://github.com/cloudwego/eino-ext/blob/main/components/model/openai/go.mod): component construction and injected HTTP client.
+- [Claude native component](https://github.com/cloudwego/eino-ext/blob/main/components/model/claude/claude.go) and [module](https://github.com/cloudwego/eino-ext/blob/main/components/model/claude/go.mod): separate native adapter/configuration, not a GRSAI requirement.
 
 ## 7. Immutable ExecutionProposal
 
@@ -501,6 +681,7 @@ ExecutionProposal {
   observed_agent_revision
   observed_activation_epoch
   template_ref?
+  execution_model_profile   # exact non-secret profile/digest from AI Capability, §6.3
   knowledge_selection_ref? {
     knowledge_base_id
     revision_set_digest
@@ -528,6 +709,7 @@ Before confirmation, the server freshly validates:
 - existing `listingkit.admin.write`;
 - Agent is still enabled and its activation epoch/revision has not invalidated the proposal;
 - exact template is still active when present;
+- exact execution model profile remains admissible without changing the user's confirmed route;
 - exact optional Knowledge selection is currently readable/active **and has the same observed
   revision-set digest**;
 - current AI/point/resource prerequisites.
@@ -584,7 +766,7 @@ BusinessTask {
   agent_id
   agent_version
   execution_request_key
-  configuration_snapshot_ref
+  configuration_snapshot_ref   # also binds execution model profile, §6.3
   context_snapshot_ref?
   execution_request_digest
   created_at
@@ -619,15 +801,15 @@ fresh verified identity / Effective Organization / workbench.chat.use
       not found:
         → verify Conversation ACTIVE + proposal is latest/exact
         → existing Product + workbench.agent.use + listingkit.admin.write authorization
-        → existing AgentConfig Prepare using exact proposal + request key
+        → existing AgentConfig Prepare using exact proposal/model profile + request key
         → existing Knowledge Materialize with ExpectedRevisionSetDigest if selected
-        → existing complete-prompt Quote preflight (no reservation/provider send)
+        → complete-prompt governed Quote preflight (no reservation/provider send)
         → build exact agent.Request and digest
         → T1 create BusinessTask
         → T2 existing Runtime.Start
              → existing AgentConfig Guard
              → existing Store.Claim
-             → current runtime/model/tools
+             → current Eino runtime + governed eino-ext model access + current tools
 ```
 
 The existing-task replay still freshly authorizes the caller as the original
@@ -942,7 +1124,7 @@ Before a READY proposal can be confirmed, display real current facts:
 - target platform;
 - exact template or none;
 - selected Knowledge or explicit none;
-- current capability/limit summary;
+- admitted execution model/profile and current capability/limit summary, without credentials;
 - Human Review required before Apply.
 
 Assistant prose is never treated as the execution contract. The typed proposal card is.
@@ -953,7 +1135,7 @@ Task detail displays:
 - current projected state + reason;
 - exact Product/platform;
 - current next action;
-- Agent summary/usage status;
+- Agent summary/usage status and actual model identity from authorized owner metadata;
 - Review/result when currently authorized;
 - protected Knowledge citations through existing safe projector only.
 
@@ -966,11 +1148,15 @@ No fake task count, progress percentage, elapsed estimate, Store association or 
 | duplicate Conversation create | same key/same fingerprint replays same Conversation |
 | same key changed create/message | 409 IDEMPOTENCY_CONFLICT |
 | duplicate user message | one USER message; deterministic planner invocation; existing AI ClaimInvocation grants at most one provider attempt |
-| crash after USER/command commit but before AI Claim | exact AI invocation absent proves no dispatch; same-key replay may safely claim once |
+| crash after USER/command commit but before AI Claim | exact AI invocation absent proves no dispatch; same-key replay may safely claim once with original admissible input/profile/deadline |
 | concurrent planner request loses AI Claim | zero provider send; returns PENDING/terminal replay from same invocation identity |
 | planner no-dispatch failure | durable user message + failure receipt; no assistant/proposal |
 | planner invocation remains dispatched past deadline/grace | durable user message + PLANNER_UNKNOWN; no automatic re-dispatch |
 | terminal AI fact but assistant/proposal commit was lost | bounded PENDING then PLANNER_UNKNOWN; provider output is not fabricated or re-sent |
+| route/model/pricing changes after command or execution proposal preparation | retain exact profile for replay; no automatic substitution; new execution must satisfy current gates or require new confirmation |
+| SDK retries after a first generation attempt | transport gate prevents an additional send; first-attempt UNKNOWN is preserved |
+| raw usage missing or not representable by admitted mapping | no zero-cost inference; existing invocation/Resource owner retains UNKNOWN |
+| wrong organization credential, model override or tool-bound Planner instance | reject before transport; no implicit environment/global credential fallback |
 | new user message after READY proposal | old proposal becomes PROPOSAL_STALE |
 | selected Knowledge readable revision set changes before confirm | Knowledge Materialize rejects expected revision-set digest before BusinessTask |
 | first-time Agent/template/Knowledge changes before confirm | fail before BusinessTask or return stale/owner error |
@@ -979,7 +1165,7 @@ No fake task count, progress percentage, elapsed estimate, Store association or 
 | Guard rejects after T1 | task ERROR; zero new provider work |
 | Agent terminal Commit exists then HTTP response lost | task resolves same terminal AgentRun; retry adopts receipt |
 | process crash after Agent Claim leaves RUNNING | no Start/Resume redispatch; RUNNING until deadline+grace, then explicit Agent-owner CAS finalizes execution_outcome_unknown |
-| Agent interrupted | PAUSED; existing Resume action only |
+| Agent interrupted | PAUSED; existing Resume action only, using the frozen execution profile |
 | Review pending/accepted | WAITING_CONFIRMATION |
 | Review rejected | COMPLETED / rejected |
 | Review applied | COMPLETED / applied |
@@ -996,18 +1182,24 @@ Greenfield:
 - install `ai_workbench` schema explicitly;
 - create `ai_workbench_runtime` with only admitted DML;
 - no rows are synthesized from existing Review/completed work;
+- qualify/pin selected eino-ext component versions and their guarded transport/usage mappings;
 - mount Chat/BusinessTask routes only when dependencies are complete.
 
 Fail closed:
 
-- missing schema/pool/planner/Agent D dependency keeps Chat execution unavailable;
-- existing Agent/Review/direct Product paths remain unchanged;
-- no fallback to legacy Task UI or generic Task table.
+- missing schema/pool/planner/Agent D or qualified model-profile dependency keeps execution unavailable;
+- Product Agent runtime/domain/Review semantics remain unchanged except the explicitly proposed
+  model-profile wiring and existing-owner crash-window repair in this document;
+- direct and Chat-originated title calls must not bypass the new shared model gate;
+- no fallback to legacy Task UI, vendor-specific model consumer or generic Task table.
 
 Rollback:
 
-- disable/unmount new Chat/BusinessTask routes;
-- preserve Conversation/BusinessTask rows;
+- disable/unmount new Chat/BusinessTask and affected execution admission before switching code;
+- preserve Conversation/BusinessTask/AgentConfig/AgentRun/Review rows and exact model provenance;
+- never replay a portable-model invocation through an older vendor-only implementation;
+- preserve the previously frozen hard-ceiling rollout fence; mixed deployment does not make
+  new model/ceiling contracts atomically effective;
 - existing Product Agent/Review facts remain authoritative;
 - do not delete or translate tasks to legacy records;
 - later re-enable reads the same durable Workbench facts.
@@ -1018,8 +1210,10 @@ Must address:
 
 - cross-tenant/actor Conversation or Task disclosure;
 - natural language becoming implicit Tool/side-effect authority;
-- stale proposal executing a different Product/template/Knowledge selection;
-- duplicate paid planning/model dispatch under idempotent retry;
+- stale proposal executing a different Product/template/Knowledge/model selection;
+- duplicate paid planning/model dispatch through application, SDK or transport retry;
+- route/credential/pricing drift and hidden cross-provider fallback;
+- lost/misinterpreted provider usage or sensitive callback export;
 - duplicate AgentRun under confirm retry;
 - cached Product/Knowledge/Review content surviving role/Organization loss;
 - BusinessTask becoming a second workflow/retry state machine;
@@ -1039,24 +1233,29 @@ Implementation must use existing test infrastructure; do not build a new verific
 | Domain contracts | Conversation append-only/CAS/bounds; proposal immutable/digest/staleness; Task exact identities. |
 | PostgreSQL | real isolated PG schema/ACL; org+actor isolation; command idempotency; concurrent sequence allocation; task same-key replay. |
 | Planner | deterministic pre-dispatch invocation identity; concurrent same-key claim; crash before/after AI Claim; no tools; max one provider attempt/key; no-dispatch vs PENDING/UNKNOWN; new planning operation through current AI invocation + ResourceAIPoint owners; strict structured output. |
+| Provider portability | same Planner and title-model adapters run through two actual eino-ext protocol implementations using isolated synthetic transports; no GRSAI/fixed-model consumer checks; exact component/core/module versions recorded. |
+| Transport and usage | underlying send count remains at most one through timeout/429/5xx/SDK retry/redirect; missing raw counters stay unknown; cache/reasoning mapping and invalid-output billing; final auth/config/Knowledge permit at real handoff; no prompt/secret callback export. |
+| Profile replay | config switch affects new commands only; prepared/claimed invocation and resumed Agent use original profile or fail closed; no cross-org model-instance reuse; no free or alternate-provider fallback. |
 | Knowledge proposal fence | revision-set observer digest; source promotion after READY; Materialize expected-digest check under lifecycle locks; no-Knowledge unchanged. |
-| Confirm | existing-task replay before stale checks; changed same-key conflict; stale Product/Agent/template/Knowledge on first confirm; config/Knowledge exact refs; T1 task then T2 Claim crash windows. |
-| Agent integration | no duplicate run; crash after Claim leaves RUNNING; before deadline no redispatch; after grace stale-running CAS finalizer; late normal Commit race; ceiling/disable/Knowledge fences unchanged. |
+| Confirm | existing-task replay before stale checks; changed same-key conflict; stale Product/Agent/template/Knowledge/model profile on first confirm; exact configuration refs; T1 task then T2 Claim crash windows. |
+| Agent integration | both direct and Chat-originated title paths use shared governed model integration; no duplicate run; crash after Claim leaves RUNNING; before deadline no redispatch; after grace stale-running CAS finalizer; late normal Commit race; ceiling/disable/Knowledge fences unchanged. |
 | Projection | exact precedence for running/interrupted/review states/stopped/no-run/UNKNOWN; protected detail redaction. |
 | Review | run -> existing review operation correlation; pending/accepted/rejected/applied mapping; Apply remains current owner. |
 | HTTP/RBAC | strict JSON/limits/ETag/idempotency; other actor/org unknown-equivalent; read vs use vs execution permissions. |
-| UI | new/recent/favorite; explicit proposal card; no-Knowledge; Task filters; A→B→A late-response fence; desktop/narrow. |
-| Cutover | source-specific pending/completed remain labeled non-BusinessTask; no legacy Task dependency/backfill. |
+| UI | new/recent/favorite; explicit proposal card/model identity; no-Knowledge; Task filters; A→B→A late-response fence; desktop/narrow. |
+| Cutover | source-specific pending/completed remain labeled non-BusinessTask; no legacy Task dependency/backfill; replaced vendor-specific model consumer retired without losing valid safety behavior. |
 | Restart | durable Conversation/Task, no-run retry-start, claimed-run read and Review projection after restart. |
 
 Real customer data, paid provider trials, production deployment and final user acceptance remain
-NOT_RUN unless separately authorized.
+NOT_RUN unless separately authorized. Component compile/runtime/contract checks above are
+implementation obligations, not tests executed by this documentation change.
 
 ## 20. Architecture admission checklist
 
 - [x] Product outcome and one executable V1 kind are bounded.
 - [x] Conversation/messages idempotency has a deterministic durable pre-dispatch planner identity and bounded PENDING/UNKNOWN replay.
-- [x] Planner no-tool path has an implementable contract → existing AI invocation/resource owners → adapter → application injection → consumer map.
+- [x] Provider-neutral Planner and title-model paths specify contract → current AI invocation/resource owners → Eino/eino-ext integration → injection → consumers.
+- [x] Frozen model-profile identity, no-tool instance isolation, guarded transport and usage normalization obligations are specified.
 - [x] ExecutionProposal exact/stale semantics include Knowledge readable revision-set identity enforced by the Knowledge owner.
 - [x] BusinessTask fact boundary is intent/handoff only, not runtime lifecycle.
 - [x] Same-key confirmation resolves an existing BusinessTask before first-time freshness checks.
@@ -1068,7 +1267,7 @@ NOT_RUN unless separately authorized.
 - [x] HTTP/schema/package/role/rollout contracts are bounded.
 - [x] greenfield/legacy decisions are explicit.
 - [x] risk-matched implementation test matrix is defined.
-- [ ] Independent Architecture Review completed and findings classified/resolved.
+- [ ] Independent Architecture Review completed and findings classified/resolved, including the provider-portability increment.
 - [ ] Exact final HEAD applicable CI completed.
 - [ ] Explicit `APPROVED / IMPLEMENTATION_READY` admission recorded.
 - [ ] Architecture PR merged to main before production Writer starts.
@@ -1079,17 +1278,18 @@ Default implementation delivery is one user-result batch:
 
 ```text
 Conversation
-→ planning
+→ governed no-tool planning through Eino/eino-ext
 → typed proposal
-→ confirm
+→ confirm exact configuration/model profile
 → BusinessTask
-→ current Product title Agent
+→ current Product title Agent with portable governed model access
 → Task Center
 → current Human Review / Apply
 ```
 
-Conversation tables, Task tables, API and UI are internal milestones, not separate products or
-automatic separate PRs. Split only for an independently usable result or independent lifecycle/risk.
+Conversation tables, Task tables, model-adapter cutover, API and UI are internal milestones,
+not separate products or automatic separate PRs. Split only for an independently usable result
+or independent lifecycle/risk.
 
 Project Center and Report follow this closed loop and consume references/results; they do not
 become execution owners.
@@ -1097,5 +1297,6 @@ become execution owners.
 ## 22. Authorization boundary
 
 This D0 authorizes documentation, read-only investigation, an independent architecture branch/PR
-and review maintenance within #576. It does not authorize production code/schema mutation,
-architecture merge, Issue closure, deployment, real business data or paid provider calls.
+and review maintenance within #576. The user-approved provider-portability requirement changes
+the candidate design, not deployment permissions. This does not authorize production code/schema
+mutation, architecture merge, Issue closure, real business data or paid provider calls.
