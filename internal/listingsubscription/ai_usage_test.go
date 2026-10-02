@@ -21,8 +21,8 @@ func TestSettleAIInvocationUsageIsIdempotentAndWindowBound(t *testing.T) {
 	if err := db.Exec(`CREATE TABLE account_member_token_locks (organization_id TEXT PRIMARY KEY, updated_at DATETIME NOT NULL); CREATE TABLE account_member_token_allocations (organization_id TEXT NOT NULL, member_id TEXT NOT NULL, metric TEXT NOT NULL, allocated INTEGER NOT NULL, version INTEGER NOT NULL, active BOOLEAN NOT NULL, window_start DATETIME NOT NULL, window_end DATETIME NOT NULL, updated_at DATETIME NOT NULL, PRIMARY KEY (organization_id,member_id,metric))`).Error; err != nil {
 		t.Fatal(err)
 	}
-	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	start := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
+	end := start.Add(48 * time.Hour)
 	if err := db.Exec(`INSERT INTO saas_tenant_entitlements (tenant_id,module_code,status,starts_at,expires_at,limits) VALUES (?,?,?,?,?,?)`, "org-1", ModuleListingKit, StatusActive, start, end, `{"ai_tokens":100}`).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -64,8 +64,8 @@ func TestAIInvocationReservationPrecedesProviderAndReleasesToObservedUsage(t *te
 	if err := db.Exec(`CREATE TABLE account_member_token_locks (organization_id TEXT PRIMARY KEY, updated_at DATETIME NOT NULL); CREATE TABLE account_member_token_allocations (organization_id TEXT NOT NULL, member_id TEXT NOT NULL, metric TEXT NOT NULL, allocated INTEGER NOT NULL, version INTEGER NOT NULL, active BOOLEAN NOT NULL, window_start DATETIME NOT NULL, window_end DATETIME NOT NULL, updated_at DATETIME NOT NULL, PRIMARY KEY (organization_id,member_id,metric))`).Error; err != nil {
 		t.Fatal(err)
 	}
-	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	start := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
+	end := start.Add(48 * time.Hour)
 	if err := db.Exec(`INSERT INTO saas_tenant_entitlements (tenant_id,module_code,status,starts_at,expires_at,limits) VALUES (?,?,?,?,?,?)`, "org-1", ModuleListingKit, StatusActive, start, end, `{"ai_tokens":200}`).Error; err != nil {
 		t.Fatal(err)
 	}

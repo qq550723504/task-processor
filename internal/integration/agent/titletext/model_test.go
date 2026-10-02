@@ -1,4 +1,4 @@
-package grsaitext
+package titletext
 
 import (
 	"context"
@@ -83,37 +83,161 @@ func agentModelFixture(t *testing.T, content, usage string) (*AgentTextModel, co
 	requireNoErrorText(t, err)
 	// This fixture uses SQLite :memory:, whose schema belongs to one connection.
 	sqlDB.SetMaxOpenConns(1)
-	resolver := openai.NewOrganizationCredentialResolver(credentialDB)
+	resolver := openai.NewOrganizationOnlyCredentialResolver(credentialDB)
 	requireNoErrorText(t, resolver.SaveCredential(context.Background(), openai.AIClientCredential{TenantID: "org", ClientName: "text", APIKey: "test-only", BaseURL: srv.URL + "/v1", Model: "gemini-2.5-flash", APIStyle: "grsai", Enabled: true, TimeoutSecond: 2}))
 	manager.SetConfigResolver(resolver)
-	m, err := NewAgentTextModel(manager, ledger, AgentTextPolicy{
-		ClientName: "text", PolicyVersion: "title-review-v1", PricingVersion: "test-price-v1", BoundEvidence: "isolated-fixture-v1", Currency: "CNY", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000,
+	route, err := manager.ResolveTextRoute(authidentity.WithAuthenticatedIdentity(context.Background(), identity), "text")
+	requireNoErrorText(t, err)
+	m, err := NewAgentTextModel(manager, ledger, map[string]AgentTextPolicy{"org": {
+		ProviderID: "grsai", Endpoint: srv.URL + "/v1", APIStyle: "grsai", ClientName: "text", PolicyVersion: "title-review-v1", PricingVersion: "test-price-v1", BoundEvidence: "isolated-fixture-v1", Currency: "CNY", InputWindowTokens: agentInputWindow, OutputWindowTokens: agentOutputWindow, MaximumOutputTokens: 8192, OutputLimitField: "max_tokens", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000, AdmittedRoute: route,
 		PointPricing: &aicapability.ModelPointTariff{PriceVersion: "synthetic-points-v1", InputPointsPerMillionTokens: 1000000, OutputPointsPerMillionTokens: 2000000},
-	}, []commercetool.ToolRef{{ID: "product.snapshot.read", Version: "v1"}}, func(context.Context) (authidentity.AuthenticatedIdentity, error) {
+	}}, []commercetool.ToolRef{{ID: "product.snapshot.read", Version: "v1"}}, func(context.Context) (authidentity.AuthenticatedIdentity, error) {
 		return fresh.Load().(authidentity.AuthenticatedIdentity), nil
 	})
 	requireNoErrorText(t, err)
 	in := agent.ModelInput{Binding: agent.Binding{ContextKind: "acquisition", ContextID: "operation", ProductKey: "product", CatalogVersion: "1", PublicationID: "publication", TargetPlatform: "product"}, PolicyVersion: "title-review-v1", PromptVersion: "agent-title-v1", AgentRunID: "run", AgentID: "product-agent", AgentVersion: "v1"}
-	m.policy.AdmittedRoute, err = manager.ResolveTextRoute(authidentity.WithAuthenticatedIdentity(context.Background(), identity), "text")
-	requireNoErrorText(t, err)
 	return m, authidentity.WithAuthenticatedIdentity(context.Background(), identity), in, ledger, &calls, &fresh
+}
+
+func TestAgentTextModelBindsEachOrganizationToItsOwnProviderAndRoute(t *testing.T) {
+	newProvider := func() (*httptest.Server, *atomic.Int32) {
+		calls := &atomic.Int32{}
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			calls.Add(1)
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"Kind\":\"interrupt\"}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}`))
+		}))
+		return server, calls
+	}
+	aServer, aCalls := newProvider()
+	bServer, bCalls := newProvider()
+	t.Cleanup(aServer.Close)
+	t.Cleanup(bServer.Close)
+	db := openTestCredentialDB(t)
+	sqlDB, err := db.DB()
+	requireNoErrorText(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	writer := openai.NewGormCredentialResolver(db)
+	for _, credential := range []openai.AIClientCredential{
+		{TenantID: "org-a", ClientName: "text", APIKey: "a-key", BaseURL: aServer.URL + "/v1", Model: "model-a", APIStyle: "grsai", Enabled: true, TimeoutSecond: 2},
+		{TenantID: "org-b", ClientName: "text", APIKey: "b-key", BaseURL: bServer.URL + "/v1", Model: "model-b", APIStyle: "openai-compatible", Enabled: true, TimeoutSecond: 2},
+		{TenantID: "org-b", UserID: "actor-b", ClientName: "text", APIKey: "member-key", BaseURL: aServer.URL + "/v1", Model: "member-model", APIStyle: "grsai", Enabled: true, TimeoutSecond: 2},
+	} {
+		requireNoErrorText(t, writer.SaveCredential(context.Background(), credential))
+	}
+	manager := textTestManager(t, aServer.URL)
+	manager.SetConfigResolver(openai.NewOrganizationOnlyCredentialResolver(db))
+	identities := map[string]authidentity.AuthenticatedIdentity{}
+	policies := map[string]AgentTextPolicy{}
+	for _, item := range []struct{ org, actor, member, provider, endpoint, style string }{{"org-a", "actor-a", "member-a", "grsai", aServer.URL + "/v1", "grsai"}, {"org-b", "actor-b", "member-b", "vendor-b", bServer.URL + "/v1", "openai-compatible"}} {
+		identity := authidentity.AuthenticatedIdentity{TenantID: item.org, EffectiveOrganizationID: item.org, UserID: item.actor, EffectiveMemberID: item.member, TokenExpiresAt: time.Now().Add(time.Hour)}
+		identities[item.org] = identity
+		route, routeErr := manager.ResolveTextRoute(authidentity.WithAuthenticatedIdentity(context.Background(), identity), "text")
+		requireNoErrorText(t, routeErr)
+		policies[item.org] = AgentTextPolicy{ProviderID: item.provider, Endpoint: item.endpoint, APIStyle: item.style, ClientName: "text", PolicyVersion: "title-review-v1", PricingVersion: "test-price-v1", BoundEvidence: "isolated-fixture-v1", Currency: "CNY", InputWindowTokens: 1048576, OutputWindowTokens: 65536, MaximumOutputTokens: 8192, OutputLimitField: "max_tokens", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000, PointPricing: &aicapability.ModelPointTariff{PriceVersion: "synthetic-points-v1", InputPointsPerMillionTokens: 1000000, OutputPointsPerMillionTokens: 2000000}, AdmittedRoute: route}
+	}
+	current := &atomic.Value{}
+	current.Store(identities["org-a"])
+	ledger := &agentTestLedger{rows: map[string]aicapability.InvocationRecord{}}
+	model, err := NewAgentTextModel(manager, ledger, policies, []commercetool.ToolRef{{ID: "product.snapshot.read", Version: "v1"}}, func(context.Context) (authidentity.AuthenticatedIdentity, error) {
+		return current.Load().(authidentity.AuthenticatedIdentity), nil
+	})
+	requireNoErrorText(t, err)
+	in := agent.ModelInput{Binding: agent.Binding{ContextKind: "acquisition", ContextID: "operation", ProductKey: "product", CatalogVersion: "1", PublicationID: "publication", TargetPlatform: "product"}, PolicyVersion: "title-review-v1", PromptVersion: "agent-title-v1", AgentRunID: "run", AgentID: "product-agent", AgentVersion: "v1"}
+	aQuote, err := model.Quote(authidentity.WithAuthenticatedIdentity(context.Background(), identities["org-a"]), in)
+	requireNoErrorText(t, err)
+	current.Store(identities["org-b"])
+	bCtx := authidentity.WithAuthenticatedIdentity(context.Background(), identities["org-b"])
+	bQuote, err := model.Quote(bCtx, in)
+	requireNoErrorText(t, err)
+	if aQuote.Reference == bQuote.Reference {
+		t.Fatal("different organizations share a title quote")
+	}
+	in.InvocationID, in.UpperBound = "wrong-route", aQuote
+	if _, err := model.Decide(bCtx, in); !errors.Is(err, agent.ErrUnavailable) || ledger.claims != 0 {
+		t.Fatalf("cross-organization quote accepted: %v, claims=%d", err, ledger.claims)
+	}
+	in.InvocationID, in.UpperBound = "org-b-title", bQuote
+	_, err = model.Decide(bCtx, in)
+	requireNoErrorText(t, err)
+	record := ledger.rows[in.InvocationID]
+	if record.ProviderID != "vendor-b" || record.ModelID != "model-b" || record.TenantID != "org-b" || aCalls.Load() != 0 || bCalls.Load() != 1 {
+		t.Fatalf("wrong route or attribution: %+v calls=%d/%d", record, aCalls.Load(), bCalls.Load())
+	}
+}
+
+func TestAgentTextModelRouteReadinessSeparatesRolloutFromCredentialRepair(t *testing.T) {
+	m, ctx, _, _, _, fresh := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`)
+	if got := m.RouteReadiness(ctx); got != TextRouteAvailable {
+		t.Fatalf("ready route = %s", got)
+	}
+	originalPolicy := m.policies["org"]
+	endpointPolicy := originalPolicy
+	endpointPolicy.Endpoint = "https://different.example.test/v1"
+	m.policies["org"] = endpointPolicy
+	if got := m.RouteReadiness(ctx); got != TextRouteNeedsConfiguration {
+		t.Fatalf("admitted endpoint differs from credential: %s", got)
+	}
+	m.policies["org"] = originalPolicy
+	originalFresh := m.freshIdentity
+	m.freshIdentity = func(context.Context) (authidentity.AuthenticatedIdentity, error) {
+		return authidentity.AuthenticatedIdentity{}, errors.New("no execution permission")
+	}
+	if got := m.RouteReadiness(ctx); got != TextRouteUnavailable {
+		t.Fatalf("execution permission denial = %s", got)
+	}
+	if got := m.RouteReadinessForVerifiedOrganization(ctx, "org"); got != TextRouteAvailable {
+		t.Fatalf("organization configuration should be independent of actor use permission: %s", got)
+	}
+	m.freshIdentity = originalFresh
+	policy := m.policies["org"]
+	policy.AdmittedRoute.ConfigurationVersion = "stale-version"
+	m.policies["org"] = policy
+	if got := m.RouteReadiness(ctx); got != TextRouteNeedsConfiguration {
+		t.Fatalf("mismatched organization credential = %s", got)
+	}
+	delete(m.policies, "org")
+	if got := m.RouteReadiness(ctx); got != TextRouteUnavailable {
+		t.Fatalf("missing operator policy = %s", got)
+	}
+	m.policies["org"] = policy
+	identity := fresh.Load().(authidentity.AuthenticatedIdentity)
+	identity.TokenExpiresAt = time.Now().Add(-time.Minute)
+	fresh.Store(identity)
+	if got := m.RouteReadiness(ctx); got != TextRouteUnavailable {
+		t.Fatalf("expired fresh identity = %s", got)
+	}
+}
+
+func TestAgentTextModelRejectsPromptBeyondAdmittedInputWindowBeforeClaim(t *testing.T) {
+	m, ctx, in, ledger, calls, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`)
+	policy := m.policies["org"]
+	policy.InputWindowTokens = 4096
+	m.policies["org"] = policy
+	in.UserFeedback = strings.Repeat("A", 5000)
+	if _, err := m.Quote(ctx, in); !errors.Is(err, openai.ErrTextInput) || ledger.claims != 0 || calls.Load() != 0 {
+		t.Fatalf("oversized route prompt was admitted: %v, claims=%d calls=%d", err, ledger.claims, calls.Load())
+	}
 }
 
 func TestAgentTextModelPointTariffRequiredBeforeClaimAndFrozenInFact(t *testing.T) {
 	m, ctx, in, ledger, calls, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`)
-	tariff := *m.policy.PointPricing
-	m.policy.PointPricing = nil
+	policy := m.policies["org"]
+	tariff := *policy.PointPricing
+	policy.PointPricing = nil
+	m.policies["org"] = policy
 	_, err := m.Quote(ctx, in)
 	if !errors.Is(err, agent.ErrUnavailable) || ledger.claims != 0 || calls.Load() != 0 {
 		t.Fatal("missing point tariff must fail before dispatch")
 	}
-	m.policy.PointPricing = &tariff
+	policy.PointPricing = &tariff
+	m.policies["org"] = policy
 	first, err := m.Quote(ctx, in)
 	requireNoErrorText(t, err)
 	changed := tariff
 	changed.PriceVersion = "synthetic-points-v2"
 	changed.OutputPointsPerMillionTokens++
-	m.policy.PointPricing = &changed
+	policy.PointPricing = &changed
+	m.policies["org"] = policy
 	second, err := m.Quote(ctx, in)
 	requireNoErrorText(t, err)
 	if first.Reference == second.Reference {
@@ -179,9 +303,13 @@ func TestAgentTextModelBindsFreshMembershipAndAdmission(t *testing.T) {
 				id.EffectiveMemberID = "new-grant"
 				fresh.Store(id)
 			case "evidence":
-				m.policy.BoundEvidence = ""
+				policy := m.policies["org"]
+				policy.BoundEvidence = ""
+				m.policies["org"] = policy
 			case "price":
-				m.policy.PricingVersion = "changed"
+				policy := m.policies["org"]
+				policy.PricingVersion = "changed"
+				m.policies["org"] = policy
 			case "input":
 				in.UserFeedback = "changed"
 			case "reference":

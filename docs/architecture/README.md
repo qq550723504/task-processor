@@ -124,10 +124,11 @@ source of truth for long-lived rules.
 
 - [`ai-workbench-chat-business-task-v1.md`](./ai-workbench-chat-business-task-v1.md)
   - DRAFT / NOT_IMPLEMENTATION_READY #576 Slice E: owner-scoped Conversation,
-    no-tool Chat planning, immutable execution proposals, BusinessTask intent/handoff,
-    deterministic AgentRun + Product Review task projection, and truthful Task Center cutover.
-    Production Writer waits for independent architecture admission and merge; no legacy Task
-    migration/sync, deployment, real customer data or paid provider use is authorized.
+    no-tool Eino/eino-ext planning, immutable execution proposals and BusinessTask,
+    exact model-profile/replay semantics and current AgentRun/Review projections.
+    Reuses #580 title policy/organization-only credentials; native protocols and
+    run-profile binding remain a reviewed extension, not already deployed capability.
+    Production Writer waits for independent architecture admission and merge.
 
 - [`member-directory-query-v1.md`](./member-directory-query-v1.md)
   - #575 bounded current Membership query increment: complete display-name/login
@@ -142,6 +143,13 @@ source of truth for long-lived rules.
     targeted review found no major issues and CI `36566072746` completed SUCCESS
     including Required CI Gate. Production Writer starts only after PR #571 merges
     to main; rollout/provider use remain separately gated.
+
+- [`product-agent-text-provider-neutral-v1.md`](./product-agent-text-provider-neutral-v1.md)
+  - IMPLEMENTATION_READY #573 architecture for organization-scoped,
+    provider-neutral title text admission over OpenAI-compatible routes. The
+    user's new supplier decision supersedes the old GRSAI-only requirement;
+    actual paid execution still requires route-specific metering, limits,
+    pricing and paid-call authorization.
 
 - [`account-audit-summary-v1.md`](./account-audit-summary-v1.md)
   - IMPLEMENTATION_READY #478 four true Account Audit totals over the complete
