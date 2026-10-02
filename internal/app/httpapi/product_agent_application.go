@@ -17,7 +17,7 @@ import (
 	"task-processor/internal/commercetool"
 	"task-processor/internal/httproute"
 	einoruntime "task-processor/internal/integration/agent/eino"
-	"task-processor/internal/integration/agent/grsaitext"
+	"task-processor/internal/integration/agent/titletext"
 	"task-processor/internal/integration/commercetoolauth"
 	"task-processor/internal/integration/knowledgeauth"
 	"task-processor/internal/integration/openai"
@@ -50,21 +50,21 @@ type ProductAgentDependencies struct {
 	PointAccountingDB        *gorm.DB
 	Manager                  *openai.Manager
 	Ledger                   ProductAgentInvocationLedger
-	TextPolicy               grsaitext.AgentTextPolicy
+	TextPolicies             map[string]titletext.AgentTextPolicy
 	Enabled                  bool
 	AllowedOrganizationIDs   []string
 	Limits                   agent.Limits
 }
 
 type ProductAgentInvocationLedger interface {
-	grsaitext.AgentInvocationLedger
+	titletext.AgentInvocationLedger
 	orgresourceadapter.ModelInvocationFactReader
 	SetUsageSettler(aicapability.InvocationUsageSettler)
 }
 
 type productAgentApplication struct {
 	configuration *configstore.Store
-	model         *grsaitext.AgentTextModel
+	model         *titletext.AgentTextModel
 	definition    commercetool.AgentDefinition
 	context       *knowledge.ContextService
 	runtime       *einoruntime.Runtime
@@ -85,6 +85,19 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 	if !cfg.Enabled || len(cfg.AllowedOrganizationIDs) == 0 || !cfg.Limits.Valid() || cfg.Limits.Runtime > 2*time.Minute || cfg.Limits.Steps > 16 || cfg.Limits.ModelCalls > 8 || productDB == nil || cfg.AssetDB == nil || receipts == nil || resolver == nil || auth == nil {
 		return nil, agent.ErrUnavailable
 	}
+	allowedOrganizations := make(map[string]bool, len(cfg.AllowedOrganizationIDs))
+	for _, organizationID := range cfg.AllowedOrganizationIDs {
+		if !agent.ValidID(organizationID) || allowedOrganizations[organizationID] {
+			return nil, agent.ErrUnavailable
+		}
+		allowedOrganizations[organizationID] = true
+	}
+	for organizationID, policy := range cfg.TextPolicies {
+		tokens, costMicros, err := policy.UpperBound()
+		if !allowedOrganizations[organizationID] || policy.Currency != cfg.Limits.Currency || err != nil || tokens > cfg.Limits.Tokens || costMicros > cfg.Limits.CostMicros {
+			return nil, agent.ErrUnavailable
+		}
+	}
 	if cfg.PointAccountingDB == nil || cfg.Ledger == nil {
 		return nil, agent.ErrUnavailable
 	}
@@ -101,8 +114,16 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 	}
 	a := &productAgentApplication{receipts: receipts, resolver: resolver, authorizer: auth, config: cfg}
 	a.config.AllowedOrganizationIDs = append([]string(nil), cfg.AllowedOrganizationIDs...)
+	a.config.TextPolicies = make(map[string]titletext.AgentTextPolicy, len(cfg.TextPolicies))
+	for organizationID, policy := range cfg.TextPolicies {
+		if policy.PointPricing != nil {
+			frozenTariff := *policy.PointPricing
+			policy.PointPricing = &frozenTariff
+		}
+		a.config.TextPolicies[organizationID] = policy
+	}
 	var err error
-	var contexts []grsaitext.KnowledgeContext
+	var contexts []titletext.KnowledgeContext
 	if cfg.Knowledge != nil {
 		knowledgeAuth, authErr := knowledgeauth.NewAuthorizer(resolver, auth)
 		if authErr != nil {
@@ -180,7 +201,7 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 	if err != nil {
 		return nil, err
 	}
-	model, err := grsaitext.NewAgentTextModel(cfg.Manager, cfg.Ledger, cfg.TextPolicy, definition.AllowedTools, a.freshIdentity, contexts...)
+	model, err := titletext.NewAgentTextModel(cfg.Manager, cfg.Ledger, a.config.TextPolicies, definition.AllowedTools, a.freshIdentity, contexts...)
 	if err != nil {
 		return nil, err
 	}

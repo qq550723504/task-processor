@@ -9,6 +9,8 @@ import (
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	"task-processor/internal/commercetool"
+	"task-processor/internal/httproute"
+	"task-processor/internal/integration/agent/titletext"
 	"task-processor/internal/integration/knowledgeauth"
 	configstore "task-processor/internal/integration/persistence/agentconfig"
 	kernelmodule "task-processor/internal/kernel/module"
@@ -17,6 +19,7 @@ import (
 	"task-processor/internal/product/asset/tools/assetinspect"
 	"task-processor/internal/product/catalog/tools/canonicalinspect"
 	"task-processor/internal/product/sourcing/tools/sourceevidenceinspect"
+	"task-processor/internal/workbenchcontext"
 	"time"
 )
 
@@ -93,19 +96,27 @@ func buildAgentConfigurationModule(ctx context.Context, db *gorm.DB, resolver or
 		now := time.Now().UTC()
 		text := agentconfig.Capability{ID: "text.generate", Support: "REQUIRED", Readiness: "UNAVAILABLE", Reason: "当前环境尚未开放标题执行", ObservedAt: now}
 		if runtime != nil && runtime.model != nil && runtime.config.Manager != nil {
-			identity, _ := authidentity.AuthenticatedIdentityFromContext(ctx)
-			allowed := false
-			for _, organizationID := range runtime.config.AllowedOrganizationIDs {
-				if organizationID == identity.EffectiveOrganizationID {
-					allowed = true
+			original, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+			capability, bound := ctx.Value(productReviewCapabilityContextKey{}).(productReviewRequestCapability)
+			if ok && bound && capability.actorID == original.UserID && capability.effectiveOrganizationID == original.EffectiveOrganizationID {
+				fresh, err := resolver.Resolve(ctx, httproute.OrganizationAccessPolicyLiveWrite, workbenchcontext.ResolveInput{Identity: authidentity.AuthenticatedIdentity{UserID: capability.actorID, HomeOrganizationID: capability.homeOrganizationID, TokenExpiresAt: capability.tokenExpiresAt}, BearerToken: capability.bearerToken, RequestedOrganizationID: capability.effectiveOrganizationID})
+				allowed := false
+				for _, organizationID := range runtime.config.AllowedOrganizationIDs {
+					allowed = allowed || organizationID == fresh.EffectiveOrganizationID
 				}
-			}
-			if _, e := runtime.config.Manager.ResolveTextRoute(ctx, runtime.config.TextPolicy.ClientName); e == nil && allowed {
-				text.Readiness = "AVAILABLE"
-				text.Reason = "文本配置已接入，执行时重新确认权限、点数与预算"
-			} else {
-				text.Readiness = "NEEDS_CONFIGURATION"
-				text.Reason = "当前企业文本模型配置不可用"
+				if err == nil && allowed && fresh.UserID == original.UserID && fresh.TenantID == original.EffectiveOrganizationID && fresh.EffectiveOrganizationID == fresh.TenantID {
+					status := runtime.model.RouteReadinessForVerifiedOrganization(authidentity.WithAuthenticatedIdentity(ctx, fresh), fresh.EffectiveOrganizationID)
+					switch status {
+					case titletext.TextRouteAvailable:
+						text.Readiness = "AVAILABLE"
+						text.Reason = "文本配置已接入，执行时重新确认权限、点数与预算"
+					case titletext.TextRouteNeedsConfiguration:
+						text.Readiness = "NEEDS_CONFIGURATION"
+						text.Reason = "当前企业标题模型凭据需由部署者配置"
+					default:
+						text.Reason = "当前企业标题执行尚未开放"
+					}
+				}
 			}
 		}
 		read := "UNAVAILABLE"

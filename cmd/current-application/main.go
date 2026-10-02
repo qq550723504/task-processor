@@ -102,14 +102,18 @@ func execute() error {
 			}
 			if features.ProductAgent != nil && features.ProductAgent.Enabled {
 				p := features.ProductAgent
-				// A registered client is required by Manager; this value is never
-				// a credential fallback. The Organization resolver fails closed.
-				manager, buildErr := openai.NewManager(&openai.ManagerConfig{Logger: openai.AdaptLogrus(logger.WithField("component", "product-agent")), Clients: map[string]*openai.ClientConfig{p.TextPolicy.ClientName: openai.NewClientConfig("organization-credential-required", "gemini-2.5-flash", "https://grsaiapi.com/v1", 25)}, ConfigResolver: openai.NewOrganizationCredentialResolver(features.ProductAgentDB)})
+				// Manager needs registered client names. Every credential, endpoint,
+				// model and API style must come from the organization-only resolver.
+				clients := make(map[string]*openai.ClientConfig, len(p.TextPolicies))
+				for _, policy := range p.TextPolicies {
+					clients[policy.ClientName] = openai.NewClientConfig("", "", "", 25)
+				}
+				manager, buildErr := openai.NewManager(&openai.ManagerConfig{Logger: openai.AdaptLogrus(logger.WithField("component", "product-agent")), Clients: clients, ConfigResolver: openai.NewOrganizationOnlyCredentialResolver(features.ProductAgentDB)})
 				if buildErr != nil {
 					return nil, buildErr
 				}
 				ledger := aistore.NewGormInvocationRecorder(features.ProductAgentDB)
-				options = append(options, httpapi.WithProductAgent(httpapi.ProductAgentDependencies{RunDB: features.ProductAgentDB, ReviewDB: features.ProductReviewDB, AssetDB: features.ProductAgentAssetDB, Manager: manager, Ledger: ledger, TextPolicy: p.TextPolicy, Enabled: true, AllowedOrganizationIDs: p.AllowedOrganizationIDs, Limits: p.Limits()}))
+				options = append(options, httpapi.WithProductAgent(httpapi.ProductAgentDependencies{RunDB: features.ProductAgentDB, ReviewDB: features.ProductReviewDB, AssetDB: features.ProductAgentAssetDB, Manager: manager, Ledger: ledger, TextPolicies: p.TextPolicies, Enabled: true, AllowedOrganizationIDs: p.AllowedOrganizationIDs, Limits: p.Limits()}))
 				agentManager = manager
 			}
 			if features.RuntimeContext != nil {

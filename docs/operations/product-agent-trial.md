@@ -1,6 +1,6 @@
 # Product Agent 标题诊断试用交接
 
-Refs #131、#132、#134。入口是当前 Console 的 1688 采集详情：
+Refs #131、#132、#134、#573。入口是当前 Console 的 1688 采集详情：
 `/workbench/supply/acquisition/operation/<operation_id>`。范围是从已保存的确切商品版本
 读取证据、生成标题建议、有限修复、提交人工审核，再使用现有 Review 的接受/编辑/应用。
 不自动修改商品，不发布平台，不包含图片生成。
@@ -23,7 +23,7 @@ Refs #131、#132、#134。入口是当前 Console 的 1688 采集详情：
 | `steps`, `modelCalls` | 正整数，分别不超过 16、8；建议试用 12、6 |
 | `tokens`, `costMicros` | 明确批准的本次运行预算，不会代替或新增 Commercial 额度 |
 | `runtimeSeconds` | 1–120 秒，包含整个运行；恢复不重置预算或原始截止时间 |
-| `textPolicy` | 下述可信配置，不接受来自请求或模型的覆盖 |
+| `currency`, `textPolicies` | 单一运行预算币种和按企业 ID 索引的受控标题策略；缺策略的企业不可执行 |
 
 三个连接使用与现有 `DatabaseConfig` 相同的字段：`host`、`port`、`user`、`password`、
 `database`、`maxConnections`。仅允许 loopback、每池最多 8 个连接；数据库密码只放私有
@@ -38,25 +38,47 @@ credential SELECT、invocation SELECT/INSERT/UPDATE；Review 连接需要既有 
 以及 Catalog/SRC 读写权限；Asset 连接只需现有 inventory 读取权限。不要使用数据库 owner
 或测试 fixture 超级用户作为试用角色。已存在业务数据库不执行这里的全新安装步骤。
 
-`textPolicy` 字段：
+`textPolicies[organizationId]` 字段（只有完整 route、计量证据、定价和付费授权都具备时才启用）：
 
-- `clientName`：现有 Organization AI Capability 中的文本配置名称，例如 `default`。
+- `providerID`：真实供应商身份，与兼容协议名分离；`clientName`：当前企业组织凭据名称，例如 `default`。
+- `endpoint`、`apiStyle`、`admittedRoute.modelID`：部署者预定的精确 endpoint、OpenAI 兼容协议形式和模型；企业成员不能从浏览器修改该策略。
 - `policyVersion`：`title-review-v1`；`pricingVersion`：获准估价策略的版本标识。
 - `currency`：当前策略的三字符货币；`inputMicrosPerMillion` 和
   `outputMicrosPerMillion`：每百万 token 的货币微单位估价，必须显式冻结。
-- `admittedRoute`：通过当前 Manager 的 `ResolveTextRoute` 在该组织/成员身份下取得的
+- `inputWindowTokens`、`outputWindowTokens`：该 route 有证据支持的输入和输出硬上界；
+  `maximumOutputTokens` 和 `outputLimitField`：本次请求输出上限及供应商确实执行的
+  `max_tokens` 或 `max_completion_tokens` 字段。字段支持必须有该 route 的证据。
+- `admittedRoute`：通过当前 Manager 的 `ResolveTextRoute` 在该组织凭据下取得的
   `ProviderID`、`ModelID`、`CredentialReference`、`ConfigurationVersion` 非敏感元数据。
-  对应 `grsai` / `gemini-2.5-flash`；不可猜测 version，也不能把其他组织的结果照搬。
-- `boundEvidence`：已复核的该 GRSAI route 完整计量/输入输出上界依据标识。上游 Google
-  窗口说明和 GRSAI 价格页不能自行当成该 route 已被验证的证据。
+  其中兼容 route 的 Manager `ProviderID` 可能只是 `openai` 协议提示；实际供应商由策略的
+  `providerID` 指明。不可猜测 version，也不能把其他组织的结果照搬。
+- `boundEvidence`：已复核的该供应商精确 route 的完整两项 Token 计量、输出上界和无额外收费维度的依据标识；
+  别家模型窗口、一般兼容说明或价格页不能自行当成该 route 已被验证的证据。
 - `pointPricing`：沿用 #564 冻结积分计费，显式设置获准 `priceVersion` 和正整数
   `inputPointsPerMillionTokens` / `outputPointsPerMillionTokens`。不默认费率；预留企业积分
   和成员月限额，实际按 provider 观测输入/输出结算，UNKNOWN 保留原预留。
 
-前置报价保守预留整个模型窗口 1,114,112 tokens / 次；剩余运行预算或现有成员额度不足
+前置报价按该组织策略的输入/输出硬上界保守预留；剩余运行预算或现有成员额度不足
 便停止，事后仅结算 provider 完整报告的实际 tokens。估价用于预算，不声称是真实账单。
 未知响应/用量保持既有预留，不能通过新请求编号绕过。调整配置或凭据后必须重新核对 route。
 当前只交付受控接线，未提供通用模型/计费配置平台；目标环境的 route 及证明仍需交付者配置。
+
+当前应用没有挂载旧 `listingkit` AI 设置。部署者先在**关闭执行**的私有 manifest 中填入
+企业 allowlist 及预定策略（首次 `admittedRoute.configurationVersion` 暂缺）；另备私有凭据输入，
+用独立的 `title_credential_writer` 角色连接同一 `productAgent.database`。该角色仅获既有
+`ai_client_credentials` 的 SELECT/INSERT/UPDATE 和必要序列权限；应用运行角色仍只读。
+输入 JSON 包含 `action: "upsert"`、`organizationId`、`clientName`、`apiKey`、`baseURL`、
+`model`、`apiStyle`、`timeoutSecond` 和 `writerDatabase`（同一 host/port/database、独立用户/密码）。
+私有文件应采用与 manifest 相同的受限访问权限，不把密钥放命令行或仓库。
+
+```powershell
+go run ./cmd/product-agent-credential-provision -config C:\private\current-application.json -input C:\private\title-credential.json
+```
+
+命令只输出非敏感的组织、真实供应商及当前 route 配置版本。部署者将完整 `admittedRoute`
+写入策略，补齐 `boundEvidence`、价格、点数费率和预算，经单独付费授权后才启用 runtime。
+轮换凭据会产生新版本，旧报价不能发送；停用时同一命令的私有输入使用 `action: "disable"`、
+组织 ID、clientName 和 writerDatabase，不携带旧 API Key。未完成任一步时仍保持执行关闭。
 
 ## 正常启动和操作
 
@@ -104,11 +126,12 @@ Console 设置 `LISTINGKIT_KNOWLEDGE_ENABLED=true` 仅显示选择入口，不�
 
 ## 已验证与待执行
 
-开发组合验证覆盖真实 PostgreSQL 的采集发布、显式平台下已批准素材经授权工具读取、Eino、GRSAI SDK 结构响应、
+PR #502 的历史开发组合验证覆盖真实 PostgreSQL 的采集发布、显式平台下已批准素材经授权工具读取、Eino、GRSAI SDK 结构响应、
 错误证据被拒绝并修复、90 tokens 记账、重复请求不增调用，以及原 Review 人工接受/Apply。
 模型服务使用隔离响应，身份和额度为隔离 fixture；这不是已部署的用户实例。
 
-当前真实 GRSAI 调用、浏览器完整登录后的实际使用，以及 #47 样本集 Agent vs fixed
-质量/风险/延迟/成本对照为 NOT_RUN。准确代码 SHA、CI 和独立评审维护在 PR #502。
+当前任一真实供应商调用、标题执行完整浏览器使用，以及 #47 样本集 Agent vs fixed
+质量/风险/延迟/成本对照为 NOT_RUN。供应商可替换实现的准确代码 SHA、CI 和独立评审维护在 PR #580；
+PR #502 的历史证据不作为新 HEAD 的直接验证。
 只有完成目标环境配置、获得对应真实操作授权并实际验证后，才可宣称用户试用通过；
 不得以开发测试替代 #132 的原对照验收，也不自动进入下一阶段。

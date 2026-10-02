@@ -14,7 +14,8 @@ import (
 	coreconfig "task-processor/internal/core/config"
 
 	"task-processor/internal/aicapability"
-	"task-processor/internal/integration/agent/grsaitext"
+	"task-processor/internal/integration/agent/titletext"
+	"task-processor/internal/integration/openai"
 )
 
 func agentRuntimeConfig() *Config {
@@ -29,7 +30,7 @@ func agentRuntimeConfig() *Config {
 	run.User, run.Database = "agent_runtime", "agent"
 	review.User = "product_review_runtime"
 	asset.User, asset.Database = "asset_runtime", "asset"
-	cfg.ProductAgent = &ProductAgentConfig{Enabled: true, Database: run, ReviewDatabase: review, AssetDatabase: asset, AllowedOrganizationIDs: []string{"org"}, Steps: 12, ModelCalls: 6, Tokens: 5000000, CostMicros: 5000000, RuntimeSeconds: 120, TextPolicy: grsaitext.AgentTextPolicy{PolicyVersion: "title-review-v1", Currency: "CNY"}}
+	cfg.ProductAgent = &ProductAgentConfig{Enabled: true, Database: run, ReviewDatabase: review, AssetDatabase: asset, AllowedOrganizationIDs: []string{"org"}, Currency: "CNY", Steps: 12, ModelCalls: 6, Tokens: 5000000, CostMicros: 5000000, RuntimeSeconds: 120, TextPolicies: map[string]titletext.AgentTextPolicy{"org": {ProviderID: "grsai", Endpoint: "https://grsaiapi.com/v1", APIStyle: "grsai", ClientName: "text", PolicyVersion: "title-review-v1", PricingVersion: "test-pricing", BoundEvidence: "isolated-fixture", Currency: "CNY", InputWindowTokens: 1048576, OutputWindowTokens: 65536, MaximumOutputTokens: 8192, OutputLimitField: "max_tokens", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000, AdmittedRoute: openai.EffectiveClientRoute{ProviderID: "grsai", ModelID: "gemini-2.5-flash", CredentialReference: "text", ConfigurationVersion: "test-route"}, PointPricing: &aicapability.ModelPointTariff{PriceVersion: "test-tariff", InputPointsPerMillionTokens: 1000000, OutputPointsPerMillionTokens: 2000000}}}}
 	return cfg
 }
 
@@ -38,18 +39,35 @@ func TestProductAgentConfigRejectsUnboundedOrSplitProductOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, change := range map[string]func(*Config){
-		"missing commercial":  func(c *Config) { c.CommercialOwnerDatabase = nil },
-		"missing acquisition": func(c *Config) { c.ProductAcquisitionDatabase = nil },
-		"split product":       func(c *Config) { c.ProductAgent.ReviewDatabase.Database = "different" },
-		"unbounded runtime":   func(c *Config) { c.ProductAgent.RuntimeSeconds = 121 },
-		"unbounded pool":      func(c *Config) { c.ProductAgent.Database.MaxConnections = 9 },
-		"empty admission":     func(c *Config) { c.ProductAgent.AllowedOrganizationIDs = nil },
-		"duplicate admission": func(c *Config) { c.ProductAgent.AllowedOrganizationIDs = []string{"org", "org"} },
+		"missing commercial":        func(c *Config) { c.CommercialOwnerDatabase = nil },
+		"missing acquisition":       func(c *Config) { c.ProductAcquisitionDatabase = nil },
+		"split product":             func(c *Config) { c.ProductAgent.ReviewDatabase.Database = "different" },
+		"unbounded runtime":         func(c *Config) { c.ProductAgent.RuntimeSeconds = 121 },
+		"unbounded pool":            func(c *Config) { c.ProductAgent.Database.MaxConnections = 9 },
+		"insufficient model tokens": func(c *Config) { c.ProductAgent.Tokens = 10 },
+		"insufficient model cost":   func(c *Config) { c.ProductAgent.CostMicros = 1 },
+		"empty admission":           func(c *Config) { c.ProductAgent.AllowedOrganizationIDs = nil },
+		"duplicate admission":       func(c *Config) { c.ProductAgent.AllowedOrganizationIDs = []string{"org", "org"} },
 		"invalid point tariff": func(c *Config) {
-			c.ProductAgent.TextPolicy.PointPricing = &aicapability.ModelPointTariff{PriceVersion: "synthetic", InputPointsPerMillionTokens: 1}
+			policy := c.ProductAgent.TextPolicies["org"]
+			policy.PointPricing = &aicapability.ModelPointTariff{PriceVersion: "synthetic", InputPointsPerMillionTokens: 1}
+			c.ProductAgent.TextPolicies["org"] = policy
 		},
 		"overflow point tariff": func(c *Config) {
-			c.ProductAgent.TextPolicy.PointPricing = &aicapability.ModelPointTariff{PriceVersion: "synthetic", InputPointsPerMillionTokens: 9223372036854775807, OutputPointsPerMillionTokens: 9223372036854775807}
+			policy := c.ProductAgent.TextPolicies["org"]
+			policy.PointPricing = &aicapability.ModelPointTariff{PriceVersion: "synthetic", InputPointsPerMillionTokens: 9223372036854775807, OutputPointsPerMillionTokens: 9223372036854775807}
+			c.ProductAgent.TextPolicies["org"] = policy
+		},
+		"policy outside admission": func(c *Config) { c.ProductAgent.TextPolicies["other-org"] = c.ProductAgent.TextPolicies["org"] },
+		"policy currency mismatch": func(c *Config) {
+			policy := c.ProductAgent.TextPolicies["org"]
+			policy.Currency = "USD"
+			c.ProductAgent.TextPolicies["org"] = policy
+		},
+		"missing model limit field": func(c *Config) {
+			policy := c.ProductAgent.TextPolicies["org"]
+			policy.OutputLimitField = ""
+			c.ProductAgent.TextPolicies["org"] = policy
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
