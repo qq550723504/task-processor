@@ -100,16 +100,23 @@ func agentModelFixture(t *testing.T, content, usage string) (*AgentTextModel, co
 }
 
 func TestAgentTextModelBindsEachOrganizationToItsOwnProviderAndRoute(t *testing.T) {
-	newProvider := func() (*httptest.Server, *atomic.Int32) {
+	newProvider := func(reasoningEffort string) (*httptest.Server, *atomic.Int32) {
 		calls := &atomic.Int32{}
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			calls.Add(1)
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Error(err)
+			}
+			if _, present := payload["reasoning_effort"]; (reasoningEffort == "" && present) || (reasoningEffort != "" && payload["reasoning_effort"] != reasoningEffort) {
+				t.Errorf("wrong reasoning setting: %#v", payload)
+			}
 			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"Kind\":\"interrupt\"}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}`))
 		}))
 		return server, calls
 	}
-	aServer, aCalls := newProvider()
-	bServer, bCalls := newProvider()
+	aServer, aCalls := newProvider("")
+	bServer, bCalls := newProvider("none")
 	t.Cleanup(aServer.Close)
 	t.Cleanup(bServer.Close)
 	db := openTestCredentialDB(t)
@@ -133,7 +140,11 @@ func TestAgentTextModelBindsEachOrganizationToItsOwnProviderAndRoute(t *testing.
 		identities[item.org] = identity
 		route, routeErr := manager.ResolveTextRoute(authidentity.WithAuthenticatedIdentity(context.Background(), identity), "text")
 		requireNoErrorText(t, routeErr)
-		policies[item.org] = AgentTextPolicy{ProviderID: item.provider, Endpoint: item.endpoint, APIStyle: item.style, ClientName: "text", PolicyVersion: "title-review-v1", PricingVersion: "test-price-v1", BoundEvidence: "isolated-fixture-v1", Currency: "CNY", InputWindowTokens: 1048576, OutputWindowTokens: 65536, MaximumOutputTokens: 8192, OutputLimitField: "max_tokens", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000, PointPricing: &aicapability.ModelPointTariff{PriceVersion: "synthetic-points-v1", InputPointsPerMillionTokens: 1000000, OutputPointsPerMillionTokens: 2000000}, AdmittedRoute: route}
+		policy := AgentTextPolicy{ProviderID: item.provider, Endpoint: item.endpoint, APIStyle: item.style, ClientName: "text", PolicyVersion: "title-review-v1", PricingVersion: "test-price-v1", BoundEvidence: "isolated-fixture-v1", Currency: "CNY", InputWindowTokens: 1048576, OutputWindowTokens: 65536, MaximumOutputTokens: 8192, OutputLimitField: "max_tokens", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000, PointPricing: &aicapability.ModelPointTariff{PriceVersion: "synthetic-points-v1", InputPointsPerMillionTokens: 1000000, OutputPointsPerMillionTokens: 2000000}, AdmittedRoute: route}
+		if item.org == "org-b" {
+			policy.ReasoningEffort = "none"
+		}
+		policies[item.org] = policy
 	}
 	current := &atomic.Value{}
 	current.Store(identities["org-a"])
@@ -149,6 +160,19 @@ func TestAgentTextModelBindsEachOrganizationToItsOwnProviderAndRoute(t *testing.
 	bCtx := authidentity.WithAuthenticatedIdentity(context.Background(), identities["org-b"])
 	bQuote, err := model.Quote(bCtx, in)
 	requireNoErrorText(t, err)
+	changedPolicies := map[string]AgentTextPolicy{"org-a": policies["org-a"], "org-b": policies["org-b"]}
+	changed := changedPolicies["org-b"]
+	changed.ReasoningEffort = ""
+	changedPolicies["org-b"] = changed
+	changedModel, err := NewAgentTextModel(manager, ledger, changedPolicies, []commercetool.ToolRef{{ID: "product.snapshot.read", Version: "v1"}}, func(context.Context) (authidentity.AuthenticatedIdentity, error) {
+		return current.Load().(authidentity.AuthenticatedIdentity), nil
+	})
+	requireNoErrorText(t, err)
+	changedQuote, err := changedModel.Quote(bCtx, in)
+	requireNoErrorText(t, err)
+	if changedQuote.Reference == bQuote.Reference {
+		t.Fatal("reasoning control change reused the previous quote")
+	}
 	if aQuote.Reference == bQuote.Reference {
 		t.Fatal("different organizations share a title quote")
 	}

@@ -31,6 +31,7 @@ type AgentTextPolicy struct {
 	ProviderID                                                         string
 	Endpoint, APIStyle                                                 string
 	OutputLimitField                                                   string
+	ReasoningEffort                                                    string
 	InputWindowTokens, OutputWindowTokens                              int64
 	MaximumOutputTokens                                                int
 	InputMicrosPerMillion, OutputMicrosPerMillion                      int64
@@ -56,7 +57,7 @@ func (p AgentTextPolicy) Validate() error {
 			return agent.ErrUnavailable
 		}
 	}
-	if len(p.Currency) != 3 || (p.OutputLimitField != "max_tokens" && p.OutputLimitField != "max_completion_tokens") || p.InputWindowTokens <= 0 || p.InputWindowTokens > agentInputWindow || p.OutputWindowTokens <= 0 || p.OutputWindowTokens > agentOutputWindow || p.MaximumOutputTokens <= 0 || int64(p.MaximumOutputTokens) > p.OutputWindowTokens {
+	if len(p.Currency) != 3 || (p.OutputLimitField != "max_tokens" && p.OutputLimitField != "max_completion_tokens") || (p.ReasoningEffort != "" && p.ReasoningEffort != "none") || p.InputWindowTokens <= 0 || p.InputWindowTokens > agentInputWindow || p.OutputWindowTokens <= 0 || p.OutputWindowTokens > agentOutputWindow || p.MaximumOutputTokens <= 0 || int64(p.MaximumOutputTokens) > p.OutputWindowTokens {
 		return agent.ErrUnavailable
 	}
 	if p.InputMicrosPerMillion <= 0 || p.InputMicrosPerMillion > 1e12 || p.OutputMicrosPerMillion <= 0 || p.OutputMicrosPerMillion > 1e12 || p.PointPricing == nil || p.ValidatePointPricing() != nil {
@@ -269,7 +270,7 @@ func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (prep
 	if err != nil {
 		return p, agent.ErrInvalid
 	}
-	p.request = openai.TextCompletionRequest{System: agentTextSystem, Prompt: string(wire), MaximumOutputTokens: policy.MaximumOutputTokens, OutputLimitField: policy.OutputLimitField}
+	p.request = openai.TextCompletionRequest{System: agentTextSystem, Prompt: string(wire), MaximumOutputTokens: policy.MaximumOutputTokens, OutputLimitField: policy.OutputLimitField, ReasoningEffort: policy.ReasoningEffort}
 	if p.knowledge != nil {
 		p.request.System += "\n" + knowledgeTextSystem
 	}

@@ -9,7 +9,7 @@
 
 当前企业在商品标题智能体已启用、已保存商品可读取时，成员能确认模板、商品、目标平台和知识选择，执行标题建议并进入现有 Human Review/显式 Apply。部署者可以为不同企业配置不同的已核准 OpenAI Chat Completions 兼容路由，也可更换某企业的路由，无需修改标题 Agent 的业务代码。路由切换后的新调用必须重新报价；已经 dispatch 或结果未知的调用不能切换供应商重发。
 
-本增量只处理标题文本模型的供应商锁定及其调用前门禁。首个隔离试用仍可选 GRSAI，但它不是代码中的唯一允许供应商。每条实际启用的路由需要自己的凭据、配置版本、模型用量与上界依据、价格和产品点数费率。缺任一项时显示执行不可用，不形成成功状态或付费调用。
+本增量只处理标题文本模型的供应商锁定及其调用前门禁。2026-10-03 用户选择以 Google 官方接口作为首条真实候选路由；此前的 GRSAI 候选仍保留为历史研究，不作为默认。每条实际启用的路由需要自己的凭据、配置版本、模型用量与上界依据、价格和产品点数费率。缺任一项时显示执行不可用，不形成成功状态或付费调用。
 
 产品依据为本次用户决定、[#555](https://github.com/qq550723504/task-processor/issues/555)、[#570](https://github.com/qq550723504/task-processor/issues/570) 与 [Agent D 已批准合同](organization-agent-configuration-v1.md)。涉及入口与交互继续以 [当前 Figma/IA Authority](../product/final-ui-ia-authority.md) 为准；本增量不改页面命名、供应商选择 UI 或确认流程。继承 [Product Agent 运行合同](product-agent-runtime-contract.md) 的 Product/Knowledge/AI/Review owner、唯一 dispatch、UNKNOWN 和人工 Apply 规则。本次用户决定替代其中 §8.3 的“文本也使用 GRSAI”和 GRSAI 专属 endpoint 归属、§8.4 “首片限定 GRSAI `gemini-2.5-flash`”及 §8.5 “仅 GRSAI route”这几处供应商约束；§8.3 单次 SDK 调用、显式非流式、全字段 usage、大小/时间限制及安全错误规则继续适用于每条已准入兼容 route。其余安全和运行约束不因接口兼容而降低。
 
@@ -30,6 +30,12 @@ OpenAI 官方 [Chat Completions API](https://developers.openai.com/api/reference
 [eino-ext](https://github.com/cloudwego/eino-ext) 已提供 OpenAI、Claude、Gemini 等 ChatModel 适配器；本仓库当前只引入 `github.com/cloudwego/eino` 核心包，使用 `compose` 运行 Agent 图，文本传输已有 `sashabaranov/go-openai` SDK。当前产品决定限定 **OpenAI Chat Completions 兼容协议**，多个供应商可通过同一成熟 SDK 与不同的已准入 endpoint 接入，不需要自行实现各厂商 HTTP 客户端。实现前先核对 [eino-ext OpenAI 适配器](https://github.com/cloudwego/eino-ext/tree/main/components/model/openai) 与现有传输 seam；只有它能保持当前按组织解析/队列、原始 usage 字段存在性、请求大小/deadline、明确未发送与发送后 UNKNOWN、禁重试行为时才替换现有 SDK 调用。不能为接入 Eino 接口而丢掉这些已通过验证的门禁。
 
 该判断有具体技术依据：[eino-ext 的 OpenAI 响应转换](https://github.com/cloudwego/eino-ext/blob/main/libs/acl/openai/chat_model.go) 将 SDK 的 `resp.Usage` 取地址后填入 Eino `ResponseMeta.Usage`；只看转换后的整数无法区分原始 JSON 缺字段与观察到零。其适配器提供自定义 `HTTPClient` 和原始响应 modifier，可在受控 seam 校验；正式选用时须以当前版本和隔离测试证实。未来若产品决定接入非 OpenAI 兼容的原生协议，优先复用对应 eino-ext 适配器，按该 route 重新完成同一准入；本增量不提前实现原生协议。
+
+### 2.2 Google 官方直连首条候选（Reuse Existing Architecture）
+
+[Google 官方兼容接口](https://ai.google.dev/gemini-api/docs/openai) 提供 `https://generativelanguage.googleapis.com/v1beta/openai/`，支持以 OpenAI Chat Completions 客户端直连。`gemini-2.5-flash` 的 [官方模型页](https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash) 列出输入 1,048,576、输出 65,536 token 限额；兼容接口文档还说明该模型可用 `reasoning_effort=none` 关闭思考。本路线复用现有兼容传输，不引入原生 Gemini 协议或第二个请求客户端。
+
+标题策略可选地冻结 `ReasoningEffort`，当前只接受空值或 `none`。空值沿用既有供应商请求，`none` 由现有 SDK 写入兼容请求，并随整个策略进入 quote 引用；不同参数配置必须重新报价。Google 候选采用 `none`，因为现有账本只根据完整 `prompt_tokens` 和 `completion_tokens` 两项结算，不能把单独计费的思考 token 隐藏在 `total_tokens` 里。传输继续拒绝缺失或不一致的完整 usage，发送后的不确定结果继续 UNKNOWN。此参数不授予路由准入：Google 原生 API 的 `maxOutputTokens` 硬上界和思考计量说明不能直接证明兼容接口 `max_tokens`/`max_completion_tokens` 的映射及实际响应计量。Google 兼容层当前为 beta，须针对精确 endpoint、模型和请求参数取得实测证据；未取得时保持执行关闭。
 
 ## 3. Owner、合同与接线
 
@@ -61,4 +67,4 @@ existing organization credential + operator-controlled text admission profiles
 
 实现自检应覆盖部署者写入组织凭据后当前应用实际读取同一 `ProductAgentDB` 行、轮换使旧 quote 失效且不泄露 Key；两个企业各自使用不同供应商身份/模型的受控兼容服务，验证 Quote、Decide、发送前重查与 ledger 的真实路由归属及跨企业隔离；同企业成员行不能覆盖标题组织行，组织行缺失/禁用时不可落到成员行或全局配置；`text.generate` 的 `AVAILABLE`、`NEEDS_CONFIGURATION`、`UNAVAILABLE` 与可修复来源一致；配置或价格切换在 claim 前失败；生成后的完整请求 envelope 按 UTF-8 字节加 Chat framing 余量保守检查该 route 的输入上界，超限在 claim/预留前拒绝；usage 缺失、超过上界及发送后未知保持未决；不支持的按次/附加收费 route 在 claim 前拒绝；权限撤销不发送；原 GRSAI 路径不回归。仅 fixture 的第二供应商验证可替换性，不宣称其真实服务可用。实际 GRSAI 或另一供应商的付费试用还需该 route 的可信上界与计量证据、产品点数费率、调用预算和单独授权。用户试用标题→Review→Apply 的结果与实现自检/CI 分开记录。
 
-当前状态：按合同实现的代码候选已在 PR #580；没有新增 schema、付费调用或用户验收。每条实际供应商 route 仍须完成准入证据、点数费率、预算及调用授权。
+当前状态：按合同实现的供应商可替换代码已随 PR #580 合入 main；2026-10-03 的 Google 兼容请求参数补齐仍是后续候选。没有新增 schema、付费调用或用户验收。每条实际供应商 route 仍须完成准入证据、点数费率、预算及调用授权。
