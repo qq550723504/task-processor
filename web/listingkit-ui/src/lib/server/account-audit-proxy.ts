@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { AccountReadError, accountErrorCode } from "@/lib/api/account";
-import { AUDIT_RESPONSE_MAX_BYTES, auditQuery, parseAccountAudit, parseAccountAuditSummary, type AuditOptions } from "@/lib/api/account-audit";
+import { AUDIT_RESPONSE_MAX_BYTES, auditContentInvalidReason, auditQuery, parseAccountAudit, parseAccountAuditSummary, type AuditOptions } from "@/lib/api/account-audit";
 import { readBoundedStrictJSON } from "@/lib/api/strict-json-response";
 import { accountFailure } from "./account-proxy";
 import { WORKBENCH_COOKIE_NAME } from "./workbench-proxy";
@@ -40,7 +40,7 @@ async function proxyAudit(request: Request, token: string, userId: string, isSum
     const rawOperation = url.searchParams.get("operation");
     if (rawOperation !== null && !validOperation(rawOperation)) throw new Error("invalid operation");
     const rawContent = url.searchParams.get("query");
-    if (rawContent !== null && (!rawContent.trim() || new TextEncoder().encode(rawContent.trim()).length > 80 || /[\x00-\x1f\x7f]/.test(rawContent))) throw new Error("invalid content");
+    if (rawContent !== null && auditContentInvalidReason(rawContent) !== null) throw new Error("invalid content");
     const rawMember = url.searchParams.get("member");
     if (rawMember !== null && !validID(rawMember)) throw new Error("invalid member");
     const rawPeriod = url.searchParams.get("period");

@@ -6,7 +6,7 @@ import { useWorkbenchContext } from "@/components/providers/workbench-context-pr
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AccountReadError } from "@/lib/api/account";
-import { getAccountAudit, getAccountAuditSummary } from "@/lib/api/account-audit";
+import { auditContentInvalidReason, getAccountAudit, getAccountAuditSummary } from "@/lib/api/account-audit";
 import { ConsoleState } from "../../console/console-page";
 import styles from "./audit.module.css";
 
@@ -91,7 +91,7 @@ function AuditRequests({ scope, expectedUserId, organizationId, onScopeRejected 
   const data = query.data;
   const operationNames = { register: "登记源账号", enable: "启用源账号", disable: "停用源账号", allocate_member_resource: "分配成员资源", reclaim_member_resource: "回收成员资源", set_member_ai_point_limit: "设置成员 AI 月度上限", update: "更新账户资料", invite: "邀请成员", role: "更新成员角色", remove: "移除成员" };
   return <>
-    <form className={styles.filters} onSubmit={event => { event.preventDefault(); const normalized = content.trim(); if (new TextEncoder().encode(normalized).length > 80) { setFilterError("搜索词不能超过 80 字节。" ); return; } setFilterError(""); setApplied({ content: normalized, period, memberId, actor, operation }); setCursors([undefined]); }}>
+    <form className={styles.filters} onSubmit={event => { event.preventDefault(); const normalized = content.trim(); const invalid = auditContentInvalidReason(content); if (invalid === "control" || invalid === "too_long") { setFilterError(invalid === "control" ? "搜索词不能包含控制字符。" : "搜索词不能超过 80 字节。" ); return; } setFilterError(""); setApplied({ content: normalized, period, memberId, actor, operation }); setCursors([undefined]); }}>
       <label className={styles.search}>搜索操作内容 / 对象 <input value={content} onChange={event => setContent(event.target.value)} maxLength={80} placeholder="操作名称或对象 ID" /></label>
       <label>时间范围 <select value={period} onChange={event => setPeriod(event.target.value as Period)}><option value="7d">近7天</option><option value="30d">近30天</option><option value="all">全部时间</option></select></label>
       <label>操作类型 <select value={operation} onChange={event => setOperation(event.target.value as Operation)}><option value="">全部</option><option value="update">更新账户资料</option><option value="invite">邀请成员</option><option value="role">更新成员角色</option><option value="remove">移除成员</option><option value="register">登记源账号</option><option value="enable">启用源账号</option><option value="disable">停用源账号</option><option value="allocate_member_resource">分配成员资源</option><option value="reclaim_member_resource">回收成员资源</option><option value="set_member_ai_point_limit">设置成员 AI 月度上限</option></select></label>

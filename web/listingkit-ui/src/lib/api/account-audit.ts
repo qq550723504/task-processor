@@ -101,9 +101,16 @@ export function parseAccountAudit(value: unknown): AccountAuditPage {
   return parsed.data;
 }
 export type AuditOptions = { expectedUserId: string; expectedOrganizationId: string; limit?: number; cursor?: string; actor?: string; operation?: z.infer<typeof auditOperation>; content?: string; memberId?: string; period?: "7d" | "30d" | "all"; signal?: AbortSignal };
+export function auditContentInvalidReason(value: string): "empty" | "too_long" | "control" | null {
+  if (/\p{Cc}/u.test(value)) return "control";
+  const normalized = value.trim();
+  if (!normalized) return "empty";
+  if (new TextEncoder().encode(normalized).length > 80) return "too_long";
+  return null;
+}
 export function auditQuery(limit = 20, after?: string, actor?: string, kind?: AuditOptions["operation"], content?: string, memberId?: string, period?: AuditOptions["period"]): string {
   const normalizedContent = content?.trim();
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || after !== undefined && !cursor.safeParse(after).success || kind !== undefined && !auditOperation.safeParse(kind).success || actor !== undefined && actor !== "" && !identity.safeParse(actor).success || memberId !== undefined && memberId !== "" && !identity.safeParse(memberId).success || content !== undefined && (!normalizedContent || new TextEncoder().encode(normalizedContent).length > 80 || /[\x00-\x1f\x7f]/.test(normalizedContent)) || period !== undefined && !["7d", "30d", "all"].includes(period)) throw new AccountReadError(400, "INVALID_REQUEST");
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || after !== undefined && !cursor.safeParse(after).success || kind !== undefined && !auditOperation.safeParse(kind).success || actor !== undefined && actor !== "" && !identity.safeParse(actor).success || memberId !== undefined && memberId !== "" && !identity.safeParse(memberId).success || content !== undefined && auditContentInvalidReason(content) !== null || period !== undefined && !["7d", "30d", "all"].includes(period)) throw new AccountReadError(400, "INVALID_REQUEST");
   const query = new URLSearchParams({ limit: String(limit) });
   if (after !== undefined) query.set("cursor", after);
   if (actor !== undefined && actor !== "") query.set("actor", actor);

@@ -21,6 +21,11 @@ describe("account audit query boundary", () => {
     expect(url.searchParams.get("period")).toBe("30d");
     expect(url.searchParams.get("member")).toBe("member-1");
   });
+  it.each(["a\u0085b", "a\u0001b", "a\u007fb"])("rejects Unicode control in content before request", content => {
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    expect(() => auditQuery(20, undefined, undefined, undefined, content)).toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it("reads committed member allocations and monthly caps as current resource facts", async () => {
     const transfer = { eventType: "account_member_resource.changed", actor: "actor-1", time: "2026-09-29T08:00:00Z", objectType: "member_resource", objectReference: "member-1", operation: "allocate_member_resource", result: "succeeded", relation: { type: "organization_resource_operation", reference: "allocate-1", version: "1" }, resource: { type: "data_row", quantity: "100" } };
     const cap = { ...transfer, eventType: "account_member_ai_point_limit.changed", objectType: "member_ai_point_limit", operation: "set_member_ai_point_limit", relation: { ...transfer.relation, reference: "cap-1" }, resource: { type: "ai_point", quantity: "0" } };

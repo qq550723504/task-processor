@@ -53,6 +53,11 @@ describe("audit BFF exported route", () => {
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
     expect((await GET(request(query))).status).toBe(400); expect(fetch).not.toHaveBeenCalled();
   });
+  it("rejects U+0085 in content before forwarding to Go", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json(empty)); vi.stubGlobal("fetch", fetch);
+    expect((await GET(request("?query=a%C2%85b"))).status).toBe(400);
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it.each(["?limit=0", "?limit=101", "?limit=1&limit=2", "?org=A", "?cursor=", "?limit=01", "?limit=1&raw=x", "?actor=bad%20actor", "?operation=unknown"])("rejects query %s before upstream", async query => {
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
     expect((await GET(request(query))).status).toBe(400); expect(fetch).not.toHaveBeenCalled();
