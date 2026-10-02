@@ -52,8 +52,11 @@ func TestCommittedAIUsageAuditReadSurvivesRepositoryReopen(t *testing.T) {
 	}
 }
 
-func newTestRepository(t *testing.T) *Repository {
+func newTestRepository(t *testing.T) (*Repository, domain.Quota) {
 	t.Helper()
+	start := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
+	end := start.Add(48 * time.Hour)
+	quota := domain.Quota{OrganizationID: "org-1", Metric: domain.MetricToken, Total: 100, WindowStart: start, WindowEnd: end}
 	db, err := gorm.Open(sqlite.Open("file:account-allocation-"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -61,25 +64,21 @@ func newTestRepository(t *testing.T) *Repository {
 	if err := AutoMigrate(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Exec(`INSERT INTO saas_tenant_entitlements (tenant_id, module_code, status, starts_at, expires_at, limits) VALUES (?, ?, ?, ?, ?, ?)`, "org-1", "listingkit", "active", time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), `{"ai_tokens":100}`).Error; err != nil {
+	if err := db.Exec(`INSERT INTO saas_tenant_entitlements (tenant_id, module_code, status, starts_at, expires_at, limits) VALUES (?, ?, ?, ?, ?, ?)`, "org-1", "listingkit", "active", start, end, `{"ai_tokens":100}`).Error; err != nil {
 		t.Fatal(err)
 	}
 	repo, err := New(db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return repo
-}
-
-func testQuota() domain.Quota {
-	return domain.Quota{OrganizationID: "org-1", Metric: domain.MetricToken, Total: 100, WindowStart: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), WindowEnd: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)}
+	return repo, quota
 }
 func setInput(member, key string, target, version int64) domain.SetTargetInput {
 	return domain.SetTargetInput{OrganizationID: "org-1", MemberID: member, Target: target, ExpectedVersion: version, IdempotencyKey: key, ActorID: "admin-1"}
 }
 
 func TestCommittedAIUsageAuditReadPaginatesAndScopesCanonicalEvents(t *testing.T) {
-	repo := newTestRepository(t)
+	repo, _ := newTestRepository(t)
 	ctx := context.Background()
 	now := time.Date(2026, 9, 25, 1, 0, 0, 0, time.UTC)
 	for _, row := range []commercialUsageEventRow{
@@ -116,9 +115,8 @@ func TestCommittedAIUsageAuditReadPaginatesAndScopesCanonicalEvents(t *testing.T
 }
 
 func TestSetTargetIsVersionedIdempotentAndAudited(t *testing.T) {
-	repo := newTestRepository(t)
+	repo, q := newTestRepository(t)
 	ctx := context.Background()
-	q := testQuota()
 	first, err := repo.SetTarget(ctx, q, setInput("member-1", "op-1", 60, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -151,9 +149,8 @@ func TestSetTargetIsVersionedIdempotentAndAudited(t *testing.T) {
 }
 
 func TestSetTargetEnforcesPoolAndConsumedFloorAndRevoke(t *testing.T) {
-	repo := newTestRepository(t)
+	repo, q := newTestRepository(t)
 	ctx := context.Background()
-	q := testQuota()
 	if _, err := repo.SetTarget(ctx, q, setInput("member-1", "op-1", 70, 0)); err != nil {
 		t.Fatal(err)
 	}
@@ -189,23 +186,21 @@ func TestSetTargetEnforcesPoolAndConsumedFloorAndRevoke(t *testing.T) {
 }
 
 func TestSetTargetIdempotencyKeyRejectsCrossWindowReplay(t *testing.T) {
-	repo := newTestRepository(t)
+	repo, firstWindow := newTestRepository(t)
 	ctx := context.Background()
-	firstWindow := testQuota()
 	input := setInput("member-1", "allocation-1", 10, 0)
 	if _, err := repo.SetTarget(ctx, firstWindow, input); err != nil {
 		t.Fatal(err)
 	}
-	nextWindow := domain.Quota{OrganizationID: "org-1", Metric: domain.MetricToken, Total: 100, WindowStart: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), WindowEnd: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)}
+	nextWindow := domain.Quota{OrganizationID: "org-1", Metric: domain.MetricToken, Total: 100, WindowStart: firstWindow.WindowEnd, WindowEnd: firstWindow.WindowEnd.Add(48 * time.Hour)}
 	if _, err := repo.SetTarget(ctx, nextWindow, input); !errors.Is(err, domain.ErrIdempotencyConflict) {
 		t.Fatalf("cross-window key reuse err=%v, want idempotency conflict", err)
 	}
 }
 
 func TestConsumeIsIdempotentAndChecksBothPools(t *testing.T) {
-	repo := newTestRepository(t)
+	repo, q := newTestRepository(t)
 	ctx := context.Background()
-	q := testQuota()
 	if _, err := repo.SetTarget(ctx, q, setInput("member-1", "op-1", 10, 0)); err != nil {
 		t.Fatal(err)
 	}
@@ -230,9 +225,8 @@ func TestConsumeIsIdempotentAndChecksBothPools(t *testing.T) {
 }
 
 func TestConsumeIdempotencyKeyRejectsCrossWindowReplay(t *testing.T) {
-	repo := newTestRepository(t)
+	repo, firstWindow := newTestRepository(t)
 	ctx := context.Background()
-	firstWindow := testQuota()
 	if _, err := repo.SetTarget(ctx, firstWindow, setInput("member-1", "allocation-1", 10, 0)); err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +235,7 @@ func TestConsumeIdempotencyKeyRejectsCrossWindowReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	nextWindow := domain.Quota{OrganizationID: "org-1", Metric: domain.MetricToken, Total: 100, WindowStart: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), WindowEnd: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)}
+	nextWindow := domain.Quota{OrganizationID: "org-1", Metric: domain.MetricToken, Total: 100, WindowStart: firstWindow.WindowEnd, WindowEnd: firstWindow.WindowEnd.Add(48 * time.Hour)}
 	if _, err := repo.SetTarget(ctx, nextWindow, setInput("member-1", "allocation-2", 10, 0)); err != nil {
 		t.Fatal(err)
 	}
@@ -258,9 +252,8 @@ func TestConsumeIdempotencyKeyRejectsCrossWindowReplay(t *testing.T) {
 }
 
 func TestListRecentAuditUsesStableCursor(t *testing.T) {
-	repo := newTestRepository(t)
+	repo, q := newTestRepository(t)
 	ctx := context.Background()
-	q := testQuota()
 	for i, member := range []string{"member-1", "member-2", "member-3"} {
 		if _, err := repo.SetTarget(ctx, q, setInput(member, "audit-"+string(rune('1'+i)), int64(10+i), 0)); err != nil {
 			t.Fatal(err)

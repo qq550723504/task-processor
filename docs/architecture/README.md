@@ -136,6 +136,13 @@ source of truth for long-lived rules.
     including Required CI Gate. Production Writer starts only after PR #571 merges
     to main; rollout/provider use remain separately gated.
 
+- [`product-agent-text-provider-neutral-v1.md`](./product-agent-text-provider-neutral-v1.md)
+  - IMPLEMENTATION_READY #573 architecture for organization-scoped,
+    provider-neutral title text admission over OpenAI-compatible routes. The
+    user's new supplier decision supersedes the old GRSAI-only requirement;
+    actual paid execution still requires route-specific metering, limits,
+    pricing and paid-call authorization.
+
 - [`account-audit-summary-v1.md`](./account-audit-summary-v1.md)
   - IMPLEMENTATION_READY #478 four true Account Audit totals over the complete
     30-day window of current committed owner events, preserving live Organization
