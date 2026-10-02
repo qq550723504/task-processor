@@ -790,7 +790,8 @@ For a first confirmation, the server freshly validates:
 
 The local ACTIVE/latest-USER predicates are checked again inside the BusinessTask T1 transaction
 under the Conversation row lock (§8.2); a preflight read alone is not sufficient. Existing-task
-receipt replay is resolved before these first-create checks.
+receipt replay is resolved before these first-create checks. Any preflight rejection must also
+pass the serialized replay-or-fail exit in §8.2 before it can be returned to the caller.
 
 Knowledge owner adds one narrow metadata contract:
 
@@ -815,9 +816,10 @@ Therefore there is no observe→materialize TOCTOU: the proposal stores the obse
 display/staleness, and the actual Knowledge owner enforces that exact identity while selecting
 the revisions that enter the bundle.
 
-Any material difference returns `PROPOSAL_STALE`, `KNOWLEDGE_SELECTION_CHANGED` or the
-current specific authorization/availability error. The server never silently rewrites the
-proposal to “latest”.
+Any material difference on a first-create path yields `PROPOSAL_STALE`,
+`KNOWLEDGE_SELECTION_CHANGED` or the current specific authorization/availability error, subject
+to the existing-receipt precedence at every preflight failure exit (§8.2). The server never
+silently rewrites the proposal to “latest”.
 
 Template default Knowledge remains only UI prefill. If the proposal has no Knowledge selection,
 execution remains no-Knowledge.
@@ -867,7 +869,8 @@ immutable `proposal_digest` is stored on the BusinessTask and integrity-checked 
 first-create path; same-key replay therefore does not need to load or freshness-check the
 proposal before it can identify the existing receipt.
 
-**Replay lookup precedes proposal/dependency freshness checks.**
+**Replay lookup precedes proposal/dependency freshness checks. A preflight failure is not an
+immediate response: it first passes the same-key serialized replay-or-fail exit below.**
 
 ```text
 fresh verified identity / Effective Organization / workbench.chat.use
@@ -878,12 +881,13 @@ fresh verified identity / Effective Organization / workbench.chat.use
           match    → return the existing BusinessTask + current safe projection
                      (no proposal-stale / Agent-enabled / template / Knowledge preflight)
       not found:
-        → verify Conversation ACTIVE + proposal matches latest USER/exact source
+        → preflight Conversation ACTIVE + proposal matches latest USER/exact source
         → existing Product + workbench.agent.use + listingkit.admin.write authorization
         → existing AgentConfig Prepare using exact proposal/model profile + request key
         → existing Knowledge Materialize with ExpectedRevisionSetDigest if selected
         → complete-prompt governed Quote preflight (no reservation/provider send)
         → build exact agent.Request and digest
+          any preflight failure → serialized replay-or-fail; never return it directly
         → T1 create/adopt BusinessTask under local confirmation ordering below
         → only a new T1 receipt continues to T2 existing Runtime.Start
              → existing AgentConfig Guard
@@ -897,6 +901,29 @@ template or Knowledge to remain executable merely to return an already committed
 Protected Product/Knowledge/Review details in the projection are independently reauthorized and
 redacted when unavailable.
 
+**Serialized replay-or-fail:** the initial unlocked lookup is a fast path, not proof that a Task
+will remain absent while preflight runs. Every first-create preflight failure after that lookup
+(including stale/archived, Product/Agent permission, template, Knowledge, profile, quote or
+request-preparation failure) uses one Workbench-local exit routine:
+
+1. Revalidate the caller's receipt-read scope/permission outside the transaction if it is no
+   longer established. Loss of the caller's own verified org/actor access never grants replay.
+2. Open a short transaction and acquire the **same scoped execution-key transaction lock as
+   T1**, then read the canonical Task receipt from the primary Workbench store.
+3. If a Task now exists, compare the wire confirmation fingerprint. A match returns the saved
+   Task receipt; a mismatch returns `IDEMPOTENCY_CONFLICT`. Neither branch invokes T2.
+4. Only authoritative absence while holding that lock permits returning the original preflight
+   failure. This read is the failure's ordering point relative to competing T1 commits. A lookup
+   or lock error is dependency-unavailable, not evidence of absence or a reason to mint a new key.
+5. Close the transaction before protected projection reads or any other external owner call.
+
+Thus `lookup misses → other same-key T1 commits → USER append/archive → preflight rejects`
+returns the existing Task, not a false stale/archived failure. The same rule covers an Agent,
+Knowledge or model-profile change after a competing T1 commit. Invalid wire syntax or failure
+of the caller's own authentication/receipt-access gate is still rejected before this routine;
+replay never overrides identity or read authorization. Execution-only permission loss can redact
+action/detail availability but cannot erase an otherwise authorized committed receipt.
+
 T1 uses a Workbench-local transaction only. Serialize the scoped execution key using the
 existing PostgreSQL transaction-lock pattern, then lock the Conversation row. Recheck the
 same-key Task receipt first: a concurrent winner is fingerprint-compared and returned, never
@@ -904,9 +931,10 @@ reclassified as stale. When no receipt exists, verify the proposal's immutable o
 binding, Conversation ACTIVE and latest USER sequence again, then insert Task. Message append
 and archive use the same Conversation row lock, so the ordering is observable and deterministic:
 
-- later USER append/archive commits first → first confirmation fails before Task/Agent Claim;
+- later USER append/archive commits first, with no committed Task at the serialized check →
+  first confirmation fails before Task/Agent Claim;
 - T1 commits first → the user's confirmation is durable; a subsequent message/archive cannot
-  erase it or invalidate same-key receipt replay;
+  erase it or invalidate same-key receipt replay, even at an early preflight failure exit;
 - concurrent same-key confirmation → one T1 insert; losers return that receipt with zero T2 work.
 
 No external owner call, provider I/O or Knowledge materialization occurs while holding these
@@ -934,9 +962,10 @@ execution identity is `IDEMPOTENCY_CONFLICT`.
 
 | Failure point | Required behavior |
 | --- | --- |
-| before config/Knowledge preflight completes | no BusinessTask, no Agent Claim/provider work |
-| after immutable config/Knowledge refs, before T1 | no BusinessTask; same confirm key adopts exact refs on retry, subject to first-create freshness |
-| later USER message or archive wins before T1 | no BusinessTask/Agent Claim; return stale/archived, preserving prepared owner refs without dispatch |
+| before config/Knowledge preflight completes | on failure, serialized same-key receipt recheck first; an existing Task replays, otherwise no new Task/Claim/provider work |
+| after immutable config/Knowledge refs, before T1 | no BusinessTask; same confirm key adopts exact refs on retry, subject to first-create freshness and serialized existing-receipt precedence |
+| later USER message or archive wins before T1, without an existing same-key Task | no BusinessTask/Agent Claim; return stale/archived after serialized receipt recheck, preserving prepared owner refs without dispatch |
+| competing same-key T1 commits after initial miss but before a preflight rejection | replay-or-fail returns the committed Task; no false stale/archived/dependency failure and zero extra T2 work |
 | after T1, before Agent Claim | BusinessTask remains; projection = `ERROR / START_NOT_CLAIMED`; explicit retry-start may continue exact handoff |
 | Agent Claim committed and terminal Commit exists, HTTP response lost | same-key confirm/task read resolves exact terminal run; no duplicate run |
 | process crashes after Agent Claim while durable row is still RUNNING | never call Start again for that claimed run. Before the original run deadline + grace, project RUNNING/uncertain. After the bound, use the Agent owner's stale-running finalizer (§8.5); terminalize to `execution_outcome_unknown` with zero redispatch. |
@@ -1172,7 +1201,7 @@ Required identities/constraints:
   indexed latest-USER lookup on `(org, owner, conversation_id, author_kind, sequence desc)`;
 - commands: PK `(org, actor, idempotency_key)`, unique command UUID;
 - proposals: UUID + immutable digest; FK to exact Conversation/user+assistant messages;
-- tasks: UUID; unique `(org, owner, execution_request_key)`; immutable confirmation fingerprint;
+- tasks: UUID; unique `(org, owner,execution_request_key)`; immutable confirmation fingerprint;
   FK proposal/conversation;
 - all payload columns have DB byte bounds;
 - every FK includes Organization/owner qualification where it prevents accidental cross-scope
@@ -1260,13 +1289,16 @@ No fake task count, progress percentage, elapsed estimate, Store association or 
 | native protocol provision/read-back | validate through admitted native adapter policy, not compatible-only Manager; same private writer and organization row |
 | wrong organization credential, model override or tool-bound Planner instance | reject before transport; no implicit environment/global credential fallback |
 | ASSISTANT response appends its READY proposal | proposal still matches latest USER and remains confirmable; its own assistant sequence does not make it stale |
-| new USER message after READY proposal | old proposal becomes PROPOSAL_STALE |
+| new USER message after READY proposal | old proposal becomes PROPOSAL_STALE for first creation; committed same-key receipt still replays |
 | delayed assistant response to an older USER turn | retains original source identity; cannot become latest-user proposal |
-| USER append/archive commits between preflight and T1 | final row-locked T1 check rejects with zero Task/Agent Claim |
+| USER append/archive commits between preflight and T1, with no committed Task | final row-locked T1 check rejects with zero Task/Agent Claim |
+| initial receipt miss → competing T1 commit → USER append/archive → preflight failure | serialized replay-or-fail finds the existing Task and returns it with zero additional T2 work |
+| Agent/Knowledge/profile preflight fails after a same-key Task commits | same serialized replay-or-fail path returns the authorized receipt and redacts unavailable details, not a false new-execution failure |
+| preflight failure exit cannot read/lock the canonical receipt store | dependency-unavailable, not authoritative absence or permission to create a new execution key |
 | concurrent same-key confirm wins before another T1 freshness check | loser replays the committed Task before stale predicates; no second T2 execution |
-| selected Knowledge readable revision set changes before confirm | Knowledge Materialize rejects expected revision-set digest before BusinessTask |
-| first-time Agent/template/Knowledge changes before confirm | fail before BusinessTask or return stale/owner error |
-| same-key confirm after BusinessTask already committed | existing Task/fingerprint is resolved before proposal freshness; return receipt/projection even if later message/disable/change occurred |
+| selected Knowledge readable revision set changes before first confirm | Knowledge Materialize rejects expected revision-set digest; serialized exit first checks for a concurrent committed Task |
+| first-time Agent/template/Knowledge changes before confirm, no Task at serialized failure check | return stale/owner error with no new Task/Agent Claim |
+| same-key confirm after BusinessTask already committed | existing Task/fingerprint replay precedes both successful-path T1 checks and preflight failure returns |
 | task T1 commit then process crash before Claim | task projects START_NOT_CLAIMED; explicit start uses same exact handoff |
 | Guard rejects after T1 | task ERROR; zero new provider work |
 | Agent terminal Commit exists then HTTP response lost | task resolves same terminal AgentRun; retry adopts receipt |
@@ -1344,7 +1376,7 @@ Implementation must use existing test infrastructure; do not build a new verific
 | Transport and usage | underlying send count remains at most one through timeout/429/5xx/SDK retry/redirect; missing raw counters stay unknown; cache/reasoning mapping and invalid-output billing; final auth/config/Knowledge permit at real handoff; no prompt/secret callback export. |
 | Profile replay | config switch affects new commands only; prepared/claimed invocation and resumed Agent use original profile or fail closed; no cross-org model-instance reuse; no free or alternate-provider fallback. |
 | Knowledge proposal fence | revision-set observer digest; source promotion after READY; Materialize expected-digest check under lifecycle locks; no-Knowledge unchanged. |
-| Confirm | existing-task replay before stale checks, including in T1 after a concurrent winner; changed same-key conflict; stale Product/Agent/template/Knowledge/model profile on first confirm; exact configuration refs; T1 task then T2 Claim crash windows. |
+| Confirm | initial receipt miss followed by competing T1 commit and stale/archived/dependency preflight failure must replay via the serialized failure exit; authoritative-absence/error cases; changed-key payload conflict; no auth bypass; concurrent winner inside T1; zero additional T2 dispatch on replay. |
 | Agent integration | both direct and Chat-originated title paths use shared governed model integration; no duplicate run; crash after Claim leaves RUNNING; before deadline no redispatch; after grace stale-running CAS finalizer; late normal Commit race; ceiling/disable/Knowledge fences unchanged. |
 | Projection | exact precedence for running/interrupted/review states/stopped/no-run/UNKNOWN; protected detail redaction. |
 | Review | run -> existing review operation correlation; pending/accepted/rejected/applied mapping; Apply remains current owner. |
@@ -1364,10 +1396,10 @@ implementation obligations, not tests executed by this documentation change.
 - [x] Provider-neutral Planner and title-model paths specify contract → current AI invocation/resource owners → Eino/eino-ext integration → injection → consumers.
 - [x] Current #580 title policy, organization-only credential/provisioning and readiness contracts are explicitly reused; native-protocol and run-profile extensions are distinguished from implemented compatible-protocol behavior.
 - [x] Frozen model-profile identity, no-tool instance isolation, guarded transport and usage normalization obligations are specified.
-- [x] ExecutionProposal source freshness compares latest USER, with local row-locked T1 recheck and existing-receipt precedence.
+- [x] ExecutionProposal source freshness compares latest USER, with local row-locked T1 recheck and serialized existing-receipt precedence at all preflight failure exits.
 - [x] ExecutionProposal exact/stale semantics include Knowledge readable revision-set identity enforced by the Knowledge owner.
 - [x] BusinessTask fact boundary is intent/handoff only, not runtime lifecycle.
-- [x] Same-key confirmation resolves an existing BusinessTask before first-time freshness checks.
+- [x] Same-key confirmation resolves an existing BusinessTask before first-time freshness checks and rechecks before returning any preflight rejection.
 - [x] BusinessTask → Agent Start crash/replay includes the existing Agent Claim-before-Commit crash window and non-redispatching stale-running finalization.
 - [x] deterministic Task projection precedence is frozen.
 - [x] Product Review correlation stays with Review owner.
