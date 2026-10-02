@@ -67,4 +67,4 @@ existing organization credential + operator-controlled text admission profiles
 
 实现自检应覆盖部署者写入组织凭据后当前应用实际读取同一 `ProductAgentDB` 行、轮换使旧 quote 失效且不泄露 Key；两个企业各自使用不同供应商身份/模型的受控兼容服务，验证 Quote、Decide、发送前重查与 ledger 的真实路由归属及跨企业隔离；同企业成员行不能覆盖标题组织行，组织行缺失/禁用时不可落到成员行或全局配置；`text.generate` 的 `AVAILABLE`、`NEEDS_CONFIGURATION`、`UNAVAILABLE` 与可修复来源一致；配置或价格切换在 claim 前失败；生成后的完整请求 envelope 按 UTF-8 字节加 Chat framing 余量保守检查该 route 的输入上界，超限在 claim/预留前拒绝；usage 缺失、超过上界及发送后未知保持未决；不支持的按次/附加收费 route 在 claim 前拒绝；权限撤销不发送；原 GRSAI 路径不回归。仅 fixture 的第二供应商验证可替换性，不宣称其真实服务可用。实际 GRSAI 或另一供应商的付费试用还需该 route 的可信上界与计量证据、产品点数费率、调用预算和单独授权。用户试用标题→Review→Apply 的结果与实现自检/CI 分开记录。
 
-当前状态：按合同实现的供应商可替换代码已随 PR #580 合入 main；2026-10-03 的 Google 兼容请求参数补齐仍是后续候选。没有新增 schema、付费调用或用户验收。每条实际供应商 route 仍须完成准入证据、点数费率、预算及调用授权。
+当前状态：供应商可替换代码已随 PR #580 合入 main；PR #586 已实现受控 `reasoning_effort` 参数接线，尚未合并。Google 官方兼容 route 的真实输出上界与 usage 验证、产品点数费率、预算和调用授权仍未完成；没有新增 schema、付费调用或用户验收。未具备上述准入前执行保持关闭。
