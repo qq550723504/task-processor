@@ -5,9 +5,10 @@
 > Design Basis: **Independent Architecture**.
 > Issue: #576. Product parent: #298.
 > Upstream product/architecture: #555, #570.
-> Delivered implementation dependency: #573 / PR #574.
-> Inspected baseline: `main @ df41c7863d7b152d7e826753d08c52810f5dc9df` (2026-09-29).
-> Matching #574 push/main CI `36593853258`: **SUCCESS**.
+> Delivered implementation dependency: #573 / PR #574, plus the #580 title-model increment.
+> Original baseline: `main @ df41c7863d7b152d7e826753d08c52810f5dc9df` (2026-09-29).
+> Integration baseline: `main @ 7377f61d0f56a795f67df34e2ec5f637a4d8c8ce` (2026-10-02).
+> Matching #574 push/main CI `36593853258`: **SUCCESS**, historical dependency evidence only.
 > Provider-portability decision: user explicitly requires no single LLM vendor lock-in
 > and approved Eino model interfaces + eino-ext on 2026-09-30; see §1.2 and §6.
 >
@@ -46,6 +47,8 @@ Applicable product authorities:
   configuration snapshots and guarded Product Agent admission;
 - `agent-knowledge-context-v1.md`: optional exact Knowledge context/citation/permit;
 - `product-agent-runtime-contract.md`: AgentRun/checkpoint/budget/UNKNOWN ownership;
+- `product-agent-text-provider-neutral-v1.md` / #580: current organization-only credentials,
+  operator provisioning, per-organization title policies and compatible-protocol transport;
 - `project-boundaries.md`, greenfield baseline and Issue-driven delivery rules.
 
 Figma governs UI/IA and interaction semantics. It does not create a capability, permission,
@@ -100,10 +103,21 @@ existing AI Capability governance**, not another vendor-specific Planner.
 
 For the Slice E implementation, §6 supersedes the earlier proposal to create
 `internal/integration/aiworkbench/grsaitext.Planner` and to require the same GRSAI/model route
-as the current Product Agent. The GRSAI-only checks in the existing implementation and the
-historical route choice in `product-agent-runtime-contract.md` describe that delivered baseline;
-they are not a permanent product requirement for this new path. Their authorization, budget,
-usage, Knowledge and UNKNOWN guarantees remain mandatory.
+as the Product Agent. The original `grsaitext` baseline has since been replaced on main by
+`internal/integration/agent/titletext` in PR #580. Its approved
+`product-agent-text-provider-neutral-v1.md` already removes single-vendor restrictions within
+OpenAI-compatible text and owns organization-only credentials, restricted operator provisioning,
+per-organization policy selection and capability readiness. Reuse those changes; do not implement
+or review the old hardcoded-vendor removal a second time.
+
+The remaining Slice E increment is Eino/eino-ext component reuse for both consumers, qualified
+native protocol support and exact run-level model-profile binding. This draft proposes to
+supersede only the compatible-protocol implementation restriction in that document's §2.1 and
+its §4 permission to reselect a current route between steps, for new profile-bearing Slice E
+runs. Such runs retain one exact profile for all steps/Resume (§6.3); a changed profile requires
+new confirmation, not a silent switch. Its credential, accounting, UNKNOWN and authorization
+contracts remain mandatory. This draft does not retroactively change old runs or claim that
+its new native-protocol contract is already approved or implemented.
 
 Planner uses Eino's model component directly, without an Eino execution graph or fake AgentRun.
 Product Agent keeps its existing Eino graph and `agent.GovernedModel` contract. Both consume the
@@ -127,7 +141,9 @@ from a Conversation, AgentTemplate or browser execution payload.
 | Agent D stores exact configuration snapshots and exposes exact recent-run identity | Proposal/Task must carry exact refs, never “current default” as durable execution meaning. |
 | Product Agent route requires `workbench.agent.use` plus current `listingkit.admin.write` | Chat permission never replaces domain execution authorization. |
 | Product Review owns pending/accepted/rejected/applied + Apply receipt | Task state is a projection over Review, never a copied approval state machine. |
-| Current `grsaitext.AgentTextModel` checks GRSAI and a fixed Gemini model; current text Manager is protocol-restricted | Reuse/extract governance and credential ownership, not those hardcoded consumer/transport constraints. |
+| Current `titletext` model selects per-organization policies; #580 replaced `grsaitext` | Preserve the delivered provider identity, limits, quoting and usage behavior; component reuse is the remaining increment. |
+| Current title resolver uses only the organization's empty-UserID credential row; operator provisioning has a separate writer connection | The new model factory must not regress to user-first lookup, global keys or a serving role with credential writes. |
+| Current Manager/provision validation is OpenAI-compatible-protocol-specific | Native eino-ext protocols require the bounded credential/provision extension in §6.2, not passage through `ResolveTextRouteDetails`. |
 | Repository pins Eino `v0.9.21`; provider components are not yet qualified for this path | Use the standard model interface; lock and test selected eino-ext modules during implementation, not `@latest` in production. |
 | Legacy Task-first Product UI / generic Task Dashboard is RETIRE | No BusinessTask ↔ legacy Task adapter, migration or fallback. |
 
@@ -278,9 +294,12 @@ Bounds:
 - no raw system prompt/provider request/response/credential/Knowledge document/Product blob
   is persisted as message content.
 
-Sequence allocation locks the Conversation row and monotonically increments `next_sequence`.
-A metadata-only favorite/title operation does not change message sequence and therefore does not
-invalidate an execution proposal.
+Sequence allocation locks the Conversation row and monotonically increments `next_sequence`
+for both USER and ASSISTANT messages. Proposal freshness compares only the latest USER sequence
+in that same org/owner/conversation, never `next_sequence - 1` or the latest arbitrary message.
+The latest USER sequence is derived from the bounded/indexed owner query while holding that row
+lock; it is not a second editable conversation fact. An ASSISTANT append cannot invalidate its
+own proposal. Metadata-only favorite/title operations do not invalidate a proposal either.
 
 ### 5.3 Message idempotency and durable pre-dispatch state
 
@@ -431,10 +450,10 @@ The following are proposed bounded extensions, not claims of existing implementa
 | Contract / owner | Concrete implementation and injection | Consumer |
 | --- | --- | --- |
 | `aiworkbench.Planner` | `internal/integration/aiworkbench/einoplanner`: bounded input mapping and strict PlanningDecision parsing; receives `aicapability.GovernedText` | Chat message service |
-| `agent.GovernedModel` | `internal/integration/agent/einomodel`: extract current title prompt/evidence/citation/Quote semantics; receives the same governed text service | Existing Product Agent Eino runtime |
+| `agent.GovernedModel` | `internal/integration/agent/einomodel`: extract current `titletext` prompt/evidence/citation/Quote and per-organization policy semantics; receives the same governed text service | Existing Product Agent Eino runtime |
 | `aicapability.GovernedText` | `internal/integration/aicapability/einomodel`: Quote/Generate orchestration over current route, identity, invocation and resource ports; Eino message mapping stays here | Both bounded consumer adapters |
 | Eino `model.BaseChatModel` | Code-owned factory in that Integration package constructs selected `eino-ext/components/model/*` implementations with scoped credentials and guarded HTTP transport | Governed text executor only |
-| Current credential/configuration owner | Extract its organization-scoped credential lookup into a provider-neutral port; keep existing persistence ownership and fail-closed version checks | Route resolution and model construction |
+| Current credential/configuration owner | Extract #580's organization-only credential lookup/versioning into a provider-neutral port over the same `ai_client_credentials`; preserve the restricted operator writer | Route resolution and model construction |
 | Existing invocation/resource owners | Same `ai_invocations`, dispatch claim, observed usage and ResourceAIPoint reserve/finalize | Governed text executor |
 | Existing Knowledge owner | Exact bundle reads/citation validation and final dispatch permits; no retrieval in Planner | Product Agent model adapter + guarded handoff |
 
@@ -449,15 +468,61 @@ admitted. Protocol compatibility does not imply common service ownership: keep a
 provider/service identity separate from adapter kind and model identity. A native provider
 must not be forced through GRSAI or an OpenAI-compatible intermediary.
 
-The existing `openai.Manager.CompleteText` / `grsaitext.AgentTextModel` are **not** mandatory
+The existing `openai.Manager.CompleteText` / `titletext.AgentTextModel` are **not** mandatory
 wrappers around the new factory. Extract still-valid configuration/credential, bounded queue,
 fresh authorization, dispatch/usage and Knowledge behavior to the current owners' narrow
-ports. Do not stack a second SDK call, queue, ledger or fallback under those old wrappers.
+ports. Do not stack a second SDK call, queue, ledger or fallback under those wrappers.
+
+#### Current credential and provisioning seam
+
+Both consumers select a deployment-owned profile by verified Organization and capability, never
+by a member-controlled override. Retain the current `ProductAgent.TextPolicies[org]` map for the
+title capability; add a bounded `PlanningTextPolicies[org]` map in the Workbench composition for
+the planning capability. Each capability has at most one admitted route per organization in V1.
+Both may intentionally refer to the same `ClientName`, but neither silently borrows the other's
+policy when its own entry is missing. This is typed deployment configuration, not a runtime
+routing directory or new persistent registry.
+
+The resolver reads exactly `ai_client_credentials` in the existing ProductAgentDB, keyed by
+`(TenantID = verified EffectiveOrganizationID, UserID = "", ClientName = profile.client_name)`.
+Preserve `NewOrganizationOnlyCredentialResolver` semantics; the older organization resolver's
+user-first lookup is not sufficient. Missing/disabled organization rows do not fall back to a
+member row, process environment, global key or SDK default credential chain. A read-only owner
+port is injected using the existing credential-serving pool; `ai_workbench_runtime` does not
+gain direct credential-table privileges. Member identity still belongs in authorization and
+usage accounting, not in credential selection.
+
+Reuse the owner and restricted writer behind `cmd/product-agent-credential-provision` and
+`SaveTitleCredential`, rather than adding a new secret store or browser endpoint. The bounded
+implementation extension adds a typed consumer selector (title or planning) that validates
+against the corresponding deployment map before opening the writer connection. Preserve the
+same target-database check, independent restricted writer role, private-input handling,
+forced empty UserID, safe output, and serving-role SELECT-only boundary.
+
+For a newly admitted native protocol, row validation/version computation and provisioning
+read-back must use the provider-neutral credential port and code-owned adapter policy; they
+must not invoke `Manager.ResolveTextRouteDetails`, whose current text path admits only
+compatible protocols. Reuse the existing row fields and configuration-version behavior. The
+adapter/protocol discriminator is validated by the small factory allowlist; the real provider
+identity still comes from the deployment profile. Initial qualification covers direct API-key
+OpenAI-compatible and native Claude routes only; ambient cloud credentials, arbitrary headers,
+provider-specific extra fields and credential auto-discovery are not admitted.
+
+The first-write sequence stays: validate deployment target and policy shape → privately write
+the existing organization row → return only non-secret version/route identity → bind that
+version in deployment policy → enable execution. No native-client constructor or read-back
+may call a provider. A missing admitted version leaves execution unavailable. Rotation uses
+the same controlled writer and invalidates old profiles without rewriting them.
 
 Application assembly explicitly injects the scoped resolver, frozen policy, current recorder,
 resource adapter, bounded concurrency control, guarded transport and factory into GovernedText;
 then injects consumer-specific adapters into Chat and Product Agent. Constructors do not
 contact a model, open a second accounting database or install schema.
+
+Capability projection must consume the same per-capability organization policy and credential
+readiness check as the executor, preserving #580's `UNAVAILABLE` versus
+`NEEDS_CONFIGURATION` distinction. A route merely resolving is not proof of admission. This
+read-only projection neither probes balances/provider health nor grants execution permission.
 
 Existing-owner extensions remain bounded:
 
@@ -497,6 +562,7 @@ AI Capability owns a typed, non-secret snapshot of an admitted route and policy:
 ```text
 ModelProfile {
   profile_id / configuration_version
+  client_name
   provider_id / adapter_kind / model_id
   endpoint_identity_digest
   credential_reference / credential_version
@@ -620,19 +686,23 @@ usage remains observed_usage_failed and is settled once by the current owner.
 
 ### 6.6 Product Agent cutover and validation scope
 
-Do not solve portability only for Chat while leaving every executable title task locked to a
-vendor. In the admitted implementation batch, replace the title-model adapter's GRSAI/fixed-
-model dependency with `integration/agent/einomodel`, backed by the same governed executor.
+Do not solve portability only for Chat while leaving actual title execution on a separate model
+integration. #580's `integration/agent/titletext` already removed its GRSAI/fixed-model checks;
+do not repeat that work or preserve stale tests asserting a vendor-only baseline. In the admitted
+Slice E batch, extract that current adapter's valid behavior into `integration/agent/einomodel`,
+backed by the same governed executor and selected eino-ext components as Planner.
 Extract the existing prompt/evidence projection, deterministic candidate/citation validation,
-Quote/limits, identity and UNKNOWN logic; do not delete those checks to make another SDK work.
-The Eino graph, Store.Claim/Commit, Tool Registry, domain validation and Human Review remain their
-current owners. Native provider tool execution remains disabled; the existing graph alone
-interprets validated action JSON against its code-owned allowlist.
+Quote/limits, organization-only credential selection, identity and UNKNOWN logic; do not delete
+those checks to make another SDK work. The Eino graph, Store.Claim/Commit, Tool Registry, domain
+validation and Human Review remain their current owners.
+Native provider tool execution remains disabled; the existing graph alone interprets validated
+action JSON against its code-owned allowlist.
 
-This draft does not assert that current GRSAI code is already portable. Cutover must cover both
-direct and Chat-originated execution. Retire the replaced vendor-specific model consumer after
-callers switch; do not retain a second implicit fallback path. GRSAI can instead be an explicitly
-qualified route via an appropriate component. No historical run/snapshot is silently rewritten.
+Current main demonstrates qualified compatible-protocol substitution, not native eino-ext
+portability or run-level profile freezing. Cutover must cover both direct and Chat-originated
+execution. Retire the replaced model consumer after callers switch; do not retain a second
+implicit fallback path. GRSAI can be an explicitly qualified route via an appropriate component.
+No historical run/snapshot is silently rewritten.
 Missing new profile metadata on an old prepared request requires fresh explicit confirmation;
 old claimed records remain readable but cannot acquire new model work through an unprofiled
 compatibility path. Actual environment/data changes require separate authorization.
@@ -670,7 +740,7 @@ ExecutionProposal {
   conversation_id
   source_user_message_id
   assistant_message_id
-  source_sequence
+  source_sequence          # the originating USER sequence, not the ASSISTANT sequence
   kind                 product.title.optimize
   goal_summary
   operation_id
@@ -696,11 +766,15 @@ transaction commits. If the selection is not currently readable, the assistant m
 failure but no READY proposal is stored. The observer returns only the revision-set identity,
 never document text.
 
-A new user message makes an older proposal stale for confirmation because
-`source_sequence` is no longer the latest Conversation message sequence. Metadata-only changes
-(title/favorite) do not.
+A proposal's `source_sequence` must equal its command's originating USER sequence and identify
+`source_user_message_id` in the same org/owner/conversation. It is fresh only while that is the
+latest USER sequence. Its own ASSISTANT message, another delayed assistant reply, or a
+metadata-only title/favorite change cannot invalidate it. A later USER message makes it stale.
+A delayed response to an older turn remains attached to its original command; it never rewrites
+its source sequence or binds to the latest turn. It may be shown as historical, but any READY
+proposal from that older turn is non-confirmable.
 
-Before confirmation, the server freshly validates:
+For a first confirmation, the server freshly validates:
 
 - current identity/effective Organization/owner;
 - `workbench.chat.use`;
@@ -713,6 +787,10 @@ Before confirmation, the server freshly validates:
 - exact optional Knowledge selection is currently readable/active **and has the same observed
   revision-set digest**;
 - current AI/point/resource prerequisites.
+
+The local ACTIVE/latest-USER predicates are checked again inside the BusinessTask T1 transaction
+under the Conversation row lock (§8.2); a preflight read alone is not sufficient. Existing-task
+receipt replay is resolved before these first-create checks.
 
 Knowledge owner adds one narrow metadata contract:
 
@@ -757,6 +835,7 @@ BusinessTask {
   source_message_id
   proposal_id
   proposal_digest
+  confirmation_fingerprint
   kind                  product.title.optimize
   title
   goal_summary
@@ -799,14 +878,14 @@ fresh verified identity / Effective Organization / workbench.chat.use
           match    → return the existing BusinessTask + current safe projection
                      (no proposal-stale / Agent-enabled / template / Knowledge preflight)
       not found:
-        → verify Conversation ACTIVE + proposal is latest/exact
+        → verify Conversation ACTIVE + proposal matches latest USER/exact source
         → existing Product + workbench.agent.use + listingkit.admin.write authorization
         → existing AgentConfig Prepare using exact proposal/model profile + request key
         → existing Knowledge Materialize with ExpectedRevisionSetDigest if selected
         → complete-prompt governed Quote preflight (no reservation/provider send)
         → build exact agent.Request and digest
-        → T1 create BusinessTask
-        → T2 existing Runtime.Start
+        → T1 create/adopt BusinessTask under local confirmation ordering below
+        → only a new T1 receipt continues to T2 existing Runtime.Start
              → existing AgentConfig Guard
              → existing Store.Claim
              → current Eino runtime + governed eino-ext model access + current tools
@@ -818,6 +897,24 @@ template or Knowledge to remain executable merely to return an already committed
 Protected Product/Knowledge/Review details in the projection are independently reauthorized and
 redacted when unavailable.
 
+T1 uses a Workbench-local transaction only. Serialize the scoped execution key using the
+existing PostgreSQL transaction-lock pattern, then lock the Conversation row. Recheck the
+same-key Task receipt first: a concurrent winner is fingerprint-compared and returned, never
+reclassified as stale. When no receipt exists, verify the proposal's immutable org/owner/source
+binding, Conversation ACTIVE and latest USER sequence again, then insert Task. Message append
+and archive use the same Conversation row lock, so the ordering is observable and deterministic:
+
+- later USER append/archive commits first → first confirmation fails before Task/Agent Claim;
+- T1 commits first → the user's confirmation is durable; a subsequent message/archive cannot
+  erase it or invalidate same-key receipt replay;
+- concurrent same-key confirmation → one T1 insert; losers return that receipt with zero T2 work.
+
+No external owner call, provider I/O or Knowledge materialization occurs while holding these
+Workbench locks. Configuration/Knowledge snapshots already prepared before a rejected T1 remain
+in their existing owners; they do not authorize a Task or dispatch. The existing Agent/Knowledge/
+model gates still freshly protect T2 and every model handoff. This local ordering is not a
+cross-database transaction or a promise to freeze all external facts at the T1 commit instant.
+
 Why T1 and T2 are deliberately **not** one transaction:
 
 - a confirmed business task that fails before Agent Claim is a truthful user-visible failed
@@ -828,7 +925,7 @@ Why T1 and T2 are deliberately **not** one transaction:
 - no cross-owner transaction or background reconciler is needed.
 
 T1 has a unique `(organization_id, owner_user_id, execution_request_key)` identity and stores
-the proposal/request fingerprint.
+both the wire confirmation fingerprint and the exact proposal/request digests.
 
 Same key + same exact fingerprint adopts the same BusinessTask. Same key + changed proposal or
 execution identity is `IDEMPOTENCY_CONFLICT`.
@@ -838,7 +935,8 @@ execution identity is `IDEMPOTENCY_CONFLICT`.
 | Failure point | Required behavior |
 | --- | --- |
 | before config/Knowledge preflight completes | no BusinessTask, no Agent Claim/provider work |
-| after immutable config/Knowledge refs, before T1 | no BusinessTask; same confirm key adopts exact refs on retry |
+| after immutable config/Knowledge refs, before T1 | no BusinessTask; same confirm key adopts exact refs on retry, subject to first-create freshness |
+| later USER message or archive wins before T1 | no BusinessTask/Agent Claim; return stale/archived, preserving prepared owner refs without dispatch |
 | after T1, before Agent Claim | BusinessTask remains; projection = `ERROR / START_NOT_CLAIMED`; explicit retry-start may continue exact handoff |
 | Agent Claim committed and terminal Commit exists, HTTP response lost | same-key confirm/task read resolves exact terminal run; no duplicate run |
 | process crashes after Agent Claim while durable row is still RUNNING | never call Start again for that claimed run. Before the original run deadline + grace, project RUNNING/uncertain. After the bound, use the Agent owner's stale-running finalizer (§8.5); terminalize to `execution_outcome_unknown` with zero redispatch. |
@@ -1071,9 +1169,11 @@ Required identities/constraints:
 
 - conversations: PK UUID; index `(org, owner, lifecycle, updated_at desc, id)`;
 - messages: unique `(org, owner, conversation_id, sequence)`, unique message UUID;
+  indexed latest-USER lookup on `(org, owner, conversation_id, author_kind, sequence desc)`;
 - commands: PK `(org, actor, idempotency_key)`, unique command UUID;
 - proposals: UUID + immutable digest; FK to exact Conversation/user+assistant messages;
-- tasks: UUID; unique `(org, owner, execution_request_key)`; FK proposal/conversation;
+- tasks: UUID; unique `(org, owner, execution_request_key)`; immutable confirmation fingerprint;
+  FK proposal/conversation;
 - all payload columns have DB byte bounds;
 - every FK includes Organization/owner qualification where it prevents accidental cross-scope
   linkage;
@@ -1156,8 +1256,14 @@ No fake task count, progress percentage, elapsed estimate, Store association or 
 | route/model/pricing changes after command or execution proposal preparation | retain exact profile for replay; no automatic substitution; new execution must satisfy current gates or require new confirmation |
 | SDK retries after a first generation attempt | transport gate prevents an additional send; first-attempt UNKNOWN is preserved |
 | raw usage missing or not representable by admitted mapping | no zero-cost inference; existing invocation/Resource owner retains UNKNOWN |
+| same-org member credential exists but organization row is missing/disabled | no member/global/environment fallback; both consumers reject before transport |
+| native protocol provision/read-back | validate through admitted native adapter policy, not compatible-only Manager; same private writer and organization row |
 | wrong organization credential, model override or tool-bound Planner instance | reject before transport; no implicit environment/global credential fallback |
-| new user message after READY proposal | old proposal becomes PROPOSAL_STALE |
+| ASSISTANT response appends its READY proposal | proposal still matches latest USER and remains confirmable; its own assistant sequence does not make it stale |
+| new USER message after READY proposal | old proposal becomes PROPOSAL_STALE |
+| delayed assistant response to an older USER turn | retains original source identity; cannot become latest-user proposal |
+| USER append/archive commits between preflight and T1 | final row-locked T1 check rejects with zero Task/Agent Claim |
+| concurrent same-key confirm wins before another T1 freshness check | loser replays the committed Task before stale predicates; no second T2 execution |
 | selected Knowledge readable revision set changes before confirm | Knowledge Materialize rejects expected revision-set digest before BusinessTask |
 | first-time Agent/template/Knowledge changes before confirm | fail before BusinessTask or return stale/owner error |
 | same-key confirm after BusinessTask already committed | existing Task/fingerprint is resolved before proposal freshness; return receipt/projection even if later message/disable/change occurred |
@@ -1191,13 +1297,13 @@ Fail closed:
 - Product Agent runtime/domain/Review semantics remain unchanged except the explicitly proposed
   model-profile wiring and existing-owner crash-window repair in this document;
 - direct and Chat-originated title calls must not bypass the new shared model gate;
-- no fallback to legacy Task UI, vendor-specific model consumer or generic Task table.
+- no fallback to legacy Task UI, replaced model consumer or generic Task table.
 
 Rollback:
 
 - disable/unmount new Chat/BusinessTask and affected execution admission before switching code;
 - preserve Conversation/BusinessTask/AgentConfig/AgentRun/Review rows and exact model provenance;
-- never replay a portable-model invocation through an older vendor-only implementation;
+- never replay a portable-model invocation through an older unprofiled implementation;
 - preserve the previously frozen hard-ceiling rollout fence; mixed deployment does not make
   new model/ceiling contracts atomically effective;
 - existing Product Agent/Review facts remain authoritative;
@@ -1230,20 +1336,21 @@ Implementation must use existing test infrastructure; do not build a new verific
 
 | Test group | Required evidence |
 | --- | --- |
-| Domain contracts | Conversation append-only/CAS/bounds; proposal immutable/digest/staleness; Task exact identities. |
-| PostgreSQL | real isolated PG schema/ACL; org+actor isolation; command idempotency; concurrent sequence allocation; task same-key replay. |
+| Domain contracts | Conversation append-only/CAS/bounds; proposal source binds originating USER, assistant append does not stale it, later USER does; immutable digest; Task exact identities. |
+| PostgreSQL | real isolated PG schema/ACL; org+actor isolation; command idempotency; concurrent sequence allocation; final confirmation versus USER append/archive ordering; same-key T1 winner adoption. |
 | Planner | deterministic pre-dispatch invocation identity; concurrent same-key claim; crash before/after AI Claim; no tools; max one provider attempt/key; no-dispatch vs PENDING/UNKNOWN; new planning operation through current AI invocation + ResourceAIPoint owners; strict structured output. |
 | Provider portability | same Planner and title-model adapters run through two actual eino-ext protocol implementations using isolated synthetic transports; no GRSAI/fixed-model consumer checks; exact component/core/module versions recorded. |
+| Credential/assembly reuse | #580 organization-only and restricted writer behavior preserved for both consumers; missing org row cannot use member/environment credentials; native provision read-back never reaches compatible-only resolver; readiness and execution select the same capability policy. |
 | Transport and usage | underlying send count remains at most one through timeout/429/5xx/SDK retry/redirect; missing raw counters stay unknown; cache/reasoning mapping and invalid-output billing; final auth/config/Knowledge permit at real handoff; no prompt/secret callback export. |
 | Profile replay | config switch affects new commands only; prepared/claimed invocation and resumed Agent use original profile or fail closed; no cross-org model-instance reuse; no free or alternate-provider fallback. |
 | Knowledge proposal fence | revision-set observer digest; source promotion after READY; Materialize expected-digest check under lifecycle locks; no-Knowledge unchanged. |
-| Confirm | existing-task replay before stale checks; changed same-key conflict; stale Product/Agent/template/Knowledge/model profile on first confirm; exact configuration refs; T1 task then T2 Claim crash windows. |
+| Confirm | existing-task replay before stale checks, including in T1 after a concurrent winner; changed same-key conflict; stale Product/Agent/template/Knowledge/model profile on first confirm; exact configuration refs; T1 task then T2 Claim crash windows. |
 | Agent integration | both direct and Chat-originated title paths use shared governed model integration; no duplicate run; crash after Claim leaves RUNNING; before deadline no redispatch; after grace stale-running CAS finalizer; late normal Commit race; ceiling/disable/Knowledge fences unchanged. |
 | Projection | exact precedence for running/interrupted/review states/stopped/no-run/UNKNOWN; protected detail redaction. |
 | Review | run -> existing review operation correlation; pending/accepted/rejected/applied mapping; Apply remains current owner. |
 | HTTP/RBAC | strict JSON/limits/ETag/idempotency; other actor/org unknown-equivalent; read vs use vs execution permissions. |
-| UI | new/recent/favorite; explicit proposal card/model identity; no-Knowledge; Task filters; A→B→A late-response fence; desktop/narrow. |
-| Cutover | source-specific pending/completed remain labeled non-BusinessTask; no legacy Task dependency/backfill; replaced vendor-specific model consumer retired without losing valid safety behavior. |
+| UI | new/recent/favorite; explicit proposal card/model identity; no-Knowledge; delayed assistant cannot attach to a newer USER turn; Task filters; A→B→A late-response fence; desktop/narrow. |
+| Cutover | source-specific pending/completed remain labeled non-BusinessTask; no legacy Task dependency/backfill; current titletext behavior extracted before replacing its consumer, without losing valid safety behavior. |
 | Restart | durable Conversation/Task, no-run retry-start, claimed-run read and Review projection after restart. |
 
 Real customer data, paid provider trials, production deployment and final user acceptance remain
@@ -1255,7 +1362,9 @@ implementation obligations, not tests executed by this documentation change.
 - [x] Product outcome and one executable V1 kind are bounded.
 - [x] Conversation/messages idempotency has a deterministic durable pre-dispatch planner identity and bounded PENDING/UNKNOWN replay.
 - [x] Provider-neutral Planner and title-model paths specify contract → current AI invocation/resource owners → Eino/eino-ext integration → injection → consumers.
+- [x] Current #580 title policy, organization-only credential/provisioning and readiness contracts are explicitly reused; native-protocol and run-profile extensions are distinguished from implemented compatible-protocol behavior.
 - [x] Frozen model-profile identity, no-tool instance isolation, guarded transport and usage normalization obligations are specified.
+- [x] ExecutionProposal source freshness compares latest USER, with local row-locked T1 recheck and existing-receipt precedence.
 - [x] ExecutionProposal exact/stale semantics include Knowledge readable revision-set identity enforced by the Knowledge owner.
 - [x] BusinessTask fact boundary is intent/handoff only, not runtime lifecycle.
 - [x] Same-key confirmation resolves an existing BusinessTask before first-time freshness checks.
