@@ -1,6 +1,6 @@
 # AI Workbench Chat + BusinessTask V1 — Slice E
 
-> Status: **DRAFT / NOT_IMPLEMENTATION_READY**
+> Status: **APPROVED / IMPLEMENTATION_READY**
 >
 > Design Basis: **Independent Architecture**.
 > Issue: #576. Product parent: #298.
@@ -12,9 +12,13 @@
 > Provider-portability decision: user explicitly requires no single LLM vendor lock-in
 > and approved Eino model interfaces + eino-ext on 2026-09-30; see §1.2 and §6.
 >
-> This document is a D0 review candidate. It changes no production schema/API/UI.
-> Production Writer remains blocked until this architecture reaches
-> `APPROVED / IMPLEMENTATION_READY`, is merged to main, and an execution Issue is admitted.
+> Admission records the unchanged contract at `620495bf03b57099e4b934f89c04e0d989d543d7`:
+> [independent targeted review](https://github.com/qq550723504/task-processor/pull/578#issuecomment-5956509697)
+> found no major issues; [exact-contract-head CI 37032794759](https://github.com/qq550723504/task-processor/actions/runs/37032794759)
+> completed SUCCESS. All six known inline findings were resolved after independent verification.
+> This admission-only update changes no runtime contract or production schema/API/UI.
+> Production Writer starts only after PR #578 merges to main and an execution Issue is admitted.
+> Actual final-head merge checks remain required; PR #578 records their evolving evidence.
 > Merge, deployment, real customer data and paid provider use remain separately authorized.
 
 ## 1. Product outcome and authority
@@ -73,8 +77,8 @@ In scope:
 - explicit execution confirmation;
 - durable BusinessTask intent + exact execution identity;
 - Product Agent Start/Resume/Review consumption through existing owners;
-- deterministic Task Center projection;
 - existing Product Review/Apply;
+- deterministic Task Center projection;
 - truthful coexistence with current source-specific Task Center slices.
 
 Out of scope:
@@ -111,13 +115,13 @@ per-organization policy selection and capability readiness. Reuse those changes;
 or review the old hardcoded-vendor removal a second time.
 
 The remaining Slice E increment is Eino/eino-ext component reuse for both consumers, qualified
-native protocol support and exact run-level model-profile binding. This draft proposes to
-supersede only the compatible-protocol implementation restriction in that document's §2.1 and
+native protocol support and exact run-level model-profile binding. On architecture merge, this
+contract supersedes only the compatible-protocol implementation restriction in that document's §2.1 and
 its §4 permission to reselect a current route between steps, for new profile-bearing Slice E
 runs. Such runs retain one exact profile for all steps/Resume (§6.3); a changed profile requires
 new confirmation, not a silent switch. Its credential, accounting, UNKNOWN and authorization
-contracts remain mandatory. This draft does not retroactively change old runs or claim that
-its new native-protocol contract is already approved or implemented.
+contracts remain mandatory. This admission does not retroactively change old runs or claim that
+its new native-protocol contract is already implemented or deployed.
 
 Planner uses Eino's model component directly, without an Eino execution graph or fake AgentRun.
 Product Agent keeps its existing Eino graph and `agent.GovernedModel` contract. Both consume the
@@ -1357,7 +1361,7 @@ Must address:
 - BusinessTask becoming a second workflow/retry state machine;
 - source-specific current projections being falsely relabeled as BusinessTask.
 
-No new Accepted Risk is asserted by this draft.
+No new Accepted Risk is asserted by this architecture.
 
 V1 intentionally does not provide shared conversations, cross-member administrator task reading,
 autonomous agent selection or background task-start recovery.
@@ -1408,10 +1412,16 @@ implementation obligations, not tests executed by this documentation change.
 - [x] HTTP/schema/package/role/rollout contracts are bounded.
 - [x] greenfield/legacy decisions are explicit.
 - [x] risk-matched implementation test matrix is defined.
-- [ ] Independent Architecture Review completed and findings classified/resolved, including the provider-portability increment.
-- [ ] Exact final HEAD applicable CI completed.
-- [ ] Explicit `APPROVED / IMPLEMENTATION_READY` admission recorded.
+- [x] Independent Architecture Review completed, including provider portability; final targeted result on `620495bf03` found no major issues and all six known inline findings are resolved.
+- [x] Exact reviewed contract HEAD `620495bf03b57099e4b934f89c04e0d989d543d7` applicable CI `37032794759` completed SUCCESS.
+- [x] Explicit `APPROVED / IMPLEMENTATION_READY` admission recorded from that independent review and CI evidence.
 - [ ] Architecture PR merged to main before production Writer starts.
+
+This admission-only commit records the reviewed contract without changing its execution,
+authorization, persistence or accounting semantics. Required merge checks still apply to the
+actual PR HEAD. Record subsequent check results in PR #578 rather than changing this source
+merely to follow CI completion; no new full architecture review is required solely for admission
+wording. Component/runtime/browser/user acceptance remains an implementation obligation (§19).
 
 ## 21. Delivery after admission
 
@@ -1437,7 +1447,9 @@ become execution owners.
 
 ## 22. Authorization boundary
 
-This D0 authorizes documentation, read-only investigation, an independent architecture branch/PR
-and review maintenance within #576. The user-approved provider-portability requirement changes
-the candidate design, not deployment permissions. This does not authorize production code/schema
-mutation, architecture merge, Issue closure, real business data or paid provider calls.
+This is an approved implementation design basis, not runtime or user acceptance. Production
+Writer still requires PR #578 merged to main and a separately admitted execution Issue. The
+current D0 work authorizes documentation, read-only investigation and PR/review maintenance
+within #576, not production code/schema mutation, architecture merge, Issue closure, deployment,
+real business data or paid provider calls. Provider portability changes the design basis, not
+those operation permissions.
