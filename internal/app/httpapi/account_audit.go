@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -42,7 +43,14 @@ type invocationAuditSources map[string]*gorm.DB
 
 type aiUsageAuditReader struct{ sources invocationAuditSources }
 
+func (r aiUsageAuditReader) Complete() bool {
+	return r.sources["image"] != nil && r.sources["product"] != nil
+}
+
 func (r aiUsageAuditReader) ListObservedAIUsageAudit(ctx context.Context, org string, limit int, after *accountaudit.AuditPosition) (accountaudit.UsageAuditPage, error) {
+	if limit < 1 || limit > registry.MaxPageLimit {
+		return accountaudit.UsageAuditPage{}, registry.ErrInvalid
+	}
 	var position *aistore.ObservedUsagePosition
 	if after != nil {
 		position = &aistore.ObservedUsagePosition{At: after.CreatedAt, Key: after.Key}
@@ -50,13 +58,32 @@ func (r aiUsageAuditReader) ListObservedAIUsageAudit(ctx context.Context, org st
 	page := accountaudit.UsageAuditPage{Items: []accountaudit.UsageAuditEvent{}}
 	more := false
 	for namespace, db := range r.sources {
-		rows, err := aistore.NewGormInvocationRecorder(db).ListObservedUsage(ctx, org, namespace, limit, position)
-		if err != nil {
-			return accountaudit.UsageAuditPage{}, err
-		}
-		more = more || rows.Next != nil
-		for _, row := range rows.Items {
-			page.Items = append(page.Items, accountaudit.UsageAuditEvent{OrganizationID: org, EventID: row.Key, MemberID: row.MemberID, InvocationID: row.InvocationID, Quantity: row.Tokens, Time: row.At})
+		local := position
+		read := 0
+		for read < limit {
+			chunk := limit - read
+			if chunk > 50 {
+				chunk = 50
+			}
+			rows, err := aistore.NewGormInvocationRecorder(db).ListObservedUsage(ctx, org, namespace, chunk, local)
+			if err != nil {
+				return accountaudit.UsageAuditPage{}, err
+			}
+			read += len(rows.Items)
+			for _, row := range rows.Items {
+				page.Items = append(page.Items, accountaudit.UsageAuditEvent{OrganizationID: org, EventID: row.Key, MemberID: row.MemberID, InvocationID: row.InvocationID, Quantity: row.Tokens, Time: row.At})
+			}
+			if rows.Next == nil {
+				break
+			}
+			if len(rows.Items) == 0 {
+				return accountaudit.UsageAuditPage{}, registry.ErrUnavailable
+			}
+			if read == limit {
+				more = true
+				break
+			}
+			local = rows.Next
 		}
 	}
 	sort.Slice(page.Items, func(i, j int) bool {
@@ -242,6 +269,25 @@ func (m accountAuditModule) read(c *gin.Context) {
 }
 
 func accountAuditFilterInput(values url.Values) (accountaudit.Filter, error) {
+	content := strings.TrimSpace(values.Get("query"))
+	if values.Has("query") {
+		if content == "" || len(content) > 80 || len(values["query"]) != 1 {
+			return accountaudit.Filter{}, registry.ErrInvalid
+		}
+		for _, ch := range content {
+			if unicode.IsControl(ch) {
+				return accountaudit.Filter{}, registry.ErrInvalid
+			}
+		}
+	}
+	member := values.Get("member")
+	if member != "" && (len(values["member"]) != 1 || !accountAuditScope.MatchString(member)) {
+		return accountaudit.Filter{}, registry.ErrInvalid
+	}
+	period := values.Get("period")
+	if period != "" && (len(values["period"]) != 1 || period != "7d" && period != "30d" && period != "all") {
+		return accountaudit.Filter{}, registry.ErrInvalid
+	}
 	actor := values.Get("actor")
 	if actor != "" && (len(values["actor"]) != 1 || !accountAuditScope.MatchString(actor)) {
 		return accountaudit.Filter{}, registry.ErrInvalid
@@ -250,7 +296,7 @@ func accountAuditFilterInput(values url.Values) (accountaudit.Filter, error) {
 	if operation != "" && (len(values["operation"]) != 1 || operation != string(registry.OperationRegister) && operation != string(registry.OperationEnable) && operation != string(registry.OperationDisable) && operation != "allocate_member_resource" && operation != "reclaim_member_resource" && operation != "set_member_ai_point_limit" && operation != "update" && operation != "invite" && operation != "role" && operation != "remove") {
 		return accountaudit.Filter{}, registry.ErrInvalid
 	}
-	filter := accountaudit.Filter{ActorSubject: actor}
+	filter := accountaudit.Filter{ActorSubject: actor, Content: content, MemberID: member, Period: period}
 	if operation == "allocate_member_resource" || operation == "reclaim_member_resource" || operation == "set_member_ai_point_limit" {
 		filter.ResourceOperation = operation
 	} else if operation == "update" {
@@ -263,7 +309,7 @@ func accountAuditFilterInput(values url.Values) (accountaudit.Filter, error) {
 	return filter, nil
 }
 func accountAuditPageInput(raw string) (int, string, error) {
-	if len(raw) > 2300 {
+	if len(raw) > 4096 {
 		return 0, "", registry.ErrInvalid
 	}
 	values, err := url.ParseQuery(raw)
@@ -271,7 +317,7 @@ func accountAuditPageInput(raw string) (int, string, error) {
 		return 0, "", registry.ErrInvalid
 	}
 	for key, value := range values {
-		if (key != "limit" && key != "cursor" && key != "actor" && key != "operation") || len(value) != 1 || value[0] == "" {
+		if (key != "limit" && key != "cursor" && key != "actor" && key != "operation" && key != "query" && key != "period" && key != "member") || len(value) != 1 || value[0] == "" {
 			return 0, "", registry.ErrInvalid
 		}
 	}

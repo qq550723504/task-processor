@@ -150,6 +150,10 @@ source of truth for long-lived rules.
     Independent Store/Billing history, rollout and product acceptance remain outside
     this bounded increment.
 
+- [`account-audit-filters-v1.md`](./account-audit-filters-v1.md)
+  - IMPLEMENTATION_READY #581: bounded cross-source content, time and affected
+    member filters with complete matching pagination and unchanged fact owners.
+
 - [`unified-base-prepaid-resources-v1.md`](./unified-base-prepaid-resources-v1.md)
   - IMPLEMENTATION_READY design basis for #478/#564: current Figma base plan, native Stores, prepaid purchases, real resource events and Product Agent point metering; supersedes subscription/quota/Token entry paths without changing repository package-boundary rules.
 

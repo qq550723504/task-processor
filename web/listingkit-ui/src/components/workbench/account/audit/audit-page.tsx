@@ -6,7 +6,7 @@ import { useWorkbenchContext } from "@/components/providers/workbench-context-pr
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AccountReadError } from "@/lib/api/account";
-import { getAccountAudit, getAccountAuditSummary } from "@/lib/api/account-audit";
+import { auditContentInvalidReason, getAccountAudit, getAccountAuditSummary } from "@/lib/api/account-audit";
 import { ConsoleState } from "../../console/console-page";
 import styles from "./audit.module.css";
 
@@ -74,24 +74,33 @@ function AuditSummary({ scope, expectedUserId, organizationId, onScopeRejected }
 }
 function AuditRequests({ scope, expectedUserId, organizationId, onScopeRejected }: { scope: string; expectedUserId: string; organizationId: string; onScopeRejected: (code: string) => void }) {
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  type Operation = "" | "register" | "enable" | "disable" | "allocate_member_resource" | "reclaim_member_resource" | "set_member_ai_point_limit" | "update" | "invite" | "role" | "remove";
+  type Period = "7d" | "30d" | "all";
+  const [content, setContent] = useState("");
+  const [period, setPeriod] = useState<Period>("30d");
+  const [memberId, setMemberId] = useState("");
   const [actor, setActor] = useState("");
-  const [operation, setOperation] = useState<"" | "register" | "enable" | "disable" | "allocate_member_resource" | "reclaim_member_resource" | "set_member_ai_point_limit" | "update" | "invite" | "role" | "remove">("");
+  const [operation, setOperation] = useState<Operation>("");
+  const [applied, setApplied] = useState<{ content: string; period: Period; memberId: string; actor: string; operation: Operation }>({ content: "", period: "30d", memberId: "", actor: "", operation: "" });
+  const [filterError, setFilterError] = useState("");
   const cursor = cursors[cursors.length - 1];
-  const query = useQuery({ queryKey: ["account-audit", scope, cursor, actor, operation], queryFn: ({ signal }) => getAccountAudit({ expectedUserId, expectedOrganizationId: organizationId, cursor, actor: actor || undefined, operation: operation || undefined, signal }), retry: false, staleTime: 0, gcTime: 0, refetchOnWindowFocus: true, refetchOnReconnect: true });
+  const query = useQuery({ queryKey: ["account-audit", scope, cursor, applied], queryFn: ({ signal }) => getAccountAudit({ expectedUserId, expectedOrganizationId: organizationId, cursor, actor: applied.actor || undefined, operation: applied.operation || undefined, content: applied.content || undefined, memberId: applied.memberId || undefined, period: applied.period, signal }), retry: false, staleTime: 0, gcTime: 0, refetchOnWindowFocus: true, refetchOnReconnect: true });
   useAuditScopeRejection(query.error, onScopeRejected);
   if (query.isPending || query.isFetching) return <ConsoleState kind="loading" title="正在读取操作记录">正在确认访问权限。</ConsoleState>;
   if (query.isError) return <AuditError code={query.error instanceof AccountReadError ? query.error.code : "DEPENDENCY_UNAVAILABLE"} />;
   const data = query.data;
   const operationNames = { register: "登记源账号", enable: "启用源账号", disable: "停用源账号", allocate_member_resource: "分配成员资源", reclaim_member_resource: "回收成员资源", set_member_ai_point_limit: "设置成员 AI 月度上限", update: "更新账户资料", invite: "邀请成员", role: "更新成员角色", remove: "移除成员" };
   return <>
-    <form className={styles.filters} onSubmit={event => { event.preventDefault(); setCursors([undefined]); }}>
-      <label className={styles.search}>搜索操作内容 / 对象 <input disabled placeholder="审计接口未提供内容搜索" /></label>
-      <label>时间范围 <select disabled><option>时间筛选暂不可用</option></select></label>
-      <label>操作类型 <select value={operation} onChange={event => { setOperation(event.target.value as typeof operation); setCursors([undefined]); }}><option value="">全部</option><option value="update">更新账户资料</option><option value="invite">邀请成员</option><option value="role">更新成员角色</option><option value="remove">移除成员</option><option value="register">登记源账号</option><option value="enable">启用源账号</option><option value="disable">停用源账号</option><option value="allocate_member_resource">分配成员资源</option><option value="reclaim_member_resource">回收成员资源</option><option value="set_member_ai_point_limit">设置成员 AI 月度上限</option></select></label>
-      <label>成员筛选 <select disabled><option>成员筛选暂不可用</option></select></label>
-      <label>操作人 <input value={actor} onChange={event => { setActor(event.target.value); setCursors([undefined]); }} maxLength={128} placeholder="按操作人筛选" /></label>
+    <form className={styles.filters} onSubmit={event => { event.preventDefault(); const normalized = content.trim(); const invalid = auditContentInvalidReason(content); if (invalid === "control" || invalid === "too_long") { setFilterError(invalid === "control" ? "搜索词不能包含控制字符。" : "搜索词不能超过 80 字节。" ); return; } setFilterError(""); setApplied({ content: normalized, period, memberId, actor, operation }); setCursors([undefined]); }}>
+      <label className={styles.search}>搜索操作内容 / 对象 <input value={content} onChange={event => setContent(event.target.value)} maxLength={80} placeholder="操作名称或对象 ID" /></label>
+      <label>时间范围 <select value={period} onChange={event => setPeriod(event.target.value as Period)}><option value="7d">近7天</option><option value="30d">近30天</option><option value="all">全部时间</option></select></label>
+      <label>操作类型 <select value={operation} onChange={event => setOperation(event.target.value as Operation)}><option value="">全部</option><option value="update">更新账户资料</option><option value="invite">邀请成员</option><option value="role">更新成员角色</option><option value="remove">移除成员</option><option value="register">登记源账号</option><option value="enable">启用源账号</option><option value="disable">停用源账号</option><option value="allocate_member_resource">分配成员资源</option><option value="reclaim_member_resource">回收成员资源</option><option value="set_member_ai_point_limit">设置成员 AI 月度上限</option></select></label>
+      <label>成员筛选（成员 ID） <input value={memberId} onChange={event => setMemberId(event.target.value)} maxLength={128} pattern="[A-Za-z0-9][A-Za-z0-9._:-]{0,127}" placeholder="全部成员；可输入历史 ID" /></label>
+      <label>操作人 <input value={actor} onChange={event => setActor(event.target.value)} maxLength={128} pattern="[A-Za-z0-9][A-Za-z0-9._:-]{0,127}" placeholder="按操作人筛选" /></label>
       <Button type="submit" variant="outline">应用筛选</Button>
     </form>
+    <p className={styles.filterHint}>成员筛选按受影响或消耗资源的成员 ID；已移除成员可输入历史记录中的原 ID。操作人单独筛选。搜索覆盖已显示的操作名称、对象及资源信息，不包含姓名和联系方式。</p>
+    {filterError ? <p role="alert" className={styles.filterError}>{filterError}</p> : null}
     <Card className={styles.panel}>
       <div className={styles.scroll} tabIndex={0} role="region" aria-label="操作记录表格，可横向滚动">
         <table className={styles.table} aria-label="操作记录"><thead><tr><th scope="col">时间</th><th scope="col">操作人</th><th scope="col">操作内容</th><th scope="col">模块</th><th scope="col">结果</th></tr></thead>
