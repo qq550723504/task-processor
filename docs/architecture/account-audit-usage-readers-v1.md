@@ -1,6 +1,6 @@
 # Account Audit 只读用量来源接线 V1
 
-状态：设计候选，`NOT_READY`。执行 Issue #587；在适用独立评审明确 `IMPLEMENTATION_READY` 前，不修改正式生产路径。
+状态：`IMPLEMENTATION_READY`。执行 Issue #587；独立只读 reviewer `audit_usage_arch_review` 对 design-only HEAD `088bbe236dd01bf641407c92d96d911d48ce1e13` / 本文 blob `f7a3a8e4a0e2f78f55def362b349d5eb70700ea1` 评审，设计级 `BLOCKER=0`。实施层需证明只读角色边界和无 Agent 执行副作用、全新与保留项目初始化分支、audit-only 与 Agent 执行配置组合；三项归类 `IMPLEMENTATION_TEST`，阻本片合并，不阻设计准入。
 
 ## 当前用户结果与依据
 
