@@ -48,6 +48,51 @@ func workbenchDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+func TestMetadataAuditCommitsWithConversationRevision(t *testing.T) {
+	db := workbenchDB(t)
+	store, err := New(db)
+	require.NoError(t, err)
+	ctx := context.Background()
+	scope := aiworkbench.Scope{OrganizationID: "org-a", ActorID: "user-a"}
+	created, _, err := store.Create(ctx, scope, uuid.NewString(), aiworkbench.CreateInput{})
+	require.NoError(t, err)
+	title, favorite, archived := "Edited title", true, true
+	changed, err := store.SetMetadata(ctx, scope, created.ID, created.MetadataRevision,
+		aiworkbench.MetadataChange{Title: &title, Favorite: &favorite, Archived: &archived})
+	require.NoError(t, err)
+	require.Equal(t, created.MetadataRevision+1, changed.MetadataRevision)
+	var receipt struct {
+		OrganizationID   string
+		ActorID          string
+		ConversationID   string
+		MetadataRevision uint64
+		ChangeMask       int
+		CreatedAt        time.Time
+	}
+	require.NoError(t, db.Table("ai_workbench.metadata_audit").Where("conversation_id = ?", created.ID).Take(&receipt).Error)
+	require.Equal(t, scope.OrganizationID, receipt.OrganizationID)
+	require.Equal(t, scope.ActorID, receipt.ActorID)
+	require.Equal(t, created.ID, receipt.ConversationID)
+	require.Equal(t, changed.MetadataRevision, receipt.MetadataRevision)
+	require.Equal(t, 7, receipt.ChangeMask)
+	require.False(t, receipt.CreatedAt.IsZero())
+
+	require.NoError(t, db.Exec(`CREATE FUNCTION ai_workbench.reject_metadata_audit_test() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN RAISE EXCEPTION 'forced metadata audit failure'; END $$`).Error)
+	require.NoError(t, db.Exec(`CREATE TRIGGER reject_metadata_audit_test BEFORE INSERT ON ai_workbench.metadata_audit
+		FOR EACH ROW EXECUTE FUNCTION ai_workbench.reject_metadata_audit_test()`).Error)
+	nextTitle := "Must not commit"
+	_, err = store.SetMetadata(ctx, scope, created.ID, changed.MetadataRevision, aiworkbench.MetadataChange{Title: &nextTitle})
+	require.Error(t, err)
+	current, err := store.Get(ctx, scope, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, changed.Title, current.Title)
+	require.Equal(t, changed.MetadataRevision, current.MetadataRevision)
+	var count int64
+	require.NoError(t, db.Table("ai_workbench.metadata_audit").Where("conversation_id = ?", created.ID).Count(&count).Error)
+	require.EqualValues(t, 1, count)
+}
+
 func TestWorkbenchRuntimeRoleCanUseReceiptsWithoutDDLOrDeletes(t *testing.T) {
 	db := workbenchDB(t)
 	const role = "ai_workbench_runtime"
@@ -69,6 +114,11 @@ func TestWorkbenchRuntimeRoleCanUseReceiptsWithoutDDLOrDeletes(t *testing.T) {
 		scope := aiworkbench.Scope{OrganizationID: "B", ActorID: "operator"}
 		conversation, _, err := store.Create(context.Background(), scope, uuid.NewString(), aiworkbench.CreateInput{})
 		if err != nil {
+			return err
+		}
+		title := "Updated by runtime"
+		if _, err := store.SetMetadata(context.Background(), scope, conversation.ID, conversation.MetadataRevision,
+			aiworkbench.MetadataChange{Title: &title}); err != nil {
 			return err
 		}
 		key := uuid.NewString()

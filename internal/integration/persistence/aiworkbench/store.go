@@ -45,6 +45,17 @@ type conversationRow struct {
 
 func (conversationRow) TableName() string { return "ai_workbench.conversations" }
 
+type metadataAuditRow struct {
+	ConversationID   string
+	OrganizationID   string
+	ActorID          string
+	MetadataRevision uint64
+	ChangeMask       int
+	CreatedAt        time.Time
+}
+
+func (metadataAuditRow) TableName() string { return "ai_workbench.metadata_audit" }
+
 type messageRow struct {
 	ID             string
 	OrganizationID string
@@ -139,7 +150,7 @@ func VerifySchema(ctx context.Context, db *gorm.DB) error {
 	if db == nil || db.Dialector.Name() != "postgres" || ctx == nil {
 		return aiworkbench.ErrUnavailable
 	}
-	for _, name := range []string{"conversations", "messages", "commands", "execution_proposals", "business_tasks"} {
+	for _, name := range []string{"conversations", "metadata_audit", "messages", "commands", "execution_proposals", "business_tasks"} {
 		var exists bool
 		if err := db.WithContext(ctx).Raw("SELECT to_regclass(?) IS NOT NULL", "ai_workbench."+name).Scan(&exists).Error; err != nil || !exists {
 			return aiworkbench.ErrUnavailable
@@ -431,6 +442,16 @@ func (s *Store) SetMetadata(ctx context.Context, scope aiworkbench.Scope, id str
 		return aiworkbench.Conversation{}, aiworkbench.ErrInvalid
 	}
 	var result aiworkbench.Conversation
+	changeMask := 0
+	if change.Title != nil {
+		changeMask |= 1
+	}
+	if change.Favorite != nil {
+		changeMask |= 2
+	}
+	if change.Archived != nil {
+		changeMask |= 4
+	}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		row, err := s.lookupConversation(tx, scope, id, true)
 		if err != nil {
@@ -457,6 +478,11 @@ func (s *Store) SetMetadata(ctx context.Context, scope aiworkbench.Scope, id str
 		if err := tx.Model(&conversationRow{}).Where("id = ? AND organization_id = ? AND owner_user_id = ?", id, scope.OrganizationID, scope.ActorID).
 			Updates(map[string]any{"title": row.Title, "favorite": row.Favorite, "lifecycle": row.Lifecycle,
 				"metadata_revision": row.MetadataRevision, "updated_at": row.UpdatedAt}).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&metadataAuditRow{ConversationID: id, OrganizationID: scope.OrganizationID,
+			ActorID: scope.ActorID, MetadataRevision: row.MetadataRevision, ChangeMask: changeMask,
+			CreatedAt: row.UpdatedAt}).Error; err != nil {
 			return err
 		}
 		result = conversation(row)

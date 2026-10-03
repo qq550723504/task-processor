@@ -1186,7 +1186,7 @@ POST   /api/v1/workbench/tasks/{task_id}/review
 Rules:
 
 - mutations require canonical UUID Idempotency-Key except pure metadata PATCH, which uses
-  If-Match/ETag CAS and a bounded audit receipt;
+  If-Match/ETag CAS and a bounded audit receipt committed in the same Workbench transaction;
 - strict JSON with unknown fields rejected;
 - GET has no model/provider/quote/reservation side effect;
 - request body <= 16 KiB unless a stricter per-route bound applies;
@@ -1221,6 +1221,7 @@ Candidate tables:
 
 ```text
 ai_workbench.conversations
+ai_workbench.metadata_audit
 ai_workbench.messages
 ai_workbench.commands
 ai_workbench.execution_proposals
@@ -1230,6 +1231,9 @@ ai_workbench.business_tasks
 Required identities/constraints:
 
 - conversations: PK UUID; index `(org, owner, lifecycle, updated_at desc, id)`;
+- metadata_audit: append-only `(conversation_id, metadata_revision)` receipt with scoped
+  owner/actor, bounded changed-field mask and timestamp; it contains no title text and commits
+  atomically with the metadata CAS. The Workbench owner writes it, with no new audit owner;
 - messages: unique `(org, owner, conversation_id, sequence)`, unique message UUID;
   indexed latest-USER lookup on `(org, owner, conversation_id, author_kind, sequence desc)`;
 - commands: PK `(org, actor, idempotency_key)`, unique command UUID;

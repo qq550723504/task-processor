@@ -20,6 +20,18 @@ CREATE INDEX IF NOT EXISTS ai_workbench_conversations_owner_saved
     ON ai_workbench.conversations
     (organization_id, owner_user_id, lifecycle, favorite, updated_at DESC, id DESC);
 
+CREATE TABLE IF NOT EXISTS ai_workbench.metadata_audit (
+    conversation_id uuid NOT NULL,
+    organization_id text NOT NULL,
+    actor_id text NOT NULL,
+    metadata_revision bigint NOT NULL CHECK (metadata_revision > 1),
+    change_mask smallint NOT NULL CHECK (change_mask BETWEEN 1 AND 7),
+    created_at timestamptz NOT NULL,
+    PRIMARY KEY (conversation_id, metadata_revision),
+    FOREIGN KEY (conversation_id, organization_id, actor_id)
+        REFERENCES ai_workbench.conversations (id, organization_id, owner_user_id)
+);
+
 CREATE TABLE IF NOT EXISTS ai_workbench.messages (
     id uuid PRIMARY KEY,
     organization_id text NOT NULL,

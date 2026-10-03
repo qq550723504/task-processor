@@ -211,6 +211,26 @@ it("restores an archived conversation using its current metadata revision", asyn
   expect(screen.queryByText("会话已归档")).toBeNull();
 });
 
+it("edits a conversation title through the existing revision-checked metadata route", async () => {
+  let current = { ...conversation, Title: "原始标题", MetadataRevision: 4 };
+  fixture.request.mockImplementation(async ({ route, method, body, revision }) => {
+    if (route === "conversation-read") return { conversation: current, messages: [], proposals: [], before: "" };
+    if (route === "conversation-metadata" && method === "PATCH") {
+      expect(body).toEqual({ title: "修改后的标题" });
+      expect(revision).toBe(4);
+      current = { ...current, Title: "修改后的标题", MetadataRevision: 5 };
+      return { conversation: current };
+    }
+    throw new AIWorkbenchError("INVALID_REQUEST");
+  });
+  render(tree());
+  fireEvent.click(await screen.findByRole("button", { name: "修改标题" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "会话标题" }), { target: { value: "修改后的标题" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存标题" }));
+  expect(await screen.findByText("修改后的标题")).toBeVisible();
+  expect(fixture.request).toHaveBeenCalledWith(expect.objectContaining({ route: "conversation-metadata", method: "PATCH", revision: 4 }));
+});
+
 it("hides creation for a read-only organization and restores it after switching to a writable one", async () => {
   fixture.context.roles = ["listingkit_viewer"];
   fixture.context.effectiveOrganization = { id: "org-a", capabilities: { "workbench.chat.use": false } };

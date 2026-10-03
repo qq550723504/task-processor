@@ -133,6 +133,8 @@ function ConversationDetail({ scope, authorizationKey, canUse, canPlan, planning
   const [operationId, setOperationId] = useState(search.get("operationId") ?? "");
   const [platform, setPlatform] = useState<"shein" | "temu" | "amazon">("shein");
   const [content, setContent] = useState("");
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
   const [knowledgeBaseId, setKnowledgeBaseId] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [templateRevision, setTemplateRevision] = useState("");
@@ -234,10 +236,10 @@ function ConversationDetail({ scope, authorizationKey, canUse, canPlan, planning
     } catch (cause) { if (!controller.signal.aborted) setError(errorText(cause)); }
     finally { setPending(false); abort.current = null; }
   }
-  async function change(property: { favorite?: boolean; archived?: boolean }) {
+  async function change(property: { title?: string; favorite?: boolean; archived?: boolean }) {
     if (!current) return; setPending(true); setError("");
     try { await requestAIWorkbench({ route: "conversation-metadata", method: "PATCH", path: `chat/conversations/${id}`,
-      scope, revision: current.MetadataRevision, body: property }); await detail.refetch(); }
+      scope, revision: current.MetadataRevision, body: property }); await detail.refetch(); setEditingTitle(false); }
     catch (cause) { setError(errorText(cause)); }
     finally { setPending(false); }
   }
@@ -245,9 +247,14 @@ function ConversationDetail({ scope, authorizationKey, canUse, canPlan, planning
   if (detail.isError || !current) return <ConsoleState kind="error" title="会话不可用">{errorText(detail.error)} <Button variant="outline" onClick={() => void detail.refetch()}>重试</Button></ConsoleState>;
   return <div className={styles.detail}>
     <div className={styles.toolbar}><strong>{current.Title || "未命名会话"}</strong><span>当前企业：{scope.organizationId}</span>
+      {canUse && !editingTitle ? <Button variant="outline" disabled={pending} onClick={() => { setTitleDraft(current.Title); setEditingTitle(true); }}>修改标题</Button> : null}
       {canUse ? <Button variant="outline" disabled={pending} onClick={() => void change({ favorite: !current.Favorite })}>{current.Favorite ? "取消收藏" : "收藏"}</Button> : null}
       {canUse ? <Button variant="outline" disabled={pending} onClick={() => void change({ archived: !current.Archived })}>{current.Archived ? "恢复会话" : "归档"}</Button> : null}
       <Button variant="outline" onClick={() => void detail.refetch()}>刷新</Button></div>
+    {canUse && editingTitle ? <div className={styles.toolbar}><label>会话标题 <input value={titleDraft} disabled={pending} onChange={event => setTitleDraft(event.target.value)} /></label>
+      <Button disabled={pending || new TextEncoder().encode(titleDraft).length > 256} onClick={() => void change({ title: titleDraft })}>保存标题</Button>
+      <Button variant="outline" disabled={pending} onClick={() => setEditingTitle(false)}>取消</Button>
+      {new TextEncoder().encode(titleDraft).length > 256 ? <span>标题不能超过 256 字节。</span> : null}</div> : null}
     <div className={styles.messages} aria-label="会话消息">{messages.length ? messages.map(item => <Card key={item.ID} className={item.Author === "USER" ? styles.userMessage : styles.assistantMessage}>
       <small>{item.Author === "USER" ? "我" : "硕米"} · {new Date(item.CreatedAt).toLocaleString("zh-CN")}</small><p>{item.Content}</p></Card>) : <ConsoleState kind="empty" title="开始讨论">先选定已有商品，再描述标题优化目标。</ConsoleState>}
       {detail.hasNextPage ? <Button variant="outline" disabled={detail.isFetchingNextPage} onClick={() => void detail.fetchNextPage()}>{detail.isFetchingNextPage ? "正在加载…" : "加载更早消息"}</Button> : null}</div>
