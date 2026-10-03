@@ -171,6 +171,62 @@ func TestConfirmReceiptPrecedesLaterStalenessAndKeepsOneTask(t *testing.T) {
 	require.ErrorIs(t, err, aiworkbench.ErrConversationArchived)
 }
 
+type competingExecution struct {
+	entered  chan struct{}
+	release  chan struct{}
+	prepared aiworkbench.PreparedTask
+	prepares atomic.Int32
+	starts   atomic.Int32
+}
+
+func (x *competingExecution) Prepare(context.Context, aiworkbench.ExecutionProposal, string) (aiworkbench.PreparedTask, error) {
+	if x.prepares.Add(1) == 1 {
+		close(x.entered)
+		<-x.release
+		return aiworkbench.PreparedTask{}, aiworkbench.ErrRevisionMismatch
+	}
+	return x.prepared, nil
+}
+
+func (x *competingExecution) Start(context.Context, aiworkbench.BusinessTask) error {
+	x.starts.Add(1)
+	return nil
+}
+
+func TestConfirmPreflightFailureAdoptsConcurrentCommittedTask(t *testing.T) {
+	store, err := New(workbenchDB(t))
+	require.NoError(t, err)
+	scope := aiworkbench.Scope{OrganizationID: "org-a", ActorID: "actor-a"}
+	conversation, proposal := readyTaskFixture(t, store, scope)
+	key := uuid.NewString()
+	execute := &competingExecution{entered: make(chan struct{}), release: make(chan struct{}),
+		prepared: preparedTaskFixture(t, proposal, key)}
+	service := aiworkbench.Service{Store: store, Execute: execute}
+	type outcome struct {
+		task   aiworkbench.BusinessTask
+		replay bool
+		err    error
+	}
+	first := make(chan outcome, 1)
+	go func() {
+		task, replay, err := service.Confirm(context.Background(), scope, conversation.ID, proposal.ID, key)
+		first <- outcome{task, replay, err}
+	}()
+	<-execute.entered // First caller has observed absence and is paused in external preflight.
+	winner, replay, err := service.Confirm(context.Background(), scope, conversation.ID, proposal.ID, key)
+	require.NoError(t, err)
+	require.False(t, replay)
+	close(execute.release) // Its stale preflight must now pass through serialized replay-or-fail.
+	loser := <-first
+	require.NoError(t, loser.err)
+	require.True(t, loser.replay)
+	require.Equal(t, winner.ID, loser.task.ID)
+	require.EqualValues(t, 1, execute.starts.Load())
+	var count int64
+	require.NoError(t, store.db.Table("ai_workbench.business_tasks").Count(&count).Error)
+	require.EqualValues(t, 1, count)
+}
+
 func testPlanPreparer(history []aiworkbench.Message, invocationID string) (aiworkbench.PreparedPlan, error) {
 	if len(history) == 0 || history[len(history)-1].Author != aiworkbench.AuthorUser || invocationID == "" {
 		return aiworkbench.PreparedPlan{}, aiworkbench.ErrInvalid
@@ -321,6 +377,10 @@ func TestUnavailablePlannerStillPersistsUserIntentWithoutDispatchProfile(t *test
 	require.NoError(t, err)
 	require.True(t, replay)
 	require.Equal(t, aiworkbench.PlanningFailedBeforeDispatch, command.State)
+	changed := input
+	changed.Content = "A different title goal"
+	_, _, err = store.AppendUser(ctx, scope, conversation.ID, key, changed, prepare)
+	require.ErrorIs(t, err, aiworkbench.ErrIdempotencyConflict)
 }
 
 func TestPlanningFailureTerminalDoesNotAppendAssistant(t *testing.T) {
