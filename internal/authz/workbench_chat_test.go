@@ -34,3 +34,15 @@ func TestConfiguredPlatformAdminChatUseHasTitleExecutionPrerequisites(t *testing
 	require.True(t, a.Authorize("", roles, PermissionListingKitAdminWrite))
 	require.False(t, a.Authorize("", []string{"listingkit_viewer"}, PermissionWorkbenchChatUse))
 }
+
+func TestConfiguredPlatformAdminUserChatUseHasTitleExecutionPrerequisites(t *testing.T) {
+	a, err := NewListingKitAuthorizer([]string{"custom-platform-user"}, nil)
+	require.NoError(t, err)
+	for _, permission := range []string{
+		PermissionWorkbenchChatRead, PermissionWorkbenchChatUse, PermissionWorkbenchTaskRead,
+		PermissionWorkbenchAgentUse, PermissionListingKitAdminWrite,
+	} {
+		require.True(t, a.Authorize("custom-platform-user", nil, permission), permission)
+		require.False(t, a.Authorize("other-user", nil, permission), permission)
+	}
+}

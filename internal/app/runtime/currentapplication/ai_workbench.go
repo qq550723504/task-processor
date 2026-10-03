@@ -23,6 +23,7 @@ func (w *AIWorkbenchConfig) validate(cfg *Config) error {
 	}
 	if cfg.ProductAgent == nil || !cfg.ProductAgent.Enabled || cfg.CommercialOwnerDatabase == nil ||
 		w.Database.validate("aiWorkbench.database") != nil || w.Database.User != "ai_workbench_runtime" ||
+		w.Database.User == cfg.ProductAgent.Database.User ||
 		w.Database.Host != cfg.ProductAgent.Database.Host || w.Database.Port != cfg.ProductAgent.Database.Port ||
 		w.Database.Database != cfg.ProductAgent.Database.Database || w.Database.MaxConnections > 8 ||
 		len(w.PlanningTextPolicies) == 0 || len(w.PlanningTextPolicies) > 64 {
