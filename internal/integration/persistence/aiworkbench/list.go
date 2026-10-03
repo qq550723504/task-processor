@@ -2,16 +2,51 @@ package aiworkbenchpersistence
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/binary"
+	"math"
 	"strconv"
+	"time"
+
+	"github.com/google/uuid"
 
 	"task-processor/internal/aiworkbench"
 )
 
-// Cursors name a scoped row rather than accepting caller-supplied timestamps.
-// Filters are applied before the page boundary. A returned cursor belongs to
-// the same active/saved view and orders by last activity, then ID.
+// A conversation cursor freezes its (updated_at, id) boundary. The ID must
+// still resolve inside the caller's scope, but the row may change or leave the
+// current view between pages without moving the page boundary.
+func conversationCursor(row conversationRow) (string, error) {
+	id, err := uuid.Parse(row.ID)
+	if err != nil || row.UpdatedAt.UnixMicro() <= 0 {
+		return "", aiworkbench.ErrUnavailable
+	}
+	var raw [24]byte
+	binary.BigEndian.PutUint64(raw[:8], uint64(row.UpdatedAt.UnixMicro()))
+	copy(raw[8:], id[:])
+	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
+}
+
+func parseConversationCursor(value string) (string, time.Time, error) {
+	if len(value) != 32 {
+		return "", time.Time{}, aiworkbench.ErrInvalid
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil || len(raw) != 24 || base64.RawURLEncoding.EncodeToString(raw) != value {
+		return "", time.Time{}, aiworkbench.ErrInvalid
+	}
+	micros := binary.BigEndian.Uint64(raw[:8])
+	id, err := uuid.FromBytes(raw[8:])
+	if err != nil || micros == 0 || micros > math.MaxInt64 || !validKey(id.String()) {
+		return "", time.Time{}, aiworkbench.ErrInvalid
+	}
+	return id.String(), time.UnixMicro(int64(micros)).UTC(), nil
+}
+
+// Filters are applied before pagination; the cursor cannot grant access to
+// another owner even if its opaque boundary is modified by a caller.
 func (s *Store) ListConversations(ctx context.Context, scope aiworkbench.Scope, after string, limit int, savedOnly bool) ([]aiworkbench.Conversation, string, error) {
-	if s == nil || s.db == nil || ctx == nil || !validScope(scope) || limit < 1 || limit > 50 || (after != "" && !validKey(after)) {
+	if s == nil || s.db == nil || ctx == nil || !validScope(scope) || limit < 1 || limit > 50 {
 		return nil, "", aiworkbench.ErrInvalid
 	}
 	query := s.db.WithContext(ctx).Where("organization_id = ? AND owner_user_id = ? AND lifecycle = ?", scope.OrganizationID, scope.ActorID, "ACTIVE")
@@ -19,14 +54,14 @@ func (s *Store) ListConversations(ctx context.Context, scope aiworkbench.Scope, 
 		query = query.Where("favorite = ?", true)
 	}
 	if after != "" {
-		cursor, err := s.lookupConversation(s.db.WithContext(ctx), scope, after, false)
+		cursorID, boundary, err := parseConversationCursor(after)
 		if err != nil {
 			return nil, "", err
 		}
-		if cursor.Lifecycle != "ACTIVE" || savedOnly && !cursor.Favorite {
-			return nil, "", aiworkbench.ErrNotFound
+		if _, err := s.lookupConversation(s.db.WithContext(ctx), scope, cursorID, false); err != nil {
+			return nil, "", err
 		}
-		query = query.Where("(updated_at < ? OR (updated_at = ? AND id < ?))", cursor.UpdatedAt, cursor.UpdatedAt, cursor.ID)
+		query = query.Where("(updated_at < ? OR (updated_at = ? AND id < ?))", boundary, boundary, cursorID)
 	}
 	var rows []conversationRow
 	if err := query.Order("updated_at DESC, id DESC").Limit(limit + 1).Find(&rows).Error; err != nil {
@@ -35,7 +70,11 @@ func (s *Store) ListConversations(ctx context.Context, scope aiworkbench.Scope, 
 	next := ""
 	if len(rows) > limit {
 		rows = rows[:limit]
-		next = rows[len(rows)-1].ID
+		var err error
+		next, err = conversationCursor(rows[len(rows)-1])
+		if err != nil {
+			return nil, "", err
+		}
 	}
 	result := make([]aiworkbench.Conversation, 0, len(rows))
 	for _, row := range rows {

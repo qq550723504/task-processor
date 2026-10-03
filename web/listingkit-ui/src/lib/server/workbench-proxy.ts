@@ -487,7 +487,7 @@ export async function buildWorkbenchUpstreamRequest(
         for (const [name, value] of url.searchParams) {
           if (!allowed.has(name) || selected.has(name) || !value ||
             (name === "limit" && (!/^[1-9][0-9]?$/.test(value) || Number(value) > 50)) ||
-            (name === "after" && !isAcquisitionUUID(value)) ||
+            (name === "after" && !(action === "conversation-list" ? /^[A-Za-z0-9_-]{32}$/.test(value) : isAcquisitionUUID(value))) ||
             (name === "saved" && value !== "true") ||
             (name === "before" && !/^[1-9][0-9]*$/.test(value))) return protocolError(400, "INVALID_REQUEST", "Query is invalid");
           selected.set(name, value);

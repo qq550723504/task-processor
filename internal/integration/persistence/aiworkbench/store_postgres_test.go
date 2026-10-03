@@ -258,7 +258,12 @@ func TestConversationRecentPageOrdersByLastActivity(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, first, 1)
 	require.Equal(t, older.ID, first[0].ID)
-	require.Equal(t, older.ID, next)
+	require.NotEmpty(t, next)
+	require.Len(t, next, 32)
+	_, _, err = store.ListConversations(ctx, aiworkbench.Scope{OrganizationID: "other-org", ActorID: scope.ActorID}, next, 1, false)
+	require.ErrorIs(t, err, aiworkbench.ErrNotFound)
+	_, _, err = store.ListConversations(ctx, scope, older.ID, 1, false)
+	require.ErrorIs(t, err, aiworkbench.ErrInvalid, "a row ID is not a frozen page coordinate")
 	second, next, err := store.ListConversations(ctx, scope, next, 1, false)
 	require.NoError(t, err)
 	require.Len(t, second, 1)
@@ -276,6 +281,65 @@ func TestConversationRecentPageOrdersByLastActivity(t *testing.T) {
 	first, _, err = store.ListConversations(ctx, scope, "", 1, false)
 	require.NoError(t, err)
 	require.Equal(t, older.ID, first[0].ID, "assistant activity also refreshes recent order")
+}
+
+func TestConversationCursorKeepsOriginalBoundaryAfterCursorActivity(t *testing.T) {
+	store, err := New(workbenchDB(t))
+	require.NoError(t, err)
+	ctx := context.Background()
+	scope := aiworkbench.Scope{OrganizationID: "org-a", ActorID: "actor-a"}
+	ids := make([]string, 3)
+	for i := range ids {
+		created, _, createErr := store.Create(ctx, scope, uuid.NewString(), aiworkbench.CreateInput{Favorite: true})
+		require.NoError(t, createErr)
+		ids[i] = created.ID
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	for i, id := range ids {
+		require.NoError(t, store.db.Model(&conversationRow{}).Where("id = ?", id).
+			Update("updated_at", now.Add(-time.Duration(i+1)*time.Hour)).Error)
+	}
+	first, cursor, err := store.ListConversations(ctx, scope, "", 2, true)
+	require.NoError(t, err)
+	require.Equal(t, []string{ids[0], ids[1]}, []string{first[0].ID, first[1].ID})
+	require.NotEmpty(t, cursor)
+	// The cursor row moves to the top after page one. Page two must use its
+	// original sort coordinate, not return page one's first row again.
+	title := "Updated while paging"
+	_, err = store.SetMetadata(ctx, scope, ids[1], 1, aiworkbench.MetadataChange{Title: &title})
+	require.NoError(t, err)
+	second, _, err := store.ListConversations(ctx, scope, cursor, 2, true)
+	require.NoError(t, err)
+	require.Len(t, second, 1)
+	require.Equal(t, ids[2], second[0].ID)
+}
+
+func TestSavedCursorContinuesAfterCursorIsUnfavoritedAndArchived(t *testing.T) {
+	store, err := New(workbenchDB(t))
+	require.NoError(t, err)
+	ctx := context.Background()
+	scope := aiworkbench.Scope{OrganizationID: "org-a", ActorID: "actor-a"}
+	ids := make([]string, 3)
+	for i := range ids {
+		created, _, createErr := store.Create(ctx, scope, uuid.NewString(), aiworkbench.CreateInput{Favorite: true})
+		require.NoError(t, createErr)
+		ids[i] = created.ID
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	for i, id := range ids {
+		require.NoError(t, store.db.Model(&conversationRow{}).Where("id = ?", id).
+			Update("updated_at", now.Add(-time.Duration(i+1)*time.Hour)).Error)
+	}
+	_, cursor, err := store.ListConversations(ctx, scope, "", 2, true)
+	require.NoError(t, err)
+	require.NotEmpty(t, cursor)
+	favorite, archived := false, true
+	_, err = store.SetMetadata(ctx, scope, ids[1], 1, aiworkbench.MetadataChange{Favorite: &favorite, Archived: &archived})
+	require.NoError(t, err)
+	second, _, err := store.ListConversations(ctx, scope, cursor, 2, true)
+	require.NoError(t, err)
+	require.Len(t, second, 1)
+	require.Equal(t, ids[2], second[0].ID)
 }
 
 func TestSavedConversationFilterPrecedesPaginationAndExcludesArchived(t *testing.T) {

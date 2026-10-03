@@ -18,7 +18,7 @@ func (a *aiWorkbenchApplication) listConversations(c *gin.Context, ctx context.C
 			return
 		}
 	}
-	if c.Query("after") != "" && !acquisitionHTTPUUID(c.Query("after")) ||
+	if values.Has("after") && len(c.Query("after")) != 32 ||
 		(values.Has("saved") && c.Query("saved") != "true") {
 		writeAIWorkbenchError(c, aiworkbench.ErrInvalid)
 		return
