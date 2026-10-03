@@ -77,9 +77,27 @@ describe("AI Workbench BFF boundary", () => {
     }
   });
 
+  it("rejects Resume feedback over 8 KiB in UTF-8 before forwarding", async () => {
+    const request = new Request(`http://localhost/api/workbench/tasks/${id}/resume`, {
+      method: "POST", headers: { ...scope, Origin: "http://localhost", "Content-Type": "application/json", "Idempotency-Key": id },
+      body: JSON.stringify({ revision: "2", feedback: "中".repeat(2731) }),
+    });
+    const mapped = await buildWorkbenchUpstreamRequest(request, ["tasks", id, "resume"], "server-token", "user-a");
+    expect(mapped).toBeInstanceOf(Response);
+    if (mapped instanceof Response) expect(mapped.status).toBe(400);
+  });
+
   it("preserves a verified organization revocation response for Chat", async () => {
     const response = await buildWorkbenchBrowserResponse(Response.json({ code: "ORGANIZATION_ACCESS_REVOKED" }, { status: 403 }), "ai-conversation-read");
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ code: "ORGANIZATION_ACCESS_REVOKED" });
+  });
+
+  it("forwards exact Workbench revision and Task outcome errors", async () => {
+    for (const [code, status] of [["REVISION_MISMATCH", 409], ["TASK_OUTCOME_UNKNOWN", 503]] as const) {
+      const response = await buildWorkbenchBrowserResponse(Response.json({ code }, { status }), "ai-task-resume", undefined, { sourceMutation: true });
+      expect(response.status).toBe(status);
+      expect(await response.json()).toMatchObject({ code });
+    }
   });
 });

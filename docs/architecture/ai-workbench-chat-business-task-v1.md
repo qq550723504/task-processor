@@ -231,6 +231,9 @@ distinct login names alone do not establish the required SQL privilege isolation
 They also reject effective DML or sequence privileges on non-`ai_workbench` business relations,
 including direct, PUBLIC and column-level grants. A later grant must fail the serving startup
 check even if the runtime role still has no memberships.
+The initializer and serving startup also check the same bounded in-schema permissions, including
+schema CREATE, table DELETE/TRUNCATE/TRIGGER/REFERENCES and UPDATE outside the specified mutable
+columns; a later grant cannot silently expand the runtime login.
 
 Reasons:
 

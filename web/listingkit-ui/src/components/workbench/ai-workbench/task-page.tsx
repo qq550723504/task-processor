@@ -124,8 +124,12 @@ function TaskDetail({ scope, authorizationKey, taskId }: { scope: AIScope; autho
     queryFn: ({ signal }) => requestAIWorkbench({ route: "task-read", method: "GET", path: `tasks/${taskId}`, scope, signal }),
     retry: false, staleTime: 0, refetchOnWindowFocus: false });
   const item = task.data?.task;
+  const feedbackTooLarge = new TextEncoder().encode(feedback).byteLength > 8 * 1024;
   async function act(action: TaskAction) {
     if (!item) return; setPending(true); setError("");
+    if (action === "resume" && feedbackTooLarge) {
+      setError("反馈不能超过 8 KiB UTF-8 字节"); setPending(false); return;
+    }
     const storageKey = taskActionStorageKey(scope, taskId, action);
     const revision = action === "resume" ? item.agentRevision ?? "" : "";
     const currentFeedback = action === "resume" ? feedback : "";
@@ -171,7 +175,9 @@ function TaskDetail({ scope, authorizationKey, taskId }: { scope: AIScope; autho
     <div className={styles.actions}>
       {item.canStart ? <Button disabled={pending} onClick={() => void act("start")}>启动原任务</Button> : null}
       {item.canReconcile ? <Button variant="outline" disabled={pending} onClick={() => void act("start")}>核实超期执行结果</Button> : null}
-      {item.canResume ? <Card className={styles.actionCard}><label>继续执行的反馈<textarea rows={3} value={feedback} onChange={event => setFeedback(event.target.value)} /></label><Button disabled={pending || !feedback.trim()} onClick={() => void act("resume")}>继续原任务</Button></Card> : null}
+      {item.canResume ? <Card className={styles.actionCard}><label>继续执行的反馈<textarea rows={3} value={feedback} onChange={event => setFeedback(event.target.value)} /></label>
+        {feedbackTooLarge ? <small>反馈不能超过 8 KiB UTF-8 字节。</small> : null}
+        <Button disabled={pending || !feedback.trim() || feedbackTooLarge} onClick={() => void act("resume")}>继续原任务</Button></Card> : null}
       {item.canReview && !item.reviewId ? <Button disabled={pending} onClick={() => void act("review")}>提交标题供人工审核</Button> : null}
       {item.reviewId ? <Button asChild><Link href={`/workbench/ai/tasks/pending/other?proposal_id=${item.reviewId}`} prefetch={false}>查看并处理标题提案</Link></Button> : null}
     </div>

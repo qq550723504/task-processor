@@ -41,6 +41,24 @@ it("keeps the exact Task action key after an unknown response and page reload", 
   client.clear();
 });
 
+it("bounds Resume feedback by UTF-8 bytes before creating an action receipt", async () => {
+  const taskId = "550e8400-e29b-41d4-a716-446655440000";
+  const item = { id: taskId, conversationId: taskId, proposalId: taskId, title: "标题任务", goalSummary: "优化标题",
+    createdAt: "2026-10-03T00:00:00Z", projectionAvailable: true, state: "PAUSED", reason: "HUMAN_REVIEW_REQUIRED",
+    agentRevision: "2", canStart: false, canReconcile: false, canResume: true, canReview: false, productDetailsAvailable: true };
+  fixture.request.mockResolvedValue({ task: item });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><BusinessTaskPage taskId={taskId} /></QueryClientProvider>);
+  const resume = await screen.findByRole("button", { name: "继续原任务" });
+  fireEvent.change(screen.getByRole("textbox", { name: "继续执行的反馈" }), { target: { value: "中".repeat(2730) } });
+  expect(resume).toBeEnabled();
+  fireEvent.change(screen.getByRole("textbox", { name: "继续执行的反馈" }), { target: { value: "中".repeat(2731) } });
+  expect(resume).toBeDisabled();
+  expect(screen.getByText(/反馈不能超过 8 KiB/)).toBeVisible();
+  expect(fixture.request).toHaveBeenCalledTimes(1);
+  client.clear();
+});
+
 it("keeps Task reads without offering Chat creation when this organization's planning route is unready", async () => {
   fixture.context.aiWorkbenchPlanningReadiness = "NEEDS_CONFIGURATION";
   fixture.request.mockResolvedValue({ tasks: [], next: "" });

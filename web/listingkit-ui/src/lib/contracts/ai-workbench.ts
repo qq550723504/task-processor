@@ -39,7 +39,8 @@ export const aiMessageBody = z.strictObject({
   templateRevision: z.string().regex(/^[1-9][0-9]*$/).optional(), knowledgeBaseId: id.optional(),
 });
 export const aiMetadataBody = z.strictObject({ title: z.string().max(256).optional(), favorite: z.boolean().optional(), archived: z.boolean().optional() });
-export const aiResumeBody = z.strictObject({ revision: z.string().regex(/^[1-9][0-9]*$/), feedback: z.string().max(8192) });
+export const aiResumeBody = z.strictObject({ revision: z.string().regex(/^[1-9][0-9]*$/),
+  feedback: z.string().refine(v => new TextEncoder().encode(v).byteLength <= 8192) });
 
 export type AIConversation = z.infer<typeof conversation>;
 export type AIProposal = z.infer<typeof proposal>;

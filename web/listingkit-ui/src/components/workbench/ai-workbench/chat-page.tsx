@@ -24,6 +24,7 @@ const confirmStorageKey = (scope: AIScope, id: string) => `ai-workbench:confirm:
 const stateText: Record<string, string> = {
   OUTCOME_UNKNOWN: "结果暂无法确认。可用相同操作键重试，系统会读取原收据。",
   PROPOSAL_STALE: "商品或会话已变化，请刷新并重新提出方案。",
+  REVISION_MISMATCH: "会话内容已变化，请刷新后重试当前编辑。",
   DEPENDENCY_UNAVAILABLE: "服务暂不可用，请稍后重试。",
   FORBIDDEN: "当前企业或权限已变化，请重新加载。",
   CONVERSATION_ARCHIVED: "该会话已归档，不能继续发送消息。",

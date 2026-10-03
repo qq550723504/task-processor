@@ -42,60 +42,27 @@ func hasCrossOwnerRelationPrivilege(db *gorm.DB, role string) (bool, error) {
 	return granted, err
 }
 
-// GrantRuntime is initializer-only. The caller creates the restricted role
-// separately and uses a privileged, private schema connection for this step.
-func GrantRuntime(db *gorm.DB, role string) error {
-	if db == nil || db.Dialector.Name() != "postgres" || !roleName.MatchString(role) {
-		return aiworkbench.ErrInvalid
-	}
-	var exists bool
-	if err := db.Raw("SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=?)", role).Scan(&exists).Error; err != nil {
-		return err
-	}
-	if !exists {
-		return aiworkbench.ErrNotFound
-	}
-	member, err := hasRoleMembership(db, role)
-	if err != nil || member {
-		return aiworkbench.ErrInvalid
-	}
+func validateRuntimeRoleIdentity(db *gorm.DB, role string) error {
 	var unsafe bool
-	if err := db.Raw(`SELECT rolsuper OR rolcreaterole OR rolbypassrls FROM pg_roles WHERE rolname=?`, role).Scan(&unsafe).Error; err != nil {
-		return err
-	}
-	if unsafe {
-		return aiworkbench.ErrInvalid
-	}
-	unsafe, err = hasCrossOwnerRelationPrivilege(db, role)
-	if err != nil || unsafe {
+	if err := db.Raw(`SELECT rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls FROM pg_roles WHERE rolname=?`, role).Scan(&unsafe).Error; err != nil || unsafe {
 		return aiworkbench.ErrInvalid
 	}
 	if err := db.Raw(`SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname='ai_workbench' AND pg_get_userbyid(nspowner)=?) OR EXISTS(SELECT 1 FROM pg_class WHERE relnamespace='ai_workbench'::regnamespace AND pg_get_userbyid(relowner)=?)`, role, role).Scan(&unsafe).Error; err != nil || unsafe {
 		return aiworkbench.ErrInvalid
 	}
-	quoted := `"` + role + `"`
-	statements := []string{
-		"REVOKE ALL ON SCHEMA ai_workbench FROM PUBLIC",
-		"REVOKE ALL ON SCHEMA ai_workbench FROM " + quoted,
-		"REVOKE ALL ON ALL TABLES IN SCHEMA ai_workbench FROM PUBLIC",
-		"REVOKE ALL ON ALL TABLES IN SCHEMA ai_workbench FROM " + quoted,
-		"GRANT USAGE ON SCHEMA ai_workbench TO " + quoted,
-		"GRANT SELECT, INSERT ON ai_workbench.conversations, ai_workbench.metadata_audit, ai_workbench.messages, ai_workbench.commands, ai_workbench.execution_proposals, ai_workbench.business_tasks, ai_workbench.task_action_receipts TO " + quoted,
-		"GRANT UPDATE (title, favorite, lifecycle, metadata_revision, next_sequence, updated_at) ON ai_workbench.conversations TO " + quoted,
-		"GRANT UPDATE (state, assistant_message_id, proposal_id, terminal_digest, mode, committed_at) ON ai_workbench.commands TO " + quoted,
-		"GRANT UPDATE (state, error_code, finished_at) ON ai_workbench.task_action_receipts TO " + quoted,
-	}
-	for _, sql := range statements {
-		if err := db.Exec(sql).Error; err != nil {
-			return err
-		}
-	}
+	return nil
+}
+
+// The initializer and serving startup use the same bounds. A later grant must
+// not silently turn the runtime login into a schema owner or mutation authority.
+func validateBoundedWorkbenchPrivileges(db *gorm.DB, role string) error {
+	var unsafe bool
 	if err := db.Raw("SELECT has_schema_privilege(?,'ai_workbench','CREATE')", role).Scan(&unsafe).Error; err != nil || unsafe {
 		return aiworkbench.ErrInvalid
 	}
 	for _, table := range []string{"conversations", "metadata_audit", "messages", "commands", "execution_proposals", "business_tasks", "task_action_receipts"} {
 		name := "ai_workbench." + table
-		if err := db.Raw("SELECT has_table_privilege(?,?,'DELETE,TRUNCATE')", role, name).Scan(&unsafe).Error; err != nil || unsafe {
+		if err := db.Raw("SELECT has_table_privilege(?,?,'DELETE,TRUNCATE,REFERENCES,TRIGGER')", role, name).Scan(&unsafe).Error; err != nil || unsafe {
 			return aiworkbench.ErrInvalid
 		}
 		if table != "conversations" && table != "commands" && table != "task_action_receipts" {
@@ -115,4 +82,48 @@ func GrantRuntime(db *gorm.DB, role string) error {
 		}
 	}
 	return nil
+}
+
+// GrantRuntime is initializer-only. The caller creates the restricted role
+// separately and uses a privileged, private schema connection for this step.
+func GrantRuntime(db *gorm.DB, role string) error {
+	if db == nil || db.Dialector.Name() != "postgres" || !roleName.MatchString(role) {
+		return aiworkbench.ErrInvalid
+	}
+	var exists bool
+	if err := db.Raw("SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=?)", role).Scan(&exists).Error; err != nil {
+		return err
+	}
+	if !exists {
+		return aiworkbench.ErrNotFound
+	}
+	member, err := hasRoleMembership(db, role)
+	if err != nil || member {
+		return aiworkbench.ErrInvalid
+	}
+	if err := validateRuntimeRoleIdentity(db, role); err != nil {
+		return err
+	}
+	unsafe, err := hasCrossOwnerRelationPrivilege(db, role)
+	if err != nil || unsafe {
+		return aiworkbench.ErrInvalid
+	}
+	quoted := `"` + role + `"`
+	statements := []string{
+		"REVOKE ALL ON SCHEMA ai_workbench FROM PUBLIC",
+		"REVOKE ALL ON SCHEMA ai_workbench FROM " + quoted,
+		"REVOKE ALL ON ALL TABLES IN SCHEMA ai_workbench FROM PUBLIC",
+		"REVOKE ALL ON ALL TABLES IN SCHEMA ai_workbench FROM " + quoted,
+		"GRANT USAGE ON SCHEMA ai_workbench TO " + quoted,
+		"GRANT SELECT, INSERT ON ai_workbench.conversations, ai_workbench.metadata_audit, ai_workbench.messages, ai_workbench.commands, ai_workbench.execution_proposals, ai_workbench.business_tasks, ai_workbench.task_action_receipts TO " + quoted,
+		"GRANT UPDATE (title, favorite, lifecycle, metadata_revision, next_sequence, updated_at) ON ai_workbench.conversations TO " + quoted,
+		"GRANT UPDATE (state, assistant_message_id, proposal_id, terminal_digest, mode, committed_at) ON ai_workbench.commands TO " + quoted,
+		"GRANT UPDATE (state, error_code, finished_at) ON ai_workbench.task_action_receipts TO " + quoted,
+	}
+	for _, sql := range statements {
+		if err := db.Exec(sql).Error; err != nil {
+			return err
+		}
+	}
+	return validateBoundedWorkbenchPrivileges(db, role)
 }

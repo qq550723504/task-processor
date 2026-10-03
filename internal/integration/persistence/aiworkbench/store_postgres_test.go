@@ -216,6 +216,35 @@ func TestWorkbenchRuntimeRoleRejectsDirectCrossOwnerPrivileges(t *testing.T) {
 	}), aiworkbench.ErrUnavailable, "serving startup must reject a later sequence grant")
 }
 
+func TestWorkbenchRuntimeRoleRejectsLaterInSchemaPrivilegeDrift(t *testing.T) {
+	db := workbenchDB(t)
+	const role = "ai_workbench_runtime"
+	require.NoError(t, db.Exec("CREATE ROLE "+role+" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS").Error)
+	require.NoError(t, GrantRuntime(db, role))
+	verify := func() error {
+		return db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Exec("SET LOCAL ROLE " + role).Error; err != nil {
+				return err
+			}
+			return VerifySchema(context.Background(), tx)
+		})
+	}
+	require.NoError(t, verify())
+	for _, tc := range []struct{ grant, revoke string }{
+		{"CREATE ON SCHEMA ai_workbench", "CREATE ON SCHEMA ai_workbench"},
+		{"DELETE ON ai_workbench.business_tasks", "DELETE ON ai_workbench.business_tasks"},
+		{"TRUNCATE ON ai_workbench.conversations", "TRUNCATE ON ai_workbench.conversations"},
+		{"TRIGGER ON ai_workbench.conversations", "TRIGGER ON ai_workbench.conversations"},
+		{"UPDATE (content) ON ai_workbench.messages", "UPDATE (content) ON ai_workbench.messages"},
+		{"UPDATE ON ai_workbench.conversations", "UPDATE ON ai_workbench.conversations"},
+	} {
+		require.NoError(t, db.Exec("GRANT "+tc.grant+" TO "+role).Error)
+		require.ErrorIs(t, verify(), aiworkbench.ErrUnavailable, "unsafe runtime grant: %s", tc.grant)
+		require.NoError(t, db.Exec("REVOKE "+tc.revoke+" FROM "+role).Error)
+		require.NoError(t, verify())
+	}
+}
+
 func TestTaskActionReceiptReplaysCommittedResultWithoutReclaim(t *testing.T) {
 	db := workbenchDB(t)
 	store, err := New(db)
