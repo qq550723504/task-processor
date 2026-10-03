@@ -6,16 +6,17 @@ import (
 	"fmt"
 
 	"gorm.io/gorm"
+
+	recordstore "task-processor/internal/app/listingrecordstore"
 )
 
-var trialWritableTables = []string{
+var trialWritableTables = append([]string{
 	"product_snapshot_versions", "product_snapshot_heads",
 	"product_source_publications", "product_source_publication_receipts",
 	"product_title_proposals", "product_title_operations",
 	"product_approved_assets", "product_approval_receipts",
 	"product_approved_inventory_heads", "product_approved_inventory_version_heads",
-	"listing_shein_records", "listing_shein_record_operations",
-}
+}, recordstore.RuntimeTableNames()...)
 
 type trialTableRights struct {
 	CanSelect bool `gorm:"column:can_select"`
