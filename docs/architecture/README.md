@@ -238,6 +238,10 @@ documents unless they say so explicitly:
     acceptance result is recorded in §12-A''. Does not supersede approved
     sourcing contracts, and does not by itself authorize production wiring or
     deployment.
+- `2026-10-03-acquisition-channel-pricing.md`
+  - IMPLEMENTATION_READY #592 contract for 5 fen per published server-side
+    1688 acquisition and free Browser Capture extension/local executor submission;
+    preserves the existing Product publication and prepaid resource owners.
 - `project-target-architecture.md`
   - target architecture context; use stable boundary documents for current
     review policy
