@@ -10,6 +10,10 @@ case "$commercial_database" in
     echo 'commercial database must have its own name' >&2; exit 1 ;;
 esac
 test "${#commercial_database}" -le 63
+case "${ACCOUNT_ISSUE36_LOCAL_TRIAL:-}" in
+  ''|ISOLATED_TRIAL_ONLY) ;;
+  *) echo 'invalid #36 local trial opt-in' >&2; exit 1 ;;
+esac
 
 create_role() {
   # A failing substitution inside psql's arguments does not trigger set -e.
@@ -60,6 +64,9 @@ create_role organization_membership_runtime /secrets/membership-runtime/membersh
 create_role source_acquisition_runtime /secrets/acquisition-runtime/acquisition-runtime-password
 create_role image_agent_runtime /secrets/image-runtime/image-runtime-password
 create_role image_agent_worker_runtime /secrets/image-worker/image-worker-password
+if [ "${ACCOUNT_ISSUE36_LOCAL_TRIAL:-}" = ISOLATED_TRIAL_ONLY ]; then
+ create_role issue36_trial_runtime /secrets/issue36-trial-runtime/password
+fi
 
 create_database store_center store_center_owner
 create_database source_accounts source_account_owner

@@ -13,7 +13,6 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"task-processor/internal/app/httpapi"
 	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
@@ -44,7 +43,7 @@ func TestPrepareSampleReplaysWithoutDuplicatingFacts(t *testing.T) {
 			_ = raw.Close()
 		}
 	})
-	require.NoError(t, httpapi.InstallProductReviewSchema(db))
+	require.NoError(t, installTestReviewSchema(db))
 	require.NoError(t, assetstore.AutoMigrate(db))
 	require.NoError(t, storecenter.AutoMigrateStoreRepository(db))
 	listingSchema, err := os.ReadFile("../listingrecordstore/schema.sql")
@@ -92,4 +91,13 @@ func TestPrepareSampleReplaysWithoutDuplicatingFacts(t *testing.T) {
 		}
 		require.Equal(t, want, count, table)
 	}
+}
+
+func installTestReviewSchema(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := productsourcing.InstallSchema(tx); err != nil {
+			return err
+		}
+		return reviewstore.InstallSchema(tx)
+	})
 }

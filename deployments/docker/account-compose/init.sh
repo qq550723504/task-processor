@@ -13,6 +13,7 @@ membership_db_owner_secret=/secrets/membership-owner
 membership_runtime_secret=/secrets/membership-runtime
 store_owner_secret=/secrets/store-owner
 store_runtime_secret=/secrets/store-runtime
+issue36_trial_runtime_secret=/secrets/issue36-trial-runtime
 image_db_owner_secret=/secrets/image-owner
 product_agent_db_owner_secret=/secrets/product-agent-owner
 image_audit_reader_secret=/secrets/image-audit-reader
@@ -30,6 +31,10 @@ if [ -n "${ACCOUNT_ISOLATED_TRIAL_CATALOG:-}" ]; then
   echo 'subscription trial catalog is retired; resource prices must be configured separately' >&2
   exit 1
 fi
+case "${ACCOUNT_ISSUE36_LOCAL_TRIAL:-}" in
+  ''|ISOLATED_TRIAL_ONLY) ;;
+  *) echo 'invalid #36 local trial opt-in' >&2; exit 1 ;;
+esac
 
 read_bootstrap_user_id() {
   bootstrap_user_id=$(tr -d '\r\n' < "$runtime/bootstrap-user-id")
@@ -75,6 +80,44 @@ initialize_store_center() {
 {"host":"127.0.0.1","port":5433,"user":"store_center_owner","password":"$(tr -d '\r\n' < "$store_owner_secret/store-owner-password")","database":"store_center","maxConnections":2,"maxIdleConnections":1}
 EOF
   store-center-schema-init -config "$work/store-owner-schema.json"
+}
+
+initialize_issue36_trial() {
+  if [ "${ACCOUNT_ISSUE36_LOCAL_TRIAL:-}" != ISOLATED_TRIAL_ONLY ]; then
+    jq -e 'has("localTrial") | not' "$runtime/current-application.json" >/dev/null || { echo 'retained #36 trial requires its original overlay' >&2; exit 1; }
+    return
+  fi
+  test -s "$issue36_trial_runtime_secret/password" || { echo '#36 trial runtime role credential unavailable' >&2; exit 1; }
+  if [ -f "$state/.init-complete" ]; then
+    jq -e '.localTrial.enabled == true and .localTrial.database.database == "store_center" and .localTrial.database.user == "issue36_trial_runtime" and .localTrial.database.port == 5433' "$runtime/current-application.json" >/dev/null || { echo '#36 trial topology changed; use its original checkout' >&2; exit 1; }
+    test -s "$runtime/issue36-sample.json" || { echo '#36 trial sample record unavailable' >&2; exit 1; }
+    return
+  fi
+  owner_dsn="postgresql://store_center_owner:$(tr -d '\r\n' < "$store_owner_secret/store-owner-password")@127.0.0.1:5433/store_center?sslmode=disable"
+  issue36-local-trial-init -mode schema -config "$work/store-owner-schema.json"
+  psql "$owner_dsn" -v ON_ERROR_STOP=1 -f /etc/issue36-listing-schema.sql
+  psql "$owner_dsn" -v ON_ERROR_STOP=1 <<SQL
+GRANT CONNECT ON DATABASE store_center TO issue36_trial_runtime;
+GRANT USAGE ON SCHEMA public TO issue36_trial_runtime;
+GRANT SELECT ON TABLE public.workbench_stores TO issue36_trial_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE
+  public.product_snapshot_versions, public.product_snapshot_heads,
+  public.product_source_publications, public.product_source_publication_receipts,
+  public.product_title_proposals, public.product_title_operations,
+  public.product_approved_assets, public.product_approval_receipts,
+  public.product_approved_inventory_heads, public.product_approved_inventory_version_heads,
+  public.listing_shein_records, public.listing_shein_record_operations
+  TO issue36_trial_runtime;
+SQL
+  jq --rawfile password "$issue36_trial_runtime_secret/password" \
+    '.localTrial = {enabled:true,database:{host:"127.0.0.1",port:5433,user:"issue36_trial_runtime",password:($password|rtrimstr("\n")),database:"store_center",maxConnections:4}}' \
+    "$runtime/current-application.json" > "$runtime/current-application.json.tmp"
+  chmod 600 "$runtime/current-application.json.tmp"
+  mv "$runtime/current-application.json.tmp" "$runtime/current-application.json"
+  issue36-local-trial-init -mode seed -config "$work/store-owner-schema.json" \
+    -organization-id "$(tr -d '\r\n' < "$runtime/signup-org-id")" \
+    -actor-id "$(tr -d '\r\n' < "$runtime/bootstrap-user-id")" \
+    -sample-output "$runtime/issue36-sample.json"
 }
 
 initialize_audit_ledgers() {
@@ -162,6 +205,7 @@ SQL
   psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5433/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -v runtime_roles_ready=true -f "$terraform_source/referral-grants.sql"
   migrate_commercial_owner_schema
   initialize_store_center
+  initialize_issue36_trial
   initialize_knowledge
   membership_dsn="postgresql://membership_owner:$(tr -d '\r\n' < "$membership_db_owner_secret/membership-db-password")@127.0.0.1:5433/membership?sslmode=disable"
   printf '%s\n' "$membership_dsn" > "$work/membership-owner-dsn"
@@ -280,6 +324,7 @@ psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/re
 psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5433/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -v runtime_roles_ready=true -f "$terraform_source/referral-grants.sql"
 migrate_commercial_owner_schema
 initialize_store_center
+initialize_issue36_trial
 initialize_audit_ledgers
 initialize_knowledge
 

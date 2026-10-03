@@ -29,14 +29,24 @@ acquisition_runtime_secret=/acquisition-runtime-secret
 image_minio_secret=/image-minio-secret
 store_owner_secret=/store-owner-secret
 store_runtime_secret=/store-runtime-secret
+issue36_trial_runtime_secret=/issue36-trial-runtime-secret
 marker="$state/.bootstrap-complete"
 case "${ACCOUNT_KNOWLEDGE_ENABLED:-}" in ''|1) ;; *) echo 'invalid knowledge opt-in' >&2; exit 1 ;; esac
 case "${ACCOUNT_IMAGE_AGENT_TRIAL:-}" in
   ''|ISOLATED_TRIAL_ONLY) ;;
   *) echo 'invalid image trial confirmation' >&2; exit 1 ;;
 esac
+case "${ACCOUNT_ISSUE36_LOCAL_TRIAL:-}" in
+  ''|ISOLATED_TRIAL_ONLY) ;;
+  *) echo 'invalid #36 local trial opt-in' >&2; exit 1 ;;
+esac
 
 if [ -f "$marker" ]; then
+  if [ "${ACCOUNT_ISSUE36_LOCAL_TRIAL:-}" = ISOLATED_TRIAL_ONLY ]; then
+    test -f "$state/.issue36-trial-enabled" && test -s "$issue36_trial_runtime_secret/password" || { echo '#36 local trial requires a new empty project with its original overlay' >&2; exit 1; }
+  else
+    test ! -f "$state/.issue36-trial-enabled" || { echo 'retained #36 local trial requires its original overlay' >&2; exit 1; }
+  fi
   if [ "${ACCOUNT_KNOWLEDGE_ENABLED:-}" = 1 ]; then
     for path in /knowledge-owner-secret/owner-password /knowledge-runtime-secret/runtime-password /knowledge-storage-secret/root-password /knowledge-storage-secret/access-key /knowledge-storage-secret/secret-key; do test -s "$path" || { echo 'Knowledge requires a new empty project' >&2; exit 1; }; done
   fi
@@ -89,6 +99,13 @@ mkdir -p "$store_owner_secret" "$store_runtime_secret"
 write_random 24 "$store_owner_secret/store-owner-password"
 write_random 24 "$store_runtime_secret/store-runtime-password"
 chown 70:70 "$store_owner_secret/store-owner-password" "$store_runtime_secret/store-runtime-password"
+if [ "${ACCOUNT_ISSUE36_LOCAL_TRIAL:-}" = ISOLATED_TRIAL_ONLY ]; then
+  mkdir -p "$issue36_trial_runtime_secret"
+  write_random 24 "$issue36_trial_runtime_secret/password"
+  chown 70:70 "$issue36_trial_runtime_secret/password"
+  touch "$state/.issue36-trial-enabled"
+  chmod 600 "$state/.issue36-trial-enabled"
+fi
 write_random 24 "$business_db_admin_secret/admin-password"
 write_random 16 "$zitadel_api_secrets/zitadel-masterkey"
 write_random 24 "$identity_db_secret/identity-db-password"

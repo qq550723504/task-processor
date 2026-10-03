@@ -1,6 +1,9 @@
 package httpapi
 
 import (
+	"context"
+
+	"task-processor/internal/app/localtrial"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
@@ -23,7 +26,10 @@ func (m issue36TrialModule) Register(reg *kernelmodule.Registry) error {
 // ApprovedAsset, Store Center and Listing PostgreSQL boundary. It only
 // assembles existing owner routes; schema installation and sample preparation
 // belong to a separate one-shot local installer.
-func buildIssue36TrialModule(db *gorm.DB, resolver *workbenchcontext.Resolver, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+func buildIssue36TrialModule(ctx context.Context, db *gorm.DB, resolver *workbenchcontext.Resolver, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+	if err := localtrial.VerifyRuntimePermissions(ctx, db, "issue36_trial_runtime", "store_center"); err != nil {
+		return nil, err
+	}
 	reviewRoutes, err := buildLocalTrialReviewRoutes(db, resolver, authorizer)
 	if err != nil {
 		return nil, err
