@@ -46,3 +46,9 @@ type Store interface {
 	Preflight(context.Context, Operation) (View, bool, error)
 	Run(context.Context, Operation, func(Tx) (View, error)) (View, error)
 }
+
+// AgentReviewLookup resolves only the existing idempotent Agent review
+// operation identity. The Review owner still interprets the current record.
+type AgentReviewLookup interface {
+	FindAgentReviewID(context.Context, Scope, string) (string, bool, error)
+}

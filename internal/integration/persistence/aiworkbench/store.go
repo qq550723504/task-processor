@@ -69,12 +69,14 @@ type commandRow struct {
 	UserMessageID       *string
 	SourceSequence      *uint64
 	PlannerInvocationID *string
+	MemberID            *string
 	PlannerInputHash    *string
 	WorkScopeJSON       json.RawMessage `gorm:"column:work_scope;type:jsonb"`
 	PlannerModelProfile json.RawMessage `gorm:"type:jsonb"`
 	PlannerStartedAt    *time.Time
 	PlannerDeadline     *time.Time
 	AssistantMessageID  *string
+	ProposalID          *string
 	TerminalDigest      *string
 	Mode                *string
 	CreatedAt           time.Time
@@ -82,6 +84,36 @@ type commandRow struct {
 }
 
 func (commandRow) TableName() string { return "ai_workbench.commands" }
+
+type proposalRow struct {
+	ID                         string
+	Digest                     string
+	OrganizationID             string
+	OwnerUserID                string
+	ConversationID             string
+	SourceUserMessageID        string
+	AssistantMessageID         string
+	SourceSequence             uint64
+	Kind                       string
+	GoalSummary                string
+	OperationID                string
+	ProductKey                 string
+	CatalogVersion             string
+	PublicationID              string
+	TargetPlatform             string
+	AgentID                    string
+	AgentVersion               string
+	ObservedAgentRevision      string
+	ObservedActivationEpoch    string
+	TemplateID                 string
+	TemplateRevision           string
+	KnowledgeBaseID            string
+	KnowledgeRevisionSetDigest string
+	ExecutionModelProfile      json.RawMessage `gorm:"type:jsonb"`
+	CreatedAt                  time.Time
+}
+
+func (proposalRow) TableName() string { return "ai_workbench.execution_proposals" }
 
 func InstallSchema(db *gorm.DB) error {
 	if db == nil || db.Dialector.Name() != "postgres" {
@@ -169,6 +201,9 @@ func command(row commandRow) aiworkbench.PlanningCommand {
 	if row.PlannerInvocationID != nil {
 		result.PlannerInvocationID = *row.PlannerInvocationID
 	}
+	if row.MemberID != nil {
+		result.MemberID = *row.MemberID
+	}
 	if row.PlannerInputHash != nil {
 		result.InputHash = *row.PlannerInputHash
 	}
@@ -184,6 +219,9 @@ func command(row commandRow) aiworkbench.PlanningCommand {
 	if row.AssistantMessageID != nil {
 		result.AssistantMessageID = *row.AssistantMessageID
 	}
+	if row.ProposalID != nil {
+		result.ProposalID = *row.ProposalID
+	}
 	if row.TerminalDigest != nil {
 		result.TerminalDigest = *row.TerminalDigest
 	}
@@ -191,6 +229,83 @@ func command(row commandRow) aiworkbench.PlanningCommand {
 		result.Mode = aiworkbench.PlanMode(*row.Mode)
 	}
 	return result
+}
+
+func proposal(row proposalRow) aiworkbench.ExecutionProposal {
+	return aiworkbench.ExecutionProposal{ID: row.ID, Digest: row.Digest,
+		Scope:          aiworkbench.Scope{OrganizationID: row.OrganizationID, ActorID: row.OwnerUserID},
+		ConversationID: row.ConversationID, SourceUserMessageID: row.SourceUserMessageID,
+		AssistantMessageID: row.AssistantMessageID, SourceSequence: row.SourceSequence,
+		Kind: row.Kind, GoalSummary: row.GoalSummary, OperationID: row.OperationID,
+		ProductKey: row.ProductKey, CatalogVersion: row.CatalogVersion, PublicationID: row.PublicationID,
+		TargetPlatform: row.TargetPlatform, AgentID: row.AgentID, AgentVersion: row.AgentVersion,
+		ObservedAgentRevision: row.ObservedAgentRevision, ObservedActivationEpoch: row.ObservedActivationEpoch,
+		TemplateID: row.TemplateID, TemplateRevision: row.TemplateRevision,
+		KnowledgeBaseID: row.KnowledgeBaseID, KnowledgeRevisionSetDigest: row.KnowledgeRevisionSetDigest,
+		ExecutionModelProfile: append([]byte(nil), row.ExecutionModelProfile...), CreatedAt: row.CreatedAt.UTC()}
+}
+
+func proposalDigest(row proposalRow) string {
+	row.Digest = ""
+	row.CreatedAt = row.CreatedAt.UTC().Truncate(time.Microsecond)
+	var profile any
+	if json.Unmarshal(row.ExecutionModelProfile, &profile) != nil {
+		return ""
+	}
+	canonical, err := json.Marshal(profile)
+	if err != nil {
+		return ""
+	}
+	row.ExecutionModelProfile = canonical
+	return digest(row)
+}
+
+func validProposal(p *aiworkbench.ExecutionProposal) bool {
+	if p == nil || p.Kind != "product.title.optimize" || len(p.GoalSummary) == 0 || len(p.GoalSummary) > 512 ||
+		!utf8.ValidString(p.GoalSummary) || !validName(p.OperationID) || !validName(p.ProductKey) ||
+		!validName(p.CatalogVersion) || !validName(p.PublicationID) ||
+		(p.TargetPlatform != "shein" && p.TargetPlatform != "temu" && p.TargetPlatform != "amazon") ||
+		!validName(p.AgentID) || !validName(p.AgentVersion) || !validName(p.ObservedAgentRevision) ||
+		!validName(p.ObservedActivationEpoch) ||
+		(p.TemplateID == "") != (p.TemplateRevision == "") ||
+		(p.KnowledgeBaseID == "") != (p.KnowledgeRevisionSetDigest == "") ||
+		!json.Valid(p.ExecutionModelProfile) || len(p.ExecutionModelProfile) > 8192 {
+		return false
+	}
+	for _, optional := range []string{p.TemplateID, p.TemplateRevision, p.KnowledgeBaseID, p.KnowledgeRevisionSetDigest} {
+		if optional != "" && !validName(optional) {
+			return false
+		}
+	}
+	return true
+}
+
+func proposalMatchesSelection(p *aiworkbench.ExecutionProposal, raw json.RawMessage) bool {
+	if p == nil || !json.Valid(raw) {
+		return false
+	}
+	var selected aiworkbench.WorkScope
+	if json.Unmarshal(raw, &selected) != nil {
+		return false
+	}
+	return p.OperationID == selected.OperationID && p.TargetPlatform == selected.TargetPlatform &&
+		p.TemplateID == selected.TemplateID && p.TemplateRevision == selected.TemplateRevision &&
+		p.KnowledgeBaseID == selected.KnowledgeBaseID
+}
+
+func (s *Store) GetProposal(ctx context.Context, scope aiworkbench.Scope, id string) (aiworkbench.ExecutionProposal, error) {
+	if s == nil || s.db == nil || ctx == nil || !validScope(scope) || !validKey(id) {
+		return aiworkbench.ExecutionProposal{}, aiworkbench.ErrInvalid
+	}
+	var row proposalRow
+	if err := s.db.WithContext(ctx).Where("id = ? AND organization_id = ? AND owner_user_id = ?", id, scope.OrganizationID, scope.ActorID).
+		Take(&row).Error; err != nil {
+		return aiworkbench.ExecutionProposal{}, missing(err)
+	}
+	if !validDigest(row.Digest) || proposalDigest(row) != row.Digest {
+		return aiworkbench.ExecutionProposal{}, aiworkbench.ErrUnavailable
+	}
+	return proposal(row), nil
 }
 func (s *Store) lockKey(tx *gorm.DB, scope aiworkbench.Scope, key string) error {
 	token := "ai-workbench-command:" + scope.OrganizationID + "\x1f" + scope.ActorID + "\x1f" + key
@@ -458,7 +573,8 @@ func (s *Store) AppendUser(ctx context.Context, scope aiworkbench.Scope, convers
 		if err != nil {
 			return err
 		}
-		if !prepared.Unavailable && (!validDigest(prepared.InputHash) || !json.Valid(prepared.ModelProfile) || prepared.Deadline.IsZero()) {
+		if !validName(prepared.MemberID) ||
+			!prepared.Unavailable && (!validDigest(prepared.InputHash) || !json.Valid(prepared.ModelProfile) || prepared.Deadline.IsZero()) {
 			return aiworkbench.ErrInvalid
 		}
 		if err := tx.Create(&message).Error; err != nil {
@@ -489,7 +605,7 @@ func (s *Store) AppendUser(ctx context.Context, scope aiworkbench.Scope, convers
 		receipt := commandRow{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID, IdempotencyKey: key,
 			Operation: messageOperation, RequestFingerprint: fingerprint, ConversationID: conversationID,
 			State: state, UserMessageID: &messageID, SourceSequence: &sourceSequence,
-			PlannerInvocationID: &invocationID, PlannerInputHash: inputHash,
+			PlannerInvocationID: &invocationID, MemberID: &prepared.MemberID, PlannerInputHash: inputHash,
 			WorkScopeJSON: workScope, PlannerModelProfile: profile,
 			PlannerStartedAt: startedAt, PlannerDeadline: deadline, CreatedAt: now}
 		if err := tx.Create(&receipt).Error; err != nil {
@@ -536,7 +652,9 @@ func (s *Store) CompletePlan(ctx context.Context, scope aiworkbench.Scope, key s
 	}
 	if ctx == nil || !validScope(scope) || !validKey(key) || len(terminal.AssistantText) == 0 || len(terminal.AssistantText) > 16384 ||
 		!utf8.ValidString(terminal.AssistantText) || (terminal.Mode != aiworkbench.PlanClarify && terminal.Mode != aiworkbench.PlanReady) ||
-		len(terminal.GoalSummary) > 1024 {
+		len(terminal.GoalSummary) > 512 ||
+		(terminal.Mode == aiworkbench.PlanReady && (!validProposal(terminal.Proposal) || terminal.Proposal.GoalSummary != terminal.GoalSummary)) ||
+		(terminal.Mode == aiworkbench.PlanClarify && (terminal.Proposal != nil || terminal.GoalSummary != "")) {
 		return aiworkbench.PlanningCommand{}, false, aiworkbench.ErrInvalid
 	}
 	terminalDigest := digest(terminal)
@@ -582,19 +700,47 @@ func (s *Store) CompletePlan(ctx context.Context, scope aiworkbench.Scope, key s
 		if err := tx.Create(&assistant).Error; err != nil {
 			return err
 		}
+		var proposalID *string
+		if terminal.Proposal != nil {
+			p := terminal.Proposal
+			if !proposalMatchesSelection(p, receipt.WorkScopeJSON) {
+				return aiworkbench.ErrInvalid
+			}
+			id := uuid.NewString()
+			proposed := proposalRow{ID: id, OrganizationID: scope.OrganizationID, OwnerUserID: scope.ActorID,
+				ConversationID: receipt.ConversationID, SourceUserMessageID: *receipt.UserMessageID,
+				AssistantMessageID: assistantID, SourceSequence: *receipt.SourceSequence,
+				Kind: p.Kind, GoalSummary: p.GoalSummary, OperationID: p.OperationID,
+				ProductKey: p.ProductKey, CatalogVersion: p.CatalogVersion, PublicationID: p.PublicationID,
+				TargetPlatform: p.TargetPlatform, AgentID: p.AgentID, AgentVersion: p.AgentVersion,
+				ObservedAgentRevision: p.ObservedAgentRevision, ObservedActivationEpoch: p.ObservedActivationEpoch,
+				TemplateID: p.TemplateID, TemplateRevision: p.TemplateRevision, KnowledgeBaseID: p.KnowledgeBaseID,
+				KnowledgeRevisionSetDigest: p.KnowledgeRevisionSetDigest,
+				ExecutionModelProfile:      append([]byte(nil), p.ExecutionModelProfile...), CreatedAt: now}
+			proposed.Digest = proposalDigest(proposed)
+			if err := tx.Create(&proposed).Error; err != nil {
+				return err
+			}
+			proposalID = &id
+		}
 		row.NextSequence++
 		if err := tx.Model(&conversationRow{}).Where("id = ? AND organization_id = ? AND owner_user_id = ?", row.ID, scope.OrganizationID, scope.ActorID).
 			Update("next_sequence", row.NextSequence).Error; err != nil {
 			return err
 		}
 		mode := string(terminal.Mode)
+		updates := map[string]any{"state": string(aiworkbench.PlanningComplete), "assistant_message_id": assistantID,
+			"terminal_digest": terminalDigest, "mode": mode, "committed_at": now}
+		if proposalID != nil {
+			updates["proposal_id"] = *proposalID
+		}
 		if err := tx.Model(&commandRow{}).Where("organization_id = ? AND actor_id = ? AND idempotency_key = ?", scope.OrganizationID, scope.ActorID, key).
-			Updates(map[string]any{"state": string(aiworkbench.PlanningComplete), "assistant_message_id": assistantID,
-				"terminal_digest": terminalDigest, "mode": mode, "committed_at": now}).Error; err != nil {
+			Updates(updates).Error; err != nil {
 			return err
 		}
 		receipt.State = string(aiworkbench.PlanningComplete)
 		receipt.AssistantMessageID = &assistantID
+		receipt.ProposalID = proposalID
 		receipt.TerminalDigest = &terminalDigest
 		receipt.Mode = &mode
 		receipt.CommittedAt = &now
@@ -608,6 +754,54 @@ func (s *Store) CompletePlan(ctx context.Context, scope aiworkbench.Scope, key s
 		return aiworkbench.PlanningCommand{}, false, unavailable(err)
 	}
 	return result, replay, nil
+}
+
+// FinalizePlanning records a proven no-send or a bounded unresolved outcome.
+// The caller must establish the corresponding AI invocation fact (or its
+// authoritative absence) before choosing the state. This transaction never
+// sends to a provider and never changes an already terminal command.
+func (s *Store) FinalizePlanning(ctx context.Context, scope aiworkbench.Scope, key string, state aiworkbench.PlanningState) (aiworkbench.PlanningCommand, error) {
+	if s == nil || s.db == nil || ctx == nil || !validScope(scope) || !validKey(key) ||
+		(state != aiworkbench.PlanningFailedBeforeDispatch && state != aiworkbench.PlanningUnknown) {
+		return aiworkbench.PlanningCommand{}, aiworkbench.ErrInvalid
+	}
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	defer cancel()
+	var result aiworkbench.PlanningCommand
+	err := s.db.WithContext(writeCtx).Transaction(func(tx *gorm.DB) error {
+		var row commandRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("organization_id = ? AND actor_id = ? AND idempotency_key = ?", scope.OrganizationID, scope.ActorID, key).
+			Take(&row).Error; err != nil {
+			return missing(err)
+		}
+		if row.Operation != messageOperation {
+			return aiworkbench.ErrIdempotencyConflict
+		}
+		if row.State == string(state) || row.State == string(aiworkbench.PlanningComplete) {
+			result = command(row)
+			return nil
+		}
+		if row.State != string(aiworkbench.PlanningReadyToDispatch) {
+			return aiworkbench.ErrIdempotencyConflict
+		}
+		now := time.Now().UTC().Truncate(time.Microsecond)
+		if err := tx.Model(&commandRow{}).Where("organization_id = ? AND actor_id = ? AND idempotency_key = ?",
+			scope.OrganizationID, scope.ActorID, key).
+			Updates(map[string]any{"state": string(state), "committed_at": now}).Error; err != nil {
+			return err
+		}
+		row.State, row.CommittedAt = string(state), &now
+		result = command(row)
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, aiworkbench.ErrNotFound) || errors.Is(err, aiworkbench.ErrIdempotencyConflict) {
+			return aiworkbench.PlanningCommand{}, err
+		}
+		return aiworkbench.PlanningCommand{}, unavailable(err)
+	}
+	return result, nil
 }
 
 func (s *Store) GetCommand(ctx context.Context, scope aiworkbench.Scope, key string) (aiworkbench.PlanningCommand, error) {

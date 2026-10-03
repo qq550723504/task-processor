@@ -4,6 +4,8 @@ package aiworkbenchpersistence
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -17,6 +19,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
+	"task-processor/internal/agent"
 	"task-processor/internal/aiworkbench"
 )
 
@@ -45,11 +48,87 @@ func workbenchDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+func readyTaskFixture(t *testing.T, store *Store, scope aiworkbench.Scope) (aiworkbench.Conversation, aiworkbench.ExecutionProposal) {
+	t.Helper()
+	ctx := context.Background()
+	conversation, _, err := store.Create(ctx, scope, uuid.NewString(), aiworkbench.CreateInput{})
+	require.NoError(t, err)
+	key := uuid.NewString()
+	_, _, err = store.AppendUser(ctx, scope, conversation.ID, key,
+		aiworkbench.MessageInput{Content: "Improve title", OperationID: "op-1", TargetPlatform: "shein"}, testPlanPreparer)
+	require.NoError(t, err)
+	proposal := &aiworkbench.ExecutionProposal{Kind: "product.title.optimize", GoalSummary: "Improve title",
+		OperationID: "op-1", ProductKey: "product-1", CatalogVersion: "1", PublicationID: "publication-1",
+		TargetPlatform: "shein", AgentID: "product.title.agent", AgentVersion: "v1.0.0",
+		ObservedAgentRevision: "revision-1", ObservedActivationEpoch: "epoch-1",
+		ExecutionModelProfile: []byte(`{"profile_id":"execution-v1"}`)}
+	completed, _, err := store.CompletePlan(ctx, scope, key, aiworkbench.PlanTerminal{
+		AssistantText: "Review the proposed work", Mode: aiworkbench.PlanReady, GoalSummary: proposal.GoalSummary, Proposal: proposal})
+	require.NoError(t, err)
+	saved, err := store.GetProposal(ctx, scope, completed.ProposalID)
+	require.NoError(t, err)
+	return conversation, saved
+}
+
+func preparedTaskFixture(t *testing.T, p aiworkbench.ExecutionProposal, key string) aiworkbench.PreparedTask {
+	t.Helper()
+	ref := agent.ConfigurationSnapshotRef{Kind: "agent-configuration-v1", ID: uuid.NewString(), Digest: fmt.Sprintf("%064x", 99)}
+	request := agent.Request{Key: key,
+		Binding: agent.Binding{ContextKind: "acquisition", ContextID: p.OperationID, ProductKey: p.ProductKey,
+			CatalogVersion: p.CatalogVersion, PublicationID: p.PublicationID, TargetPlatform: p.TargetPlatform},
+		ConfigurationSnapshotRef: ref, PolicyVersion: "policy-v1", PromptVersion: "prompt-v1",
+		Limits: agent.Limits{Steps: 12, ModelCalls: 6, Tokens: 500000, CostMicros: 500000, Currency: "USD", Runtime: time.Minute}}
+	raw, err := json.Marshal(request)
+	require.NoError(t, err)
+	return aiworkbench.PreparedTask{ProposalDigest: p.Digest, ConfigurationSnapshotRef: ref, ExecutionRequest: raw}
+}
+
+func TestConfirmReceiptPrecedesLaterStalenessAndKeepsOneTask(t *testing.T) {
+	store, err := New(workbenchDB(t))
+	require.NoError(t, err)
+	ctx := context.Background()
+	scope := aiworkbench.Scope{OrganizationID: "org-a", ActorID: "actor-a"}
+	conversation, proposal := readyTaskFixture(t, store, scope)
+	key := uuid.NewString()
+	prepared := preparedTaskFixture(t, proposal, key)
+	task, replay, err := store.Confirm(ctx, scope, conversation.ID, proposal.ID, key, prepared)
+	require.NoError(t, err)
+	require.False(t, replay)
+	require.Equal(t, proposal.Digest, task.ProposalDigest)
+	require.Equal(t, key, task.ExecutionRequestKey)
+	require.NotEmpty(t, task.ExecutionRequestDigest)
+	_, _, err = store.AppendUser(ctx, scope, conversation.ID, uuid.NewString(),
+		aiworkbench.MessageInput{Content: "A new goal", OperationID: "op-1", TargetPlatform: "shein"}, testPlanPreparer)
+	require.NoError(t, err)
+	_, _, err = store.Confirm(ctx, scope, conversation.ID, proposal.ID, uuid.NewString(), prepared)
+	require.ErrorIs(t, err, aiworkbench.ErrRevisionMismatch)
+	archived := true
+	_, err = store.SetMetadata(ctx, scope, conversation.ID, conversation.MetadataRevision, aiworkbench.MetadataChange{Archived: &archived})
+	require.NoError(t, err)
+	replayed, duplicate, err := store.Confirm(ctx, scope, conversation.ID, proposal.ID, key, aiworkbench.PreparedTask{})
+	require.NoError(t, err)
+	require.True(t, duplicate)
+	require.Equal(t, task.ID, replayed.ID)
+	preflightFailure := errors.New("agent or knowledge changed after lookup")
+	replayed, duplicate, err = store.ReplayOrFail(ctx, scope, conversation.ID, proposal.ID, key, preflightFailure)
+	require.NoError(t, err)
+	require.True(t, duplicate)
+	require.Equal(t, task.ID, replayed.ID)
+	_, _, err = store.ReplayOrFail(ctx, scope, conversation.ID, proposal.ID, uuid.NewString(), preflightFailure)
+	require.ErrorIs(t, err, preflightFailure)
+	_, _, err = store.ReplayOrFail(ctx, scope, conversation.ID, uuid.NewString(), key, preflightFailure)
+	require.ErrorIs(t, err, aiworkbench.ErrIdempotencyConflict)
+	_, _, err = store.Confirm(ctx, scope, conversation.ID, uuid.NewString(), key, aiworkbench.PreparedTask{})
+	require.ErrorIs(t, err, aiworkbench.ErrIdempotencyConflict)
+	_, _, err = store.Confirm(ctx, scope, conversation.ID, proposal.ID, uuid.NewString(), prepared)
+	require.ErrorIs(t, err, aiworkbench.ErrConversationArchived)
+}
+
 func testPlanPreparer(history []aiworkbench.Message, invocationID string) (aiworkbench.PreparedPlan, error) {
 	if len(history) == 0 || history[len(history)-1].Author != aiworkbench.AuthorUser || invocationID == "" {
 		return aiworkbench.PreparedPlan{}, aiworkbench.ErrInvalid
 	}
-	return aiworkbench.PreparedPlan{InputHash: fmt.Sprintf("%064x", len(history)),
+	return aiworkbench.PreparedPlan{MemberID: "member-a", InputHash: fmt.Sprintf("%064x", len(history)),
 		ModelProfile: []byte(`{"profile_id":"test"}`), Deadline: time.Now().Add(time.Minute)}, nil
 }
 
@@ -176,7 +255,7 @@ func TestUnavailablePlannerStillPersistsUserIntentWithoutDispatchProfile(t *test
 	prepare := func(history []aiworkbench.Message, invocationID string) (aiworkbench.PreparedPlan, error) {
 		require.Len(t, history, 1)
 		require.NotEmpty(t, invocationID)
-		return aiworkbench.PreparedPlan{Unavailable: true}, nil
+		return aiworkbench.PreparedPlan{MemberID: "member-a", Unavailable: true}, nil
 	}
 	command, replay, err := store.AppendUser(ctx, scope, conversation.ID, key, input, prepare)
 	require.NoError(t, err)
@@ -195,6 +274,68 @@ func TestUnavailablePlannerStillPersistsUserIntentWithoutDispatchProfile(t *test
 	require.NoError(t, err)
 	require.True(t, replay)
 	require.Equal(t, aiworkbench.PlanningFailedBeforeDispatch, command.State)
+}
+
+func TestPlanningFailureTerminalDoesNotAppendAssistant(t *testing.T) {
+	store, err := New(workbenchDB(t))
+	require.NoError(t, err)
+	ctx := context.Background()
+	scope := aiworkbench.Scope{OrganizationID: "org-a", ActorID: "user-a"}
+	conversation, _, err := store.Create(ctx, scope, uuid.NewString(), aiworkbench.CreateInput{})
+	require.NoError(t, err)
+	key := uuid.NewString()
+	_, _, err = store.AppendUser(ctx, scope, conversation.ID, key,
+		aiworkbench.MessageInput{Content: "Title?", OperationID: "op-1", TargetPlatform: "shein"}, testPlanPreparer)
+	require.NoError(t, err)
+	failed, err := store.FinalizePlanning(ctx, scope, key, aiworkbench.PlanningFailedBeforeDispatch)
+	require.NoError(t, err)
+	require.Equal(t, aiworkbench.PlanningFailedBeforeDispatch, failed.State)
+	_, err = store.FinalizePlanning(ctx, scope, key, aiworkbench.PlanningUnknown)
+	require.ErrorIs(t, err, aiworkbench.ErrIdempotencyConflict)
+	_, _, err = store.CompletePlan(ctx, scope, key, aiworkbench.PlanTerminal{AssistantText: "clarify", Mode: aiworkbench.PlanClarify})
+	require.ErrorIs(t, err, aiworkbench.ErrIdempotencyConflict)
+	messages, err := store.ListMessages(ctx, scope, conversation.ID, 50)
+	require.NoError(t, err)
+	require.Len(t, messages, 1)
+}
+
+func TestReadyPlannerCommitsAssistantAndImmutableProposalTogether(t *testing.T) {
+	store, err := New(workbenchDB(t))
+	require.NoError(t, err)
+	ctx := context.Background()
+	scope := aiworkbench.Scope{OrganizationID: "org-a", ActorID: "user-a"}
+	conversation, _, err := store.Create(ctx, scope, uuid.NewString(), aiworkbench.CreateInput{})
+	require.NoError(t, err)
+	key := uuid.NewString()
+	request := aiworkbench.MessageInput{Content: "Improve title", OperationID: "op-1", TargetPlatform: "shein"}
+	command, _, err := store.AppendUser(ctx, scope, conversation.ID, key, request, testPlanPreparer)
+	require.NoError(t, err)
+	proposal := &aiworkbench.ExecutionProposal{Kind: "product.title.optimize", GoalSummary: "Improve product title",
+		OperationID: "op-1", ProductKey: "product-1", CatalogVersion: "1", PublicationID: "publication-1",
+		TargetPlatform: "shein", AgentID: "product.title.agent", AgentVersion: "v1.0.0",
+		ObservedAgentRevision: "revision-1", ObservedActivationEpoch: "epoch-1",
+		ExecutionModelProfile: []byte(`{"profile_id":"execution-v1"}`)}
+	terminal := aiworkbench.PlanTerminal{AssistantText: "Review this title goal", Mode: aiworkbench.PlanReady,
+		GoalSummary: proposal.GoalSummary, Proposal: proposal}
+	completed, replay, err := store.CompletePlan(ctx, scope, key, terminal)
+	require.NoError(t, err)
+	require.False(t, replay)
+	require.Equal(t, aiworkbench.PlanningComplete, completed.State)
+	require.Equal(t, command.SourceSequence, completed.SourceSequence)
+	require.NotEmpty(t, completed.ProposalID)
+	saved, err := store.GetProposal(ctx, scope, completed.ProposalID)
+	require.NoError(t, err)
+	require.Equal(t, command.UserMessageID, saved.SourceUserMessageID)
+	require.Equal(t, completed.AssistantMessageID, saved.AssistantMessageID)
+	require.Equal(t, completed.SourceSequence, saved.SourceSequence)
+	require.Equal(t, proposal.GoalSummary, saved.GoalSummary)
+	require.NotEmpty(t, saved.Digest)
+	_, replay, err = store.CompletePlan(ctx, scope, key, terminal)
+	require.NoError(t, err)
+	require.True(t, replay)
+	messages, err := store.ListMessages(ctx, scope, conversation.ID, 50)
+	require.NoError(t, err)
+	require.Len(t, messages, 2)
 }
 
 func TestArchivePreservesInflightPlannerTerminalization(t *testing.T) {

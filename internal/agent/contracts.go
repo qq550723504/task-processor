@@ -27,21 +27,22 @@ var ErrUnavailable = errors.New("agent dependency unavailable")
 type StopReason string
 
 const (
-	StopSteps         StopReason = "budget_steps"
-	StopModelCalls    StopReason = "budget_model_calls"
-	StopTokens        StopReason = "budget_tokens"
-	StopCost          StopReason = "budget_cost"
-	StopRuntime       StopReason = "budget_runtime"
-	StopUsageUnknown  StopReason = "usage_unknown"
-	StopRepairLimit   StopReason = "repair_limit"
-	StopCancelled     StopReason = "cancelled"
-	StopUnauthorized  StopReason = "unauthorized"
-	StopInvalidOutput StopReason = "invalid_model_output"
-	StopTool          StopReason = "tool_error"
-	StopAudit         StopReason = "audit_unavailable"
-	StopDependency    StopReason = "dependency_unavailable"
-	StopModelUnknown  StopReason = "model_outcome_unknown"
-	StopTooLarge      StopReason = "state_too_large"
+	StopSteps                   StopReason = "budget_steps"
+	StopModelCalls              StopReason = "budget_model_calls"
+	StopTokens                  StopReason = "budget_tokens"
+	StopCost                    StopReason = "budget_cost"
+	StopRuntime                 StopReason = "budget_runtime"
+	StopUsageUnknown            StopReason = "usage_unknown"
+	StopRepairLimit             StopReason = "repair_limit"
+	StopCancelled               StopReason = "cancelled"
+	StopUnauthorized            StopReason = "unauthorized"
+	StopInvalidOutput           StopReason = "invalid_model_output"
+	StopTool                    StopReason = "tool_error"
+	StopAudit                   StopReason = "audit_unavailable"
+	StopDependency              StopReason = "dependency_unavailable"
+	StopModelUnknown            StopReason = "model_outcome_unknown"
+	StopExecutionOutcomeUnknown StopReason = "execution_outcome_unknown"
+	StopTooLarge                StopReason = "state_too_large"
 )
 
 type Phase string

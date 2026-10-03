@@ -5,6 +5,8 @@ package aiworkbench
 import (
 	"errors"
 	"time"
+
+	"task-processor/internal/agent"
 )
 
 var (
@@ -84,6 +86,7 @@ func (m MessageInput) WorkScope() WorkScope {
 }
 
 type PreparedPlan struct {
+	MemberID     string
 	InputHash    string
 	ModelProfile []byte
 	Deadline     time.Time
@@ -119,6 +122,7 @@ type PlanningCommand struct {
 	UserMessageID       string
 	SourceSequence      uint64
 	PlannerInvocationID string
+	MemberID            string
 	InputHash           string
 	WorkScope           WorkScope
 	ModelProfile        []byte
@@ -126,6 +130,7 @@ type PlanningCommand struct {
 	Deadline            time.Time
 	State               PlanningState
 	AssistantMessageID  string
+	ProposalID          string
 	TerminalDigest      string
 	Mode                PlanMode
 	CommittedAt         *time.Time
@@ -135,4 +140,68 @@ type PlanTerminal struct {
 	AssistantText string
 	Mode          PlanMode
 	GoalSummary   string
+	Proposal      *ExecutionProposal
+}
+
+// ExecutionProposal is immutable business intent for one Product title
+// suggestion. The planning model supplies only GoalSummary; all remaining
+// facts come from freshly authorized Product, AgentConfig and Knowledge owners.
+type ExecutionProposal struct {
+	ID                         string
+	Digest                     string
+	Scope                      Scope
+	ConversationID             string
+	SourceUserMessageID        string
+	AssistantMessageID         string
+	SourceSequence             uint64
+	Kind                       string
+	GoalSummary                string
+	OperationID                string
+	ProductKey                 string
+	CatalogVersion             string
+	PublicationID              string
+	TargetPlatform             string
+	AgentID                    string
+	AgentVersion               string
+	ObservedAgentRevision      string
+	ObservedActivationEpoch    string
+	TemplateID                 string
+	TemplateRevision           string
+	KnowledgeBaseID            string
+	KnowledgeRevisionSetDigest string
+	ExecutionModelProfile      []byte
+	CreatedAt                  time.Time
+}
+
+// BusinessTask is the durable confirmed intent and exact Agent handoff. Its
+// visible state is projected from Agent and Review owners, not stored here.
+type BusinessTask struct {
+	ID                       string
+	Scope                    Scope
+	ConversationID           string
+	SourceMessageID          string
+	ProposalID               string
+	ProposalDigest           string
+	ConfirmationFingerprint  string
+	Kind                     string
+	Title                    string
+	GoalSummary              string
+	OperationID              string
+	ProductKey               string
+	TargetPlatform           string
+	AgentID                  string
+	AgentVersion             string
+	ExecutionRequestKey      string
+	ConfigurationSnapshotRef agent.ConfigurationSnapshotRef
+	ContextSnapshotRef       agent.ContextSnapshotRef
+	ExecutionRequestDigest   string
+	ExecutionRequest         []byte
+	CreatedAt                time.Time
+}
+
+type PreparedTask struct {
+	ProposalDigest           string
+	ConfigurationSnapshotRef agent.ConfigurationSnapshotRef
+	ContextSnapshotRef       agent.ContextSnapshotRef
+	ExecutionRequest         []byte
 }

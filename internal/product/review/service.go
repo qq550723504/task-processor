@@ -222,6 +222,34 @@ func (s *Service) Get(ctx context.Context, id string) (View, error) {
 	}
 	return r.View(), nil
 }
+
+// FindAgentReview returns the current Review View for the exact Agent run when
+// its review operation exists. It never treats a create-response snapshot as
+// the current approval or Apply state.
+func (s *Service) FindAgentReview(ctx context.Context, runID string) (View, bool, error) {
+	if s == nil || ctx == nil || !ValidKey(runID) {
+		return View{}, false, ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	defer cancel()
+	scope, err := s.authorize(ctx, false, false)
+	if err != nil {
+		return View{}, false, err
+	}
+	lookup, ok := s.store.(AgentReviewLookup)
+	if !ok {
+		return View{}, false, ErrUnavailable
+	}
+	id, found, err := lookup.FindAgentReviewID(ctx, scope, runID)
+	if err != nil || !found {
+		return View{}, found, err
+	}
+	record, err := s.store.Read(ctx, scope, id)
+	if err != nil || record.Owner != scope.Actor {
+		return View{}, false, ErrUnavailable
+	}
+	return record.View(), true, nil
+}
 func (s *Service) Decide(ctx context.Context, key, id string, in DecisionInput) (View, error) {
 	return s.change(ctx, key, id, "decision", in, in.Action != "edit", in.Action != "reject", func(ctx context.Context, tx Tx, r *Record, a Scope) error {
 		if err := r.Decide(a.Actor, in); err != nil {
