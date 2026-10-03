@@ -41,9 +41,7 @@ func TestIssue36ReviewOnlyRoutesKeepDecisionAndApplyWithoutGeneration(t *testing
 func TestIssue36ReviewOnlyApplicationUsesExistingReviewOwner(t *testing.T) {
 	fixture := newTitleFixture(t)
 	writer := fixture.server(t)
-	code, raw, err := titleRequest(writer, http.MethodPost, titleBasePath, "operator", "B", "seed-proposal", `{"product_key":"product","base_version":1}`)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, code, string(raw))
+	created := titleCreate(t, writer, "seed-proposal")
 
 	authorizer, err := authz.NewListingKitAuthorizer([]string{"operator"}, nil)
 	require.NoError(t, err)
@@ -53,10 +51,15 @@ func TestIssue36ReviewOnlyApplicationUsesExistingReviewOwner(t *testing.T) {
 	server := buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, routes, routeAuthDependencies{workbenchVerifier: titleVerifier{}, organizationResolver: resolver, authorizer: authorizer})
 	trial := httptest.NewServer(server.Handler)
 	t.Cleanup(trial.Close)
-	code, raw, err = titleRequest(trial, http.MethodGet, titleBasePath, "operator", "B", "", "")
+	code, raw, err := titleRequest(trial, http.MethodGet, titleBasePath+"?view=actionable", "operator", "B", "", "")
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, code, string(raw))
 	code, _, err = titleRequest(trial, http.MethodPost, titleBasePath, "operator", "B", "new-proposal", `{"product_key":"product","base_version":1}`)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNotFound, code)
+	accepted := titleDecision(t, trial, created, "accept", "admin", "", http.StatusOK)
+	applied := titleApply(t, trial, accepted, "apply-seed-proposal", http.StatusOK)
+	require.Equal(t, "applied", applied.State)
+	require.NotNil(t, applied.Receipt)
+	require.EqualValues(t, 2, applied.Receipt.ProductVersion)
 }
