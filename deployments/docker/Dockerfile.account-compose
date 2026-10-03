@@ -9,6 +9,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY cmd/store-center-schema-init ./cmd/store-center-schema-init
+COPY cmd/issue36-local-trial-init ./cmd/issue36-local-trial-init
 COPY cmd/knowledge-schema-init ./cmd/knowledge-schema-init
 COPY cmd/agent-configuration-schema-init ./cmd/agent-configuration-schema-init
 COPY cmd/account-audit-ledger-schema-init ./cmd/account-audit-ledger-schema-init
@@ -25,6 +26,7 @@ COPY cmd/image-agent-temporal-worker ./cmd/image-agent-temporal-worker
 COPY internal ./internal
 
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/store-center-schema-init ./cmd/store-center-schema-init && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/issue36-local-trial-init ./cmd/issue36-local-trial-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/knowledge-schema-init ./cmd/knowledge-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/agent-configuration-schema-init ./cmd/agent-configuration-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/account-audit-ledger-schema-init ./cmd/account-audit-ledger-schema-init && \
@@ -52,6 +54,8 @@ ENTRYPOINT ["/usr/local/bin/account-bootstrap"]
 FROM alpine:3.22 AS schema-init
 RUN apk add --no-cache jq openssl postgresql17-client tzdata
 COPY --from=go-builder /out/store-center-schema-init /usr/local/bin/store-center-schema-init
+COPY --from=go-builder /out/issue36-local-trial-init /usr/local/bin/issue36-local-trial-init
+COPY internal/app/listingrecordstore/schema.sql /etc/issue36-listing-schema.sql
 COPY --from=go-builder /out/knowledge-schema-init /usr/local/bin/knowledge-schema-init
 COPY --from=go-builder /out/agent-configuration-schema-init /usr/local/bin/agent-configuration-schema-init
 COPY --from=go-builder /out/account-audit-ledger-schema-init /usr/local/bin/account-audit-ledger-schema-init

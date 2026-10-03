@@ -72,12 +72,7 @@ func buildProductAgentModule(ctx context.Context, productDB *gorm.DB, deps route
 	// Candidate intake returns an ID understood by the existing review UI.
 	// Its original decision/Apply handlers retain their current permission checks.
 	binder := productReviewCapabilityBinder{now: time.Now}
-	for _, route := range productReviewRoutes(a.reviews, binder.Bind, a.projectKnowledge) {
-		// A missing fixed generator is an unavailable capability, never a fake
-		// model. Keep this existing POST unmounted in the candidate-only module.
-		if route.Method == http.MethodPost && route.Path == "/api/product/text-proposals" {
-			continue
-		}
+	for _, route := range productReviewOnlyRoutes(a.reviews, binder.Bind, a.projectKnowledge) {
 		routes = append(routes, route)
 	}
 	return productAgentModule{application: a, routes: routes, recoverPoints: a.points.RecoverDue}, nil

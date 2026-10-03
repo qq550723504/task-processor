@@ -1,0 +1,29 @@
+# Only for a new, isolated loopback account-compose project. Keep the same
+# overlay on stop/restart; the base project must never be upgraded in place.
+services:
+  bootstrap:
+    environment:
+      ACCOUNT_ISSUE36_LOCAL_TRIAL: ISOLATED_TRIAL_ONLY
+    volumes:
+      - issue36-trial-runtime-secret:/issue36-trial-runtime-secret
+
+  business-db:
+    environment:
+      ACCOUNT_ISSUE36_LOCAL_TRIAL: ISOLATED_TRIAL_ONLY
+    volumes:
+      - issue36-trial-runtime-secret:/secrets/issue36-trial-runtime:ro
+
+  schema-init:
+    environment:
+      ACCOUNT_ISSUE36_LOCAL_TRIAL: ISOLATED_TRIAL_ONLY
+    volumes:
+      - issue36-trial-runtime-secret:/secrets/issue36-trial-runtime:ro
+
+  listingkit-ui:
+    environment:
+      PRODUCT_REVIEW_API_ORIGIN: http://127.0.0.1:8085
+      SHEIN_RECORDS_API_ORIGIN: http://127.0.0.1:8085
+
+volumes:
+  issue36-trial-runtime-secret:
+    name: "${COMPOSE_PROJECT_NAME}-issue36-trial-runtime-secret"
