@@ -37,6 +37,8 @@ OpenAI 官方 [Chat Completions API](https://developers.openai.com/api/reference
 
 标题策略可选地冻结 `ReasoningEffort`，当前只接受空值或 `none`。空值沿用既有供应商请求，`none` 由现有 SDK 写入兼容请求，并随整个策略进入 quote 引用；不同参数配置必须重新报价。Google 候选采用 `none`，因为现有账本只根据完整 `prompt_tokens` 和 `completion_tokens` 两项结算，不能把单独计费的思考 token 隐藏在 `total_tokens` 里。传输继续拒绝缺失或不一致的完整 usage，发送后的不确定结果继续 UNKNOWN。此参数不授予路由准入：Google 原生 API 的 `maxOutputTokens` 硬上界和思考计量说明不能直接证明兼容接口 `max_tokens`/`max_completion_tokens` 的映射及实际响应计量。Google 兼容层当前为 beta，须针对精确 endpoint、模型和请求参数取得实测证据；未取得时保持执行关闭。
 
+2026-10-03 增量决定：本节的 2.5 Flash 兼容候选因新项目 404 未开放；3.8 Flash 兼容探针的计费完成量 109 超过请求 `max_tokens=64`，无法以该参数证明完整生成量硬上界。用户允许首条 3.8 Flash Google route 改走[原生 Interactions 增量设计](product-agent-google-interactions-v1.md)。本节的 `reasoning_effort=none` 只保留为旧候选/兼容协议历史，不再作为 Google 3.8 的开工依据；其它已准入的 OpenAI 兼容供应商和本合同共同安全边界继续有效。新原生协议须独立达到 `IMPLEMENTATION_READY`，不能由本合同现有状态直接放行。
+
 ## 3. Owner、合同与接线
 
 ```text

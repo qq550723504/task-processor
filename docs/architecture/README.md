@@ -143,6 +143,11 @@ source of truth for long-lived rules.
     actual paid execution still requires route-specific metering, limits,
     pricing and paid-call authorization.
 
+- [`product-agent-google-interactions-v1.md`](./product-agent-google-interactions-v1.md)
+  - IMPLEMENTATION_READY #573 Google Gemini 3.8 Flash native Interactions route
+    increment after independent architecture review. The
+    existing provider-neutral identity, points and UNKNOWN owners remain.
+
 - [`account-audit-summary-v1.md`](./account-audit-summary-v1.md)
   - IMPLEMENTATION_READY #478 four true Account Audit totals over the complete
     30-day window of current committed owner events, preserving live Organization
