@@ -208,7 +208,10 @@ func (e *Executor) GenerateWithGate(ctx context.Context, input aicapability.Text
 		return TextOutput{}, ErrOutcomeUnknown
 	}
 	if validErr != nil {
-		return TextOutput{}, ErrInvalid
+		// The terminal invocation and its observed usage are already durable.
+		// Consumers need that usage to settle their own run budget even though
+		// the content cannot be admitted.
+		return output, ErrInvalid
 	}
 	return output, nil
 }

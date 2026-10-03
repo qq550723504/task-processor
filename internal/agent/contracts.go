@@ -142,6 +142,11 @@ type ModelResult struct {
 // terminal writes/releases must not return this error.
 var ErrModelNotDispatched = errors.New("model was not dispatched; reservation resolved")
 
+// ErrModelInvalidOutput means the invocation has a durable terminal record and
+// known observed usage, but its model content cannot be admitted as an Action.
+// The matching result must carry the exact invocation ID and observed usage.
+var ErrModelInvalidOutput = errors.New("model returned invalid output with observed usage")
+
 type ModelInput struct {
 	ConfigurationSnapshotRef                   ConfigurationSnapshotRef `json:",omitzero"`
 	ContextSnapshotRef                         ContextSnapshotRef       `json:",omitzero"`

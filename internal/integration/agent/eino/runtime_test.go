@@ -34,6 +34,7 @@ type fakeModel struct {
 	panicAfterDispatch bool
 	waitStarted        chan struct{}
 	notDispatchedAt    int
+	observedInvalid    bool
 }
 
 func (m *fakeModel) Quote(context.Context, agent.ModelInput) (agent.Quote, error) {
@@ -62,6 +63,9 @@ func (m *fakeModel) Decide(ctx context.Context, in agent.ModelInput) (agent.Mode
 	}
 	if m.fail {
 		return agent.ModelResult{}, errors.New("lost response")
+	}
+	if m.observedInvalid {
+		return agent.ModelResult{InvocationID: in.InvocationID, Usage: agent.ObservedUsage{Tokens: 2, CostMicros: 1, Currency: in.UpperBound.Currency, Known: true}}, agent.ErrModelInvalidOutput
 	}
 	a := m.actions[0]
 	m.actions = m.actions[1:]
@@ -237,6 +241,18 @@ func TestInterruptResumePreservesBudgetAndPlatform(t *testing.T) {
 	}
 }
 func TestModelUnknownAndAuditFailureNeverRetry(t *testing.T) {
+	t.Run("observed invalid output", func(t *testing.T) {
+		r, req, m, _, _, _, _ := fixture(t)
+		m.observedInvalid = true
+		out, err := r.Start(context.Background(), req)
+		if err != nil || out.State.StopReason != agent.StopInvalidOutput || out.State.PendingInvocationID != "" || out.State.Usage.Tokens != 2 {
+			t.Fatalf("observed invalid output became unknown: %+v %v", out.State, err)
+		}
+		_, err = r.Start(context.Background(), req)
+		if err != nil || m.calls != 1 {
+			t.Fatalf("observed invalid output was redispatched: %v calls=%d", err, m.calls)
+		}
+	})
 	t.Run("model response lost", func(t *testing.T) {
 		r, req, m, _, _, _, _ := fixture(t)
 		m.fail = true

@@ -134,6 +134,18 @@ func TestExecutorSettlesOneObservedPlannerInvocation(t *testing.T) {
 	_, err = executor.Generate(context.Background(), input, quote, nil)
 	require.Error(t, err)
 	require.Equal(t, 1, sends)
+
+	invalidInput := input
+	invalidInput.InvocationID = "inv-invalid"
+	ledger.claimed = false // The fake tracks one claim at a time; this is a new invocation ID.
+	invalidQuote, err := aicapability.QuoteText(invalidInput)
+	require.NoError(t, err)
+	invalid, err := executor.Generate(context.Background(), invalidInput, invalidQuote, func(string) error { return ErrInvalid })
+	require.ErrorIs(t, err, ErrInvalid)
+	require.True(t, invalid.Usage.Known, "terminal invalid output must retain observed usage")
+	require.Equal(t, 15, invalid.Usage.TotalTokens)
+	require.Equal(t, 2, sends)
+	require.Equal(t, aicapability.InvocationUsageObservedFailed, ledger.records[len(ledger.records)-1].Outcome)
 }
 
 func TestExecutorFinalGateDenialHasNoNetworkSend(t *testing.T) {

@@ -52,7 +52,11 @@ func TestTitleAdapterUsesFrozenProfileAndSharedEinoExecutor(t *testing.T) {
 	sends := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		sends++
-		_, _ = fmt.Fprint(w, `{"id":"chatcmpl-test","object":"chat.completion","created":1,"model":"synthetic-title","choices":[{"index":0,"message":{"role":"assistant","content":"{\"Kind\":\"interrupt\",\"Tool\":{\"ID\":\"\",\"Version\":\"\"},\"Candidate\":{\"Changes\":null},\"Unresolved\":[\"need evidence\"],\"Confidence\":[]}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`)
+		content := `{"Kind":"interrupt","Tool":{"ID":"","Version":""},"Candidate":{"Changes":null},"Unresolved":["need evidence"],"Confidence":[]}`
+		if sends == 2 {
+			content = "invalid title JSON"
+		}
+		_, _ = fmt.Fprintf(w, `{"id":"chatcmpl-test","object":"chat.completion","created":1,"model":"synthetic-title","choices":[{"index":0,"message":{"role":"assistant","content":%q},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`, content)
 	}))
 	defer server.Close()
 	endpointHash := sha256.Sum256([]byte(server.URL))
@@ -100,4 +104,16 @@ func TestTitleAdapterUsesFrozenProfileAndSharedEinoExecutor(t *testing.T) {
 		require.Empty(t, record.BusinessTaskID, "acquisition operation ID is not a BusinessTask ID")
 		require.Equal(t, input.AgentRunID, record.AgentRunID)
 	}
+
+	ledger.claimed = false // A new invocation ID can be claimed by the fake ledger.
+	input.InvocationID = uuid.NewString()
+	result, err = model.Decide(ctx, input)
+	require.ErrorIs(t, err, agent.ErrModelInvalidOutput)
+	require.Equal(t, input.InvocationID, result.InvocationID)
+	require.True(t, result.Usage.Known)
+	require.Equal(t, int64(15), result.Usage.Tokens)
+	require.Equal(t, int64(15), result.Usage.CostMicros)
+	require.Empty(t, result.Action.Kind)
+	require.Equal(t, 2, sends)
+	require.Equal(t, aicapability.InvocationUsageObservedFailed, ledger.records[len(ledger.records)-1].Outcome)
 }

@@ -239,17 +239,21 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 		result.Usage = agent.ObservedUsage{Known: true, Currency: p.profile.Currency}
 		return result, agent.ErrModelNotDispatched
 	}
-	if err != nil {
+	observedInvalid := errors.Is(err, governed.ErrInvalid) && output.Usage.Known
+	if err != nil && !observedInvalid {
 		return result, err
 	}
 	cost, costErr := p.profile.CostFor(int64(output.Usage.PromptTokens), int64(output.Usage.CompletionTokens))
 	if costErr != nil {
 		return result, governed.ErrOutcomeUnknown
 	}
-	result.Action = action
-	result.ContextCitationRefs = citations
 	result.Usage = agent.ObservedUsage{Tokens: int64(output.Usage.TotalTokens), CostMicros: cost,
 		Currency: p.profile.Currency, Known: true}
+	if observedInvalid {
+		return result, agent.ErrModelInvalidOutput
+	}
+	result.Action = action
+	result.ContextCitationRefs = citations
 	return result, nil
 }
 
