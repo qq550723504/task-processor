@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"task-processor/internal/app/localtrial"
 	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authidentity"
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
@@ -34,6 +35,17 @@ func InstallProductReviewSchema(db *gorm.DB) error {
 		}
 		return reviewstore.InstallSchema(tx)
 	})
+}
+
+// Issue36LocalTrialSourceWiring keeps the one-shot synthetic sample on the
+// admitted Product Review/SRC-1 composition. It is never a serving route.
+func Issue36LocalTrialSourceWiring() localtrial.SourceWiring {
+	return localtrial.SourceWiring{
+		NewProducer: productsourcing.NewInternalProducer,
+		NewTransactionReader: func(tx *gorm.DB) (review.SourcePublicationReader, error) {
+			return productsourcing.NewTransactionReader(tx)
+		},
+	}
 }
 
 func productReviewSchemaReady(db *gorm.DB) bool {

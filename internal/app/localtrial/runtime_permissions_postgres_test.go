@@ -72,7 +72,7 @@ func TestVerifyRuntimePermissionsRejectsMissingOrExcessRights(t *testing.T) {
 		}
 	})
 	require.NoError(t, VerifyRuntimePermissions(context.Background(), runtime, role, database))
-	sample, err := PrepareSample(context.Background(), owner, "trial-org", "trial-user")
+	sample, err := PrepareSample(context.Background(), owner, "trial-org", "trial-user", testSourceWiring())
 	require.NoError(t, err)
 	authorizer, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)

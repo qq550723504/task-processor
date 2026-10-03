@@ -100,7 +100,7 @@ func execute(args []string, output io.Writer) error {
 		}
 		return nil
 	}
-	sample, err := localtrial.PrepareSample(ctx, db, *organizationID, *actorID)
+	sample, err := localtrial.PrepareSample(ctx, db, *organizationID, *actorID, httpapi.Issue36LocalTrialSourceWiring())
 	if err != nil {
 		return fmt.Errorf("prepare local trial sample: %w", err)
 	}

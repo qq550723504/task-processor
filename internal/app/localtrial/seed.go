@@ -11,7 +11,6 @@ import (
 	"gorm.io/gorm"
 
 	recordstore "task-processor/internal/app/listingrecordstore"
-	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	assetstore "task-processor/internal/integration/persistence/product/asset"
@@ -48,6 +47,13 @@ type Sample struct {
 	RecordID   string
 }
 
+// SourceWiring is supplied by the admitted Product Review composition. The
+// one-shot trial installer does not become another owner of SRC-1 persistence.
+type SourceWiring struct {
+	NewProducer          func(*gorm.DB, sourcing.LiveOrganizationAccess, *authz.ListingKitAuthorizer) (*sourcing.InternalProducer, error)
+	NewTransactionReader func(*gorm.DB) (review.SourcePublicationReader, error)
+}
+
 type setupAccess struct{ organizationID, actorID string }
 
 func (access setupAccess) ResolveLiveRoles(_ context.Context, organizationID, actorID string) ([]string, error) {
@@ -73,8 +79,8 @@ func (r storeReference) GetStoreReference(ctx context.Context, organizationID, s
 	return record.StoreReference{OrganizationID: organizationID, StoreID: storeID, Platform: string(stored.Platform())}, nil
 }
 
-func PrepareSample(ctx context.Context, db *gorm.DB, organizationID, actorID string) (Sample, error) {
-	if ctx == nil || db == nil || db.Dialector.Name() != "postgres" || !authidentity.IsBoundedIdentifier(organizationID) || !authidentity.IsBoundedIdentifier(actorID) {
+func PrepareSample(ctx context.Context, db *gorm.DB, organizationID, actorID string, sourceWiring SourceWiring) (Sample, error) {
+	if ctx == nil || db == nil || db.Dialector.Name() != "postgres" || !authidentity.IsBoundedIdentifier(organizationID) || !authidentity.IsBoundedIdentifier(actorID) || sourceWiring.NewProducer == nil || sourceWiring.NewTransactionReader == nil {
 		return Sample{}, errors.New("local trial sample dependencies unavailable")
 	}
 	if err := ctx.Err(); err != nil {
@@ -89,7 +95,7 @@ func PrepareSample(ctx context.Context, db *gorm.DB, organizationID, actorID str
 	if err != nil {
 		return Sample{}, err
 	}
-	source, err := productsourcing.NewInternalProducer(db, setupAccess{organizationID: organizationID, actorID: actorID}, authorizer)
+	source, err := sourceWiring.NewProducer(db, setupAccess{organizationID: organizationID, actorID: actorID}, authorizer)
 	if err != nil {
 		return Sample{}, err
 	}
@@ -111,9 +117,7 @@ func PrepareSample(ctx context.Context, db *gorm.DB, organizationID, actorID str
 	if err != nil {
 		return Sample{}, err
 	}
-	reviewRepository, err := reviewstore.NewRepository(db, func(tx *gorm.DB) (review.SourcePublicationReader, error) {
-		return productsourcing.NewTransactionReader(tx)
-	})
+	reviewRepository, err := reviewstore.NewRepository(db, sourceWiring.NewTransactionReader)
 	if err != nil {
 		return Sample{}, err
 	}

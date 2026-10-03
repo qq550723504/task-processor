@@ -50,11 +50,12 @@ func TestPrepareSampleReplaysWithoutDuplicatingFacts(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(string(listingSchema)).Error)
 
-	first, err := PrepareSample(context.Background(), db, "trial-org", "trial-user")
+	wiring := testSourceWiring()
+	first, err := PrepareSample(context.Background(), db, "trial-org", "trial-user", wiring)
 	require.NoError(t, err)
 	require.NotEmpty(t, first.ProposalID)
 	require.NotEmpty(t, first.RecordID)
-	second, err := PrepareSample(context.Background(), db, "trial-org", "trial-user")
+	second, err := PrepareSample(context.Background(), db, "trial-org", "trial-user", wiring)
 	require.NoError(t, err)
 	require.Equal(t, first, second)
 	authorizer, err := authz.NewListingKitAuthorizer(nil, nil)
@@ -76,7 +77,7 @@ func TestPrepareSampleReplaysWithoutDuplicatingFacts(t *testing.T) {
 	applied, err := service.Apply(actor, "apply-trial", first.ProposalID, review.ApplyInput{ExpectedRevision: accepted.Revision})
 	require.NoError(t, err)
 	require.Equal(t, "applied", applied.State)
-	third, err := PrepareSample(context.Background(), db, "trial-org", "trial-user")
+	third, err := PrepareSample(context.Background(), db, "trial-org", "trial-user", wiring)
 	require.NoError(t, err)
 	require.Equal(t, first, third)
 	stillApplied, err := service.Get(actor, first.ProposalID)
@@ -90,6 +91,15 @@ func TestPrepareSampleReplaysWithoutDuplicatingFacts(t *testing.T) {
 			want = 2
 		}
 		require.Equal(t, want, count, table)
+	}
+}
+
+func testSourceWiring() SourceWiring {
+	return SourceWiring{
+		NewProducer: productsourcing.NewInternalProducer,
+		NewTransactionReader: func(tx *gorm.DB) (review.SourcePublicationReader, error) {
+			return productsourcing.NewTransactionReader(tx)
+		},
 	}
 }
 
