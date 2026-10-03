@@ -122,6 +122,10 @@ source of truth for long-lived rules.
 
 ## Supporting Context
 
+- [`issue-36-completed-work-store-scope.md`](./issue-36-completed-work-store-scope.md)
+  - IMPLEMENTATION_READY #36 bounded completed-work v2 projection of Listing's
+    historical Store ID and local preparation action; no Store name read,
+    remote publication claim, or Product Review dependency.
 - [`ai-workbench-chat-business-task-v1.md`](./ai-workbench-chat-business-task-v1.md)
   - APPROVED / IMPLEMENTATION_READY #576 Slice E: owner-scoped Conversation,
     no-tool Eino/eino-ext planning, immutable execution proposals and BusinessTask,
@@ -169,6 +173,11 @@ source of truth for long-lived rules.
 - [`account-audit-filters-v1.md`](./account-audit-filters-v1.md)
   - IMPLEMENTATION_READY #581: bounded cross-source content, time and affected
     member filters with complete matching pagination and unchanged fact owners.
+
+- [`account-audit-usage-readers-v1.md`](./account-audit-usage-readers-v1.md)
+  - IMPLEMENTATION_READY #587: two independent read-only invocation owner pools
+    and fresh Account Compose ledger initialization for the existing filtered
+    audit contract; no Agent execution or historical backfill.
 
 - [`unified-base-prepaid-resources-v1.md`](./unified-base-prepaid-resources-v1.md)
   - IMPLEMENTATION_READY design basis for #478/#564: current Figma base plan, native Stores, prepaid purchases, real resource events and Product Agent point metering; supersedes subscription/quota/Token entry paths without changing repository package-boundary rules.

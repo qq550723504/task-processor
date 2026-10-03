@@ -8,14 +8,14 @@ vi.mock("@/auth", () => ({ serverAuth: (handler: (request: NextRequest & { auth?
 } }));
 import { GET, POST } from "./route";
 const id = "12345678-1234-1234-1234-123456789abc";
-const page = { items: [{ record_id: id, product_key: "p", snapshot_version: "1", country: "US", language: "en", created_at: "2026-09-06T00:00:00Z" }], next_cursor: null };
+const page = { items: [{ record_id: id, product_key: "p", snapshot_version: "1", store_id: "11111111-1111-4111-8111-111111111111", country: "US", language: "en", action: "publish", created_at: "2026-09-06T00:00:00Z" }], next_cursor: null };
 function request(query = "source=listing-local-preparation&limit=20", signal?: AbortSignal) { return new NextRequest(`http://localhost/api/workbench/completed-work?${query}`, { signal, headers: { cookie: "shuomi_effective_organization=200", "X-Expected-Organization-ID": "200", Authorization: "Bearer forged" } }); }
 beforeEach(() => { auth.delay = 0; auth.token = "server-token"; auth.calls.mockClear(); vi.stubEnv("SHEIN_RECORDS_API_ORIGIN", "http://127.0.0.1:8181"); vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(page))); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 it("uses the actual authenticated bounded collection chain and projects its result", async () => {
   const response = await GET(request()); expect(response.status).toBe(200);
   expect(response.headers.get("cache-control")).toContain("no-store");
-  expect((await response.json()).items[0].source_record_id).toBe(id);
+  expect(await response.json()).toMatchObject({ projection_version: "2", items: [{ source_record_id: id, store_id: page.items[0].store_id, action: "publish", work_scope: "store" }] });
   expect(fetch).toHaveBeenCalledOnce();
   const [url, init] = vi.mocked(fetch).mock.calls[0];
   expect(String(url)).toBe("http://127.0.0.1:8181/api/listing/shein-records?limit=20");

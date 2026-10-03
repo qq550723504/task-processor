@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { fetchSheinRecords, SheinRecordListError } from "./shein-records-client";
 import type { SheinRecordListItem } from "./shein-records";
 
-const item: SheinRecordListItem = { record_id: "12345678-1234-4234-8234-123456789abc", product_key: "source-product", snapshot_version: "1", country: "US", language: "en", created_at: "2026-09-06T01:02:03Z" };
+const item: SheinRecordListItem = { record_id: "12345678-1234-4234-8234-123456789abc", product_key: "source-product", snapshot_version: "1", store_id: "11111111-1111-4111-8111-111111111111", country: "US", language: "en", action: "publish", created_at: "2026-09-06T01:02:03Z" };
 const sheinRecordListFixture = () => ({ items: [item], next_cursor: "opaque-cursor_1" });
 
 afterEach(() => vi.unstubAllGlobals());

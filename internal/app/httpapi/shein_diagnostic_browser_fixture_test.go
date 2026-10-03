@@ -81,7 +81,10 @@ func TestSheinDiagnosticBrowserFixture(t *testing.T) {
 	t.Setenv("ISSUE376_TEST_DSN", dsn)
 	db := recordTestDB(t)
 	publishRecordProduct(t, db, "200", "product")
-	publishRecordProduct(t, db, "300", "product")
+	published300 := publishRecordProductOnly(t, db, "300", "product")
+	const organization300StoreID = "33333333-3333-4333-8333-333333333333"
+	prepareRecordStoreID(t, db, "300", organization300StoreID)
+	prepareApprovedAssets(t, db, "300", "product", published300.Version)
 	f := browserFixtureIdentity{actors: map[string]browserFixtureActor{}}
 	tokens := map[string]string{}
 	for name, actor := range map[string]browserFixtureActor{
@@ -150,7 +153,7 @@ func TestSheinDiagnosticBrowserFixture(t *testing.T) {
 	require.NoError(t, json.Unmarshal(readWire, &readReceipt))
 	readActor.Role = "admin"
 	f.actors[tokens["readonly"]] = readActor
-	status, organizationWire := recordPostForOrganization(t, ts, tokens["owner"], "fixture-organization-300", "300", recordBody)
+	status, organizationWire := recordPostForOrganization(t, ts, tokens["owner"], "fixture-organization-300", "300", strings.Replace(recordBody, recordStoreID, organization300StoreID, 1))
 	require.Equal(t, 201, status, string(organizationWire))
 	var organizationReceipt record.Receipt
 	require.NoError(t, json.Unmarshal(organizationWire, &organizationReceipt))

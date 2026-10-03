@@ -6,7 +6,7 @@ set -eu
 commercial_database=${ACCOUNT_COMMERCIAL_DATABASE:-commercial}
 case "$commercial_database" in
   ''|[!a-z]*|*[!a-z0-9_]*) echo 'invalid commercial database name' >&2; exit 1 ;;
-  postgres|template0|template1|source_accounts|referrals|membership|product_acquisition|image_agent|store_center|knowledge)
+  postgres|template0|template1|source_accounts|referrals|membership|product_acquisition|image_agent|product_agent|store_center|knowledge)
     echo 'commercial database must have its own name' >&2; exit 1 ;;
 esac
 test "${#commercial_database}" -le 63
@@ -48,6 +48,9 @@ create_role referral_owner /secrets/referral-owner/referral-db-password
 create_role membership_owner /secrets/membership-owner/membership-db-password
 create_role acquisition_owner /secrets/acquisition-owner/acquisition-db-password
 create_role image_agent_owner /secrets/image-owner/image-db-password
+create_role product_agent_owner /secrets/product-agent-owner/product-agent-db-password
+create_role account_audit_image_reader /secrets/image-audit-reader/password
+create_role account_audit_product_reader /secrets/product-audit-reader/password
 create_role source_account_runtime /secrets/source-runtime/source-runtime-password
 create_role commercial_runtime /secrets/commercial-runtime/commercial-reader-password
 create_role commercial_owner_runtime /secrets/commercial-runtime/commercial-owner-password
@@ -65,6 +68,14 @@ create_database referrals referral_owner
 create_database membership membership_owner
 create_database product_acquisition acquisition_owner
 create_database image_agent image_agent_owner
+create_database product_agent product_agent_owner
+
+psql -X -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<'SQL'
+ALTER ROLE account_audit_image_reader SET default_transaction_read_only=on;
+ALTER ROLE account_audit_product_reader SET default_transaction_read_only=on;
+ALTER ROLE account_audit_image_reader SET statement_timeout='10s';
+ALTER ROLE account_audit_product_reader SET statement_timeout='10s';
+SQL
 
 if [ "${ACCOUNT_KNOWLEDGE_ENABLED:-}" = 1 ]; then
  create_role knowledge_owner /secrets/knowledge-owner/owner-password

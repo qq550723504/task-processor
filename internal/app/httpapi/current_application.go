@@ -120,6 +120,9 @@ type currentApplicationOptions struct {
 	referralDB              *gorm.DB
 	productAcquisitionDB    *gorm.DB
 	imageAgentDB            *gorm.DB
+	accountAuditImageDB     *gorm.DB
+	accountAuditProductDB   *gorm.DB
+	accountAuditSources     int
 	imageAgentWorkflows     imageagent.WorkflowClient
 	membership              *MembershipDependencies
 	referrals               int
@@ -173,6 +176,16 @@ func WithAcquisitionImageAgent(db *gorm.DB, workflows imageagent.WorkflowClient)
 		options.imageAgents++
 		options.imageAgentDB = db
 		options.imageAgentWorkflows = workflows
+	}
+}
+
+// WithAccountAuditUsageSources supplies the existing image and product ledger
+// owners for audit reads only. It does not enable an Agent route or provider.
+func WithAccountAuditUsageSources(image, product *gorm.DB) CurrentApplicationOption {
+	return func(options *currentApplicationOptions) {
+		options.accountAuditSources++
+		options.accountAuditImageDB = image
+		options.accountAuditProductDB = product
 	}
 }
 
@@ -247,8 +260,11 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		option(&supplied)
 	}
-	if supplied.storeCenters > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 {
+	if supplied.storeCenters > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.accountAuditSources > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
+	}
+	if supplied.accountAuditSources > 0 && (supplied.accountAuditImageDB == nil || supplied.accountAuditProductDB == nil || supplied.accountAuditImageDB == supplied.accountAuditProductDB || supplied.imageAgentDB != nil || supplied.productAgent != nil) {
+		return nil, errors.New("account audit requires two independent read-only sources without Agent execution")
 	}
 	if supplied.knowledgeServices > 1 || supplied.knowledgeServices > 0 && supplied.knowledge == nil {
 		return nil, errors.New("knowledge service unavailable or supplied more than once")
@@ -553,6 +569,10 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		if supplied.productAgent != nil && supplied.productAgent.RunDB != nil {
 			sources["product"] = supplied.productAgent.RunDB
+		}
+		if supplied.accountAuditSources > 0 {
+			sources["image"] = supplied.accountAuditImageDB
+			sources["product"] = supplied.accountAuditProductDB
 		}
 		audit, auditErr = factories.buildAccountAudit(sourceAccountDB, membershipDB, supplied.commercialOwnerDB, sources, authorizer)
 
