@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -64,7 +65,7 @@ func (l *agentTestLedger) RecordInvocation(_ context.Context, r aicapability.Inv
 	return nil
 }
 
-func agentModelFixture(t *testing.T, content, usage string) (*AgentTextModel, context.Context, agent.ModelInput, *agentTestLedger, *atomic.Int32, *atomic.Value) {
+func agentModelFixture(t *testing.T, content, usage string, fixtureTransports ...http.RoundTripper) (*AgentTextModel, context.Context, agent.ModelInput, *agentTestLedger, *atomic.Int32, *atomic.Value) {
 	t.Helper()
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +78,7 @@ func agentModelFixture(t *testing.T, content, usage string) (*AgentTextModel, co
 	identity := authidentity.AuthenticatedIdentity{TenantID: "org", EffectiveOrganizationID: "org", UserID: "actor", EffectiveMemberID: "member", TokenExpiresAt: time.Now().Add(time.Hour)}
 	var fresh atomic.Value
 	fresh.Store(identity)
-	manager := textTestManager(t, srv.URL)
+	manager := textTestManager(t, srv.URL, fixtureTransports...)
 	credentialDB := openTestCredentialDB(t)
 	sqlDB, err := credentialDB.DB()
 	requireNoErrorText(t, err)
@@ -120,6 +121,7 @@ func TestGoogleInteractionsPolicyRequiresNativeControlsAndExactRoute(t *testing.
 		func(p *AgentTextPolicy) { p.ThinkingLevel = "high" },
 		func(p *AgentTextPolicy) { p.OutputWindowTokens++ },
 		func(p *AgentTextPolicy) { p.Endpoint = "https://other.example.test" },
+		func(p *AgentTextPolicy) { p.Endpoint = "http://127.0.0.1:8080" },
 		func(p *AgentTextPolicy) { p.AdmittedRoute.ModelID = "gemini-2.5-flash" },
 	} {
 		invalid := p
@@ -140,18 +142,18 @@ func TestGoogleInteractionsTitleUsesExistingQuoteLedgerAndReviewAction(t *testin
 				_, _ = w.Write([]byte(`{"id":"interaction","model":"gemini-3.8-flash","status":"` + tc.status + `","steps":[{"type":"model_output","content":[{"type":"text","text":"{\"Kind\":\"interrupt\"}"}]}],"usage":{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14,"total_tool_use_tokens":0}}`))
 			}))
 			defer srv.Close()
-			m, ctx, in, ledger, _, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`)
+			m, ctx, in, ledger, _, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`, titleGoogleFixtureTransport(t, srv.URL))
 			credentialDB := openTestCredentialDB(t)
 			sqlDB, err := credentialDB.DB()
 			requireNoErrorText(t, err)
 			sqlDB.SetMaxOpenConns(1)
 			resolver := openai.NewOrganizationOnlyCredentialResolver(credentialDB)
-			requireNoErrorText(t, resolver.SaveCredential(ctx, openai.AIClientCredential{TenantID: "org", ClientName: "text", APIKey: "fixture-key", BaseURL: srv.URL, Model: "gemini-3.8-flash", APIStyle: "google-interactions", Enabled: true, TimeoutSecond: 2}))
+			requireNoErrorText(t, resolver.SaveCredential(ctx, openai.AIClientCredential{TenantID: "org", ClientName: "text", APIKey: "fixture-key", BaseURL: "https://generativelanguage.googleapis.com", Model: "gemini-3.8-flash", APIStyle: "google-interactions", Enabled: true, TimeoutSecond: 2}))
 			m.manager.SetConfigResolver(resolver)
 			route, err := m.manager.ResolveTextRoute(ctx, "text")
 			requireNoErrorText(t, err)
 			policy := m.policies["org"]
-			policy.ProviderID, policy.APIStyle, policy.Endpoint = "google", "google-interactions", srv.URL
+			policy.ProviderID, policy.APIStyle, policy.Endpoint = "google", "google-interactions", "https://generativelanguage.googleapis.com"
 			policy.OutputLimitField, policy.ThinkingLevel, policy.ReasoningEffort = "max_output_tokens", "low", ""
 			policy.MaximumOutputTokens, policy.AdmittedRoute = 128, route
 			policy.OutputWindowTokens = int64(policy.MaximumOutputTokens)
@@ -183,18 +185,18 @@ func TestGoogleInteractionsUnknownRecordsOnlySafeReasonWithoutSettling(t *testin
 		_, _ = w.Write([]byte(`sensitive-provider-body`))
 	}))
 	defer srv.Close()
-	m, ctx, in, ledger, _, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`)
+	m, ctx, in, ledger, _, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`, titleGoogleFixtureTransport(t, srv.URL))
 	credentialDB := openTestCredentialDB(t)
 	sqlDB, err := credentialDB.DB()
 	requireNoErrorText(t, err)
 	sqlDB.SetMaxOpenConns(1)
 	resolver := openai.NewOrganizationOnlyCredentialResolver(credentialDB)
-	requireNoErrorText(t, resolver.SaveCredential(ctx, openai.AIClientCredential{TenantID: "org", ClientName: "text", APIKey: "fixture-key", BaseURL: srv.URL, Model: "gemini-3.8-flash", APIStyle: "google-interactions", Enabled: true, TimeoutSecond: 2}))
+	requireNoErrorText(t, resolver.SaveCredential(ctx, openai.AIClientCredential{TenantID: "org", ClientName: "text", APIKey: "fixture-key", BaseURL: "https://generativelanguage.googleapis.com", Model: "gemini-3.8-flash", APIStyle: "google-interactions", Enabled: true, TimeoutSecond: 2}))
 	m.manager.SetConfigResolver(resolver)
 	route, err := m.manager.ResolveTextRoute(ctx, "text")
 	requireNoErrorText(t, err)
 	policy := m.policies["org"]
-	policy.ProviderID, policy.APIStyle, policy.Endpoint = "google", "google-interactions", srv.URL
+	policy.ProviderID, policy.APIStyle, policy.Endpoint = "google", "google-interactions", "https://generativelanguage.googleapis.com"
 	policy.OutputLimitField, policy.ThinkingLevel, policy.ReasoningEffort = "max_output_tokens", "low", ""
 	policy.MaximumOutputTokens, policy.AdmittedRoute = 128, route
 	policy.OutputWindowTokens = int64(policy.MaximumOutputTokens)
@@ -584,9 +586,34 @@ func requireNoErrorText(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
-func textTestManager(t *testing.T, base string) *openai.Manager {
+
+type titleGoogleFixtureRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f titleGoogleFixtureRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func titleGoogleFixtureTransport(t *testing.T, endpoint string) http.RoundTripper {
 	t.Helper()
-	m, err := openai.NewManager(&openai.ManagerConfig{Clients: map[string]*openai.ClientConfig{"text": openai.NewClientConfig("test-only", "gemini-2.5-flash", base+"/v1", 2)}})
+	target, err := url.Parse(endpoint)
+	requireNoErrorText(t, err)
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DisableKeepAlives = true
+	t.Cleanup(transport.CloseIdleConnections)
+	return titleGoogleFixtureRoundTripper(func(req *http.Request) (*http.Response, error) {
+		forwarded := req.Clone(req.Context())
+		forwarded.URL.Scheme, forwarded.URL.Host, forwarded.Host = target.Scheme, target.Host, target.Host
+		return transport.RoundTrip(forwarded)
+	})
+}
+
+func textTestManager(t *testing.T, base string, fixtureTransports ...http.RoundTripper) *openai.Manager {
+	t.Helper()
+	config := openai.NewClientConfig("test-only", "gemini-2.5-flash", base+"/v1", 2)
+	if len(fixtureTransports) > 0 {
+		config.GoogleInteractionsFixtureTransport = fixtureTransports[0]
+	}
+	m, err := openai.NewManager(&openai.ManagerConfig{Clients: map[string]*openai.ClientConfig{"text": config}})
 	requireNoErrorText(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 	return m

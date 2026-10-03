@@ -17,7 +17,8 @@ import (
 func googleTextTestManager(t *testing.T, endpoint string) *Manager {
 	t.Helper()
 	m, err := NewManager(&ManagerConfig{Clients: map[string]*ClientConfig{"text": {
-		APIKey: "fixture-key", Model: "gemini-3.8-flash", APIStyle: "google-interactions", BaseURL: endpoint, Timeout: time.Second,
+		APIKey: "fixture-key", Model: "gemini-3.8-flash", APIStyle: "google-interactions", BaseURL: googleInteractionsOrigin, Timeout: time.Second,
+		GoogleInteractionsFixtureTransport: googleFixtureTransport(t, endpoint),
 	}}})
 	if err != nil {
 		t.Fatal(err)
@@ -26,8 +27,41 @@ func googleTextTestManager(t *testing.T, endpoint string) *Manager {
 	return m
 }
 
+type googleFixtureRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f googleFixtureRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func googleFixtureTransport(t *testing.T, endpoint string) http.RoundTripper {
+	t.Helper()
+	target, err := url.Parse(endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DisableKeepAlives = true
+	t.Cleanup(transport.CloseIdleConnections)
+	return googleFixtureRoundTripper(func(req *http.Request) (*http.Response, error) {
+		forwarded := req.Clone(req.Context())
+		forwarded.URL.Scheme, forwarded.URL.Host, forwarded.Host = target.Scheme, target.Host, target.Host
+		return transport.RoundTrip(forwarded)
+	})
+}
+
 func googleTextTestRequest() TextCompletionRequest {
 	return TextCompletionRequest{System: "Return JSON.", Prompt: "synthetic item", MaximumOutputTokens: 128, OutputLimitField: "max_output_tokens", ThinkingLevel: "low"}
+}
+
+func TestGoogleInteractionsDeploymentEndpointRejectsLoopback(t *testing.T) {
+	if !ValidGoogleInteractionsEndpoint("https://generativelanguage.googleapis.com") {
+		t.Fatal("official Google origin rejected")
+	}
+	for _, endpoint := range []string{"http://127.0.0.1:8080", "http://localhost:8080", "http://[::1]:8080"} {
+		if ValidGoogleInteractionsEndpoint(endpoint) {
+			t.Fatalf("deployment endpoint admitted local listener %q", endpoint)
+		}
+	}
 }
 
 func TestGoogleInteractionsSingleStatelessWireAndThoughtUsage(t *testing.T) {

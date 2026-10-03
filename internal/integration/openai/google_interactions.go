@@ -23,14 +23,10 @@ import (
 
 const googleInteractionsOrigin = "https://generativelanguage.googleapis.com"
 
-// ValidGoogleInteractionsEndpoint confines live credentials to Google's native
-// origin. A loopback origin is accepted solely for local transport fixtures.
+// ValidGoogleInteractionsEndpoint confines deployed credentials to Google's
+// exact native origin. Tests inject a transport below URL admission.
 func ValidGoogleInteractionsEndpoint(raw string) bool {
-	if raw == googleInteractionsOrigin {
-		return true
-	}
-	u, err := url.Parse(raw)
-	return err == nil && u.Scheme == "http" && u.Host != "" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1") && u.User == nil && u.Path == "" && u.RawQuery == "" && u.Fragment == ""
+	return raw == googleInteractionsOrigin
 }
 
 func completeGoogleInteractionsOnce(ctx context.Context, config *ClientConfig, input TextCompletionRequest) (*TextCompletionResult, error) {
@@ -39,7 +35,11 @@ func completeGoogleInteractionsOnce(ctx context.Context, config *ClientConfig, i
 	}
 	transport := &http.Transport{Proxy: http.ProxyFromEnvironment, DisableKeepAlives: true, TLSNextProto: map[string]func(string, *tls.Conn) http.RoundTripper{}, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: config.Timeout, MaxResponseHeaderBytes: 32 << 10}
 	defer transport.CloseIdleConnections()
-	client := &boundedGoogleHTTPClient{client: &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, endpoint: config.BaseURL}
+	var wireTransport http.RoundTripper = transport
+	if config.GoogleInteractionsFixtureTransport != nil {
+		wireTransport = config.GoogleInteractionsFixtureTransport
+	}
+	client := &boundedGoogleHTTPClient{client: &http.Client{Transport: wireTransport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, endpoint: config.BaseURL}
 	sdk := google.New(google.WithServerURL(config.BaseURL), google.WithAPIVersion("v1beta"), google.WithSecurity(components.Security{APIKey: google.String(config.APIKey)}), google.WithClient(client), google.WithRetryConfig(retry.Config{Strategy: "none"}))
 	modelInput := interaction.NewInteractionsInput(input.Prompt)
 	request := interaction.CreateModelInteraction{

@@ -129,4 +129,14 @@ func TestTitleCredentialProvisionAdmitsOnlyFrozenGoogleInteractionsRoute(t *test
 	if _, err := SaveTitleCredential(context.Background(), cfg, bad, db); err == nil {
 		t.Fatal("alternate Google endpoint admitted")
 	}
+	bad.BaseURL = "http://127.0.0.1:8080"
+	policy.Endpoint = bad.BaseURL
+	cfg.ProductAgent.TextPolicies["org"] = policy
+	if _, err := SaveTitleCredential(context.Background(), cfg, bad, db); err == nil {
+		t.Fatal("local Google endpoint admitted by credential provisioning")
+	}
+	selected, err = openai.NewOrganizationOnlyCredentialResolver(db).ResolveClientConfig(openai.WithTenantID(context.Background(), "org"), "text", nil)
+	if err != nil || selected.Config.BaseURL != "https://generativelanguage.googleapis.com" {
+		t.Fatalf("rejected local route changed organization credential: %+v %v", selected, err)
+	}
 }
