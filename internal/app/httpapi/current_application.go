@@ -545,6 +545,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		if workbench.handler != nil {
 			workbench.handler.SetAIWorkbenchAvailable(true)
 			workbench.handler.SetAIWorkbenchPlanningReadiness(module.(aiWorkbenchModule).PlanningReadiness)
+			workbench.handler.SetAIWorkbenchTitleReadiness(module.(aiWorkbenchModule).TitleReadiness)
 		}
 	}
 	if factories.buildBrowserCapture != nil {

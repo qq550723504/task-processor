@@ -85,6 +85,14 @@ func TestAIWorkbenchPlanningReadinessFollowsSelectedOrganization(t *testing.T) {
 		}
 		return "AVAILABLE"
 	})
+	titleReadOrganizations := []string{}
+	handler.SetAIWorkbenchTitleReadiness(func(_ context.Context, organizationID string) string {
+		titleReadOrganizations = append(titleReadOrganizations, organizationID)
+		if organizationID == "org-b" {
+			return "NEEDS_CONFIGURATION"
+		}
+		return "AVAILABLE"
+	})
 	identity := authidentity.AuthenticatedIdentity{UserID: "actor", HomeOrganizationID: "org-a", EffectiveOrganizationID: "org-b",
 		OrganizationGrants: []authidentity.OrganizationGrant{
 			{OrganizationID: "org-a", OrganizationName: "A", Roles: []string{"listingkit_operator"}},
@@ -96,12 +104,16 @@ func TestAIWorkbenchPlanningReadinessFollowsSelectedOrganization(t *testing.T) {
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	require.Equal(t, "NEEDS_CONFIGURATION", body["aiWorkbenchPlanningReadiness"])
+	require.Equal(t, "NEEDS_CONFIGURATION", body["aiWorkbenchTitleReadiness"])
 	require.Equal(t, []string{"org-b"}, readOrganizations, "do not read another organization's credential for the current page")
+	require.Equal(t, []string{"org-b"}, titleReadOrganizations)
 	identity.EffectiveOrganizationID = "org-a"
 	response = serveHandler(t, http.MethodGet, "/api/v1/workbench/context", "", identity, handler.GetContext)
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	require.Equal(t, "AVAILABLE", body["aiWorkbenchPlanningReadiness"])
+	require.Equal(t, "AVAILABLE", body["aiWorkbenchTitleReadiness"])
 	require.Equal(t, []string{"org-b", "org-a"}, readOrganizations)
+	require.Equal(t, []string{"org-b", "org-a"}, titleReadOrganizations)
 }
 
 func TestSourceAccountCapabilityDoesNotUseHomeOrAnotherOrganizationRole(t *testing.T) {

@@ -20,7 +20,7 @@ const proposal = z.object({
   templateId: z.string().optional(), templateRevision: z.string().optional(), knowledgeBaseId: z.string().optional(),
   providerId: z.string().optional(), modelId: z.string().optional(), maximumTokens: z.number().int().optional(),
   maximumCostMicros: z.number().int().optional(), currency: z.string().optional(),
-  humanReviewRequired: z.literal(true), detailsAvailable: z.boolean(),
+  humanReviewRequired: z.literal(true), detailsAvailable: z.boolean(), titleProfileReady: z.boolean(),
 });
 const task = z.object({
   id, conversationId: id, proposalId: id, title: z.string(), goalSummary: z.string(), createdAt: timestamp,

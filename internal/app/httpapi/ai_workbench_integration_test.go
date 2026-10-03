@@ -42,6 +42,15 @@ type failedWorkbenchSettlement struct {
 	aicapability.InvocationUsageReservation
 }
 
+type failedWorkbenchRelease struct {
+	aicapability.InvocationUsageSettler
+	aicapability.InvocationUsageReservation
+}
+
+func (failedWorkbenchRelease) ReleaseAIInvocationUsage(context.Context, string, string) error {
+	return errors.New("synthetic commercial release failure")
+}
+
 func (failedWorkbenchSettlement) SettleAIInvocationUsage(context.Context, string, string, string, int64, time.Time) error {
 	return errors.New("synthetic commercial settlement failure")
 }
@@ -242,6 +251,18 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.NotEmpty(t, planned.ProposalID)
 	require.EqualValues(t, 1, plannerCalls.Load())
 	require.Zero(t, titleCalls.Load())
+	var proposalView struct {
+		Proposals []struct {
+			ID                string `json:"id"`
+			TitleProfileReady bool   `json:"titleProfileReady"`
+		} `json:"proposals"`
+	}
+	code, raw, err = acquisitionHTTPRequest(server, "GET", workbenchChatBase+"/"+created.Conversation.ID, "operator", "B", "", "")
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.NoError(t, json.Unmarshal(raw, &proposalView))
+	require.Len(t, proposalView.Proposals, 1)
+	require.True(t, proposalView.Proposals[0].TitleProfileReady, "the frozen title profile is currently admitted")
 	code, raw, err = acquisitionHTTPRequest(server, "GET", workbenchChatBase+"?limit=1", "operator", "B", "", "")
 	require.NoError(t, err)
 	require.Equal(t, 200, code, string(raw))
@@ -336,6 +357,50 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 202, code, string(raw))
 	require.EqualValues(t, 3, plannerCalls.Load(), "unsettled replay cannot resend or claim settlement")
+	ledger.SetUsageSettler(pointOwner)
+
+	// A known-zero AI terminal row can exist before the ResourceAIPoint owner
+	// releases its reservation. That row alone must not clear the Chat receipt.
+	invalidPlanner.Store(false)
+	ledger.SetUsageSettler(failedWorkbenchRelease{InvocationUsageSettler: pointOwner, InvocationUsageReservation: pointOwner})
+	originalAuthorize := plannerText.executor.Authorize
+	var authorizationCalls atomic.Int32
+	plannerText.executor.Authorize = func(ctx context.Context, input aicapability.TextInputIdentity) error {
+		if authorizationCalls.Add(1) == 2 {
+			return errors.New("synthetic pre-send authorization change")
+		}
+		return originalAuthorize(ctx, input)
+	}
+	code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchChatBase, "operator", "B", uuid.NewString(), `{}`)
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.NoError(t, json.Unmarshal(raw, &invalidConversation))
+	unreleasedKey := uuid.NewString()
+	unreleasedPath := workbenchChatBase + "/" + invalidConversation.Conversation.ID + "/messages"
+	noSendBefore := plannerCalls.Load()
+	code, raw, err = acquisitionHTTPRequest(server, "POST", unreleasedPath, "operator", "B", unreleasedKey, messageBody)
+	require.NoError(t, err)
+	require.Equal(t, 202, code, string(raw))
+	require.NoError(t, json.Unmarshal(raw, &invalidReceipt))
+	require.Equal(t, "READY_TO_DISPATCH", invalidReceipt.State)
+	require.Equal(t, noSendBefore, plannerCalls.Load(), "the provider must not receive a request")
+	unreleased, err := workbenchModule.(aiWorkbenchModule).application.store.GetCommand(context.Background(),
+		aiworkbench.Scope{OrganizationID: "B", ActorID: "operator"}, unreleasedKey)
+	require.NoError(t, err)
+	unreleasedFact, err := ledger.ReadModelInvocation(context.Background(), "B", unreleased.PlannerInvocationID)
+	require.NoError(t, err)
+	require.Equal(t, aicapability.InvocationFailed, unreleasedFact.Outcome)
+	require.True(t, unreleasedFact.UsageKnown)
+	require.Zero(t, unreleasedFact.TotalTokens)
+	var reservationState string
+	require.NoError(t, f.owner.Table("saas_organization_resource_reservations").Where("organization_id = ? AND owner_attempt_id = ?", "B", unreleased.PlannerInvocationID).
+		Pluck("state", &reservationState).Error)
+	require.Equal(t, "reserved", reservationState, "failed ResourceAIPoint release must remain visible to its owner")
+	plannerText.executor.Authorize = originalAuthorize
+	code, raw, err = acquisitionHTTPRequest(server, "POST", unreleasedPath, "operator", "B", unreleasedKey, messageBody)
+	require.NoError(t, err)
+	require.Equal(t, 202, code, string(raw))
+	require.Equal(t, noSendBefore, plannerCalls.Load(), "same-key replay cannot trigger another provider request")
 	ledger.SetUsageSettler(pointOwner)
 
 	// A lost response must replay the frozen receipt even when the planner
@@ -483,6 +548,11 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	disabledTitle.Enabled = false
 	require.NoError(t, credentials.SaveCredential(context.Background(), disabledTitle))
 	require.Equal(t, "NEEDS_CONFIGURATION", readyModule.(aiWorkbenchModule).PlanningReadiness(context.Background(), "B"))
+	code, raw, err = acquisitionHTTPRequest(readyServer, "GET", workbenchChatBase+"/"+created.Conversation.ID, "operator", "B", "", "")
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.NoError(t, json.Unmarshal(raw, &proposalView))
+	require.False(t, proposalView.Proposals[0].TitleProfileReady, "a disabled title route cannot confirm an old proposal")
 	plannerBefore := plannerCalls.Load()
 	code, raw, err = acquisitionHTTPRequest(readyServer, "POST", workbenchChatBase, "operator", "B", uuid.NewString(), `{}`)
 	require.NoError(t, err)
@@ -531,6 +601,11 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	rotatingServer := httptest.NewServer(buildIsolatedApplicationHTTPServer(rotatingRoutes, deps, 2*time.Minute).Handler)
 	defer rotatingServer.Close()
 	require.Equal(t, "AVAILABLE", rotatingWorkbench.(aiWorkbenchModule).PlanningReadiness(context.Background(), "B"))
+	code, raw, err = acquisitionHTTPRequest(rotatingServer, "GET", workbenchChatBase+"/"+created.Conversation.ID, "operator", "B", "", "")
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.NoError(t, json.Unmarshal(raw, &proposalView))
+	require.False(t, proposalView.Proposals[0].TitleProfileReady, "a newly admitted route cannot confirm a proposal frozen to the old profile")
 	var consumedBeforeRotation int64
 	require.NoError(t, f.owner.Table("saas_organization_resource_buckets").Where("organization_id = ? AND resource_type = ?", "B", "ai_point").
 		Pluck("consumed", &consumedBeforeRotation).Error)

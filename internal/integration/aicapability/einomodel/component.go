@@ -36,9 +36,12 @@ var (
 	// ErrObservedInvalidSettled is emitted only after the terminal recorder
 	// accepted observed usage and its commercial settlement returned success.
 	ErrObservedInvalidSettled = errors.New("observed invalid model output settled")
-	ErrNotDispatched          = errors.New("model request not dispatched")
-	ErrOutcomeUnknown         = errors.New("model outcome unknown; do not redispatch")
-	ErrUsageUnknown           = errors.New("provider usage unknown")
+	// ErrNoDispatchReleased proves this call persisted the known-zero terminal
+	// invocation and its ResourceAIPoint release returned success.
+	ErrNoDispatchReleased = errors.New("model no-dispatch reservation released")
+	ErrNotDispatched      = errors.New("model request not dispatched")
+	ErrOutcomeUnknown     = errors.New("model outcome unknown; do not redispatch")
+	ErrUsageUnknown       = errors.New("provider usage unknown")
 )
 
 type ComponentConfig struct {

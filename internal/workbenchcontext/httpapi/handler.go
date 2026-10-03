@@ -23,6 +23,7 @@ type Handler struct {
 	profileReader                authidentity.SelfProfileReader
 	aiWorkbenchAvailable         bool
 	aiWorkbenchPlanningReadiness func(context.Context, string) string
+	aiWorkbenchTitleReadiness    func(context.Context, string) string
 }
 
 // SetAIWorkbenchAvailable is called during composition, before HTTP serving.
@@ -37,6 +38,14 @@ func (h *Handler) SetAIWorkbenchAvailable(available bool) {
 func (h *Handler) SetAIWorkbenchPlanningReadiness(read func(context.Context, string) string) {
 	if h != nil {
 		h.aiWorkbenchPlanningReadiness = read
+	}
+}
+
+// SetAIWorkbenchTitleReadiness projects the current organization's title
+// execution route for existing proposals. It never authorizes confirmation.
+func (h *Handler) SetAIWorkbenchTitleReadiness(read func(context.Context, string) string) {
+	if h != nil {
+		h.aiWorkbenchTitleReadiness = read
 	}
 }
 
@@ -149,13 +158,23 @@ func (h *Handler) writeContext(c *gin.Context) {
 		effectiveOrganizationID = &effective
 	}
 	planningReadiness := ""
+	titleReadiness := ""
 	if h.aiWorkbenchAvailable {
 		planningReadiness = "UNAVAILABLE"
+		titleReadiness = "UNAVAILABLE"
 		for _, organization := range organizations {
-			if effectiveOrganizationID != nil && organization.ID == *effectiveOrganizationID && h.aiWorkbenchPlanningReadiness != nil {
-				candidate := h.aiWorkbenchPlanningReadiness(c.Request.Context(), organization.ID)
-				if candidate == "AVAILABLE" || candidate == "NEEDS_CONFIGURATION" {
-					planningReadiness = candidate
+			if effectiveOrganizationID != nil && organization.ID == *effectiveOrganizationID {
+				if h.aiWorkbenchPlanningReadiness != nil {
+					candidate := h.aiWorkbenchPlanningReadiness(c.Request.Context(), organization.ID)
+					if candidate == "AVAILABLE" || candidate == "NEEDS_CONFIGURATION" {
+						planningReadiness = candidate
+					}
+				}
+				if h.aiWorkbenchTitleReadiness != nil {
+					candidate := h.aiWorkbenchTitleReadiness(c.Request.Context(), organization.ID)
+					if candidate == "AVAILABLE" || candidate == "NEEDS_CONFIGURATION" {
+						titleReadiness = candidate
+					}
 				}
 				break
 			}
@@ -169,6 +188,7 @@ func (h *Handler) writeContext(c *gin.Context) {
 		Organizations:                organizations,
 		AIWorkbenchAvailable:         h.aiWorkbenchAvailable,
 		AIWorkbenchPlanningReadiness: planningReadiness,
+		AIWorkbenchTitleReadiness:    titleReadiness,
 	})
 }
 
@@ -189,6 +209,7 @@ type contextResponse struct {
 	Organizations                []organizationResponse `json:"organizations"`
 	AIWorkbenchAvailable         bool                   `json:"aiWorkbenchAvailable,omitempty"`
 	AIWorkbenchPlanningReadiness string                 `json:"aiWorkbenchPlanningReadiness,omitempty"`
+	AIWorkbenchTitleReadiness    string                 `json:"aiWorkbenchTitleReadiness,omitempty"`
 }
 
 type userResponse struct {

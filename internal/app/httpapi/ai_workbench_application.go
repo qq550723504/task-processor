@@ -189,7 +189,7 @@ func (p *workbenchPlanner) Admission(ctx context.Context, scope aiworkbench.Scop
 func (p *workbenchPlanner) Decide(ctx context.Context, command aiworkbench.PlanningCommand, history []aiworkbench.Message) (aiworkbench.PlanTerminal, error) {
 	var profile aicapability.ModelProfile
 	if ctx == nil || json.Unmarshal(command.ModelProfile, &profile) != nil || profile.Validate() != nil || !time.Now().Before(command.Deadline) {
-		return aiworkbench.PlanTerminal{}, aiworkbench.ErrUnavailable
+		return aiworkbench.PlanTerminal{}, governed.ErrNotDispatched
 	}
 	if p.agent == nil || p.agent.selectTitleProfile == nil {
 		return aiworkbench.PlanTerminal{}, governed.ErrNotDispatched
@@ -203,7 +203,7 @@ func (p *workbenchPlanner) Decide(ctx context.Context, command aiworkbench.Plann
 		TemplateID: selected.TemplateID, TemplateRevision: selected.TemplateRevision, KnowledgeBaseID: selected.KnowledgeBaseID,
 		History: history, Profile: profile})
 	if err != nil || prepared.Quote.InputHash != command.InputHash {
-		return aiworkbench.PlanTerminal{}, aiworkbench.ErrUnavailable
+		return aiworkbench.PlanTerminal{}, governed.ErrNotDispatched
 	}
 	callCtx, cancel := context.WithDeadline(ctx, command.Deadline)
 	defer cancel()
@@ -268,10 +268,17 @@ func (p *workbenchPlanner) buildProposal(ctx context.Context, c aiworkbench.Plan
 func (p *workbenchPlanner) FailureState(ctx context.Context, c aiworkbench.PlanningCommand, callErr error) aiworkbench.PlanningState {
 	fact, err := p.agent.config.Ledger.ReadModelInvocation(ctx, c.Scope.OrganizationID, c.PlannerInvocationID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return aiworkbench.PlanningFailedBeforeDispatch
+		if errors.Is(callErr, governed.ErrNotDispatched) && !errors.Is(callErr, governed.ErrOutcomeUnknown) {
+			return aiworkbench.PlanningFailedBeforeDispatch
+		}
+		return aiworkbench.PlanningUnknown
 	}
-	if err == nil && fact.Operation == aicapability.OperationAIWorkbenchChatPlan && fact.Outcome == aicapability.InvocationFailed &&
-		fact.UsageKnown && fact.TotalTokens == 0 {
+	if errors.Is(callErr, governed.ErrNoDispatchReleased) && err == nil &&
+		fact.InvocationID == c.PlannerInvocationID && fact.TenantID == c.Scope.OrganizationID &&
+		fact.UserID == c.Scope.ActorID && fact.MemberID == c.MemberID && fact.InputHash == c.InputHash &&
+		fact.Operation == aicapability.OperationAIWorkbenchChatPlan && fact.Outcome == aicapability.InvocationFailed &&
+		fact.UsageKnown && fact.EstimatedCostKnown && fact.PromptTokens == 0 && fact.CompletionTokens == 0 && fact.TotalTokens == 0 &&
+		(fact.ErrorCode == "reservation_failed_before_dispatch" || fact.ErrorCode == "rejected_before_dispatch") {
 		return aiworkbench.PlanningFailedBeforeDispatch
 	}
 	if errors.Is(callErr, governed.ErrObservedInvalidSettled) && err == nil &&

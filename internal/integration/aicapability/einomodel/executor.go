@@ -180,7 +180,7 @@ func (e *Executor) GenerateWithGate(ctx context.Context, input aicapability.Text
 		if e.terminal(ctx, record) != nil {
 			return TextOutput{}, ErrOutcomeUnknown
 		}
-		return TextOutput{}, ErrNotDispatched
+		return TextOutput{}, errors.Join(ErrNotDispatched, ErrNoDispatchReleased)
 	}
 	var output TextOutput
 	var generationErr error
@@ -199,7 +199,7 @@ func (e *Executor) GenerateWithGate(ctx context.Context, input aicapability.Text
 		if e.terminal(ctx, record) != nil {
 			return TextOutput{}, ErrOutcomeUnknown
 		}
-		return TextOutput{}, ErrNotDispatched
+		return TextOutput{}, errors.Join(ErrNotDispatched, ErrNoDispatchReleased)
 	}
 	if !output.Usage.Known || output.Usage.PromptTokens > int(record.MaximumPromptTokens) ||
 		output.Usage.CompletionTokens > int(p.MaximumCompletionTokens) ||

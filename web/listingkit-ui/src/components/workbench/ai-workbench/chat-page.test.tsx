@@ -8,7 +8,7 @@ import { ChatPage } from "./chat-page";
 const fixture = vi.hoisted(() => ({
   request: vi.fn(), push: vi.fn(), search: new URLSearchParams(),
   context: { user: { id: "user-a" }, effectiveOrganization: { id: "org-a", capabilities: { "workbench.chat.use": true } }, roles: ["listingkit_operator"],
-    aiWorkbenchAvailable: true, aiWorkbenchPlanningReadiness: "AVAILABLE", isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null },
+    aiWorkbenchAvailable: true, aiWorkbenchPlanningReadiness: "AVAILABLE", aiWorkbenchTitleReadiness: "AVAILABLE", isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null },
 }));
 vi.mock("@/lib/api/ai-workbench", async original => ({ ...await original<typeof import("@/lib/api/ai-workbench")>(), requestAIWorkbench: fixture.request }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => fixture.context }));
@@ -28,6 +28,7 @@ beforeEach(() => {
   fixture.context.isSwitching = false;
   fixture.context.aiWorkbenchAvailable = true;
   fixture.context.aiWorkbenchPlanningReadiness = "AVAILABLE";
+  fixture.context.aiWorkbenchTitleReadiness = "AVAILABLE";
   fixture.request.mockReset(); fixture.push.mockReset(); sessionStorage.clear();
   fixture.request.mockImplementation(async ({ route }) => {
     if (route === "conversation-read") return { conversation, messages: [], proposals: [], before: "" };
@@ -129,7 +130,7 @@ it("retains the newest message and proposal while loading older messages", async
   const newest = { ID: operationId, ConversationID: conversationId, Sequence: 102, Author: "USER", Content: "最新需求", CreatedAt: "2026-10-03T00:00:00Z" };
   const oldest = { ...newest, ID: "11111111-1111-4111-8111-111111111112", Sequence: 1, Content: "最早需求" };
   const proposal = { id: "d5d9d1ca-1db3-43af-9649-dcdf3663745b", digest: "a".repeat(64), sourceSequence: 102,
-    goalSummary: "最新标题方案", productKey: "product", targetPlatform: "shein", humanReviewRequired: true, detailsAvailable: true };
+    goalSummary: "最新标题方案", productKey: "product", targetPlatform: "shein", humanReviewRequired: true, detailsAvailable: true, titleProfileReady: true };
   fixture.request.mockImplementation(async ({ route, path }) => {
     if (route !== "conversation-read") throw new AIWorkbenchError("INVALID_REQUEST");
     return path.includes("before=53") ? { conversation, messages: [oldest], proposals: [proposal], before: "" }
@@ -142,14 +143,44 @@ it("retains the newest message and proposal while loading older messages", async
   expect(await screen.findByText("最早需求")).toBeVisible();
   expect(screen.getByText("最新需求")).toBeVisible();
   expect(screen.getByText("最新标题方案")).toBeVisible();
-  expect(screen.getByRole("button", { name: "确认并创建任务" })).toBeEnabled();
+  expect(await screen.findByRole("button", { name: "确认并创建任务" })).toBeEnabled();
+});
+
+it("gates an existing proposal on title readiness independently of planning readiness", async () => {
+  fixture.context.aiWorkbenchPlanningReadiness = "NEEDS_CONFIGURATION";
+  fixture.context.aiWorkbenchTitleReadiness = "NEEDS_CONFIGURATION";
+  const user = { ID: operationId, ConversationID: conversationId, Sequence: 1, Author: "USER", Content: "已有需求", CreatedAt: "2026-10-03T00:00:00Z" };
+  const proposal = { id: "d5d9d1ca-1db3-43af-9649-dcdf3663745b", digest: "a".repeat(64), sourceSequence: 1,
+    goalSummary: "已准备的方案", productKey: "product", targetPlatform: "shein", humanReviewRequired: true, detailsAvailable: true, titleProfileReady: true };
+  fixture.request.mockImplementation(async ({ route }) => route === "conversation-read"
+    ? { conversation, messages: [user], proposals: [proposal], before: "" }
+    : Promise.reject(new AIWorkbenchError("INVALID_REQUEST")));
+  const view = render(tree());
+  expect(await screen.findByRole("button", { name: "确认并创建任务" })).toBeDisabled();
+  expect(screen.getByText(/标题执行模型需要配置/)).toBeVisible();
+  fixture.context.aiWorkbenchTitleReadiness = "AVAILABLE";
+  view.rerender(tree());
+  expect(await screen.findByRole("button", { name: "确认并创建任务" })).toBeEnabled();
+  expect(screen.queryByRole("button", { name: "发送消息" })).toBeNull();
+});
+
+it("disables confirmation when the proposal's frozen title profile no longer matches the ready route", async () => {
+  const proposal = { id: "d5d9d1ca-1db3-43af-9649-dcdf3663745b", digest: "a".repeat(64), sourceSequence: 1,
+    goalSummary: "旧模型方案", productKey: "product", targetPlatform: "shein", humanReviewRequired: true,
+    detailsAvailable: true, titleProfileReady: false };
+  fixture.request.mockImplementation(async ({ route }) => route === "conversation-read"
+    ? { conversation, messages: [{ ID: operationId, ConversationID: conversationId, Sequence: 1, Author: "USER", Content: "需求", CreatedAt: "2026-10-03T00:00:00Z" }], proposals: [proposal], before: "" }
+    : Promise.reject(new AIWorkbenchError("INVALID_REQUEST")));
+  render(tree());
+  expect(await screen.findByRole("button", { name: "确认并创建任务" })).toBeDisabled();
+  expect(screen.getByText(/提案的标题模型配置已变化/)).toBeVisible();
 });
 
 it("shows chat history without mutation controls when the current organization lacks chat use", async () => {
   fixture.context.roles = ["listingkit_viewer"];
   fixture.context.effectiveOrganization = { id: "org-a", capabilities: { "workbench.chat.use": false } };
   const proposal = { id: "d5d9d1ca-1db3-43af-9649-dcdf3663745b", digest: "a".repeat(64), sourceSequence: 1,
-    goalSummary: "只读方案", productKey: "product", targetPlatform: "shein", humanReviewRequired: true, detailsAvailable: true };
+    goalSummary: "只读方案", productKey: "product", targetPlatform: "shein", humanReviewRequired: true, detailsAvailable: true, titleProfileReady: true };
   fixture.request.mockImplementation(async ({ route }) => route === "conversation-read" ? { conversation,
     messages: [{ ID: operationId, ConversationID: conversationId, Sequence: 1, Author: "USER", Content: "已有内容", CreatedAt: "2026-10-03T00:00:00Z" }],
     proposals: [proposal], before: "" } : Promise.reject(new AIWorkbenchError("FORBIDDEN")));
@@ -276,7 +307,7 @@ it("reuses the confirmation key after a lost response and links to the committed
   const proposalId = "d5d9d1ca-1db3-43af-9649-dcdf3663745b";
   const taskId = "5892474d-1c8a-47e4-9550-45ed946e8197";
   const proposal = { id: proposalId, digest: "a".repeat(64), sourceSequence: 1, goalSummary: "优化标题", productKey: "product",
-    targetPlatform: "shein", humanReviewRequired: true, detailsAvailable: true };
+    targetPlatform: "shein", humanReviewRequired: true, detailsAvailable: true, titleProfileReady: true };
   let confirmCalls = 0;
   fixture.request.mockImplementation(async ({ route }) => {
     if (route === "conversation-read") return { conversation, messages: [{ ID: operationId, ConversationID: conversationId, Sequence: 1,

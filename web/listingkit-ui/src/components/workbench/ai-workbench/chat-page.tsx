@@ -37,19 +37,20 @@ export function ChatPage({ mode, conversationId }: { mode: ChatMode | "detail"; 
     ? { userId: context.user.id, organizationId: context.effectiveOrganization.id } : null;
   const canUse = context.effectiveOrganization?.capabilities?.["workbench.chat.use"] === true;
   const planningReadiness = context.aiWorkbenchPlanningReadiness;
+  const titleReadiness = context.aiWorkbenchTitleReadiness;
   const canPlan = canUse && planningReadiness === "AVAILABLE";
-  const authorizationKey = `${context.roles.join(",")}:${canUse}:${planningReadiness}`;
+  const authorizationKey = `${context.roles.join(",")}:${canUse}:${planningReadiness}:${titleReadiness}`;
   const title = mode === "home" ? "硕米Chat" : mode === "new" ? "新建会话" : mode === "recent" ? "最近会话" : mode === "saved" ? "收藏会话" : mode === "archived" ? "归档会话" : "业务会话";
   return <ConsolePage className="console-chat" title={title} breadcrumbs={route?.trail}
     description="围绕已保存商品讨论标题建议；方案需要确认后才会执行，结果仍须人工审核应用。">
     {!scope ? <ConsoleState kind={context.isSwitching || context.isLoading ? "loading" : "unavailable"} title="企业上下文不可用">请先选择可访问的企业并登录。</ConsoleState> :
       !context.aiWorkbenchAvailable ? <ConsoleState kind="unavailable" title="暂未启用">当前应用未启用硕米 Chat 与业务任务。</ConsoleState> :
-      <ScopedChat key={`${scope.userId}:${scope.organizationId}:${authorizationKey}`} scope={scope} authorizationKey={authorizationKey} canUse={canUse} canPlan={canPlan} planningReadiness={planningReadiness} mode={mode} conversationId={conversationId} />}
+      <ScopedChat key={`${scope.userId}:${scope.organizationId}:${authorizationKey}`} scope={scope} authorizationKey={authorizationKey} canUse={canUse} canPlan={canPlan} planningReadiness={planningReadiness} titleReadiness={titleReadiness} mode={mode} conversationId={conversationId} />}
   </ConsolePage>;
 }
 
-function ScopedChat({ scope, authorizationKey, canUse, canPlan, planningReadiness, mode, conversationId }: { scope: AIScope; authorizationKey: string; canUse: boolean; canPlan: boolean; planningReadiness: "AVAILABLE" | "NEEDS_CONFIGURATION" | "UNAVAILABLE"; mode: ChatMode | "detail"; conversationId?: string }) {
-  if (mode === "detail" && conversationId) return <ConversationDetail scope={scope} authorizationKey={authorizationKey} canUse={canUse} canPlan={canPlan} planningReadiness={planningReadiness} id={conversationId} />;
+function ScopedChat({ scope, authorizationKey, canUse, canPlan, planningReadiness, titleReadiness, mode, conversationId }: { scope: AIScope; authorizationKey: string; canUse: boolean; canPlan: boolean; planningReadiness: "AVAILABLE" | "NEEDS_CONFIGURATION" | "UNAVAILABLE"; titleReadiness: "AVAILABLE" | "NEEDS_CONFIGURATION" | "UNAVAILABLE"; mode: ChatMode | "detail"; conversationId?: string }) {
+  if (mode === "detail" && conversationId) return <ConversationDetail scope={scope} authorizationKey={authorizationKey} canUse={canUse} canPlan={canPlan} planningReadiness={planningReadiness} titleReadiness={titleReadiness} id={conversationId} />;
   return <ChatCollection scope={scope} authorizationKey={authorizationKey} canUse={canUse} canPlan={canPlan} planningReadiness={planningReadiness} mode={mode === "detail" ? "home" : mode} />;
 }
 
@@ -126,7 +127,7 @@ function ConversationLink({ item }: { item: AIConversation }) {
   </Link>;
 }
 
-function ConversationDetail({ scope, authorizationKey, canUse, canPlan, planningReadiness, id }: { scope: AIScope; authorizationKey: string; canUse: boolean; canPlan: boolean; planningReadiness: "AVAILABLE" | "NEEDS_CONFIGURATION" | "UNAVAILABLE"; id: string }) {
+function ConversationDetail({ scope, authorizationKey, canUse, canPlan, planningReadiness, titleReadiness, id }: { scope: AIScope; authorizationKey: string; canUse: boolean; canPlan: boolean; planningReadiness: "AVAILABLE" | "NEEDS_CONFIGURATION" | "UNAVAILABLE"; titleReadiness: "AVAILABLE" | "NEEDS_CONFIGURATION" | "UNAVAILABLE"; id: string }) {
   const router = useRouter();
   const search = useSearchParams();
   const [operationId, setOperationId] = useState(search.get("operationId") ?? "");
@@ -250,7 +251,7 @@ function ConversationDetail({ scope, authorizationKey, canUse, canPlan, planning
     <div className={styles.messages} aria-label="会话消息">{messages.length ? messages.map(item => <Card key={item.ID} className={item.Author === "USER" ? styles.userMessage : styles.assistantMessage}>
       <small>{item.Author === "USER" ? "我" : "硕米"} · {new Date(item.CreatedAt).toLocaleString("zh-CN")}</small><p>{item.Content}</p></Card>) : <ConsoleState kind="empty" title="开始讨论">先选定已有商品，再描述标题优化目标。</ConsoleState>}
       {detail.hasNextPage ? <Button variant="outline" disabled={detail.isFetchingNextPage} onClick={() => void detail.fetchNextPage()}>{detail.isFetchingNextPage ? "正在加载…" : "加载更早消息"}</Button> : null}</div>
-    {activeProposal ? <ProposalCard proposal={activeProposal} scope={scope} canUse={canUse} disabled={pending || current.Archived}
+    {activeProposal ? <ProposalCard proposal={activeProposal} scope={scope} canUse={canUse} titleReadiness={titleReadiness} disabled={pending || current.Archived}
       confirmedTaskId={confirmReceipts[activeProposal.id]?.taskId} onConfirm={() => void confirm(activeProposal)} /> : null}
     {error ? <ConsoleState kind="error" title="操作状态">{error} <Button variant="outline" onClick={() => void detail.refetch()}>刷新收据</Button></ConsoleState> : null}
     {!current.Archived && canUse && (canPlan || pendingMessage) ? <Card className={styles.composer}><h2>讨论标题建议</h2><p>只针对已保存的采集商品生成标题建议。确认提案后才会启动 Product Agent。</p>
@@ -267,14 +268,16 @@ function ConversationDetail({ scope, authorizationKey, canUse, canPlan, planning
   </div>;
 }
 
-function ProposalCard({ proposal, scope, canUse, disabled, confirmedTaskId, onConfirm }: { proposal: AIProposal; scope: AIScope; canUse: boolean; disabled: boolean; confirmedTaskId?: string; onConfirm: () => void }) {
+function ProposalCard({ proposal, scope, canUse, titleReadiness, disabled, confirmedTaskId, onConfirm }: { proposal: AIProposal; scope: AIScope; canUse: boolean; titleReadiness: "AVAILABLE" | "NEEDS_CONFIGURATION" | "UNAVAILABLE"; disabled: boolean; confirmedTaskId?: string; onConfirm: () => void }) {
   return <Card className={styles.proposal}><div className={styles.proposalHead}><span>待确认的执行方案</span><strong>仅生成标题建议</strong></div>
     <p>{proposal.goalSummary}</p><dl><dt>企业</dt><dd>{scope.organizationId}</dd><dt>商品</dt><dd>{proposal.detailsAvailable ? proposal.productKey : "当前无权查看"}</dd>
       <dt>目标平台</dt><dd>{proposal.targetPlatform ?? "不可用"}</dd><dt>模板</dt><dd>{proposal.templateId ? `${proposal.templateId} · 修订 ${proposal.templateRevision}` : "未选择"}</dd>
       <dt>知识库</dt><dd>{proposal.knowledgeBaseId || "未选择"}</dd><dt>执行模型</dt><dd>{proposal.providerId && proposal.modelId ? `${proposal.providerId} / ${proposal.modelId}` : "不可用"}</dd>
       <dt>最大额度</dt><dd>{proposal.maximumTokens !== undefined ? `${proposal.maximumTokens} tokens` : "不可用"}{proposal.maximumCostMicros !== undefined ? ` · ${proposal.maximumCostMicros} μ${proposal.currency ?? ""}` : ""}</dd>
       <dt>结果处理</dt><dd>必须人工审核，再由授权人员应用</dd></dl>
+    {!confirmedTaskId && canUse && proposal.detailsAvailable && titleReadiness !== "AVAILABLE" ? <p>标题执行模型需要配置；当前方案暂不能确认。</p> : null}
+    {!confirmedTaskId && canUse && proposal.detailsAvailable && titleReadiness === "AVAILABLE" && !proposal.titleProfileReady ? <p>提案的标题模型配置已变化，请重新提出方案。</p> : null}
     {confirmedTaskId ? <Button asChild><Link href={`/workbench/ai/tasks/${confirmedTaskId}`} prefetch={false}>查看已确认任务</Link></Button> :
-      canUse ? <Button disabled={disabled || !proposal.detailsAvailable} onClick={onConfirm}>确认并创建任务</Button> : null}
+      canUse ? <Button disabled={disabled || !proposal.detailsAvailable || titleReadiness !== "AVAILABLE" || !proposal.titleProfileReady} onClick={onConfirm}>确认并创建任务</Button> : null}
   </Card>;
 }

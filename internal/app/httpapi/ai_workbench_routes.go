@@ -52,9 +52,7 @@ func (m aiWorkbenchModule) PlanningReadiness(ctx context.Context, organizationID
 	planning := m.application.plan.routes.Readiness(ctx, aicapability.TextInputIdentity{
 		OrganizationID: organizationID, Operation: aicapability.OperationAIWorkbenchChatPlan,
 	})
-	title := m.application.agent.titleRoutes.Readiness(ctx, aicapability.TextInputIdentity{
-		OrganizationID: organizationID, Operation: aicapability.OperationProductAgentDecision,
-	})
+	title := governed.RouteReadiness(m.TitleReadiness(ctx, organizationID))
 	if planning == governed.RouteUnavailable || title == governed.RouteUnavailable {
 		return string(governed.RouteUnavailable)
 	}
@@ -62,6 +60,17 @@ func (m aiWorkbenchModule) PlanningReadiness(ctx context.Context, organizationID
 		return string(governed.RouteAvailable)
 	}
 	return string(governed.RouteNeedsConfiguration)
+}
+
+// TitleReadiness is the current execution route projection for an existing
+// proposal. It is independent of whether a new Chat plan may be started.
+func (m aiWorkbenchModule) TitleReadiness(ctx context.Context, organizationID string) string {
+	if m.application == nil || m.application.agent == nil || m.application.agent.titleRoutes == nil {
+		return string(governed.RouteUnavailable)
+	}
+	return string(m.application.agent.titleRoutes.Readiness(ctx, aicapability.TextInputIdentity{
+		OrganizationID: organizationID, Operation: aicapability.OperationProductAgentDecision,
+	}))
 }
 
 func WithAIWorkbench(deps AIWorkbenchDependencies) CurrentApplicationOption {
@@ -200,6 +209,7 @@ type workbenchProposalCard struct {
 	Currency            string `json:"currency,omitempty"`
 	HumanReviewRequired bool   `json:"humanReviewRequired"`
 	DetailsAvailable    bool   `json:"detailsAvailable"`
+	TitleProfileReady   bool   `json:"titleProfileReady"`
 }
 
 func (a *aiWorkbenchApplication) proposalCard(ctx context.Context, p aiworkbench.ExecutionProposal) workbenchProposalCard {
@@ -222,6 +232,10 @@ func (a *aiWorkbenchApplication) proposalCard(ctx context.Context, p aiworkbench
 		card.ProviderID, card.ModelID, card.Currency = profile.ProviderID, profile.ModelID, profile.Currency
 		card.MaximumTokens = profile.MaximumPromptTokens + profile.MaximumCompletionTokens
 		card.MaximumCostMicros = cost
+		if a.agent.selectTitleProfile != nil && i.TenantID == p.Scope.OrganizationID && i.UserID == p.Scope.ActorID {
+			current, currentErr := a.agent.selectTitleProfile(ctx, p.Scope.OrganizationID)
+			card.TitleProfileReady = currentErr == nil && current.Validate() == nil && current == profile
+		}
 	}
 	return card
 }

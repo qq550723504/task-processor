@@ -372,6 +372,12 @@ T0 transaction:
      unresolved dispatch after bounded deadline/grace => PLANNER_UNKNOWN
 ```
 
+For a claimed invocation, a known-zero AI ledger terminal fact alone does not prove that
+ResourceAIPoint released the reservation. `FAILED_BEFORE_DISPATCH` requires the current
+executor call's successful terminal-and-release result plus the matching scoped no-send fact.
+If release fails after the ledger write, keep the command pending/unknown and never send the
+same invocation again. A rejection before any AI claim is independently no-dispatch.
+
 `PLANNER_INVALID_OUTPUT` is the narrow #588 implementation clarification for a gap in the
 original command-state list: the existing AI invocation owner has durably recorded
 `observed_usage_failed` with structured-output-invalid category and known usage. That ledger
@@ -546,6 +552,10 @@ Capability projection must consume the same per-capability organization policy a
 readiness check as the executor, preserving #580's `UNAVAILABLE` versus
 `NEEDS_CONFIGURATION` distinction. A route merely resolving is not proof of admission. This
 read-only projection neither probes balances/provider health nor grants execution permission.
+The current-organization context projects title execution readiness separately from new-plan
+readiness. An existing READY proposal's read card also compares its frozen execution profile
+with the currently admitted title profile. These hints disable a stale confirmation control;
+the existing owner preflight remains authoritative at confirmation time.
 
 Existing-owner extensions remain bounded:
 
@@ -1280,6 +1290,9 @@ Before a READY proposal can be confirmed, display real current facts:
 - Human Review required before Apply.
 
 Assistant prose is never treated as the execution contract. The typed proposal card is.
+An existing proposal remains readable when planning is unavailable. Its confirmation control
+requires the current title route to be ready and its frozen execution profile to match that
+route; new-plan readiness alone does not decide whether confirmation is offered.
 
 Task detail displays:
 
