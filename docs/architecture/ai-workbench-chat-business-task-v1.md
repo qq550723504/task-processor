@@ -233,7 +233,9 @@ including direct, PUBLIC and column-level grants. A later grant must fail the se
 check even if the runtime role still has no memberships.
 The initializer and serving startup also check the same bounded in-schema permissions, including
 schema CREATE, table DELETE/TRUNCATE/TRIGGER/REFERENCES and UPDATE outside the specified mutable
-columns; a later grant cannot silently expand the runtime login.
+columns; a later grant cannot silently expand the runtime login. Startup also requires schema
+USAGE, the explicitly granted SELECT/INSERT tables and the intended mutable UPDATE columns, so
+a later revoke cannot advertise an unusable Workbench.
 
 Reasons:
 

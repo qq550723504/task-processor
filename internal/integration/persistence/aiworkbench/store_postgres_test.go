@@ -241,6 +241,20 @@ func TestWorkbenchRuntimeRoleRejectsLaterInSchemaPrivilegeDrift(t *testing.T) {
 		require.NoError(t, db.Exec("GRANT "+tc.grant+" TO "+role).Error)
 		require.ErrorIs(t, verify(), aiworkbench.ErrUnavailable, "unsafe runtime grant: %s", tc.grant)
 		require.NoError(t, db.Exec("REVOKE "+tc.revoke+" FROM "+role).Error)
+		if tc.grant == "UPDATE ON ai_workbench.conversations" {
+			require.NoError(t, GrantRuntime(db, role), "REVOKE UPDATE also removes column grants in this fixture")
+		}
+		require.NoError(t, verify(), "restored after %s", tc.grant)
+	}
+	for _, tc := range []struct{ privilege string }{
+		{"USAGE ON SCHEMA ai_workbench"},
+		{"INSERT ON ai_workbench.messages"},
+		{"SELECT ON ai_workbench.business_tasks"},
+		{"UPDATE (state) ON ai_workbench.commands"},
+	} {
+		require.NoError(t, db.Exec("REVOKE "+tc.privilege+" FROM "+role).Error)
+		require.ErrorIs(t, verify(), aiworkbench.ErrUnavailable, "missing runtime grant: %s", tc.privilege)
+		require.NoError(t, db.Exec("GRANT "+tc.privilege+" TO "+role).Error)
 		require.NoError(t, verify())
 	}
 }

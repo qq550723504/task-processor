@@ -2,6 +2,7 @@ package aiworkbenchpersistence
 
 import (
 	"regexp"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -60,8 +61,17 @@ func validateBoundedWorkbenchPrivileges(db *gorm.DB, role string) error {
 	if err := db.Raw("SELECT has_schema_privilege(?,'ai_workbench','CREATE')", role).Scan(&unsafe).Error; err != nil || unsafe {
 		return aiworkbench.ErrInvalid
 	}
+	var required bool
+	if err := db.Raw("SELECT has_schema_privilege(?,'ai_workbench','USAGE')", role).Scan(&required).Error; err != nil || !required {
+		return aiworkbench.ErrInvalid
+	}
 	for _, table := range []string{"conversations", "metadata_audit", "messages", "commands", "execution_proposals", "business_tasks", "task_action_receipts"} {
 		name := "ai_workbench." + table
+		for _, privilege := range []string{"SELECT", "INSERT"} {
+			if err := db.Raw("SELECT has_table_privilege(?,?,?)", role, name, privilege).Scan(&required).Error; err != nil || !required {
+				return aiworkbench.ErrInvalid
+			}
+		}
 		if err := db.Raw("SELECT has_table_privilege(?,?,'DELETE,TRUNCATE,REFERENCES,TRIGGER')", role, name).Scan(&unsafe).Error; err != nil || unsafe {
 			return aiworkbench.ErrInvalid
 		}
@@ -71,14 +81,20 @@ func validateBoundedWorkbenchPrivileges(db *gorm.DB, role string) error {
 			}
 		}
 	}
-	for table, allowed := range map[string]string{
-		"conversations":        "'title','favorite','lifecycle','metadata_revision','next_sequence','updated_at'",
-		"commands":             "'state','assistant_message_id','proposal_id','terminal_digest','mode','committed_at'",
-		"task_action_receipts": "'state','error_code','finished_at'",
+	for table, columns := range map[string][]string{
+		"conversations":        {"title", "favorite", "lifecycle", "metadata_revision", "next_sequence", "updated_at"},
+		"commands":             {"state", "assistant_message_id", "proposal_id", "terminal_digest", "mode", "committed_at"},
+		"task_action_receipts": {"state", "error_code", "finished_at"},
 	} {
+		allowed := "'" + strings.Join(columns, "','") + "'"
 		query := `SELECT EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='ai_workbench.` + table + `'::regclass AND attnum>0 AND NOT attisdropped AND attname NOT IN (` + allowed + `) AND has_column_privilege(?,attrelid,attname,'UPDATE'))`
 		if err := db.Raw(query, role).Scan(&unsafe).Error; err != nil || unsafe {
 			return aiworkbench.ErrInvalid
+		}
+		for _, column := range columns {
+			if err := db.Raw("SELECT has_column_privilege(?,?,?,'UPDATE')", role, "ai_workbench."+table, column).Scan(&required).Error; err != nil || !required {
+				return aiworkbench.ErrInvalid
+			}
 		}
 	}
 	return nil

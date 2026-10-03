@@ -344,47 +344,54 @@ func (x workbenchExecution) Prepare(ctx context.Context, p aiworkbench.Execution
 }
 
 func (x workbenchExecution) Start(ctx context.Context, task aiworkbench.BusinessTask) error {
+	_, err := x.startTask(ctx, task)
+	return err
+}
+
+// startTask reports whether the Agent owner mutation may have begun. A known
+// pre-owner failure must leave the HTTP action receipt retryable with a new key.
+func (x workbenchExecution) startTask(ctx context.Context, task aiworkbench.BusinessTask) (bool, error) {
 	a := x.agent
 	i, err := a.freshIdentity(ctx)
 	if err != nil || task.Scope != (aiworkbench.Scope{OrganizationID: i.TenantID, ActorID: i.UserID}) {
-		return review.ErrForbidden
+		return false, review.ErrForbidden
 	}
 	var request agent.Request
 	if json.Unmarshal(task.ExecutionRequest, &request) != nil || request.Key != task.ExecutionRequestKey ||
 		request.GoalSummary != task.GoalSummary ||
 		request.ConfigurationSnapshotRef != task.ConfigurationSnapshotRef || request.ContextSnapshotRef != task.ContextSnapshotRef {
-		return aiworkbench.ErrUnavailable
+		return false, aiworkbench.ErrUnavailable
 	}
 	scope := agent.Scope{OrganizationID: i.TenantID, ActorID: i.UserID}
 	current, found, err := a.store.Lookup(ctx, scope, request.Binding, request.Key)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if found {
 		if current.State.Request != request {
-			return agent.ErrConflict
+			return false, agent.ErrConflict
 		}
 		if current.State.Phase == agent.Running && time.Now().After(current.State.Deadline.Add(30*time.Second)) {
 			_, err = a.store.FinalizeExpiredRunning(ctx, scope, request.Binding, request.Key, current.State.Revision, time.Now())
-			return err
+			return true, err
 		}
-		return nil
+		return false, nil
 	}
 	binding, err := a.binding(ctx, task.OperationID, task.TargetPlatform)
 	if err != nil || binding != request.Binding {
-		return aiworkbench.ErrRevisionMismatch
+		return false, aiworkbench.ErrRevisionMismatch
 	}
 	if !a.frozenTitleProfileReady(ctx, scope, request) {
-		return aiworkbench.ErrUnavailable
+		return false, aiworkbench.ErrUnavailable
 	}
 	if !request.ContextSnapshotRef.Absent() {
 		ctx, err = knowledgeRequestContext(ctx)
 		if err != nil {
-			return err
+			return false, err
 		}
 	}
 	_, err = a.runtime.Start(ctx, request)
-	return err
+	return true, err
 }
 
 var _ aiworkbench.PlanningPort = (*workbenchPlanner)(nil)

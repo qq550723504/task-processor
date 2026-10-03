@@ -644,9 +644,13 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, code, string(raw))
 	require.Contains(t, string(raw), `"canStart":false`)
-	code, raw, err = acquisitionHTTPRequest(readyServer, "POST", pendingPath+"/start", "operator", "B", uuid.NewString(), "")
-	require.NoError(t, err)
-	require.NotEqual(t, 200, code, string(raw))
+	disabledStartKey := uuid.NewString()
+	for attempt := 0; attempt < 2; attempt++ {
+		code, raw, err = acquisitionHTTPRequest(readyServer, "POST", pendingPath+"/start", "operator", "B", disabledStartKey, "")
+		require.NoError(t, err)
+		require.Equal(t, 503, code, string(raw))
+		require.JSONEq(t, `{"code":"DEPENDENCY_UNAVAILABLE"}`, string(raw), "known pre-owner failure must not become unknown")
+	}
 	var pendingRequest agent.Request
 	require.NoError(t, json.Unmarshal(pendingTask.ExecutionRequest, &pendingRequest))
 	_, foundPendingRun, err := agentModule.(productAgentModule).application.store.Lookup(context.Background(),

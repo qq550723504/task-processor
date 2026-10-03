@@ -297,8 +297,7 @@ func (a *aiWorkbenchApplication) taskAction(c *gin.Context, ctx context.Context,
 func (a *aiWorkbenchApplication) performTaskAction(ctx context.Context, scope aiworkbench.Scope,
 	task aiworkbench.BusinessTask, input aiworkbench.TaskActionInput) (crossedOwner bool, err error) {
 	if input.Action == aiworkbench.TaskActionStart {
-		err := (workbenchExecution{agent: a.agent}).Start(ctx, task)
-		return !errors.Is(err, aiworkbench.ErrRevisionMismatch), err
+		return (workbenchExecution{agent: a.agent}).startTask(ctx, task)
 	}
 	var request agent.Request
 	if json.Unmarshal(task.ExecutionRequest, &request) != nil || request.Key != task.ExecutionRequestKey {
