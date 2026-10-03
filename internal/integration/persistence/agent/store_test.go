@@ -121,6 +121,27 @@ func TestAgentStoreConcurrentStartAndResume(t *testing.T) {
 	require.EqualValues(t, 1, winners.Load())
 }
 
+func TestExpiredInterruptedRunDoesNotBecomeRunningOnResumeClaim(t *testing.T) {
+	_, s := storeFixture(t)
+	ctx := context.Background()
+	initial := initialRecord()
+	initial.State.StartedAt = time.Now().UTC().Add(-2 * time.Minute).Truncate(time.Microsecond)
+	initial.State.Deadline = initial.State.StartedAt.Add(time.Minute)
+	run, acquired, err := s.Claim(ctx, initial, 0)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	run.State.Phase = agent.Interrupted
+	run.Checkpoint = []byte("opaque-eino-checkpoint")
+	interrupted, err := s.Commit(ctx, run, run.State.Revision)
+	require.NoError(t, err)
+	_, acquired, err = s.Claim(ctx, initial, interrupted.State.Revision)
+	require.ErrorIs(t, err, agent.ErrConflict)
+	require.False(t, acquired)
+	current, err := s.Read(ctx, interrupted.State.Scope, interrupted.State.Request.Binding.ContextID, interrupted.State.Request.Key)
+	require.NoError(t, err)
+	require.Equal(t, interrupted, current, "expired resume must not consume the checkpoint or change revision")
+}
+
 func TestAgentStoreRestartNeverReexecutesRunningOrTerminal(t *testing.T) {
 	db, s := storeFixture(t)
 	ctx := context.Background()

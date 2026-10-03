@@ -243,7 +243,8 @@ type Record struct {
 // Store is a single run/control/checkpoint authority. Claim must atomically
 // enforce (scope, context kind/ID, key) uniqueness and fingerprint equality.
 // expected=0 starts a run (an existing match is read-only); expected>0 may claim
-// exactly that INTERRUPTED revision. It increments Revision and sets Running.
+// exactly that INTERRUPTED revision while its original deadline is live. It
+// increments Revision and sets Running.
 // Commit atomically CAS-writes state AND opaque checkpoint at claimed Revision.
 // Failed/ambiguous writes must not grant execution; Running has no automatic
 // recovery/retry here. Only an admitted durable adapter can enable HTTP/workers.

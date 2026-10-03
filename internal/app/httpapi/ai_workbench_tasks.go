@@ -98,7 +98,7 @@ func (a *aiWorkbenchApplication) taskView(ctx context.Context, scope aiworkbench
 		view.CanStart = projection.CanStart && view.ProductDetailsAvailable
 		view.CanReconcile = projection.CanReconcile
 		view.CanResume = projection.CanResume && view.ProductDetailsAvailable
-		view.CanReview = projection.CanReview && view.ProductDetailsAvailable
+		view.CanReview = projection.CanReview && view.ProductDetailsAvailable && found && agentRunReviewable(run.State)
 	}
 	if found && view.ProductDetailsAvailable {
 		if snapshot, err := a.agent.configuration.LoadSnapshot(ctx, run.State.Scope, run.State.Request.ConfigurationSnapshotRef); err == nil {

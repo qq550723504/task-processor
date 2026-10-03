@@ -56,15 +56,22 @@ func ProjectTask(task BusinessTask, run *agent.Record, reviewState string, now t
 	case "applied", "rejected":
 		return TaskProjection{State: TaskCompleted, Reason: reviewState}, nil
 	case "pending", "accepted":
-		return TaskProjection{State: TaskWaitingConfirmation, Reason: reviewState, CanReview: reviewState == "pending"}, nil
+		return TaskProjection{State: TaskWaitingConfirmation, Reason: reviewState}, nil
 	case "":
 	default:
 		return TaskProjection{}, ErrUnavailable
 	}
 	switch s.Phase {
 	case agent.HumanReviewRequired:
+		if s.StopReason != "" || s.Validation == nil || !s.Validation.Valid || len(s.Candidate.Changes) != 1 ||
+			!agent.ValidContextCitations(s.Request.ContextSnapshotRef, s.ContextCitationRefs) {
+			return TaskProjection{State: TaskWaitingConfirmation, Reason: "AGENT_RESULT_NOT_REVIEWABLE"}, nil
+		}
 		return TaskProjection{State: TaskWaitingConfirmation, Reason: "HUMAN_REVIEW_REQUIRED", CanReview: true}, nil
 	case agent.Interrupted:
+		if !now.Before(s.Deadline) {
+			return TaskProjection{State: TaskPaused, Reason: "AGENT_INTERRUPTED_DEADLINE_EXPIRED"}, nil
+		}
 		return TaskProjection{State: TaskPaused, Reason: "AGENT_INTERRUPTED", CanResume: true}, nil
 	case agent.Running:
 		if now.After(s.Deadline.Add(30 * time.Second)) {
