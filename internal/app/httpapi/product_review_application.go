@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/httproute"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	reviewstore "task-processor/internal/integration/persistence/product/review"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/enrichment"
 	"task-processor/internal/product/review"
 	"task-processor/internal/product/sourcing"
@@ -55,20 +56,10 @@ func productReviewSchemaReady(db *gorm.DB) bool {
 // isolated current-product database. No default runtime registration, schema
 // migration, historical-data switch or provider fallback.
 func NewProductReviewApplication(db *gorm.DB, verifier zitadelruntime.Verifier, resolver *workbenchcontext.Resolver, auth *authz.ListingKitAuthorizer, generator enrichment.CandidateGenerator) (*http.Server, error) {
-	if db == nil || verifier == nil || resolver == nil || auth == nil {
+	if verifier == nil {
 		return nil, review.ErrUnavailable
 	}
-	if !productReviewSchemaReady(db) {
-		return nil, review.ErrUnavailable
-	}
-	reader, err := catalogstore.NewBoundedSnapshotReader(db, 2<<20)
-	if err != nil {
-		return nil, err
-	}
-	live := &productReviewLiveOrganizationAccess{resolver: resolver, now: time.Now}
-	store, err := reviewstore.NewRepository(db, func(tx *gorm.DB) (review.SourcePublicationReader, error) {
-		return productsourcing.NewTransactionReader(tx)
-	})
+	core, err := buildProductReviewCore(db, resolver, auth)
 	if err != nil {
 		return nil, err
 	}
@@ -76,11 +67,7 @@ func NewProductReviewApplication(db *gorm.DB, verifier zitadelruntime.Verifier, 
 	if err != nil {
 		return nil, err
 	}
-	sourceReader, err := productsourcing.NewInternalProducer(db, live, auth)
-	if err != nil {
-		return nil, err
-	}
-	service, err := review.NewService(reader, sourceReader, store, proposer, auth)
+	service, err := review.NewService(core.reader, core.sourceReader, core.store, proposer, auth)
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +75,33 @@ func NewProductReviewApplication(db *gorm.DB, verifier zitadelruntime.Verifier, 
 	return buildIsolatedApplicationHTTPServer(productReviewRoutes(service, binder.Bind), routeAuthDependencies{
 		workbenchVerifier: verifier, organizationResolver: resolver, authorizer: auth,
 	}, review.Timeout), nil
+}
+
+type productReviewCore struct {
+	reader       catalog.CompleteSnapshotReader
+	sourceReader *sourcing.InternalProducer
+	store        *reviewstore.Repository
+}
+
+func buildProductReviewCore(db *gorm.DB, resolver *workbenchcontext.Resolver, auth *authz.ListingKitAuthorizer) (productReviewCore, error) {
+	if db == nil || resolver == nil || auth == nil || !productReviewSchemaReady(db) {
+		return productReviewCore{}, review.ErrUnavailable
+	}
+	reader, err := catalogstore.NewBoundedSnapshotReader(db, 2<<20)
+	if err != nil {
+		return productReviewCore{}, err
+	}
+	store, err := reviewstore.NewRepository(db, func(tx *gorm.DB) (review.SourcePublicationReader, error) {
+		return productsourcing.NewTransactionReader(tx)
+	})
+	if err != nil {
+		return productReviewCore{}, err
+	}
+	sourceReader, err := productsourcing.NewInternalProducer(db, &productReviewLiveOrganizationAccess{resolver: resolver, now: time.Now}, auth)
+	if err != nil {
+		return productReviewCore{}, err
+	}
+	return productReviewCore{reader: reader, sourceReader: sourceReader, store: store}, nil
 }
 
 type productReviewCapabilityContextKey struct{}
