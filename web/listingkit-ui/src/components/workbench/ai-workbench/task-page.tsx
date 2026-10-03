@@ -57,12 +57,10 @@ function TaskList({ scope, authorizationKey, canUseChat, mode }: { scope: AIScop
     mode === "errors" && (item.state === "ERROR" || item.state === "PAUSED"));
   const searching = mode !== "all" && !tasks.isPending && !tasks.isFetching && !tasks.isError && visible.length === 0 && tasks.hasNextPage;
   const fetchNextPage = tasks.fetchNextPage;
+  const loadedPageCount = tasks.data?.pages.length ?? 0;
   useEffect(() => {
-    if (!searching) return;
-    let active = true;
-    queueMicrotask(() => { if (active) void fetchNextPage(); });
-    return () => { active = false; };
-  }, [searching, fetchNextPage]);
+    if (searching) void fetchNextPage();
+  }, [searching, fetchNextPage, loadedPageCount]);
   function refresh() { setRefreshGeneration(value => value + 1); }
   return <>
     <div className={styles.metrics}>
