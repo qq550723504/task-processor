@@ -255,7 +255,7 @@ func (s *Service) FindAgentTaskReviewState(ctx context.Context, runID string) (s
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
 	if !ok || !ValidKey(identity.UserID) || !ValidKey(identity.EffectiveOrganizationID) ||
 		identity.TenantID != identity.EffectiveOrganizationID || !time.Now().Before(identity.TokenExpiresAt) ||
-		!s.auth.Authorize("", identity.Roles, authz.PermissionWorkbenchTaskRead) {
+		!s.auth.Authorize(identity.UserID, identity.Roles, authz.PermissionWorkbenchTaskRead) {
 		return "", false, ErrForbidden
 	}
 	scope := Scope{Org: identity.EffectiveOrganizationID, Actor: identity.UserID}

@@ -21,6 +21,27 @@ func hasRoleMembership(db *gorm.DB, role string) (bool, error) {
 	return member, err
 }
 
+// Check effective relation privileges, including direct, PUBLIC, and column
+// grants. Membership checks alone cannot detect a standalone cross-owner grant.
+func hasCrossOwnerRelationPrivilege(db *gorm.DB, role string) (bool, error) {
+	var granted bool
+	err := db.Raw(`SELECT EXISTS (
+		SELECT 1 FROM pg_class relation
+		JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+		WHERE namespace.nspname <> 'ai_workbench'
+		  AND namespace.nspname <> 'information_schema'
+		  AND namespace.nspname NOT LIKE 'pg\_%' ESCAPE '\'
+		  AND (
+		    (relation.relkind IN ('r','p','v','m','f') AND (
+		      has_table_privilege(?, relation.oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+		      OR has_any_column_privilege(?, relation.oid, 'SELECT,INSERT,UPDATE,REFERENCES')
+		    ))
+		    OR (relation.relkind = 'S' AND has_sequence_privilege(?, relation.oid, 'USAGE,SELECT,UPDATE'))
+		  )
+	)`, role, role, role).Scan(&granted).Error
+	return granted, err
+}
+
 // GrantRuntime is initializer-only. The caller creates the restricted role
 // separately and uses a privileged, private schema connection for this step.
 func GrantRuntime(db *gorm.DB, role string) error {
@@ -43,6 +64,10 @@ func GrantRuntime(db *gorm.DB, role string) error {
 		return err
 	}
 	if unsafe {
+		return aiworkbench.ErrInvalid
+	}
+	unsafe, err = hasCrossOwnerRelationPrivilege(db, role)
+	if err != nil || unsafe {
 		return aiworkbench.ErrInvalid
 	}
 	if err := db.Raw(`SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname='ai_workbench' AND pg_get_userbyid(nspowner)=?) OR EXISTS(SELECT 1 FROM pg_class WHERE relnamespace='ai_workbench'::regnamespace AND pg_get_userbyid(relowner)=?)`, role, role).Scan(&unsafe).Error; err != nil || unsafe {

@@ -47,6 +47,20 @@ type workbenchTaskView struct {
 	ReviewState             string                `json:"reviewState,omitempty"`
 }
 
+// A Task may execute only with the title route frozen at T1. Route resolution
+// also checks current credential enablement, version, and endpoint identity.
+func (a *productAgentApplication) frozenTitleProfileReady(ctx context.Context, scope agent.Scope, request agent.Request) bool {
+	if a == nil || a.configuration == nil || a.selectTitleProfile == nil || request.ConfigurationSnapshotRef.Absent() {
+		return false
+	}
+	snapshot, err := a.configuration.LoadSnapshot(ctx, scope, request.ConfigurationSnapshotRef)
+	if err != nil || snapshot.Scope != scope || snapshot.ExecutionModelProfile.Validate() != nil {
+		return false
+	}
+	current, err := a.selectTitleProfile(ctx, scope.OrganizationID)
+	return err == nil && current.Validate() == nil && current == snapshot.ExecutionModelProfile
+}
+
 func (a *aiWorkbenchApplication) taskView(ctx context.Context, scope aiworkbench.Scope, task aiworkbench.BusinessTask) (workbenchTaskView, error) {
 	view := workbenchTaskView{ID: task.ID, ConversationID: task.ConversationID, ProposalID: task.ProposalID,
 		Title: task.Title, GoalSummary: task.GoalSummary, CreatedAt: task.CreatedAt}
@@ -95,9 +109,16 @@ func (a *aiWorkbenchApplication) taskView(ctx context.Context, scope aiworkbench
 	}
 	view.ProjectionAvailable, view.State, view.Reason = true, projection.State, projection.Reason
 	if _, err := a.agent.freshIdentity(ctx); err == nil {
-		view.CanStart = projection.CanStart && view.ProductDetailsAvailable
+		titleReady := true
+		if projection.CanStart || projection.CanResume {
+			titleReady = a.agent.frozenTitleProfileReady(ctx, agent.Scope{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID}, request)
+			if !titleReady {
+				view.Reason = "TITLE_PROFILE_UNAVAILABLE"
+			}
+		}
+		view.CanStart = projection.CanStart && view.ProductDetailsAvailable && titleReady
 		view.CanReconcile = projection.CanReconcile
-		view.CanResume = projection.CanResume && view.ProductDetailsAvailable
+		view.CanResume = projection.CanResume && view.ProductDetailsAvailable && titleReady
 		view.CanReview = projection.CanReview && view.ProductDetailsAvailable && found && agentRunReviewable(run.State)
 	}
 	if found && view.ProductDetailsAvailable {
@@ -216,6 +237,10 @@ func (a *aiWorkbenchApplication) taskAction(c *gin.Context, ctx context.Context,
 			revision, parseErr := strconv.ParseUint(body.Revision, 10, 64)
 			if parseErr != nil || revision == 0 || strconv.FormatUint(revision, 10) != body.Revision || revision != run.State.Revision {
 				writeAIWorkbenchError(c, aiworkbench.ErrRevisionMismatch)
+				return
+			}
+			if !a.agent.frozenTitleProfileReady(ctx, run.State.Scope, request) {
+				writeAIWorkbenchError(c, aiworkbench.ErrUnavailable)
 				return
 			}
 			_, err = a.agent.runtime.Resume(ctx, request, revision, body.Feedback)

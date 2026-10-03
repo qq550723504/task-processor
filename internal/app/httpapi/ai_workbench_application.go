@@ -374,6 +374,9 @@ func (x workbenchExecution) Start(ctx context.Context, task aiworkbench.Business
 	if err != nil || binding != request.Binding {
 		return aiworkbench.ErrRevisionMismatch
 	}
+	if !a.frozenTitleProfileReady(ctx, scope, request) {
+		return aiworkbench.ErrUnavailable
+	}
 	if !request.ContextSnapshotRef.Absent() {
 		ctx, err = knowledgeRequestContext(ctx)
 		if err != nil {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -14,12 +15,16 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 
 	"task-processor/internal/agent"
 	"task-processor/internal/agentconfig"
 	"task-processor/internal/aicapability"
 	aistore "task-processor/internal/aicapability/store"
 	"task-processor/internal/aiworkbench"
+	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	governed "task-processor/internal/integration/aicapability/einomodel"
 	"task-processor/internal/integration/openai"
@@ -86,6 +91,21 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.NoError(t, agentstore.InstallSchema(f.owner))
 	require.NoError(t, configstore.InstallSchema(f.owner))
 	require.NoError(t, workstore.InstallSchema(f.owner))
+	const workbenchRole = "ai_workbench_runtime"
+	require.NoError(t, f.owner.Exec(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='ai_workbench_runtime') THEN
+		CREATE ROLE ai_workbench_runtime LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+		END IF; END $$`).Error)
+	require.NoError(t, f.owner.Exec("ALTER ROLE "+workbenchRole+" PASSWORD 'issue588-only'").Error)
+	require.NoError(t, workstore.GrantRuntime(f.owner, workbenchRole))
+	var testDatabase string
+	require.NoError(t, f.owner.Raw("SELECT current_database()").Scan(&testDatabase).Error)
+	require.NoError(t, f.owner.Exec("GRANT CONNECT ON DATABASE \""+testDatabase+"\" TO "+workbenchRole).Error)
+	workbenchDB, err := gorm.Open(postgres.Open(os.Getenv("ISSUE398_TEST_DSN")+" dbname="+testDatabase+
+		" user="+workbenchRole+" password=issue588-only"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	workbenchPool, err := workbenchDB.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, workbenchPool.Close()) })
 	configuration, err := configstore.New(f.owner)
 	require.NoError(t, err)
 	_, err = configuration.Execute(context.Background(), agentconfig.Command{Scope: agent.Scope{OrganizationID: "B", ActorID: "admin"}, Key: uuid.NewString(), AgentID: "product.title.agent", Operation: "enable", Absent: true})
@@ -186,7 +206,7 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 		Limits: agent.Limits{Steps: 12, ModelCalls: 6, Tokens: 5000000, CostMicros: 5000000, Currency: "CNY", Runtime: time.Minute}}
 	agentModule, err := buildProductAgentModule(context.Background(), f.db, deps, auth, settings, nil)
 	require.NoError(t, err)
-	workbenchModule, err := buildAIWorkbenchModule(context.Background(), AIWorkbenchDependencies{DB: f.owner,
+	workbenchModule, err := buildAIWorkbenchModule(context.Background(), AIWorkbenchDependencies{DB: workbenchDB,
 		PlanningTextPolicies: map[string]governed.RoutePolicy{"B": policy(chatRow, profile("chat", "chat-fixture", "ai-workbench-chat-plan-v1", "ai-workbench-plan-decision-v1"))}}, agentModule.(productAgentModule).application)
 	require.NoError(t, err)
 	plannerText, ok := workbenchModule.(aiWorkbenchModule).application.plan.model.Text.(*titleGatedPlanningText)
@@ -533,22 +553,76 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	taskGrants.viewer.Store(true)
 	readAsViewer("COMPLETED")
 	require.Equal(t, titleBefore, titleCalls.Load())
-
-	// A still-ready planner cannot advertise or charge for a path whose title
-	// route has since been disabled. The same-key receipt remains replayable.
-	taskGrants.viewer.Store(false)
 	currentChat, err := credentials.GetCredential(context.Background(), "B", "", "chat")
 	require.NoError(t, err)
-	readyModule, err := buildAIWorkbenchModule(context.Background(), AIWorkbenchDependencies{DB: f.owner,
+	readyModule, err := buildAIWorkbenchModule(context.Background(), AIWorkbenchDependencies{DB: workbenchDB,
 		PlanningTextPolicies: map[string]governed.RoutePolicy{"B": policy(currentChat, profile("chat", "chat-fixture", "ai-workbench-chat-plan-v1", "ai-workbench-plan-decision-v1"))}}, agentModule.(productAgentModule).application)
 	require.NoError(t, err)
 	require.Equal(t, "AVAILABLE", readyModule.(aiWorkbenchModule).PlanningReadiness(context.Background(), "B"))
 	readyRoutes := append(agentModule.(productAgentModule).routes, readyModule.(aiWorkbenchModule).routes...)
 	readyServer := httptest.NewServer(buildIsolatedApplicationHTTPServer(readyRoutes, deps, 2*time.Minute).Handler)
 	defer readyServer.Close()
+
+	// Persist T1 without dispatching T2, then change the credential before
+	// the explicit Task start. The action and its affordance must agree.
+	taskGrants.viewer.Store(false)
+	invalidPlanner.Store(false)
+	code, raw, err = acquisitionHTTPRequest(readyServer, "POST", workbenchChatBase, "operator", "B", uuid.NewString(), `{}`)
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	var secondConversation struct {
+		Conversation struct {
+			ID string `json:"ID"`
+		} `json:"conversation"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &secondConversation))
+	code, raw, err = acquisitionHTTPRequest(readyServer, "POST", workbenchChatBase+"/"+secondConversation.Conversation.ID+"/messages", "operator", "B", uuid.NewString(), messageBody)
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	var secondPlan struct {
+		ProposalID string `json:"proposalId"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &secondPlan))
+	require.NotEmpty(t, secondPlan.ProposalID, string(raw))
+	pendingProposal, err := readyModule.(aiWorkbenchModule).application.store.GetProposal(context.Background(),
+		aiworkbench.Scope{OrganizationID: "B", ActorID: "operator"}, secondPlan.ProposalID)
+	require.NoError(t, err)
+	identity := authidentity.AuthenticatedIdentity{TenantID: "B", EffectiveOrganizationID: "B", HomeOrganizationID: "B",
+		UserID: "operator", Roles: []string{"listingkit_admin"}, TokenExpiresAt: time.Now().Add(time.Hour)}
+	preparedCtx, err := (productReviewCapabilityBinder{}).Bind(authidentity.WithAuthenticatedIdentity(context.Background(), identity), "Bearer isolated-test-token")
+	require.NoError(t, err)
+	pendingKey := uuid.NewString()
+	prepared, err := (workbenchExecution{agent: agentModule.(productAgentModule).application}).Prepare(preparedCtx, pendingProposal, pendingKey)
+	require.NoError(t, err)
+	pendingTask, replay, err := readyModule.(aiWorkbenchModule).application.store.Confirm(preparedCtx,
+		aiworkbench.Scope{OrganizationID: "B", ActorID: "operator"}, secondConversation.Conversation.ID, secondPlan.ProposalID, pendingKey, prepared)
+	require.NoError(t, err)
+	require.False(t, replay)
+	pendingPath := workbenchTaskBase + "/" + pendingTask.ID
+	code, raw, err = acquisitionHTTPRequest(readyServer, "GET", pendingPath, "operator", "B", "", "")
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.Contains(t, string(raw), `"canStart":true`)
+
+	// A still-ready planner cannot advertise or charge for a path whose title
+	// route has since been disabled. The same-key receipt remains replayable.
+	taskGrants.viewer.Store(false)
 	disabledTitle := *titleRow
 	disabledTitle.Enabled = false
 	require.NoError(t, credentials.SaveCredential(context.Background(), disabledTitle))
+	code, raw, err = acquisitionHTTPRequest(readyServer, "GET", pendingPath, "operator", "B", "", "")
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.Contains(t, string(raw), `"canStart":false`)
+	code, raw, err = acquisitionHTTPRequest(readyServer, "POST", pendingPath+"/start", "operator", "B", "", "")
+	require.NoError(t, err)
+	require.NotEqual(t, 200, code, string(raw))
+	var pendingRequest agent.Request
+	require.NoError(t, json.Unmarshal(pendingTask.ExecutionRequest, &pendingRequest))
+	_, foundPendingRun, err := agentModule.(productAgentModule).application.store.Lookup(context.Background(),
+		agent.Scope{OrganizationID: "B", ActorID: "operator"}, pendingRequest.Binding, pendingTask.ExecutionRequestKey)
+	require.NoError(t, err)
+	require.False(t, foundPendingRun, "disabled title route must not claim the frozen run")
 	require.Equal(t, "NEEDS_CONFIGURATION", readyModule.(aiWorkbenchModule).PlanningReadiness(context.Background(), "B"))
 	code, raw, err = acquisitionHTTPRequest(readyServer, "GET", workbenchChatBase+"/"+created.Conversation.ID, "operator", "B", "", "")
 	require.NoError(t, err)
@@ -581,6 +655,10 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	invalidPlanner.Store(false)
 	disabledTitle.Enabled = true
 	require.NoError(t, credentials.SaveCredential(context.Background(), disabledTitle))
+	code, raw, err = acquisitionHTTPRequest(readyServer, "GET", pendingPath, "operator", "B", "", "")
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.Contains(t, string(raw), `"canStart":false`, "credential rotation cannot revive a frozen Task")
 	currentTitle, err := credentials.GetCredential(context.Background(), "B", "", "title")
 	require.NoError(t, err)
 	var rotated atomic.Bool
@@ -596,7 +674,7 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	}}
 	rotatingAgent, err := buildProductAgentModule(context.Background(), f.db, deps, auth, rotatingSettings, nil)
 	require.NoError(t, err)
-	rotatingWorkbench, err := buildAIWorkbenchModule(context.Background(), AIWorkbenchDependencies{DB: f.owner,
+	rotatingWorkbench, err := buildAIWorkbenchModule(context.Background(), AIWorkbenchDependencies{DB: workbenchDB,
 		PlanningTextPolicies: map[string]governed.RoutePolicy{"B": policy(currentChat, profile("chat", "chat-fixture", "ai-workbench-chat-plan-v1", "ai-workbench-plan-decision-v1"))}}, rotatingAgent.(productAgentModule).application)
 	require.NoError(t, err)
 	rotatingRoutes := append(rotatingAgent.(productAgentModule).routes, rotatingWorkbench.(aiWorkbenchModule).routes...)

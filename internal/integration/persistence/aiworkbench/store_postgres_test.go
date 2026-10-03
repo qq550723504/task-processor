@@ -179,6 +179,35 @@ func TestWorkbenchRuntimeRoleRejectsInheritedCrossOwnerPrivileges(t *testing.T) 
 	}), aiworkbench.ErrUnavailable, "serving startup must reject role membership added after initialization")
 }
 
+func TestWorkbenchRuntimeRoleRejectsDirectCrossOwnerPrivileges(t *testing.T) {
+	db := workbenchDB(t)
+	const role = "ai_workbench_runtime"
+	require.NoError(t, db.Exec("CREATE ROLE "+role+" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS").Error)
+	require.NoError(t, db.Exec("CREATE SCHEMA product_agent_boundary").Error)
+	require.NoError(t, db.Exec("CREATE TABLE product_agent_boundary.private_fact (id integer PRIMARY KEY, secret text)").Error)
+	require.NoError(t, db.Exec("GRANT USAGE ON SCHEMA product_agent_boundary TO "+role).Error)
+	require.NoError(t, db.Exec("GRANT SELECT ON product_agent_boundary.private_fact TO "+role).Error)
+	require.ErrorIs(t, GrantRuntime(db, role), aiworkbench.ErrInvalid)
+	require.NoError(t, db.Exec("REVOKE SELECT ON product_agent_boundary.private_fact FROM "+role).Error)
+	require.NoError(t, GrantRuntime(db, role))
+	require.NoError(t, db.Exec("GRANT SELECT (secret) ON product_agent_boundary.private_fact TO "+role).Error)
+	require.ErrorIs(t, db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SET LOCAL ROLE " + role).Error; err != nil {
+			return err
+		}
+		return VerifySchema(context.Background(), tx)
+	}), aiworkbench.ErrUnavailable, "serving startup must reject a later column grant")
+	require.NoError(t, db.Exec("REVOKE SELECT (secret) ON product_agent_boundary.private_fact FROM "+role).Error)
+	require.NoError(t, db.Exec("CREATE SEQUENCE product_agent_boundary.private_sequence").Error)
+	require.NoError(t, db.Exec("GRANT USAGE ON SEQUENCE product_agent_boundary.private_sequence TO "+role).Error)
+	require.ErrorIs(t, db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SET LOCAL ROLE " + role).Error; err != nil {
+			return err
+		}
+		return VerifySchema(context.Background(), tx)
+	}), aiworkbench.ErrUnavailable, "serving startup must reject a later sequence grant")
+}
+
 func readyTaskFixture(t *testing.T, store *Store, scope aiworkbench.Scope) (aiworkbench.Conversation, aiworkbench.ExecutionProposal) {
 	t.Helper()
 	ctx := context.Background()

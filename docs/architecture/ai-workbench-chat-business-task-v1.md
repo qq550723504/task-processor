@@ -228,6 +228,9 @@ through a distinct `ai_workbench_runtime` login and independent bounded pool.
 The Workbench runtime login is standalone: it neither inherits another role nor grants its
 privileges through role membership. Initialization and serving startup reject such membership;
 distinct login names alone do not establish the required SQL privilege isolation.
+They also reject effective DML or sequence privileges on non-`ai_workbench` business relations,
+including direct, PUBLIC and column-level grants. A later grant must fail the serving startup
+check even if the runtime role still has no memberships.
 
 Reasons:
 
@@ -1111,6 +1114,10 @@ Agent `StopUsageUnknown` / `StopModelUnknown` remains ERROR with an “outcome u
 contract; Task code does not reinterpret it or dispatch again.
 
 Projection freshness never authorizes execution.
+For an unclaimed Task or an interrupted run, `CanStart` / `CanResume` also requires the
+configuration snapshot's frozen execution profile to match a currently admitted title route.
+If a credential is disabled or rotated, the action is hidden and the server rejects the action
+before claiming or resuming the run. Existing run reconciliation still uses its exact receipt.
 
 ### 9.1 Review correlation
 
@@ -1121,6 +1128,8 @@ existing idempotent Agent review operation identity `agent:<run_id>` to its curr
 one exists. The Product Review owner remains the only interpreter of Review persistence.
 
 No Review schema ownership moves to Workbench.
+The narrow Task state fallback uses the current actor's `workbench.task.read` grant and checks
+the exact Review owner scope. It never grants the Product Review View or mutation permissions.
 
 ## 10. Resume / Review actions
 
