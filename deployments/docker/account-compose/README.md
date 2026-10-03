@@ -15,8 +15,12 @@ connected Store and allocated service periods; one period is 30 days.
 Administrators buy Store periods, AI points and data rows from the enterprise
 wallet against configured `commercial_offers`. AI/data also accept a money budget:
 the server floors the purchasable quantity and leaves the remainder uncharged.
-Missing prices disable purchases. `ACCOUNT_ISOLATED_TRIAL_CATALOG` and the former
-free subscription seed are retired and rejected; no formal prices are seeded.
+Missing prices disable purchases. The Commercial schema owner installs one
+approved DATA_ROW offer at CNY 0.05 per row for server-side 1688 acquisitions;
+browser-extension and local captures do not consume rows. It preserves an
+existing offer and refuses a competing active DATA_ROW price. AI points and
+Store-period prices remain unconfigured. `ACCOUNT_ISOLATED_TRIAL_CATALOG` and
+the former free subscription seed are retired and rejected.
 Enterprise resource balances do not expire monthly. Members retain concrete Store
 grants, allocated periods/data and a UTC calendar-month AI spending limit.
 
@@ -25,8 +29,9 @@ Start a **new isolated project** using the normal commands below. A manifest wit
 rejected. Keep existing projects on their original checkout: this cutover does not
 migrate or delete their data. The native Store initializer now accepts only
 `store-center-schema-init -config <absolute-private-store-owner-json>`.
-The current commercial/money initializer installs only their current owners and
-explicit grants. Serving verifies schemas and permissions without altering them.
+The current commercial/money initializer installs their current owners, explicit
+grants and the approved create-only DATA_ROW offer. Serving verifies schemas and
+permissions without altering them.
 
 Product Agent remains explicitly opt-in. Its `productAgent.textPolicy.pointPricing`
 requires a reviewed `priceVersion` and positive integer
