@@ -3,14 +3,17 @@ import { parseWorkbenchErrorEnvelopePayload, type WorkbenchErrorEnvelope } from 
 
 const boundedText = (maxBytes: number) => z.string().min(1).refine((value) => value.trim() === value && !/[\0\r\n\t]/.test(value) && new TextEncoder().encode(value).length <= maxBytes);
 const recordId = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+const storeId = recordId.refine((value) => value !== "00000000-0000-0000-0000-000000000000");
 const positiveInt64 = z.string().refine((value) => /^[1-9][0-9]*$/.test(value) && BigInt(value) <= BigInt("9223372036854775807"));
 const timestamp = z.iso.datetime().regex(/T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/);
 export const sheinRecordListItemSchema = z.strictObject({
   record_id: recordId,
   product_key: boundedText(128),
   snapshot_version: positiveInt64,
+  store_id: storeId,
   country: z.literal("US"),
   language: z.literal("en"),
+  action: z.enum(["save_draft", "publish"]),
   created_at: timestamp,
 });
 const list = z.strictObject({

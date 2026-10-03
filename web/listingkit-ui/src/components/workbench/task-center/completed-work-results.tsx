@@ -29,7 +29,7 @@ function SelectableWorkResults({ entries, pagination }: { entries: readonly Entr
           ref={(element) => { if (element) rowButtons.current.set(entry.key, element); else rowButtons.current.delete(entry.key); }}
           onClick={() => { setSelected(entry.key); detailHeading.current?.focus(); }}>
           <span className={styles.rowMarker} aria-hidden="true" />
-          <span className={styles.rowMain}><strong>{entry.heading}</strong><span className={styles.completed}>通用业务 · 本地资料已创建</span><span>{entry.caption}</span>{entry.content}</span>
+          <span className={styles.rowMain}><strong>{entry.heading}</strong><span className={styles.completed}>本地资料已创建</span><span>{entry.caption}</span>{entry.content}</span>
           <span className={styles.rowAction}>查看详情 ›</span>
         </button>
       </li>)}</ul> : <ConsoleState kind="empty" title="当前授权范围内暂无本地资料准备记录">已读取当前范围；这不表示企业没有其他业务任务。</ConsoleState>}
@@ -43,9 +43,9 @@ function SelectableWorkResults({ entries, pagination }: { entries: readonly Entr
 }
 
 export function WorkResultDetail({ title, summary, children }: { title: string; summary: string; children: ReactNode }) {
-  return <div className={styles.detailBody}><h3>{title}</h3><p className={styles.completed}>本地资料已创建 · 通用业务</p><p>{summary}</p>
+  return <div className={styles.detailBody}><h3>{title}</h3><p className={styles.completed}>本地资料已创建</p><p>{summary}</p>
     <div className={styles.result}><h4>工作结果</h4>{children}</div>
-    <p className={styles.note}>资料准备完成不代表诊断通过或可发布。诊断是独立检查。</p>
+    <p className={styles.note}>资料准备完成不代表诊断通过或可发布，也不代表已向平台提交/发布。诊断是独立检查。</p>
     <section className={styles.advice}><h4>硕米建议</h4><p>暂未接入</p></section>
   </div>;
 }
