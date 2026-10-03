@@ -12,7 +12,7 @@ import styles from "./task-center.module.css";
 export function TaskCenterLayout({ completed = false, pendingReview = false, onRefresh, refreshDisabled = false, children }: { completed?: boolean; pendingReview?: boolean; onRefresh?: () => void; refreshDisabled?: boolean; children?: ReactNode }) {
   const context = useWorkbenchContext();
   const { aiWorkbenchAvailable } = context;
-  const canUseChat = context.effectiveOrganization?.capabilities?.["workbench.chat.use"] === true;
+  const canUseChat = context.effectiveOrganization?.capabilities?.["workbench.chat.use"] === true && context.aiWorkbenchPlanningReadiness === "AVAILABLE";
   const pathname = pendingReview ? "/workbench/ai/tasks/pending/other" : completed ? "/workbench/ai/tasks/completed/history" : "/workbench/ai/tasks";
   return <ConsolePage title="任务中心" breadcrumbs={findConsoleRoute(pathname)?.trail}
     description={pendingReview ? "查看 Product Review 持有的标准商品标题提案。" : "查看历史本地资料准备记录。"} className={styles.page}

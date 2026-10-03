@@ -178,16 +178,20 @@ it("renders source warnings preserved by the operation-bound Catalog product", a
 
 it("offers Chat from an authorized saved product with its exact operation selected", async () => {
 	calls.context.aiWorkbenchAvailable = true;
+	calls.context.aiWorkbenchPlanningReadiness = "AVAILABLE";
 	calls.context.effectiveOrganization = { id: "organization-A", capabilities: { "workbench.chat.use": true } };
   calls.readProduct.mockResolvedValueOnce({
     schemaVersion: 1, operationId: operationID, productKey: "crawler:1688:123",
     publicationId: `source-run:acquisition:${operationID}`, catalogVersion: "1",
     title: "Captured product", sources: [], images: [], specifications: [], warnings: [], missingFacts: [],
   });
-  render(<AcquisitionPage operationId={operationID} agentEnabled />);
+  const view = render(<AcquisitionPage operationId={operationID} agentEnabled />);
   expect(await screen.findByRole("link", { name: "在硕米 Chat 讨论标题" })).toHaveAttribute(
     "href", `/workbench/ai/chat/new?operationId=${operationID}`,
   );
+  calls.context.aiWorkbenchPlanningReadiness = "NEEDS_CONFIGURATION";
+  view.rerender(<AcquisitionPage operationId={operationID} agentEnabled />);
+  expect(screen.queryByRole("link", { name: "在硕米 Chat 讨论标题" })).not.toBeInTheDocument();
 });
 
 it("does not offer Chat from a saved product when AI Workbench is not mounted", async () => {

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -18,15 +19,24 @@ const switchOrganizationRequestBodyMaxBytes = 4096
 
 // Handler exposes only the verified, resolved workbench identity projection.
 type Handler struct {
-	workbenchAuthorizer  *authz.ListingKitAuthorizer
-	profileReader        authidentity.SelfProfileReader
-	aiWorkbenchAvailable bool
+	workbenchAuthorizer          *authz.ListingKitAuthorizer
+	profileReader                authidentity.SelfProfileReader
+	aiWorkbenchAvailable         bool
+	aiWorkbenchPlanningReadiness func(context.Context, string) string
 }
 
 // SetAIWorkbenchAvailable is called during composition, before HTTP serving.
 func (h *Handler) SetAIWorkbenchAvailable(available bool) {
 	if h != nil {
 		h.aiWorkbenchAvailable = available
+	}
+}
+
+// SetAIWorkbenchPlanningReadiness is wired to the planner's exact organization
+// policy and credential resolver before HTTP serving. It returns no secrets.
+func (h *Handler) SetAIWorkbenchPlanningReadiness(read func(context.Context, string) string) {
+	if h != nil {
+		h.aiWorkbenchPlanningReadiness = read
 	}
 }
 
@@ -138,13 +148,27 @@ func (h *Handler) writeContext(c *gin.Context) {
 	if effective := strings.TrimSpace(identity.EffectiveOrganizationID); effective != "" {
 		effectiveOrganizationID = &effective
 	}
+	planningReadiness := ""
+	if h.aiWorkbenchAvailable {
+		planningReadiness = "UNAVAILABLE"
+		for _, organization := range organizations {
+			if effectiveOrganizationID != nil && organization.ID == *effectiveOrganizationID && h.aiWorkbenchPlanningReadiness != nil {
+				candidate := h.aiWorkbenchPlanningReadiness(c.Request.Context(), organization.ID)
+				if candidate == "AVAILABLE" || candidate == "NEEDS_CONFIGURATION" {
+					planningReadiness = candidate
+				}
+				break
+			}
+		}
+	}
 	c.JSON(http.StatusOK, contextResponse{
-		User:                    userResponse{ID: identity.UserID},
-		HomeOrganizationID:      identity.HomeOrganizationID,
-		EffectiveOrganizationID: effectiveOrganizationID,
-		SelectionRequired:       effectiveOrganizationID == nil && len(organizations) > 1,
-		Organizations:           organizations,
-		AIWorkbenchAvailable:    h.aiWorkbenchAvailable,
+		User:                         userResponse{ID: identity.UserID},
+		HomeOrganizationID:           identity.HomeOrganizationID,
+		EffectiveOrganizationID:      effectiveOrganizationID,
+		SelectionRequired:            effectiveOrganizationID == nil && len(organizations) > 1,
+		Organizations:                organizations,
+		AIWorkbenchAvailable:         h.aiWorkbenchAvailable,
+		AIWorkbenchPlanningReadiness: planningReadiness,
 	})
 }
 
@@ -158,12 +182,13 @@ func containsRole(roles []string, want string) bool {
 }
 
 type contextResponse struct {
-	User                    userResponse           `json:"user"`
-	HomeOrganizationID      string                 `json:"homeOrganizationId"`
-	EffectiveOrganizationID *string                `json:"effectiveOrganizationId"`
-	SelectionRequired       bool                   `json:"selectionRequired"`
-	Organizations           []organizationResponse `json:"organizations"`
-	AIWorkbenchAvailable    bool                   `json:"aiWorkbenchAvailable,omitempty"`
+	User                         userResponse           `json:"user"`
+	HomeOrganizationID           string                 `json:"homeOrganizationId"`
+	EffectiveOrganizationID      *string                `json:"effectiveOrganizationId"`
+	SelectionRequired            bool                   `json:"selectionRequired"`
+	Organizations                []organizationResponse `json:"organizations"`
+	AIWorkbenchAvailable         bool                   `json:"aiWorkbenchAvailable,omitempty"`
+	AIWorkbenchPlanningReadiness string                 `json:"aiWorkbenchPlanningReadiness,omitempty"`
 }
 
 type userResponse struct {

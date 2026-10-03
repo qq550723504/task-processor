@@ -31,13 +31,25 @@ import (
 const workbenchChatBase = "/api/v1/workbench/chat/conversations"
 const workbenchTaskBase = "/api/v1/workbench/tasks"
 
-type aiWorkbenchModule struct{ routes []httproute.Descriptor }
+type aiWorkbenchModule struct {
+	routes      []httproute.Descriptor
+	application *aiWorkbenchApplication
+}
 
 func (aiWorkbenchModule) Name() string                { return "ai-workbench" }
 func (aiWorkbenchModule) Enabled(*config.Config) bool { return true }
 func (m aiWorkbenchModule) Register(reg *kernelmodule.Registry) error {
 	reg.AddRoutes(m.routes...)
 	return nil
+}
+
+func (m aiWorkbenchModule) PlanningReadiness(ctx context.Context, organizationID string) string {
+	if m.application == nil || m.application.plan == nil || m.application.plan.routes == nil {
+		return "UNAVAILABLE"
+	}
+	return string(m.application.plan.routes.Readiness(ctx, aicapability.TextInputIdentity{
+		OrganizationID: organizationID, Operation: aicapability.OperationAIWorkbenchChatPlan,
+	}))
 }
 
 func WithAIWorkbench(deps AIWorkbenchDependencies) CurrentApplicationOption {
@@ -49,7 +61,7 @@ func buildAIWorkbenchModule(ctx context.Context, cfg AIWorkbenchDependencies, ag
 	if err != nil {
 		return nil, err
 	}
-	return aiWorkbenchModule{routes: aiWorkbenchRoutes(app)}, nil
+	return aiWorkbenchModule{routes: aiWorkbenchRoutes(app), application: app}, nil
 }
 
 func workbenchJSON(c *gin.Context, target any) error {

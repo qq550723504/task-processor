@@ -2,7 +2,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 
-const context = vi.hoisted(() => ({ aiWorkbenchAvailable: true, effectiveOrganization: { capabilities: { "workbench.chat.use": true } } }));
+const context = vi.hoisted(() => ({ aiWorkbenchAvailable: true, aiWorkbenchPlanningReadiness: "AVAILABLE", effectiveOrganization: { capabilities: { "workbench.chat.use": true } } }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => context }));
 import { TaskCenterLayout } from "./task-center-layout";
 import { CompletedWorkResults, WorkResultDetail } from "./completed-work-results";
@@ -28,7 +28,14 @@ const entries = fixture.items.map((item) => ({
     <a href={item.result.href}>查看诊断</a>
   </WorkResultDetail>,
 }));
-afterEach(() => { cleanup(); context.aiWorkbenchAvailable = true; context.effectiveOrganization.capabilities["workbench.chat.use"] = true; });
+afterEach(() => { cleanup(); context.aiWorkbenchAvailable = true; context.aiWorkbenchPlanningReadiness = "AVAILABLE"; context.effectiveOrganization.capabilities["workbench.chat.use"] = true; });
+
+it("keeps independent Review readable without a new Chat entry when planning needs configuration", () => {
+  context.aiWorkbenchPlanningReadiness = "NEEDS_CONFIGURATION";
+  render(<TaskCenterLayout pendingReview><p>独立标题审核</p></TaskCenterLayout>);
+  expect(screen.getByText("独立标题审核")).toBeVisible();
+  expect(screen.queryByRole("link", { name: "向硕米发起任务" })).not.toBeInTheDocument();
+});
 
 it("keeps independent Review readable but hides the Chat creation link for viewers", () => {
   context.effectiveOrganization.capabilities["workbench.chat.use"] = false;

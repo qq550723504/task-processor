@@ -36,22 +36,28 @@ export function ChatPage({ mode, conversationId }: { mode: ChatMode | "detail"; 
   const scope = context.user && context.effectiveOrganization && !context.selectionRequired && !context.isSwitching && !context.error && !context.blockingError
     ? { userId: context.user.id, organizationId: context.effectiveOrganization.id } : null;
   const canUse = context.effectiveOrganization?.capabilities?.["workbench.chat.use"] === true;
-  const authorizationKey = `${context.roles.join(",")}:${canUse}`;
+  const planningReadiness = context.aiWorkbenchPlanningReadiness;
+  const canPlan = canUse && planningReadiness === "AVAILABLE";
+  const authorizationKey = `${context.roles.join(",")}:${canUse}:${planningReadiness}`;
   const title = mode === "home" ? "硕米Chat" : mode === "new" ? "新建会话" : mode === "recent" ? "最近会话" : mode === "saved" ? "收藏会话" : mode === "archived" ? "归档会话" : "业务会话";
   return <ConsolePage className="console-chat" title={title} breadcrumbs={route?.trail}
     description="围绕已保存商品讨论标题建议；方案需要确认后才会执行，结果仍须人工审核应用。">
     {!scope ? <ConsoleState kind={context.isSwitching || context.isLoading ? "loading" : "unavailable"} title="企业上下文不可用">请先选择可访问的企业并登录。</ConsoleState> :
       !context.aiWorkbenchAvailable ? <ConsoleState kind="unavailable" title="暂未启用">当前应用未启用硕米 Chat 与业务任务。</ConsoleState> :
-      <ScopedChat key={`${scope.userId}:${scope.organizationId}:${authorizationKey}`} scope={scope} authorizationKey={authorizationKey} canUse={canUse} mode={mode} conversationId={conversationId} />}
+      <ScopedChat key={`${scope.userId}:${scope.organizationId}:${authorizationKey}`} scope={scope} authorizationKey={authorizationKey} canUse={canUse} canPlan={canPlan} planningReadiness={planningReadiness} mode={mode} conversationId={conversationId} />}
   </ConsolePage>;
 }
 
-function ScopedChat({ scope, authorizationKey, canUse, mode, conversationId }: { scope: AIScope; authorizationKey: string; canUse: boolean; mode: ChatMode | "detail"; conversationId?: string }) {
-  if (mode === "detail" && conversationId) return <ConversationDetail scope={scope} authorizationKey={authorizationKey} canUse={canUse} id={conversationId} />;
-  return <ChatCollection scope={scope} authorizationKey={authorizationKey} canUse={canUse} mode={mode === "detail" ? "home" : mode} />;
+function ScopedChat({ scope, authorizationKey, canUse, canPlan, planningReadiness, mode, conversationId }: { scope: AIScope; authorizationKey: string; canUse: boolean; canPlan: boolean; planningReadiness: "AVAILABLE" | "NEEDS_CONFIGURATION" | "UNAVAILABLE"; mode: ChatMode | "detail"; conversationId?: string }) {
+  if (mode === "detail" && conversationId) return <ConversationDetail scope={scope} authorizationKey={authorizationKey} canUse={canUse} canPlan={canPlan} planningReadiness={planningReadiness} id={conversationId} />;
+  return <ChatCollection scope={scope} authorizationKey={authorizationKey} canUse={canUse} canPlan={canPlan} planningReadiness={planningReadiness} mode={mode === "detail" ? "home" : mode} />;
 }
 
-function ChatCollection({ scope, authorizationKey, canUse, mode }: { scope: AIScope; authorizationKey: string; canUse: boolean; mode: ChatMode }) {
+function planningStatus(readiness: "AVAILABLE" | "NEEDS_CONFIGURATION" | "UNAVAILABLE") {
+  return readiness === "NEEDS_CONFIGURATION" ? "当前企业的规划模型需要配置；已有会话仍可查看。" : "当前企业的标题规划尚未开放；已有会话仍可查看。";
+}
+
+function ChatCollection({ scope, authorizationKey, canUse, canPlan, planningReadiness, mode }: { scope: AIScope; authorizationKey: string; canUse: boolean; canPlan: boolean; planningReadiness: "AVAILABLE" | "NEEDS_CONFIGURATION" | "UNAVAILABLE"; mode: ChatMode }) {
   const router = useRouter();
   const search = useSearchParams();
   const selectedOperationId = search.get("operationId");
@@ -86,14 +92,15 @@ function ChatCollection({ scope, authorizationKey, canUse, mode }: { scope: AISc
     finally { if (!controller.signal.aborted) setCreating(false); abort.current = null; }
   }
   return <>
+    {canUse && !canPlan ? <ConsoleState kind="unavailable" title="规划暂不可用">{planningStatus(planningReadiness)}</ConsoleState> : null}
     {mode === "home" ? <>
       <Card className={styles.summary}>当前企业：{scope.organizationId} · 实际会话按当前账号读取。执行标题建议会消耗已配置的 AI 额度。</Card>
       <div className={styles.landingGrid}>
-        <Card className={`${styles.landingCard} ${styles.newCard}`}><span className={styles.accent} /><h2>新建会话</h2><h3>开始一项新需求</h3><p>选择已有商品采集结果，描述标题优化目标，再查看并确认方案。</p>{canUse ? <Button onClick={create} disabled={creating}>{creating ? "正在创建…" : "进入新建会话 →"}</Button> : <p>当前企业仅可查看已有会话。</p>}</Card>
+        <Card className={`${styles.landingCard} ${styles.newCard}`}><span className={styles.accent} /><h2>新建会话</h2><h3>开始一项新需求</h3><p>选择已有商品采集结果，描述标题优化目标，再查看并确认方案。</p>{canPlan ? <Button onClick={create} disabled={creating}>{creating ? "正在创建…" : "进入新建会话 →"}</Button> : <p>{canUse ? "当前企业的规划模型尚未就绪。" : "当前企业仅可查看已有会话。"}</p>}</Card>
         <Card className={`${styles.landingCard} ${styles.recentCard}`}><span className={styles.accent} /><h2>最近会话</h2><h3>继续之前的工作</h3><p>查看当前账号的对话与提案，从上次讨论的位置继续。</p><Button asChild variant="outline"><Link href="/workbench/ai/chat/recent" prefetch={false}>查看最近会话 →</Link></Button></Card>
         <Card className={`${styles.landingCard} ${styles.savedCard}`}><span className={styles.accent} /><h2>收藏会话</h2><h3>沉淀重要内容</h3><p>收藏仍在使用的会话，随时继续查看已保存的内容。</p><Button asChild variant="outline"><Link href="/workbench/ai/chat/saved" prefetch={false}>进入收藏会话 →</Link></Button></Card>
       </div>
-    </> : <div className={styles.toolbar}>{canUse ? <Button onClick={create} disabled={creating}>{creating ? "正在创建…" : "新建会话"}</Button> : null}
+    </> : <div className={styles.toolbar}>{canPlan ? <Button onClick={create} disabled={creating}>{creating ? "正在创建…" : "新建会话"}</Button> : null}
       {mode === "archived" ? <Button asChild variant="outline"><Link href="/workbench/ai/chat/recent" prefetch={false}>返回最近会话</Link></Button> :
         mode === "recent" ? <Button asChild variant="outline"><Link href="/workbench/ai/chat/archived" prefetch={false}>查看归档会话</Link></Button> : null}
       <Button variant="outline" onClick={() => void conversations.refetch()}>刷新</Button></div>}
@@ -110,7 +117,7 @@ function ConversationLink({ item }: { item: AIConversation }) {
   </Link>;
 }
 
-function ConversationDetail({ scope, authorizationKey, canUse, id }: { scope: AIScope; authorizationKey: string; canUse: boolean; id: string }) {
+function ConversationDetail({ scope, authorizationKey, canUse, canPlan, planningReadiness, id }: { scope: AIScope; authorizationKey: string; canUse: boolean; canPlan: boolean; planningReadiness: "AVAILABLE" | "NEEDS_CONFIGURATION" | "UNAVAILABLE"; id: string }) {
   const router = useRouter();
   const search = useSearchParams();
   const [operationId, setOperationId] = useState(search.get("operationId") ?? "");
@@ -236,17 +243,17 @@ function ConversationDetail({ scope, authorizationKey, canUse, id }: { scope: AI
     {activeProposal ? <ProposalCard proposal={activeProposal} scope={scope} canUse={canUse} disabled={pending || current.Archived}
       confirmedTaskId={confirmReceipts[activeProposal.id]?.taskId} onConfirm={() => void confirm(activeProposal)} /> : null}
     {error ? <ConsoleState kind="error" title="操作状态">{error} <Button variant="outline" onClick={() => void detail.refetch()}>刷新收据</Button></ConsoleState> : null}
-    {!current.Archived && canUse ? <Card className={styles.composer}><h2>讨论标题建议</h2><p>只针对已保存的采集商品生成标题建议。确认提案后才会启动 Product Agent。</p>
+    {!current.Archived && canUse && (canPlan || pendingMessage) ? <Card className={styles.composer}><h2>讨论标题建议</h2><p>只针对已保存的采集商品生成标题建议。确认提案后才会启动 Product Agent。</p>
       <div className={styles.formGrid}><label>采集操作 ID<input disabled={Boolean(pendingMessage)} value={operationId} onChange={e => setOperationId(e.target.value.trim())} placeholder="从已保存商品采集结果复制操作 ID" /></label>
         <label>目标平台<select disabled={Boolean(pendingMessage)} value={platform} onChange={e => setPlatform(e.target.value as typeof platform)}><option value="shein">SHEIN</option><option value="temu">Temu</option><option value="amazon">Amazon</option></select></label>
         <label>模板 ID（可选）<input disabled={Boolean(pendingMessage)} value={templateId} onChange={e => setTemplateId(e.target.value.trim())} /></label>
         <label>模板修订号{templateId ? "" : "（可选）"}<input disabled={Boolean(pendingMessage)} value={templateRevision} onChange={e => setTemplateRevision(e.target.value.trim())} /></label>
         <label>知识库 ID（可选）<input disabled={Boolean(pendingMessage)} value={knowledgeBaseId} onChange={e => setKnowledgeBaseId(e.target.value.trim())} /></label></div>
       <label className={styles.promptLabel}>需求<textarea disabled={Boolean(pendingMessage)} rows={4} value={content} onChange={e => setContent(e.target.value)} placeholder="例如：请优化这个商品在 SHEIN 的标题，突出已有证据支持的卖点。" /></label>
-      {pendingMessage ? <p>原消息结果待确认，字段已锁定；重试只读取同一操作的收据。</p> : null}
+      {pendingMessage ? <p>原消息结果待确认，字段已锁定；同键重试先核对收据，尚未受理的请求可能在配置就绪后首次发送。</p> : null}
       <div className={styles.toolbar}><Button disabled={pending || !isAcquisitionUUID(operationId) || !content.trim() || Boolean(templateId) !== Boolean(templateRevision)} onClick={() => void send()}>{pending ? "处理中…" : pendingMessage ? "重试同一消息" : "发送消息"}</Button>
         <span>模型规划可能消耗 AI 额度；不会直接修改商品。</span></div></Card> : current.Archived ? <ConsoleState kind="unavailable" title="会话已归档">已保存的任务仍可从任务中心查看。</ConsoleState> :
-      <ConsoleState kind="unavailable" title="只读会话">当前企业没有发送或确认权限，可查看已有对话和提案。</ConsoleState>}
+      <ConsoleState kind="unavailable" title="只读会话">{canUse ? planningStatus(planningReadiness) : "当前企业没有发送或确认权限，可查看已有对话和提案。"}</ConsoleState>}
   </div>;
 }
 

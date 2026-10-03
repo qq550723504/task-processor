@@ -30,7 +30,7 @@ export function BusinessTaskPage({ mode = "all", taskId }: { mode?: TaskMode; ta
   const scope = context.user && context.effectiveOrganization && !context.selectionRequired && !context.isSwitching && !context.error && !context.blockingError
     ? { userId: context.user.id, organizationId: context.effectiveOrganization.id } : null;
   const authorizationKey = context.roles.join(",");
-  const canUseChat = context.effectiveOrganization?.capabilities?.["workbench.chat.use"] === true;
+  const canUseChat = context.effectiveOrganization?.capabilities?.["workbench.chat.use"] === true && context.aiWorkbenchPlanningReadiness === "AVAILABLE";
   const path = taskId ? "/workbench/ai/tasks" : filters.find(item => item.mode === mode)?.href ?? "/workbench/ai/tasks";
   return <ConsolePage title={taskId ? "任务详情" : "任务中心"} breadcrumbs={findConsoleRoute(path)?.trail}
     description="查看已确认的业务任务及其当前执行和审核状态。状态来自 Product Agent 与 Review 的实时投影。">

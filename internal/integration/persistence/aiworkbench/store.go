@@ -765,8 +765,9 @@ func (s *Store) CompletePlan(ctx context.Context, scope aiworkbench.Scope, key s
 			proposalID = &id
 		}
 		row.NextSequence++
+		row.UpdatedAt = now
 		if err := tx.Model(&conversationRow{}).Where("id = ? AND organization_id = ? AND owner_user_id = ?", row.ID, scope.OrganizationID, scope.ActorID).
-			Update("next_sequence", row.NextSequence).Error; err != nil {
+			Updates(map[string]any{"next_sequence": row.NextSequence, "updated_at": row.UpdatedAt}).Error; err != nil {
 			return err
 		}
 		mode := string(terminal.Mode)

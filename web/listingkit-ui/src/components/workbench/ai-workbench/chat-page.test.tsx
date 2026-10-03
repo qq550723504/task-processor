@@ -8,7 +8,7 @@ import { ChatPage } from "./chat-page";
 const fixture = vi.hoisted(() => ({
   request: vi.fn(), push: vi.fn(), search: new URLSearchParams(),
   context: { user: { id: "user-a" }, effectiveOrganization: { id: "org-a", capabilities: { "workbench.chat.use": true } }, roles: ["listingkit_operator"],
-    aiWorkbenchAvailable: true, isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null },
+    aiWorkbenchAvailable: true, aiWorkbenchPlanningReadiness: "AVAILABLE", isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null },
 }));
 vi.mock("@/lib/api/ai-workbench", async original => ({ ...await original<typeof import("@/lib/api/ai-workbench")>(), requestAIWorkbench: fixture.request }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => fixture.context }));
@@ -27,6 +27,7 @@ beforeEach(() => {
   fixture.context.roles = ["listingkit_operator"];
   fixture.context.isSwitching = false;
   fixture.context.aiWorkbenchAvailable = true;
+  fixture.context.aiWorkbenchPlanningReadiness = "AVAILABLE";
   fixture.request.mockReset(); fixture.push.mockReset(); sessionStorage.clear();
   fixture.request.mockImplementation(async ({ route }) => {
     if (route === "conversation-read") return { conversation, messages: [], proposals: [], before: "" };
@@ -40,6 +41,19 @@ it("shows the unavailable state without sending Chat requests when the module is
   render(tree());
   expect(screen.getByText("当前应用未启用硕米 Chat 与业务任务。")).toBeVisible();
   expect(fixture.request).not.toHaveBeenCalled();
+});
+
+it("keeps history readable but does not offer new planning while this organization's route needs configuration", async () => {
+  fixture.context.aiWorkbenchPlanningReadiness = "NEEDS_CONFIGURATION";
+  const view = render(<QueryClientProvider client={client}><ChatPage mode="home" /></QueryClientProvider>);
+  await screen.findByText("开始一项新需求");
+  expect(screen.queryByRole("button", { name: "进入新建会话 →" })).toBeNull();
+  expect(screen.getByText(/当前企业的规划模型需要配置/)).toBeVisible();
+  view.rerender(tree());
+  await screen.findByText("开始讨论");
+  expect(screen.queryByRole("button", { name: "发送消息" })).toBeNull();
+  expect(screen.queryByLabelText("需求")).toBeNull();
+  expect(fixture.request.mock.calls.every(call => call[0].route === "conversation-list" || call[0].route === "conversation-read")).toBe(true);
 });
 
 it("carries the selected saved product into the newly created conversation", async () => {

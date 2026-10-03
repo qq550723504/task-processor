@@ -27,6 +27,7 @@ func TestOrganizationRouteNeverBorrowsMemberCredential(t *testing.T) {
 	}})
 	require.NoError(t, err)
 	input := aicapability.TextInputIdentity{OrganizationID: "org-1", ActorID: "actor-1", MemberID: "member-1", Operation: aicapability.OperationAIWorkbenchChatPlan}
+	require.Equal(t, RouteNeedsConfiguration, resolver.Readiness(ctx, input), "member credentials cannot ready an organization route")
 	_, err = resolver.Resolve(ctx, input)
 	require.ErrorIs(t, err, ErrNotDispatched)
 
@@ -44,6 +45,7 @@ func TestOrganizationRouteNeverBorrowsMemberCredential(t *testing.T) {
 	require.NoError(t, err)
 	route, err := resolver.Resolve(ctx, input)
 	require.NoError(t, err)
+	require.Equal(t, RouteAvailable, resolver.Readiness(ctx, input))
 	require.Equal(t, "organization-secret", route.APIKey)
 	require.Equal(t, version, route.Profile.CredentialVersion)
 
@@ -51,4 +53,6 @@ func TestOrganizationRouteNeverBorrowsMemberCredential(t *testing.T) {
 	require.NoError(t, writer.SaveCredential(ctx, *row))
 	_, err = resolver.Resolve(ctx, input)
 	require.ErrorIs(t, err, ErrNotDispatched)
+	require.Equal(t, RouteNeedsConfiguration, resolver.Readiness(ctx, input), "disabled credential cannot advertise Chat planning")
+	require.Equal(t, RouteUnavailable, resolver.Readiness(ctx, aicapability.TextInputIdentity{OrganizationID: "org-2", Operation: aicapability.OperationAIWorkbenchChatPlan}))
 }

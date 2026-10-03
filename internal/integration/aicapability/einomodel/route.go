@@ -20,6 +20,14 @@ type RouteKey struct {
 	Operation      aicapability.Operation
 }
 
+type RouteReadiness string
+
+const (
+	RouteAvailable          RouteReadiness = "AVAILABLE"
+	RouteNeedsConfiguration RouteReadiness = "NEEDS_CONFIGURATION"
+	RouteUnavailable        RouteReadiness = "UNAVAILABLE"
+)
+
 // RoutePolicy is trusted deployment configuration for one organization and
 // one capability. The admitted version is bound after restricted provisioning.
 type RoutePolicy struct {
@@ -77,43 +85,61 @@ func NewOrganizationRouteResolver(credentials OrganizationCredentialReader, poli
 }
 
 func (r *OrganizationRouteResolver) Resolve(ctx context.Context, input aicapability.TextInputIdentity) (QualifiedRoute, error) {
+	route, _, err := r.resolve(ctx, input)
+	return route, err
+}
+
+// Readiness reads the same scoped policy and credential as Resolve. It is a
+// current configuration hint, never execution authorization or provider health.
+func (r *OrganizationRouteResolver) Readiness(ctx context.Context, input aicapability.TextInputIdentity) RouteReadiness {
+	_, status, _ := r.resolve(ctx, input)
+	return status
+}
+
+func (r *OrganizationRouteResolver) resolve(ctx context.Context, input aicapability.TextInputIdentity) (QualifiedRoute, RouteReadiness, error) {
 	if r == nil || r.credentials == nil || ctx == nil || ctx.Err() != nil {
-		return QualifiedRoute{}, ErrNotDispatched
+		return QualifiedRoute{}, RouteUnavailable, ErrNotDispatched
 	}
 	policy, ok := r.policies[RouteKey{OrganizationID: input.OrganizationID, Operation: input.Operation}]
-	if !ok || policy.AdmittedCredentialVersion == "" {
-		return QualifiedRoute{}, ErrNotDispatched
+	if !ok {
+		return QualifiedRoute{}, RouteUnavailable, ErrNotDispatched
+	}
+	if policy.AdmittedCredentialVersion == "" {
+		return QualifiedRoute{}, RouteNeedsConfiguration, ErrNotDispatched
 	}
 	policy.Profile = policy.ShapeProfile()
 	// The exact organization row is selected. A member row, process default or
 	// another capability's policy cannot be borrowed when this row is missing.
 	row, err := r.credentials.GetCredential(ctx, input.OrganizationID, "", policy.Profile.ClientName)
-	if err != nil || row == nil || !row.Enabled || row.UserID != "" || row.TenantID != input.OrganizationID ||
+	if err != nil {
+		return QualifiedRoute{}, RouteUnavailable, ErrNotDispatched
+	}
+	if row == nil || !row.Enabled || row.UserID != "" || row.TenantID != input.OrganizationID ||
 		row.ClientName != policy.Profile.ClientName || strings.TrimSpace(row.APIKey) == "" ||
 		row.Model != policy.Profile.ModelID || CredentialVersion(*row) != policy.AdmittedCredentialVersion ||
 		endpointDigest(row.BaseURL) != policy.AdmittedEndpointIdentityDigest ||
 		row.TimeoutSecond < 1 || row.TimeoutSecond > 120 ||
 		int64(row.TimeoutSecond)*int64(1e9) < int64(policy.Profile.DeadlineBound) {
-		return QualifiedRoute{}, ErrNotDispatched
+		return QualifiedRoute{}, RouteNeedsConfiguration, ErrNotDispatched
 	}
 	style := strings.ToLower(strings.TrimSpace(row.APIStyle))
 	switch AdapterKind(policy.Profile.AdapterKind) {
 	case AdapterOpenAICompatible:
 		if style != "openai" && style != "openai-compatible" && style != "grsai" {
-			return QualifiedRoute{}, ErrNotDispatched
+			return QualifiedRoute{}, RouteNeedsConfiguration, ErrNotDispatched
 		}
 	case AdapterClaudeNative:
 		if style != "claude-native" {
-			return QualifiedRoute{}, ErrNotDispatched
+			return QualifiedRoute{}, RouteNeedsConfiguration, ErrNotDispatched
 		}
 	default:
-		return QualifiedRoute{}, ErrNotDispatched
+		return QualifiedRoute{}, RouteUnavailable, ErrNotDispatched
 	}
 	route := QualifiedRoute{Profile: policy.Profile, Endpoint: row.BaseURL, APIKey: row.APIKey}
 	if !sameRoute(route, route) {
-		return QualifiedRoute{}, ErrNotDispatched
+		return QualifiedRoute{}, RouteUnavailable, ErrNotDispatched
 	}
-	return route, nil
+	return route, RouteAvailable, nil
 }
 
 var _ interface {

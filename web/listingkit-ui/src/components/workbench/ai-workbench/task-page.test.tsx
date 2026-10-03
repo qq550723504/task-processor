@@ -7,12 +7,22 @@ import { BusinessTaskPage } from "./task-page";
 const fixture = vi.hoisted(() => ({
   request: vi.fn(),
   context: { user: { id: "user-a" }, effectiveOrganization: { id: "org-a", capabilities: { "workbench.chat.use": true } }, roles: ["listingkit_operator"],
-    aiWorkbenchAvailable: true, isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null },
+    aiWorkbenchAvailable: true, aiWorkbenchPlanningReadiness: "AVAILABLE", isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null },
 }));
 vi.mock("@/lib/api/ai-workbench", async original => ({ ...await original<typeof import("@/lib/api/ai-workbench")>(), requestAIWorkbench: fixture.request }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => fixture.context }));
 
-afterEach(() => { cleanup(); fixture.request.mockReset(); fixture.context.aiWorkbenchAvailable = true; fixture.context.effectiveOrganization.capabilities["workbench.chat.use"] = true; });
+afterEach(() => { cleanup(); fixture.request.mockReset(); fixture.context.aiWorkbenchAvailable = true; fixture.context.aiWorkbenchPlanningReadiness = "AVAILABLE"; fixture.context.effectiveOrganization.capabilities["workbench.chat.use"] = true; });
+
+it("keeps Task reads without offering Chat creation when this organization's planning route is unready", async () => {
+  fixture.context.aiWorkbenchPlanningReadiness = "NEEDS_CONFIGURATION";
+  fixture.request.mockResolvedValue({ tasks: [], next: "" });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><BusinessTaskPage /></QueryClientProvider>);
+  expect(await screen.findByText("当前筛选无任务")).toBeVisible();
+  expect(screen.queryByRole("link", { name: "向硕米发起任务" })).not.toBeInTheDocument();
+  client.clear();
+});
 
 it("keeps Task reads but hides the Chat creation link for a read-only actor", async () => {
   fixture.context.effectiveOrganization.capabilities["workbench.chat.use"] = false;

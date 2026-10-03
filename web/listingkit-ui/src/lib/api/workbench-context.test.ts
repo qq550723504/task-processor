@@ -23,6 +23,8 @@ describe("workbench context API", () => {
     expect(parseWorkbenchContextPayload({ ...VALID_CONTEXT, aiWorkbenchAvailable: true }).success).toBe(true);
     expect(parseWorkbenchContextPayload({ ...VALID_CONTEXT, aiWorkbenchAvailable: false }).success).toBe(true);
     expect(parseWorkbenchContextPayload({ ...VALID_CONTEXT, aiWorkbenchAvailable: "true" }).success).toBe(false);
+    expect(parseWorkbenchContextPayload({ ...VALID_CONTEXT, aiWorkbenchAvailable: true, aiWorkbenchPlanningReadiness: "NEEDS_CONFIGURATION" }).success).toBe(true);
+    expect(parseWorkbenchContextPayload({ ...VALID_CONTEXT, aiWorkbenchAvailable: true, aiWorkbenchPlanningReadiness: "READY" }).success).toBe(false);
   });
   it.each([true, false])("preserves the server-derived source-account capability %s on GET and switch", async allowed => {
     const context = { ...VALID_CONTEXT, organizations: VALID_CONTEXT.organizations.map(org => ({ ...org, capabilities: { "workbench.source_account.manage": allowed, "workbench.chat.use": allowed } })) };

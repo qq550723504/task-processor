@@ -654,6 +654,7 @@ describe("/api/workbench BFF", () => {
         effectiveOrganizationId: "org-canonical",
         selectionRequired: false,
         aiWorkbenchAvailable: true,
+        aiWorkbenchPlanningReadiness: "NEEDS_CONFIGURATION",
         organizations: [
           {
             id: "org-canonical",
@@ -680,7 +681,7 @@ describe("/api/workbench BFF", () => {
     expect(response.headers.get("Set-Cookie")).toContain(
       "shuomi_effective_organization=org-canonical",
     );
-    expect((await response.json()).aiWorkbenchAvailable).toBe(true);
+    expect(await response.json()).toMatchObject({ aiWorkbenchAvailable: true, aiWorkbenchPlanningReadiness: "NEEDS_CONFIGURATION" });
   });
 
   it("preserves a Go body/header mismatch rejection and leaves the cookie unchanged", async () => {

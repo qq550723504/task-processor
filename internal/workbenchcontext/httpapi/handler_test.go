@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -71,6 +72,36 @@ func TestAIWorkbenchAvailabilityReflectsMountedCurrentApplicationModule(t *testi
 	require.NotContains(t, read(), "aiWorkbenchAvailable", "an optional module is absent by default")
 	handler.SetAIWorkbenchAvailable(true)
 	require.Equal(t, true, read()["aiWorkbenchAvailable"])
+}
+
+func TestAIWorkbenchPlanningReadinessFollowsSelectedOrganization(t *testing.T) {
+	handler := NewHandlerWithWorkbenchAuthorizer(authz.DefaultListingKitAuthorizer())
+	handler.SetAIWorkbenchAvailable(true)
+	readOrganizations := []string{}
+	handler.SetAIWorkbenchPlanningReadiness(func(_ context.Context, organizationID string) string {
+		readOrganizations = append(readOrganizations, organizationID)
+		if organizationID == "org-b" {
+			return "NEEDS_CONFIGURATION"
+		}
+		return "AVAILABLE"
+	})
+	identity := authidentity.AuthenticatedIdentity{UserID: "actor", HomeOrganizationID: "org-a", EffectiveOrganizationID: "org-b",
+		OrganizationGrants: []authidentity.OrganizationGrant{
+			{OrganizationID: "org-a", OrganizationName: "A", Roles: []string{"listingkit_operator"}},
+			{OrganizationID: "org-b", OrganizationName: "B", Roles: []string{"listingkit_operator"}},
+		},
+	}
+	response := serveHandler(t, http.MethodGet, "/api/v1/workbench/context", "", identity, handler.GetContext)
+	require.Equal(t, http.StatusOK, response.Code)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Equal(t, "NEEDS_CONFIGURATION", body["aiWorkbenchPlanningReadiness"])
+	require.Equal(t, []string{"org-b"}, readOrganizations, "do not read another organization's credential for the current page")
+	identity.EffectiveOrganizationID = "org-a"
+	response = serveHandler(t, http.MethodGet, "/api/v1/workbench/context", "", identity, handler.GetContext)
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Equal(t, "AVAILABLE", body["aiWorkbenchPlanningReadiness"])
+	require.Equal(t, []string{"org-b", "org-a"}, readOrganizations)
 }
 
 func TestSourceAccountCapabilityDoesNotUseHomeOrAnotherOrganizationRole(t *testing.T) {
