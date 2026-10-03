@@ -12,9 +12,9 @@ import (
 	sigjson "sigs.k8s.io/json"
 	"task-processor/internal/agent"
 	"task-processor/internal/agentconfig"
+	"task-processor/internal/aicapability"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/integration/commercetoolauth"
-	"task-processor/internal/integration/openai"
 	"task-processor/internal/knowledge"
 	"task-processor/internal/product/review"
 )
@@ -73,7 +73,14 @@ func knowledgeRequestContext(ctx context.Context) (context.Context, error) {
 }
 
 func (a *productAgentApplication) startRequest(ctx context.Context, binding agent.Binding, key, baseID string, template *agentconfig.TemplateRef) (agent.Request, error) {
-	request := agent.Request{Key: key, Binding: binding, PolicyVersion: "title-review-v1", PromptVersion: "product-title-agent-v1", Limits: a.config.Limits}
+	return a.startRequestWithProfile(ctx, binding, key, baseID, "", template, aicapability.ModelProfile{}, "")
+}
+
+func (a *productAgentApplication) startRequestWithProfile(ctx context.Context, binding agent.Binding, key, baseID, expectedRevisionSet string, template *agentconfig.TemplateRef, expectedProfile aicapability.ModelProfile, goalSummary string) (agent.Request, error) {
+	if !agent.ValidGoalSummary(goalSummary) {
+		return agent.Request{}, agent.ErrInvalid
+	}
+	request := agent.Request{Key: key, Binding: binding, GoalSummary: goalSummary, PolicyVersion: "title-review-v1", PromptVersion: "product-title-agent-v1", Limits: a.config.Limits}
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
 	if !ok {
 		return agent.Request{}, knowledge.ErrForbidden
@@ -90,43 +97,54 @@ func (a *productAgentApplication) startRequest(ctx context.Context, binding agen
 		return agent.Request{}, readErr
 	}
 	if found {
-		if _, err := a.configuration.Match(ctx, input, existing.State.Request.ConfigurationSnapshotRef); err != nil {
+		frozen, err := a.configuration.Match(ctx, input, existing.State.Request.ConfigurationSnapshotRef)
+		if err != nil {
 			return agent.Request{}, err
+		}
+		if expectedProfile.Validate() == nil && frozen.ExecutionModelProfile != expectedProfile {
+			return agent.Request{}, agentconfig.ErrConflict
 		}
 		if baseID != "" {
 			if a.context == nil {
 				return agent.Request{}, knowledge.ErrUnavailable
 			}
 			ref := existing.State.Request.ContextSnapshotRef
-			command := knowledge.ContextRequest{Scope: knowledge.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, Binding: binding, Key: key, Selection: "knowledge-base:" + baseID, PolicyVersion: knowledge.ContextPolicyVersion}
+			command := knowledge.ContextRequest{Scope: knowledge.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, Binding: binding, Key: key, Selection: "knowledge-base:" + baseID, PolicyVersion: knowledge.ContextPolicyVersion, ExpectedRevisionSetDigest: expectedRevisionSet}
 			if err := a.context.ValidateMaterializedRequest(ctx, command, knowledge.ContextSnapshotRef{Kind: ref.Kind, ID: ref.ID, Digest: ref.Digest}); err != nil {
 				return agent.Request{}, err
 			}
 		}
 		return existing.State.Request, nil
 	}
+	if a.selectTitleProfile == nil {
+		return agent.Request{}, agent.ErrUnavailable
+	}
+	profile, err := a.selectTitleProfile(ctx, identity.TenantID)
+	if err != nil || profile.Validate() != nil || (expectedProfile.Validate() == nil && profile != expectedProfile) {
+		return agent.Request{}, agent.ErrUnavailable
+	}
+	input.ExecutionModelProfile = profile
 	snapshot, err := a.configuration.Prepare(ctx, input)
 	if err != nil {
 		return agent.Request{}, err
 	}
 	request = snapshot.Request
 	request.ConfigurationSnapshotRef = agent.ConfigurationSnapshotRef{Kind: agentconfig.SnapshotKind, ID: snapshot.ID, Digest: snapshot.Digest}
-	if baseID == "" {
-		return request, nil
+	if baseID != "" {
+		if a.context == nil {
+			return agent.Request{}, knowledge.ErrUnavailable
+		}
+		command := knowledge.ContextRequest{
+			Scope: knowledge.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, Binding: binding, Key: key,
+			Selection: "knowledge-base:" + baseID, PolicyVersion: knowledge.ContextPolicyVersion, ExpectedRevisionSetDigest: expectedRevisionSet,
+		}
+		ref, err := a.context.Materialize(ctx, command)
+		if err != nil {
+			return agent.Request{}, err
+		}
+		request.ContextSnapshotRef = agent.ContextSnapshotRef{Kind: ref.Kind, ID: ref.ID, Digest: ref.Digest}
+		request.PromptVersion = "product-title-agent-knowledge-v1"
 	}
-	if a.context == nil {
-		return agent.Request{}, knowledge.ErrUnavailable
-	}
-	command := knowledge.ContextRequest{
-		Scope: knowledge.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, Binding: binding, Key: key,
-		Selection: "knowledge-base:" + baseID, PolicyVersion: knowledge.ContextPolicyVersion,
-	}
-	ref, err := a.context.Materialize(ctx, command)
-	if err != nil {
-		return agent.Request{}, err
-	}
-	request.ContextSnapshotRef = agent.ContextSnapshotRef{Kind: ref.Kind, ID: ref.ID, Digest: ref.Digest}
-	request.PromptVersion = "product-title-agent-knowledge-v1"
 	if a.model == nil {
 		return agent.Request{}, agent.ErrUnavailable
 	}
@@ -137,7 +155,7 @@ func (a *productAgentApplication) startRequest(ctx context.Context, binding agen
 		initial.TraceID = span.TraceID().String()
 	}
 	if _, err := a.model.Quote(ctx, initial.ModelInput(a.definition)); err != nil {
-		if errors.Is(err, openai.ErrTextInput) {
+		if errors.Is(err, aicapability.ErrTextEnvelope) {
 			return agent.Request{}, knowledge.ErrContextTooLarge
 		}
 		return agent.Request{}, err

@@ -22,6 +22,7 @@ const (
 
 var ErrContextTooLarge = errors.New("KNOWLEDGE_CONTEXT_TOO_LARGE")
 var ErrForbidden = errors.New("KNOWLEDGE_FORBIDDEN")
+var ErrSelectionChanged = errors.New("KNOWLEDGE_SELECTION_CHANGED")
 var digestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // ContextRequest is a server-constructed pre-Start command. Resolved sources,
@@ -30,6 +31,11 @@ type ContextRequest struct {
 	Scope                         Scope
 	Binding                       agent.Binding
 	Key, Selection, PolicyVersion string
+	ExpectedRevisionSetDigest     string
+}
+type SelectionRevisionSetRef struct {
+	BaseID string
+	Digest string
 }
 type ContextSnapshotRef struct {
 	Kind   string `json:"kind"`
@@ -86,6 +92,9 @@ type KnowledgeAuthorizer interface {
 type KnowledgeContextMaterializer interface {
 	Materialize(context.Context, ContextRequest) (ContextSnapshotRef, error)
 }
+type KnowledgeSelectionObserver interface {
+	ObserveSelection(context.Context, Scope, string) (SelectionRevisionSetRef, error)
+}
 type KnowledgeContextReader interface {
 	ReadContext(context.Context, Scope, ContextSnapshotRef) (ContextBundle, error)
 }
@@ -107,8 +116,12 @@ type ContextRepository interface {
 }
 
 func MaterializationFingerprint(r ContextRequest) (string, error) {
-	if !validScope(r.Scope) || !r.Binding.Valid() || !agent.ValidID(r.Key) || !agent.ValidID(r.PolicyVersion) || len(r.Selection) != len("knowledge-base:")+36 || !ValidID(r.Selection[len("knowledge-base:"):]) || r.Selection[:len("knowledge-base:")] != "knowledge-base:" {
+	if !validScope(r.Scope) || !r.Binding.Valid() || !agent.ValidID(r.Key) || !agent.ValidID(r.PolicyVersion) || len(r.Selection) != len("knowledge-base:")+36 || !ValidID(r.Selection[len("knowledge-base:"):]) || r.Selection[:len("knowledge-base:")] != "knowledge-base:" ||
+		(r.ExpectedRevisionSetDigest != "" && !digestPattern.MatchString(r.ExpectedRevisionSetDigest)) {
 		return "", ErrInvalid
+	}
+	if r.ExpectedRevisionSetDigest != "" {
+		return fingerprint(r.Binding, r.Selection, r.PolicyVersion, r.ExpectedRevisionSetDigest), nil
 	}
 	return fingerprint(r.Binding, r.Selection, r.PolicyVersion), nil
 }
@@ -182,6 +195,20 @@ func (s *ContextService) Materialize(ctx context.Context, r ContextRequest) (Con
 		return ContextSnapshotRef{}, err
 	}
 	return s.repo.Materialize(ctx, r)
+}
+
+func (s *ContextService) ObserveSelection(ctx context.Context, scope Scope, baseID string) (SelectionRevisionSetRef, error) {
+	if s == nil || !ValidID(baseID) {
+		return SelectionRevisionSetRef{}, ErrInvalid
+	}
+	if err := s.admit(ctx, scope); err != nil {
+		return SelectionRevisionSetRef{}, err
+	}
+	observer, ok := s.repo.(KnowledgeSelectionObserver)
+	if !ok {
+		return SelectionRevisionSetRef{}, ErrUnavailable
+	}
+	return observer.ObserveSelection(ctx, scope, baseID)
 }
 
 // ValidateMaterializedRequest validates only immutable command metadata for an

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
@@ -14,8 +15,7 @@ import (
 	coreconfig "task-processor/internal/core/config"
 
 	"task-processor/internal/aicapability"
-	"task-processor/internal/integration/agent/titletext"
-	"task-processor/internal/integration/openai"
+	governed "task-processor/internal/integration/aicapability/einomodel"
 )
 
 func agentRuntimeConfig() *Config {
@@ -30,7 +30,7 @@ func agentRuntimeConfig() *Config {
 	run.User, run.Database = "agent_runtime", "agent"
 	review.User = "product_review_runtime"
 	asset.User, asset.Database = "asset_runtime", "asset"
-	cfg.ProductAgent = &ProductAgentConfig{Enabled: true, Database: run, ReviewDatabase: review, AssetDatabase: asset, AllowedOrganizationIDs: []string{"org"}, Currency: "CNY", Steps: 12, ModelCalls: 6, Tokens: 5000000, CostMicros: 5000000, RuntimeSeconds: 120, TextPolicies: map[string]titletext.AgentTextPolicy{"org": {ProviderID: "grsai", Endpoint: "https://grsaiapi.com/v1", APIStyle: "grsai", ClientName: "text", PolicyVersion: "title-review-v1", PricingVersion: "test-pricing", BoundEvidence: "isolated-fixture", Currency: "CNY", InputWindowTokens: 1048576, OutputWindowTokens: 65536, MaximumOutputTokens: 8192, OutputLimitField: "max_tokens", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000, AdmittedRoute: openai.EffectiveClientRoute{ProviderID: "grsai", ModelID: "gemini-2.5-flash", CredentialReference: "text", ConfigurationVersion: "test-route"}, PointPricing: &aicapability.ModelPointTariff{PriceVersion: "test-tariff", InputPointsPerMillionTokens: 1000000, OutputPointsPerMillionTokens: 2000000}}}}
+	cfg.ProductAgent = &ProductAgentConfig{Enabled: true, Database: run, ReviewDatabase: review, AssetDatabase: asset, AllowedOrganizationIDs: []string{"org"}, Currency: "CNY", Steps: 12, ModelCalls: 6, Tokens: 5000000, CostMicros: 5000000, RuntimeSeconds: 120, TextPolicies: map[string]governed.RoutePolicy{"org": {AdmittedCredentialVersion: "fixture-credential", AdmittedEndpointIdentityDigest: governed.EndpointIdentityDigest("https://grsaiapi.com/v1"), Profile: aicapability.ModelProfile{ClientName: "text", ProviderID: "grsai", AdapterKind: "openai-compatible", ModelID: "gemini-2.5-flash", RoutingPolicyVersion: "route-v1", AdapterPolicyVersion: "adapter-v1", PromptVersion: "product-title-agent-v1", OutputSchemaVersion: "product-title-action-v1", UsageMappingVersion: "usage-v1", CostPricingVersion: "test-pricing", PointTariff: aicapability.ModelPointTariff{PriceVersion: "test-tariff", InputPointsPerMillionTokens: 1000000, OutputPointsPerMillionTokens: 2000000}, Currency: "CNY", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000, MaximumPromptTokens: 1048576, MaximumCompletionTokens: 8192, MaximumInputBytes: 1 << 20, MaximumOutputBytes: 16 << 10, DeadlineBound: 3 * time.Second}}}}
 	return cfg
 }
 
@@ -50,23 +50,23 @@ func TestProductAgentConfigRejectsUnboundedOrSplitProductOwner(t *testing.T) {
 		"duplicate admission":       func(c *Config) { c.ProductAgent.AllowedOrganizationIDs = []string{"org", "org"} },
 		"invalid point tariff": func(c *Config) {
 			policy := c.ProductAgent.TextPolicies["org"]
-			policy.PointPricing = &aicapability.ModelPointTariff{PriceVersion: "synthetic", InputPointsPerMillionTokens: 1}
+			policy.Profile.PointTariff = aicapability.ModelPointTariff{PriceVersion: "synthetic", InputPointsPerMillionTokens: 1}
 			c.ProductAgent.TextPolicies["org"] = policy
 		},
 		"overflow point tariff": func(c *Config) {
 			policy := c.ProductAgent.TextPolicies["org"]
-			policy.PointPricing = &aicapability.ModelPointTariff{PriceVersion: "synthetic", InputPointsPerMillionTokens: 9223372036854775807, OutputPointsPerMillionTokens: 9223372036854775807}
+			policy.Profile.PointTariff = aicapability.ModelPointTariff{PriceVersion: "synthetic", InputPointsPerMillionTokens: 9223372036854775807, OutputPointsPerMillionTokens: 9223372036854775807}
 			c.ProductAgent.TextPolicies["org"] = policy
 		},
 		"policy outside admission": func(c *Config) { c.ProductAgent.TextPolicies["other-org"] = c.ProductAgent.TextPolicies["org"] },
 		"policy currency mismatch": func(c *Config) {
 			policy := c.ProductAgent.TextPolicies["org"]
-			policy.Currency = "USD"
+			policy.Profile.Currency = "USD"
 			c.ProductAgent.TextPolicies["org"] = policy
 		},
-		"missing model limit field": func(c *Config) {
+		"missing model adapter": func(c *Config) {
 			policy := c.ProductAgent.TextPolicies["org"]
-			policy.OutputLimitField = ""
+			policy.Profile.AdapterKind = ""
 			c.ProductAgent.TextPolicies["org"] = policy
 		},
 	} {

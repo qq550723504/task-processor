@@ -90,6 +90,26 @@ func (r *Repository) Read(ctx context.Context, a review.Scope, id string) (revie
 	return load(r.db.WithContext(ctx), a, id, false)
 }
 
+func (r *Repository) FindAgentReviewID(ctx context.Context, scope review.Scope, runID string) (string, bool, error) {
+	if r == nil || r.db == nil || ctx == nil || !review.ValidKey(runID) || !review.ValidKey(scope.Org) || !review.ValidKey(scope.Actor) {
+		return "", false, review.ErrInvalid
+	}
+	var row operationRow
+	err := r.db.WithContext(ctx).Select("org,actor,operation_key,fingerprint,CASE WHEN octet_length(response) <= ? THEN response ELSE NULL END AS response", review.MaxRecordBytes).
+		Where("org = ? AND actor = ? AND operation_key = ?", scope.Org, scope.Actor, "agent:"+runID).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	var view review.View
+	if len(row.Response) == 0 || json.Unmarshal(row.Response, &view) != nil || !review.ValidKey(view.ID) || view.Owner != scope.Actor {
+		return "", false, review.ErrUnavailable
+	}
+	return view.ID, true, nil
+}
+
 func decodeProposalRow(row proposalRow) (review.Record, error) {
 	var record review.Record
 	if len(row.Payload) == 0 || json.Unmarshal(row.Payload, &record) != nil || record.Org != row.Org || record.ID != row.ID || record.Owner != row.Owner || record.State != row.State || review.ValidateStoredRecord(record) != nil {

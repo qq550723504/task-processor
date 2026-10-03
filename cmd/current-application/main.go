@@ -19,7 +19,6 @@ import (
 	"task-processor/internal/app/runtime/currentapplication"
 	coreconfig "task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
-	"task-processor/internal/integration/openai"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
@@ -85,6 +84,9 @@ func execute() error {
 		OpenProductAgent: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
+		OpenAIWorkbench: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
 		DialImageAgentWorkflow: func(ctx context.Context, address, namespace string) (imageagent.WorkflowClient, func() error, error) {
 			return appruntime.DialOrganizationImageAgentTemporalWorkflowClient(ctx, address, namespace)
 		},
@@ -99,25 +101,16 @@ func execute() error {
 			if features.Knowledge != nil {
 				options = append(options, httpapi.WithKnowledge(features.Knowledge))
 			}
-			var agentManager *openai.Manager
 			if features.ProductAgent != nil && !features.ProductAgent.Enabled {
 				options = append(options, httpapi.WithAgentConfiguration(features.ProductAgentDB))
 			}
 			if features.ProductAgent != nil && features.ProductAgent.Enabled {
 				p := features.ProductAgent
-				// Manager needs registered client names. Every credential, endpoint,
-				// model and API style must come from the organization-only resolver.
-				clients := make(map[string]*openai.ClientConfig, len(p.TextPolicies))
-				for _, policy := range p.TextPolicies {
-					clients[policy.ClientName] = openai.NewClientConfig("", "", "", 25)
-				}
-				manager, buildErr := openai.NewManager(&openai.ManagerConfig{Logger: openai.AdaptLogrus(logger.WithField("component", "product-agent")), Clients: clients, ConfigResolver: openai.NewOrganizationOnlyCredentialResolver(features.ProductAgentDB)})
-				if buildErr != nil {
-					return nil, buildErr
-				}
 				ledger := aistore.NewGormInvocationRecorder(features.ProductAgentDB)
-				options = append(options, httpapi.WithProductAgent(httpapi.ProductAgentDependencies{RunDB: features.ProductAgentDB, ReviewDB: features.ProductReviewDB, AssetDB: features.ProductAgentAssetDB, Manager: manager, Ledger: ledger, TextPolicies: p.TextPolicies, Enabled: true, AllowedOrganizationIDs: p.AllowedOrganizationIDs, Limits: p.Limits()}))
-				agentManager = manager
+				options = append(options, httpapi.WithProductAgent(httpapi.ProductAgentDependencies{RunDB: features.ProductAgentDB, ReviewDB: features.ProductReviewDB, AssetDB: features.ProductAgentAssetDB, Ledger: ledger, TextPolicies: p.TextPolicies, Enabled: true, AllowedOrganizationIDs: p.AllowedOrganizationIDs, Limits: p.Limits()}))
+			}
+			if features.AIWorkbench != nil && features.AIWorkbench.Enabled {
+				options = append(options, httpapi.WithAIWorkbench(httpapi.AIWorkbenchDependencies{DB: features.AIWorkbenchDB, PlanningTextPolicies: features.AIWorkbench.PlanningTextPolicies}))
 			}
 			if features.RuntimeContext != nil {
 				options = append(options, httpapi.WithRuntimeContext(features.RuntimeContext))
@@ -149,21 +142,11 @@ func execute() error {
 			}
 			if features.MembershipDB != nil {
 				if features.Membership == nil {
-					if agentManager != nil {
-						_ = agentManager.Close()
-					}
 					return nil, fmt.Errorf("membership configuration unavailable")
 				}
 				options = append(options, httpapi.WithMembership(httpapi.MembershipDependencies{ReceiptDB: features.MembershipDB, ProviderOrigin: features.Membership.ProviderOrigin, ReadToken: features.Membership.ReadToken, WriteToken: features.Membership.WriteToken, InvitationMail: features.Membership.InvitationMail}))
 			}
 			server, buildErr := httpapi.NewCurrentApplicationWithOptions(ctx, source, cfg, logger, options...)
-			if agentManager != nil {
-				if buildErr != nil {
-					_ = agentManager.Close()
-				} else {
-					server.RegisterOnShutdown(func() { _ = agentManager.Close() })
-				}
-			}
 			return server, buildErr
 		},
 		NewApplication: func(ctx context.Context, source *gorm.DB, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {

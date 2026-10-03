@@ -5,25 +5,24 @@ import (
 	"time"
 
 	"task-processor/internal/agent"
-
-	"task-processor/internal/integration/agent/titletext"
+	governed "task-processor/internal/integration/aicapability/einomodel"
 )
 
 // ProductAgentConfig is an explicit local trial option. Credential values stay
 // in the existing Organization AI credential owner, never in this option.
 type ProductAgentConfig struct {
-	Enabled                bool                                 `json:"enabled"`
-	Database               DatabaseConfig                       `json:"database"`
-	ReviewDatabase         DatabaseConfig                       `json:"reviewDatabase"`
-	AssetDatabase          DatabaseConfig                       `json:"assetDatabase"`
-	AllowedOrganizationIDs []string                             `json:"allowedOrganizationIds"`
-	TextPolicies           map[string]titletext.AgentTextPolicy `json:"textPolicies"`
-	Currency               string                               `json:"currency"`
-	Steps                  int                                  `json:"steps"`
-	ModelCalls             int                                  `json:"modelCalls"`
-	Tokens                 int64                                `json:"tokens"`
-	CostMicros             int64                                `json:"costMicros"`
-	RuntimeSeconds         int                                  `json:"runtimeSeconds"`
+	Enabled                bool                            `json:"enabled"`
+	Database               DatabaseConfig                  `json:"database"`
+	ReviewDatabase         DatabaseConfig                  `json:"reviewDatabase"`
+	AssetDatabase          DatabaseConfig                  `json:"assetDatabase"`
+	AllowedOrganizationIDs []string                        `json:"allowedOrganizationIds"`
+	TextPolicies           map[string]governed.RoutePolicy `json:"textPolicies"`
+	Currency               string                          `json:"currency"`
+	Steps                  int                             `json:"steps"`
+	ModelCalls             int                             `json:"modelCalls"`
+	Tokens                 int64                           `json:"tokens"`
+	CostMicros             int64                           `json:"costMicros"`
+	RuntimeSeconds         int                             `json:"runtimeSeconds"`
 }
 
 func (p *ProductAgentConfig) Limits() agent.Limits {
@@ -66,8 +65,11 @@ func (p *ProductAgentConfig) validate(cfg *Config) error {
 		return errors.New("product agent text policies invalid")
 	}
 	for organizationID, policy := range p.TextPolicies {
-		tokens, costMicros, err := policy.UpperBound()
-		if !seen[organizationID] || policy.PolicyVersion != "title-review-v1" || policy.Currency != p.Currency || err != nil || tokens > p.Tokens || costMicros > p.CostMicros {
+		profile := policy.ShapeProfile()
+		costMicros, err := profile.MaximumCost()
+		if !seen[organizationID] || profile.PromptVersion != "product-title-agent-v1" || profile.OutputSchemaVersion != "product-title-action-v1" ||
+			profile.Currency != p.Currency || profile.Validate() != nil || err != nil ||
+			profile.MaximumPromptTokens+profile.MaximumCompletionTokens > p.Tokens || costMicros > p.CostMicros {
 			return errors.New("product agent organization text policy invalid")
 		}
 	}

@@ -6,6 +6,24 @@ import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 
 afterEach(cleanup);
 
+it("only advertises Chat and BusinessTask when the current application mounts AI Workbench", () => {
+  const view = render(<ConsoleNavigation pathname="/workbench/ai/chat" ariaLabel="主导航" aiWorkbenchAvailable={false} />);
+  expect(screen.queryByRole("link", { name: "硕米Chat" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "任务中心" })).not.toBeInTheDocument();
+  view.rerender(<ConsoleNavigation pathname="/workbench/ai/chat" ariaLabel="主导航" aiWorkbenchAvailable />);
+  expect(screen.getByRole("link", { name: "硕米Chat" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "任务中心" })).toBeVisible();
+});
+
+it("keeps independently available Review and history pages discoverable without AI Workbench", async () => {
+  render(<ConsoleNavigation pathname="/workbench" ariaLabel="主导航" aiWorkbenchAvailable={false} productReviewAvailable sheinRecordsAvailable />);
+  await userEvent.click(screen.getByRole("button", { name: "展开AI工作台" }));
+  expect(screen.queryByRole("link", { name: "硕米Chat" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "任务中心" })).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "标题审核" })).toHaveAttribute("href", "/workbench/ai/tasks/pending/other");
+  expect(screen.getByRole("link", { name: "历史工作记录" })).toHaveAttribute("href", "/workbench/ai/tasks/completed/history");
+});
+
 it("hides the acquisition entry unless the serving deployment enables it", async () => {
   const view = render(<ConsoleNavigation pathname="/workbench" ariaLabel="主导航" productAcquisitionAvailable={false} />);
   expect(screen.queryByRole("link", { name: "1688采集" })).not.toBeInTheDocument();

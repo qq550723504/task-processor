@@ -34,6 +34,7 @@ type fakeModel struct {
 	panicAfterDispatch bool
 	waitStarted        chan struct{}
 	notDispatchedAt    int
+	observedInvalid    bool
 }
 
 func (m *fakeModel) Quote(context.Context, agent.ModelInput) (agent.Quote, error) {
@@ -62,6 +63,9 @@ func (m *fakeModel) Decide(ctx context.Context, in agent.ModelInput) (agent.Mode
 	}
 	if m.fail {
 		return agent.ModelResult{}, errors.New("lost response")
+	}
+	if m.observedInvalid {
+		return agent.ModelResult{InvocationID: in.InvocationID, Usage: agent.ObservedUsage{Tokens: 2, CostMicros: 1, Currency: in.UpperBound.Currency, Known: true}}, agent.ErrModelInvalidOutput
 	}
 	a := m.actions[0]
 	m.actions = m.actions[1:]
@@ -114,6 +118,7 @@ type fakeStore struct {
 	mu         sync.Mutex
 	record     agent.Record
 	exists     bool
+	failClaim  bool
 	failCommit bool
 }
 
@@ -126,6 +131,9 @@ func copyRecord(r agent.Record) agent.Record {
 func (s *fakeStore) Claim(_ context.Context, input agent.Record, expected uint64) (agent.Record, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.failClaim {
+		return agent.Record{}, false, agent.ErrUnavailable
+	}
 	if !s.exists {
 		if expected != 0 {
 			return agent.Record{}, false, agent.ErrConflict
@@ -183,6 +191,30 @@ func proposal(value string) agent.Action {
 	return agent.Action{Kind: "propose", Candidate: enrichment.Candidate{Changes: []enrichment.FieldChange{{Field: "title", Value: value, EvidenceIDs: []string{"source-1"}}}}}
 }
 
+func TestRuntimeReportsWhetherClaimWasAttempted(t *testing.T) {
+	runtime, request, _, _, _, auth, store := fixture(t, proposal("supported title"))
+	auth.denied = true
+	_, attempted, err := runtime.StartWithClaimAttempt(context.Background(), request)
+	if err == nil || attempted || store.exists {
+		t.Fatalf("revoked Start must fail before Claim: attempted=%v, err=%v", attempted, err)
+	}
+	_, attempted, err = runtime.ResumeWithClaimAttempt(context.Background(), request, 1, "feedback")
+	if err == nil || attempted || store.exists {
+		t.Fatalf("revoked Resume must fail before Claim: attempted=%v, err=%v", attempted, err)
+	}
+	auth.denied = false
+	store.failClaim = true
+	_, attempted, err = runtime.StartWithClaimAttempt(context.Background(), request)
+	if err == nil || !attempted || store.exists {
+		t.Fatalf("a failed Claim must remain outcome-unknown to the caller: attempted=%v, err=%v", attempted, err)
+	}
+	store.failClaim = false
+	_, attempted, err = runtime.StartWithClaimAttempt(context.Background(), request)
+	if !attempted || !store.exists || err != nil {
+		t.Fatalf("admitted Start must report its Claim attempt: attempted=%v, err=%v", attempted, err)
+	}
+}
+
 func TestGraphReadsProposesRepairsAndStopsForHuman(t *testing.T) {
 	r, req, model, tools, validator, _, _ := fixture(t, agent.Action{Kind: "tool", Tool: canonicalinspect.Definition().Ref}, proposal("bad"), proposal("still bad"), proposal("supported title"))
 	out, err := r.Start(context.Background(), req)
@@ -237,6 +269,18 @@ func TestInterruptResumePreservesBudgetAndPlatform(t *testing.T) {
 	}
 }
 func TestModelUnknownAndAuditFailureNeverRetry(t *testing.T) {
+	t.Run("observed invalid output", func(t *testing.T) {
+		r, req, m, _, _, _, _ := fixture(t)
+		m.observedInvalid = true
+		out, err := r.Start(context.Background(), req)
+		if err != nil || out.State.StopReason != agent.StopInvalidOutput || out.State.PendingInvocationID != "" || out.State.Usage.Tokens != 2 {
+			t.Fatalf("observed invalid output became unknown: %+v %v", out.State, err)
+		}
+		_, err = r.Start(context.Background(), req)
+		if err != nil || m.calls != 1 {
+			t.Fatalf("observed invalid output was redispatched: %v calls=%d", err, m.calls)
+		}
+	})
 	t.Run("model response lost", func(t *testing.T) {
 		r, req, m, _, _, _, _ := fixture(t)
 		m.fail = true

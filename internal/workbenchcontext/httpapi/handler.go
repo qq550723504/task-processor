@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -18,8 +19,43 @@ const switchOrganizationRequestBodyMaxBytes = 4096
 
 // Handler exposes only the verified, resolved workbench identity projection.
 type Handler struct {
-	workbenchAuthorizer *authz.ListingKitAuthorizer
-	profileReader       authidentity.SelfProfileReader
+	workbenchAuthorizer          *authz.ListingKitAuthorizer
+	profileReader                authidentity.SelfProfileReader
+	aiWorkbenchAvailable         bool
+	aiWorkbenchAdmission         func(string) bool
+	aiWorkbenchPlanningReadiness func(context.Context, string) string
+	aiWorkbenchTitleReadiness    func(context.Context, string) string
+}
+
+// SetAIWorkbenchAvailable is called during composition, before HTTP serving.
+func (h *Handler) SetAIWorkbenchAvailable(available bool) {
+	if h != nil {
+		h.aiWorkbenchAvailable = available
+	}
+}
+
+// SetAIWorkbenchAdmission projects the mounted module's organization allowlist
+// for the selected organization. It does not grant any Chat or Task permission.
+func (h *Handler) SetAIWorkbenchAdmission(admitted func(string) bool) {
+	if h != nil {
+		h.aiWorkbenchAdmission = admitted
+	}
+}
+
+// SetAIWorkbenchPlanningReadiness is wired to the planner's exact organization
+// policy and credential resolver before HTTP serving. It returns no secrets.
+func (h *Handler) SetAIWorkbenchPlanningReadiness(read func(context.Context, string) string) {
+	if h != nil {
+		h.aiWorkbenchPlanningReadiness = read
+	}
+}
+
+// SetAIWorkbenchTitleReadiness projects the current organization's title
+// execution route for existing proposals. It never authorizes confirmation.
+func (h *Handler) SetAIWorkbenchTitleReadiness(read func(context.Context, string) string) {
+	if h != nil {
+		h.aiWorkbenchTitleReadiness = read
+	}
 }
 
 func (h *Handler) SetSelfProfileReader(reader authidentity.SelfProfileReader) {
@@ -110,6 +146,7 @@ func (h *Handler) writeContext(c *gin.Context) {
 	organizations := make([]organizationResponse, 0, len(identity.OrganizationGrants))
 	for _, grant := range identity.OrganizationGrants {
 		canManageSourceAccount := h.workbenchAuthorizer != nil && h.workbenchAuthorizer.Authorize(identity.UserID, grant.Roles, authz.PermissionWorkbenchSourceAccountManage)
+		canUseChat := h.workbenchAuthorizer != nil && h.workbenchAuthorizer.Authorize(identity.UserID, grant.Roles, authz.PermissionWorkbenchChatUse)
 		roles := append([]string(nil), grant.Roles...)
 		if h.workbenchAuthorizer != nil && h.workbenchAuthorizer.Authorize(identity.UserID, roles, authz.PermissionWorkbenchStoreDelete) && !containsRole(roles, "platform_admin") {
 			roles = append(roles, "platform_admin")
@@ -121,7 +158,7 @@ func (h *Handler) writeContext(c *gin.Context) {
 			ID:           grant.OrganizationID,
 			Name:         grant.OrganizationName,
 			Roles:        roles,
-			Capabilities: organizationCapabilitiesResponse{SourceAccountManage: canManageSourceAccount},
+			Capabilities: organizationCapabilitiesResponse{SourceAccountManage: canManageSourceAccount, ChatUse: canUseChat},
 		})
 	}
 
@@ -129,12 +166,43 @@ func (h *Handler) writeContext(c *gin.Context) {
 	if effective := strings.TrimSpace(identity.EffectiveOrganizationID); effective != "" {
 		effectiveOrganizationID = &effective
 	}
+	planningReadiness := ""
+	titleReadiness := ""
+	available := false
+	if h.aiWorkbenchAvailable {
+		for _, organization := range organizations {
+			if effectiveOrganizationID != nil && organization.ID == *effectiveOrganizationID {
+				available = h.aiWorkbenchAdmission != nil && h.aiWorkbenchAdmission(organization.ID)
+				if !available {
+					break
+				}
+				planningReadiness = "UNAVAILABLE"
+				titleReadiness = "UNAVAILABLE"
+				if h.aiWorkbenchPlanningReadiness != nil {
+					candidate := h.aiWorkbenchPlanningReadiness(c.Request.Context(), organization.ID)
+					if candidate == "AVAILABLE" || candidate == "NEEDS_CONFIGURATION" {
+						planningReadiness = candidate
+					}
+				}
+				if h.aiWorkbenchTitleReadiness != nil {
+					candidate := h.aiWorkbenchTitleReadiness(c.Request.Context(), organization.ID)
+					if candidate == "AVAILABLE" || candidate == "NEEDS_CONFIGURATION" {
+						titleReadiness = candidate
+					}
+				}
+				break
+			}
+		}
+	}
 	c.JSON(http.StatusOK, contextResponse{
-		User:                    userResponse{ID: identity.UserID},
-		HomeOrganizationID:      identity.HomeOrganizationID,
-		EffectiveOrganizationID: effectiveOrganizationID,
-		SelectionRequired:       effectiveOrganizationID == nil && len(organizations) > 1,
-		Organizations:           organizations,
+		User:                         userResponse{ID: identity.UserID},
+		HomeOrganizationID:           identity.HomeOrganizationID,
+		EffectiveOrganizationID:      effectiveOrganizationID,
+		SelectionRequired:            effectiveOrganizationID == nil && len(organizations) > 1,
+		Organizations:                organizations,
+		AIWorkbenchAvailable:         available,
+		AIWorkbenchPlanningReadiness: planningReadiness,
+		AIWorkbenchTitleReadiness:    titleReadiness,
 	})
 }
 
@@ -148,11 +216,14 @@ func containsRole(roles []string, want string) bool {
 }
 
 type contextResponse struct {
-	User                    userResponse           `json:"user"`
-	HomeOrganizationID      string                 `json:"homeOrganizationId"`
-	EffectiveOrganizationID *string                `json:"effectiveOrganizationId"`
-	SelectionRequired       bool                   `json:"selectionRequired"`
-	Organizations           []organizationResponse `json:"organizations"`
+	User                         userResponse           `json:"user"`
+	HomeOrganizationID           string                 `json:"homeOrganizationId"`
+	EffectiveOrganizationID      *string                `json:"effectiveOrganizationId"`
+	SelectionRequired            bool                   `json:"selectionRequired"`
+	Organizations                []organizationResponse `json:"organizations"`
+	AIWorkbenchAvailable         bool                   `json:"aiWorkbenchAvailable,omitempty"`
+	AIWorkbenchPlanningReadiness string                 `json:"aiWorkbenchPlanningReadiness,omitempty"`
+	AIWorkbenchTitleReadiness    string                 `json:"aiWorkbenchTitleReadiness,omitempty"`
 }
 
 type userResponse struct {
@@ -168,6 +239,7 @@ type organizationResponse struct {
 
 type organizationCapabilitiesResponse struct {
 	SourceAccountManage bool `json:"workbench.source_account.manage"`
+	ChatUse             bool `json:"workbench.chat.use"`
 }
 
 func writeProtocolError(c *gin.Context, status int, code string, message string) {
