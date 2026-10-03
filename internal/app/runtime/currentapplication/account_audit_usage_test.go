@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
@@ -45,7 +46,9 @@ func TestAccountAuditUsageRejectsUnreadableLedgerBeforeServing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	imageMock.ExpectQuery("SELECT invocation_id FROM public.ai_invocations LIMIT 0").WillReturnError(errors.New("permission denied"))
+	// A role may SELECT invocation_id but lack tenant_id or other columns read
+	// by ListObservedUsage. The startup probe must run that full owner query.
+	imageMock.ExpectQuery(`SELECT "invocation_id","member_id","prompt_tokens","completion_tokens","total_tokens","finished_at" FROM "ai_invocations" WHERE tenant_id`).WillReturnError(errors.New("permission denied for column tenant_id"))
 	closed := []*gorm.DB{}
 	err = run(context.Background(), cfg, logrus.New(), Dependencies{
 		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
@@ -62,7 +65,7 @@ func TestAccountAuditUsageRejectsUnreadableLedgerBeforeServing(t *testing.T) {
 			return nil, nil
 		},
 	})
-	if err == nil || len(closed) != 3 || closed[0] != product || closed[1] != image || closed[2] != source {
+	if err == nil || !strings.Contains(err.Error(), "permission denied for column tenant_id") || len(closed) != 3 || closed[0] != product || closed[1] != image || closed[2] != source {
 		t.Fatalf("failure=%v closed=%v", err, closed)
 	}
 	if err := imageMock.ExpectationsWereMet(); err != nil {

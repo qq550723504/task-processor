@@ -11,6 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
+	aistore "task-processor/internal/aicapability/store"
 	coreconfig "task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/knowledge"
@@ -279,13 +280,12 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			*target.dest = pool
 			defer func(db *gorm.DB) { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(db)) }(pool)
 		}
-		for _, pool := range []*gorm.DB{auditImageDB, auditProductDB} {
-			rows, err := pool.WithContext(startupContext).Raw("SELECT invocation_id FROM public.ai_invocations LIMIT 0").Rows()
-			if err != nil {
-				return fmt.Errorf("account audit usage owner schema or SELECT unavailable: %w", err)
-			}
-			if err := rows.Close(); err != nil {
-				return fmt.Errorf("close account audit schema probe: %w", err)
+		for _, target := range []struct {
+			namespace string
+			pool      *gorm.DB
+		}{{"image", auditImageDB}, {"product", auditProductDB}} {
+			if _, err := aistore.NewGormInvocationRecorder(target.pool).ListObservedUsage(startupContext, "__account_audit_probe__", target.namespace, 1, nil); err != nil {
+				return fmt.Errorf("account audit %s usage owner unreadable: %w", target.namespace, err)
 			}
 		}
 	}
