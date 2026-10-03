@@ -80,6 +80,23 @@ it("continues across unrelated Task pages before declaring a state view empty", 
   client.clear();
 });
 
+it("keeps newer Tasks visible when loading another page", async () => {
+  const cursor = "550e8400-e29b-41d4-a716-446655440000";
+  const newer = { id: cursor, title: "Newer Task", state: "RUNNING", projectionAvailable: true };
+  const older = { id: "550e8400-e29b-41d4-a716-446655440001", title: "Older Task", state: "COMPLETED", projectionAvailable: true };
+  fixture.request.mockImplementation(async ({ route, path }) => {
+    if (route !== "task-list") throw new Error("unexpected route");
+    return path.includes(`after=${cursor}`) ? { tasks: [older], next: "" } : { tasks: [newer], next: cursor };
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><BusinessTaskPage /></QueryClientProvider>);
+  expect(await screen.findByRole("link", { name: /Newer Task/ })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "加载更早任务" }));
+  expect(await screen.findByRole("link", { name: /Older Task/ })).toBeVisible();
+  expect(screen.getByRole("link", { name: /Newer Task/ })).toBeVisible();
+  client.clear();
+});
+
 it("shows an empty state only after every Task page has been checked", async () => {
   const cursor = "550e8400-e29b-41d4-a716-446655440000";
   fixture.request.mockImplementation(async ({ route, path }) => {
