@@ -13,6 +13,10 @@ membership_db_owner_secret=/secrets/membership-owner
 membership_runtime_secret=/secrets/membership-runtime
 store_owner_secret=/secrets/store-owner
 store_runtime_secret=/secrets/store-runtime
+image_db_owner_secret=/secrets/image-owner
+product_agent_db_owner_secret=/secrets/product-agent-owner
+image_audit_reader_secret=/secrets/image-audit-reader
+product_audit_reader_secret=/secrets/product-audit-reader
 runtime=/runtime
 frontend=/frontend
 identity_port=${ACCOUNT_IDENTITY_PORT:?ACCOUNT_IDENTITY_PORT is required}
@@ -73,6 +77,25 @@ EOF
   store-center-schema-init -config "$work/store-owner-schema.json"
 }
 
+initialize_audit_ledgers() {
+  for namespace in image product; do
+    case "$namespace" in
+      image) owner_secret="$image_db_owner_secret/image-db-password" ;;
+      product) owner_secret="$product_agent_db_owner_secret/product-agent-db-password" ;;
+    esac
+    owner_dsn="postgresql://${namespace}_agent_owner:$(tr -d '\r\n' < "$owner_secret")@127.0.0.1:5433/${namespace}_agent?sslmode=disable"
+    printf '%s\n' "$owner_dsn" > "$work/${namespace}-ledger-owner-dsn"
+    chmod 600 "$work/${namespace}-ledger-owner-dsn"
+    account-audit-ledger-schema-init -namespace "$namespace" -dsn-file "$work/${namespace}-ledger-owner-dsn"
+    psql "$owner_dsn" -v ON_ERROR_STOP=1 <<SQL
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;
+GRANT CONNECT ON DATABASE ${namespace}_agent TO account_audit_${namespace}_reader;
+GRANT USAGE ON SCHEMA public TO account_audit_${namespace}_reader;
+GRANT SELECT ON TABLE public.ai_invocations TO account_audit_${namespace}_reader;
+SQL
+  done
+}
+
 initialize_knowledge() {
  if [ "${ACCOUNT_KNOWLEDGE_ENABLED:-}" != 1 ]; then
   jq -e '.knowledge == null' "$runtime/current-application.json" >/dev/null || { echo 'knowledge topology changed; use its original overlay' >&2; exit 1; }
@@ -96,6 +119,9 @@ EOF
 
 umask 077
 if [ -f "$state/.init-complete" ]; then
+  for path in "$image_audit_reader_secret/password" "$product_audit_reader_secret/password" "$product_agent_db_owner_secret/product-agent-db-password"; do
+    test -s "$path" || { echo 'Account Audit source topology requires a new empty project' >&2; exit 1; }
+  done
   jq -e --arg database "$commercial_database" '
     .sourceAccountDatabase.port == 5433 and .sourceAccountDatabase.database == "source_accounts" and
     (has("commercialDatabase") | not) and
@@ -103,7 +129,9 @@ if [ -f "$state/.init-complete" ]; then
     .commercialOwnerDatabase.port == 5433 and .commercialOwnerDatabase.database == $database and
     .moneyOwnerDatabase.port == 5433 and .moneyOwnerDatabase.database == "referrals" and .moneyOwnerDatabase.user == "money_owner_runtime" and
     .referrals.referralDatabase.port == 5433 and .referrals.referralDatabase.database == "referrals" and
-    .membership.database.port == 5433 and .membership.database.database == "membership"
+    .membership.database.port == 5433 and .membership.database.database == "membership" and
+    .accountAuditUsage.image.database == "image_agent" and .accountAuditUsage.image.user == "account_audit_image_reader" and
+    .accountAuditUsage.product.database == "product_agent" and .accountAuditUsage.product.user == "account_audit_product_reader"
   ' "$runtime/current-application.json" >/dev/null || { echo 'database topology changed; use a new project' >&2; exit 1; }
   work=$(mktemp -d)
   trap 'rm -rf "$work"' EXIT
@@ -183,6 +211,10 @@ cat > "$runtime/current-application.json.tmp" <<EOF
   "commercialOwnerDatabase": {"host": "127.0.0.1", "port": 5433, "user": "commercial_owner_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-owner-password")", "database": "${commercial_database}", "maxConnections": 2},
   "storeCenter": {"enabled": true, "database": {"host":"127.0.0.1","port":5433,"user":"store_center_runtime","password":"$(tr -d '\r\n' < "$store_runtime_secret/store-runtime-password")","database":"store_center","maxConnections":4}},
   "moneyOwnerDatabase": {"host": "127.0.0.1", "port": 5433, "user": "money_owner_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/money-owner-password")", "database": "referrals", "maxConnections": 4},
+  "accountAuditUsage": {
+    "image": {"host":"127.0.0.1","port":5433,"user":"account_audit_image_reader","password":"$(tr -d '\r\n' < "$image_audit_reader_secret/password")","database":"image_agent","maxConnections":2},
+    "product": {"host":"127.0.0.1","port":5433,"user":"account_audit_product_reader","password":"$(tr -d '\r\n' < "$product_audit_reader_secret/password")","database":"product_agent","maxConnections":2}
+  },
   "membership": {
     "invitationMail": {"host": "127.0.0.1", "port": 1025, "from": "invitations@localhost", "publicOrigin": "${public_app}", "localPlaintext": true},
     "providerOrigin": "${issuer}",
@@ -248,6 +280,7 @@ psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/re
 psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5433/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -v runtime_roles_ready=true -f "$terraform_source/referral-grants.sql"
 migrate_commercial_owner_schema
 initialize_store_center
+initialize_audit_ledgers
 initialize_knowledge
 
 printf 'postgresql://membership_owner:%s@127.0.0.1:5433/membership?sslmode=disable\n' "$(tr -d '\r\n' < "$membership_db_owner_secret/membership-db-password")" > "$work/membership-owner-dsn"

@@ -68,6 +68,23 @@ Use the normal new-project/private `.env` setup and startup commands below from
 this checkout; use unique project names, ports, volumes and identities. This
 change does not update an existing retained instance or authorize deployment.
 
+## Account operation history sources (#587)
+
+For a **new empty** Account Compose project, the bootstrap and schema installer
+create separate `image_agent` and `product_agent` invocation ledgers using the
+existing ledger schema, with one SELECT-only Account Audit role per database.
+The current application opens both roles in read-only sessions. This lets the
+operation list's default 30-day, 7-day and all-time queries read complete
+sources even when neither Agent is enabled. An empty ledger means no invocation
+has occurred in this project; it is not a synthesized usage event. Agent routes,
+provider calls and Temporal workers remain disabled.
+
+Use the new-project start and synthetic fixture commands below. An existing
+project without these ledgers or read roles must stay on its original checkout;
+this initializer refuses to backfill or label its past usage history complete.
+The original owner databases hold the facts, and a missing table or unreadable
+source fails the list request or startup rather than returning an empty page.
+
 ## Enterprise wallet top-up (optional, #481)
 
 The normal entry is `/workbench/plans/top-up`. A current organization administrator

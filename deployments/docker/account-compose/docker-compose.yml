@@ -17,6 +17,9 @@ services:
       - bootstrap-state:/state
       - business-db-admin-secret:/business-db-admin-secret
       - image-db-owner-secret:/image-db-owner-secret
+      - product-agent-db-owner-secret:/product-agent-db-owner-secret
+      - image-audit-reader-secret:/image-audit-reader-secret
+      - product-audit-reader-secret:/product-audit-reader-secret
       - image-runtime-secret:/image-runtime-secret
       - image-worker-secret:/image-worker-secret
       - acquisition-db-owner-secret:/acquisition-db-owner-secret
@@ -75,6 +78,9 @@ services:
       - image-db-owner-secret:/secrets/image-owner:ro
       - image-runtime-secret:/secrets/image-runtime:ro
       - image-worker-secret:/secrets/image-worker:ro
+      - product-agent-db-owner-secret:/secrets/product-agent-owner:ro
+      - image-audit-reader-secret:/secrets/image-audit-reader:ro
+      - product-audit-reader-secret:/secrets/product-audit-reader:ro
     depends_on: { bootstrap: { condition: service_completed_successfully } }
     healthcheck:
       test: [CMD-SHELL, 'test "$$(cat /var/lib/postgresql/data/.business-db-ready)" = "$$ACCOUNT_COMMERCIAL_DATABASE" && pg_isready -h 127.0.0.1 -p 5433 -U business_cluster_admin -d postgres']
@@ -184,6 +190,10 @@ services:
       - referral-runtime-secret:/secrets/referral-runtime:ro
       - membership-db-owner-secret:/secrets/membership-owner:ro
       - membership-runtime-secret:/secrets/membership-runtime:ro
+      - image-db-owner-secret:/secrets/image-owner:ro
+      - product-agent-db-owner-secret:/secrets/product-agent-owner:ro
+      - image-audit-reader-secret:/secrets/image-audit-reader:ro
+      - product-audit-reader-secret:/secrets/product-audit-reader:ro
       - runtime-secrets:/runtime
       - frontend-secrets:/frontend
       - ../referrals-compose/terraform:/terraform-source:ro
@@ -279,6 +289,9 @@ volumes:
   business-db: { name: "${COMPOSE_PROJECT_NAME}-business-db" }
   business-db-admin-secret: { name: "${COMPOSE_PROJECT_NAME}-business-db-admin-secret" }
   image-db-owner-secret: { name: "${COMPOSE_PROJECT_NAME}-image-db-owner-secret" }
+  product-agent-db-owner-secret: { name: "${COMPOSE_PROJECT_NAME}-product-agent-db-owner-secret" }
+  image-audit-reader-secret: { name: "${COMPOSE_PROJECT_NAME}-image-audit-reader-secret" }
+  product-audit-reader-secret: { name: "${COMPOSE_PROJECT_NAME}-product-audit-reader-secret" }
   image-runtime-secret: { name: "${COMPOSE_PROJECT_NAME}-image-runtime-secret" }
   image-worker-secret: { name: "${COMPOSE_PROJECT_NAME}-image-worker-secret" }
   acquisition-db-owner-secret: { name: "${COMPOSE_PROJECT_NAME}-acquisition-db-owner-secret" }
