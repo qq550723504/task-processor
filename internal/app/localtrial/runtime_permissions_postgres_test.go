@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -12,7 +13,13 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
+	"task-processor/internal/app/productsourcing"
+	"task-processor/internal/authidentity"
+	"task-processor/internal/authz"
 	assetstore "task-processor/internal/integration/persistence/product/asset"
+	catalogstore "task-processor/internal/integration/persistence/product/catalog"
+	reviewstore "task-processor/internal/integration/persistence/product/review"
+	"task-processor/internal/product/review"
 	"task-processor/internal/storecenter"
 )
 
@@ -65,6 +72,32 @@ func TestVerifyRuntimePermissionsRejectsMissingOrExcessRights(t *testing.T) {
 		}
 	})
 	require.NoError(t, VerifyRuntimePermissions(context.Background(), runtime, role, database))
+	sample, err := PrepareSample(context.Background(), owner, "trial-org", "trial-user")
+	require.NoError(t, err)
+	authorizer, err := authz.NewListingKitAuthorizer(nil, nil)
+	require.NoError(t, err)
+	source, err := productsourcing.NewInternalProducer(runtime, setupAccess{organizationID: "trial-org", actorID: "trial-user"}, authorizer)
+	require.NoError(t, err)
+	reader, err := catalogstore.NewBoundedSnapshotReader(runtime, 2<<20)
+	require.NoError(t, err)
+	repository, err := reviewstore.NewRepository(runtime, func(tx *gorm.DB) (review.SourcePublicationReader, error) {
+		return productsourcing.NewTransactionReader(tx)
+	})
+	require.NoError(t, err)
+	service, err := review.NewCandidateService(reader, source, repository, authorizer)
+	require.NoError(t, err)
+	actor := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{
+		TenantID: "trial-org", EffectiveOrganizationID: "trial-org", HomeOrganizationID: "trial-org",
+		UserID: "trial-user", Roles: []string{"listingkit_admin"}, TokenExpiresAt: time.Now().Add(time.Hour),
+	})
+	accepted, err := service.Decide(actor, "accept-narrow-runtime", sample.ProposalID, review.DecisionInput{Action: "accept", ExpectedRevision: 1})
+	require.NoError(t, err)
+	applied, err := service.Apply(actor, "apply-narrow-runtime", sample.ProposalID, review.ApplyInput{ExpectedRevision: accepted.Revision})
+	require.NoError(t, err)
+	require.Equal(t, "applied", applied.State)
+	var recordCount int64
+	require.NoError(t, runtime.Table("listing_shein_records").Where("organization_id = ? AND id = ?", "trial-org", sample.RecordID).Count(&recordCount).Error)
+	require.EqualValues(t, 1, recordCount)
 	require.NoError(t, owner.Exec("REVOKE SELECT ON public.listing_shein_records FROM "+role).Error)
 	require.Error(t, VerifyRuntimePermissions(context.Background(), runtime, role, database))
 	require.NoError(t, owner.Exec("GRANT SELECT ON public.listing_shein_records TO "+role).Error)
