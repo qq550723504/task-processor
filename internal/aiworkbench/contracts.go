@@ -16,6 +16,8 @@ var (
 	ErrIdempotencyConflict  = errors.New("workbench idempotency conflict")
 	ErrConversationArchived = errors.New("conversation archived")
 	ErrRevisionMismatch     = errors.New("conversation revision mismatch")
+	ErrProposalStale        = errors.New("workbench proposal stale")
+	ErrTaskOutcomeUnknown   = errors.New("workbench task action outcome unknown")
 )
 
 type Scope struct {
@@ -205,4 +207,40 @@ type PreparedTask struct {
 	ConfigurationSnapshotRef agent.ConfigurationSnapshotRef
 	ContextSnapshotRef       agent.ContextSnapshotRef
 	ExecutionRequest         []byte
+}
+
+type TaskActionKind string
+
+const (
+	TaskActionStart  TaskActionKind = "start"
+	TaskActionResume TaskActionKind = "resume"
+	TaskActionReview TaskActionKind = "review"
+)
+
+type TaskActionState string
+
+const (
+	TaskActionClaimed  TaskActionState = "CLAIMED"
+	TaskActionComplete TaskActionState = "COMPLETE"
+	TaskActionFailed   TaskActionState = "FAILED"
+	TaskActionUnknown  TaskActionState = "UNKNOWN"
+)
+
+type TaskActionInput struct {
+	TaskID, Key string
+	Action      TaskActionKind
+	Revision    uint64
+	Feedback    string
+}
+
+type TaskActionReceipt struct {
+	Scope       Scope
+	TaskID, Key string
+	Action      TaskActionKind
+	Revision    uint64
+	Fingerprint string
+	State       TaskActionState
+	ErrorCode   string
+	CreatedAt   time.Time
+	FinishedAt  *time.Time
 }

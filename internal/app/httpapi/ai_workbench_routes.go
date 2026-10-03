@@ -167,10 +167,14 @@ func writeAIWorkbenchError(c *gin.Context, err error) {
 		status, code = http.StatusNotFound, "NOT_FOUND"
 	case errors.Is(err, aiworkbench.ErrIdempotencyConflict), errors.Is(err, agentconfig.ErrConflict):
 		status, code = http.StatusConflict, "IDEMPOTENCY_CONFLICT"
-	case errors.Is(err, aiworkbench.ErrRevisionMismatch), errors.Is(err, agentconfig.ErrChanged), errors.Is(err, agentconfig.ErrRevision), errors.Is(err, knowledge.ErrSelectionChanged):
+	case errors.Is(err, aiworkbench.ErrProposalStale), errors.Is(err, agentconfig.ErrChanged), errors.Is(err, agentconfig.ErrRevision), errors.Is(err, knowledge.ErrSelectionChanged):
 		status, code = http.StatusConflict, "PROPOSAL_STALE"
+	case errors.Is(err, aiworkbench.ErrRevisionMismatch), errors.Is(err, agent.ErrConflict):
+		status, code = http.StatusConflict, "REVISION_MISMATCH"
 	case errors.Is(err, aiworkbench.ErrConversationArchived):
 		status, code = http.StatusConflict, "CONVERSATION_ARCHIVED"
+	case errors.Is(err, aiworkbench.ErrTaskOutcomeUnknown):
+		status, code = http.StatusServiceUnavailable, "TASK_OUTCOME_UNKNOWN"
 	case errors.Is(err, review.ErrForbidden), errors.Is(err, agentconfig.ErrForbidden):
 		status, code = http.StatusForbidden, "FORBIDDEN"
 	}

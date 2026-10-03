@@ -463,11 +463,16 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	agentApplication := agentModule.(productAgentModule).application
 	publishedReader := agentApplication.receipts
 	agentApplication.receipts = unavailablePublishedReceipt{}
-	code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchTaskBase+"/"+confirmed.Task.ID+"/start", "operator", "B", "", "")
-	agentApplication.receipts = publishedReader
+	startKey := uuid.NewString()
+	code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchTaskBase+"/"+confirmed.Task.ID+"/start", "operator", "B", startKey, "")
 	require.NoError(t, err)
 	require.Equal(t, 200, code, string(raw))
 	require.EqualValues(t, 4, titleCalls.Load(), "reconciliation never resends the model")
+	code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchTaskBase+"/"+confirmed.Task.ID+"/start", "operator", "B", startKey, "")
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.Contains(t, string(raw), `"replay":true`)
+	require.EqualValues(t, 4, titleCalls.Load(), "same-key Start replay never re-enters the Agent owner")
 	var unavailableProduct struct {
 		Task struct {
 			ProductDetailsAvailable bool `json:"productDetailsAvailable"`
@@ -481,6 +486,7 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.False(t, unavailableProduct.Task.CanStart)
 	require.False(t, unavailableProduct.Task.CanResume)
 	require.False(t, unavailableProduct.Task.CanReview, "review requires the current product binding")
+	agentApplication.receipts = publishedReader
 	taskGrants.viewer.Store(true)
 	readAsViewer := func(wantState string) {
 		t.Helper()
@@ -523,7 +529,17 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.True(t, replayed.Replay)
 	require.Equal(t, confirmed.Task.ID, replayed.Task.ID)
 	require.Equal(t, titleBefore, titleCalls.Load())
-	code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchTaskBase+"/"+confirmed.Task.ID+"/review", "operator", "B", "", "")
+	staleResumeKey := uuid.NewString()
+	for attempt := 0; attempt < 2; attempt++ {
+		code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchTaskBase+"/"+confirmed.Task.ID+"/resume",
+			"operator", "B", staleResumeKey, `{"revision":"999999","feedback":"stale feedback"}`)
+		require.NoError(t, err)
+		require.Equal(t, 409, code, string(raw))
+		require.JSONEq(t, `{"code":"REVISION_MISMATCH"}`, string(raw))
+	}
+	require.Equal(t, titleBefore, titleCalls.Load(), "stale Task action and its receipt replay never dispatch a model")
+	reviewKey := uuid.NewString()
+	code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchTaskBase+"/"+confirmed.Task.ID+"/review", "operator", "B", reviewKey, "")
 	require.NoError(t, err)
 	require.Equal(t, 200, code, string(raw))
 	var reviewed struct {
@@ -535,6 +551,20 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &reviewed))
 	require.NotEmpty(t, reviewed.Task.ReviewID)
 	require.Equal(t, "WAITING_CONFIRMATION", reviewed.Task.State)
+	code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchTaskBase+"/"+confirmed.Task.ID+"/review", "operator", "B", reviewKey, "")
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.Contains(t, string(raw), `"replay":true`)
+	require.Contains(t, string(raw), reviewed.Task.ReviewID)
+	for _, suffix := range []string{"start", "review", "resume"} {
+		body := ""
+		if suffix == "resume" {
+			body = `{"revision":"2","feedback":"same task"}`
+		}
+		status, response, callErr := acquisitionHTTPRequest(server, "POST", workbenchTaskBase+"/"+confirmed.Task.ID+"/"+suffix, "operator", "B", "", body)
+		require.NoError(t, callErr)
+		require.Equal(t, 400, status, string(response))
+	}
 	proposal := titleCall(t, server, "GET", titleBasePath+"/"+reviewed.Task.ReviewID, "admin", "B", "", "", 200)
 	require.Equal(t, "pending", proposal.State)
 	accepted := titleDecision(t, server, proposal, "accept", "admin", "", 200)
@@ -614,7 +644,7 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, code, string(raw))
 	require.Contains(t, string(raw), `"canStart":false`)
-	code, raw, err = acquisitionHTTPRequest(readyServer, "POST", pendingPath+"/start", "operator", "B", "", "")
+	code, raw, err = acquisitionHTTPRequest(readyServer, "POST", pendingPath+"/start", "operator", "B", uuid.NewString(), "")
 	require.NoError(t, err)
 	require.NotEqual(t, 200, code, string(raw))
 	var pendingRequest agent.Request

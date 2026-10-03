@@ -163,3 +163,24 @@ CREATE TABLE IF NOT EXISTS ai_workbench.business_tasks (
 );
 CREATE INDEX IF NOT EXISTS ai_workbench_tasks_owner_recent
     ON ai_workbench.business_tasks (organization_id, owner_user_id, created_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS ai_workbench.task_action_receipts (
+    organization_id text NOT NULL,
+    actor_id text NOT NULL,
+    idempotency_key uuid NOT NULL,
+    task_id uuid NOT NULL,
+    action text NOT NULL CHECK (action IN ('start', 'resume', 'review')),
+    expected_revision bigint NOT NULL CHECK (expected_revision >= 0),
+    request_fingerprint char(64) NOT NULL,
+    state text NOT NULL CHECK (state IN ('CLAIMED', 'COMPLETE', 'FAILED', 'UNKNOWN')),
+    error_code text CHECK (error_code IS NULL OR error_code IN ('REVISION_MISMATCH', 'DEPENDENCY_UNAVAILABLE')),
+    created_at timestamptz NOT NULL,
+    finished_at timestamptz,
+    PRIMARY KEY (organization_id, actor_id, idempotency_key),
+    FOREIGN KEY (task_id, organization_id, actor_id)
+        REFERENCES ai_workbench.business_tasks (id, organization_id, owner_user_id),
+    CHECK ((state = 'CLAIMED' AND finished_at IS NULL AND error_code IS NULL) OR
+           (state = 'COMPLETE' AND finished_at IS NOT NULL AND error_code IS NULL) OR
+           (state = 'FAILED' AND finished_at IS NOT NULL AND error_code IS NOT NULL) OR
+           (state = 'UNKNOWN' AND finished_at IS NOT NULL AND error_code IS NULL))
+);

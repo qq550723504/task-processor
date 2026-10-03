@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { AIWorkbenchError } from "@/lib/api/ai-workbench";
 
 import { BusinessTaskPage } from "./task-page";
 
@@ -12,7 +13,33 @@ const fixture = vi.hoisted(() => ({
 vi.mock("@/lib/api/ai-workbench", async original => ({ ...await original<typeof import("@/lib/api/ai-workbench")>(), requestAIWorkbench: fixture.request }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => fixture.context }));
 
-afterEach(() => { cleanup(); fixture.request.mockReset(); fixture.context.aiWorkbenchAvailable = true; fixture.context.aiWorkbenchPlanningReadiness = "AVAILABLE"; fixture.context.effectiveOrganization.capabilities["workbench.chat.use"] = true; });
+afterEach(() => { cleanup(); sessionStorage.clear(); fixture.request.mockReset(); fixture.context.aiWorkbenchAvailable = true; fixture.context.aiWorkbenchPlanningReadiness = "AVAILABLE"; fixture.context.effectiveOrganization.capabilities["workbench.chat.use"] = true; });
+
+it("keeps the exact Task action key after an unknown response and page reload", async () => {
+  const taskId = "550e8400-e29b-41d4-a716-446655440000";
+  const item = { id: taskId, conversationId: taskId, proposalId: taskId, title: "标题任务", goalSummary: "优化标题",
+    createdAt: "2026-10-03T00:00:00Z", projectionAvailable: true, state: "PAUSED", reason: "START_NOT_CLAIMED",
+    canStart: true, canReconcile: false, canResume: false, canReview: false, productDetailsAvailable: true };
+  const sentKeys: string[] = [];
+  fixture.request.mockImplementation(async ({ route, key }) => {
+    if (route === "task-read") return { task: item };
+    if (route !== "task-start") throw new Error("unexpected route");
+    sentKeys.push(key);
+    throw new AIWorkbenchError("TASK_OUTCOME_UNKNOWN");
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const first = render(<QueryClientProvider client={client}><BusinessTaskPage taskId={taskId} /></QueryClientProvider>);
+  fireEvent.click(await screen.findByRole("button", { name: "启动原任务" }));
+  await waitFor(() => expect(sentKeys).toHaveLength(1));
+  expect(sentKeys[0]).toMatch(/^[0-9a-f-]{36}$/);
+  await screen.findByText(/操作未完成/);
+  first.unmount();
+  render(<QueryClientProvider client={client}><BusinessTaskPage taskId={taskId} /></QueryClientProvider>);
+  fireEvent.click(await screen.findByRole("button", { name: "启动原任务" }));
+  await waitFor(() => expect(sentKeys).toHaveLength(2));
+  expect(sentKeys[1]).toBe(sentKeys[0]);
+  client.clear();
+});
 
 it("keeps Task reads without offering Chat creation when this organization's planning route is unready", async () => {
   fixture.context.aiWorkbenchPlanningReadiness = "NEEDS_CONFIGURATION";

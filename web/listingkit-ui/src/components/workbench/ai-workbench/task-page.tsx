@@ -22,10 +22,30 @@ const filters: { mode: TaskMode; label: string; href: string }[] = [
 ];
 const taskState: Record<string, string> = { RUNNING: "执行中", WAITING_CONFIRMATION: "待确认", COMPLETED: "已完成", ERROR: "异常", PAUSED: "已暂停" };
 const reasonText: Record<string, string> = { START_NOT_CLAIMED: "执行尚未启动，可使用原任务启动", EXECUTION_OUTCOME_UNKNOWN: "执行结果无法确认，不会自动重发模型请求",
+  TITLE_PROFILE_UNAVAILABLE: "原任务使用的标题模型配置已不可用，请检查企业配置",
   HUMAN_REVIEW_REQUIRED: "需要人工审核标题建议", AGENT_RESULT_NOT_REVIEWABLE: "标题建议未通过验证，无法提交审核",
   AGENT_INTERRUPTED_DEADLINE_EXPIRED: "原执行期限已过，不能继续此中断任务", invalid_model_output: "模型返回格式不符合要求，已记录实际用量",
   pending: "提案待审核", accepted: "提案已接受，待应用", applied: "提案已应用", rejected: "提案已拒绝" };
-const errorText = (error: unknown) => error instanceof AIWorkbenchError ? `请求未完成：${error.code}` : "任务服务暂不可用";
+const errorText = (error: unknown) => error instanceof AIWorkbenchError ? ({
+  TASK_OUTCOME_UNKNOWN: "操作结果暂无法确认。刷新原任务状态后，可用同一操作键重试查询原收据",
+  OUTCOME_UNKNOWN: "网络结果暂无法确认。刷新原任务状态后，可用同一操作键重试查询原收据",
+  REVISION_MISMATCH: "原任务状态已变化，请刷新后再操作",
+} as Record<string, string>)[error.code] ?? `请求未完成：${error.code}` : "任务服务暂不可用";
+
+type TaskAction = "start" | "resume" | "review";
+type PendingTaskAction = { key: string; revision: string; feedback: string };
+const taskActionStorageKey = (scope: AIScope, taskId: string, action: TaskAction) =>
+  `ai-workbench-task-action:${scope.userId}:${scope.organizationId}:${taskId}:${action}`;
+function savedResumeFeedback(scope: AIScope, taskId: string): string {
+  try {
+    const saved = sessionStorage.getItem(taskActionStorageKey(scope, taskId, "resume"));
+    if (saved) {
+      const attempt = JSON.parse(saved) as PendingTaskAction;
+      if (typeof attempt.feedback === "string") return attempt.feedback;
+    }
+  } catch { /* The request guard reports unavailable storage before dispatch. */ }
+  return "";
+}
 
 export function BusinessTaskPage({ mode = "all", taskId }: { mode?: TaskMode; taskId?: string }) {
   const context = useWorkbenchContext();
@@ -96,7 +116,7 @@ function TaskRow({ task }: { task: AITask }) {
 
 function TaskDetail({ scope, authorizationKey, taskId }: { scope: AIScope; authorizationKey: string; taskId: string }) {
   const [pending, setPending] = useState(false);
-  const [feedback, setFeedback] = useState("");
+  const [feedback, setFeedback] = useState(() => savedResumeFeedback(scope, taskId));
   const [error, setError] = useState("");
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
@@ -104,14 +124,33 @@ function TaskDetail({ scope, authorizationKey, taskId }: { scope: AIScope; autho
     queryFn: ({ signal }) => requestAIWorkbench({ route: "task-read", method: "GET", path: `tasks/${taskId}`, scope, signal }),
     retry: false, staleTime: 0, refetchOnWindowFocus: false });
   const item = task.data?.task;
-  async function act(action: "start" | "resume" | "review") {
+  async function act(action: TaskAction) {
     if (!item) return; setPending(true); setError("");
+    const storageKey = taskActionStorageKey(scope, taskId, action);
+    const revision = action === "resume" ? item.agentRevision ?? "" : "";
+    const currentFeedback = action === "resume" ? feedback : "";
+    let attempt: PendingTaskAction;
+    try {
+      const saved = sessionStorage.getItem(storageKey);
+      attempt = saved ? JSON.parse(saved) as PendingTaskAction : { key: crypto.randomUUID(), revision, feedback: currentFeedback };
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(attempt.key) ||
+          attempt.revision !== revision || attempt.feedback !== currentFeedback) {
+        setError("上次操作的输入仍待核实；请先刷新原任务并用原输入重试"); setPending(false); return;
+      }
+      sessionStorage.setItem(storageKey, JSON.stringify(attempt));
+    } catch { setError("无法保存操作键，暂不能安全提交"); setPending(false); return; }
     const controller = new AbortController(); abort.current = controller;
     try {
       await requestAIWorkbench({ route: `task-${action}`, method: "POST", path: `tasks/${taskId}/${action}`, scope,
-        signal: controller.signal, ...(action === "resume" ? { body: { revision: item.agentRevision, feedback } } : {}) });
+        key: attempt.key, signal: controller.signal, ...(action === "resume" ? { body: { revision, feedback: currentFeedback } } : {}) });
+      try { sessionStorage.removeItem(storageKey); } catch { /* The server receipt is terminal. */ }
       if (!controller.signal.aborted) await task.refetch();
-    } catch (cause) { if (!controller.signal.aborted) setError(errorText(cause)); }
+    } catch (cause) {
+      if (cause instanceof AIWorkbenchError && cause.code !== "TASK_OUTCOME_UNKNOWN" && cause.code !== "OUTCOME_UNKNOWN") {
+        try { sessionStorage.removeItem(storageKey); } catch { /* The next request may replay the known result. */ }
+      }
+      if (!controller.signal.aborted) setError(errorText(cause));
+    }
     finally { if (!controller.signal.aborted) setPending(false); abort.current = null; }
   }
   if (task.isPending) return <ConsoleState kind="loading" title="正在读取任务" />;

@@ -143,8 +143,16 @@ func TestWorkbenchRuntimeRoleCanUseReceiptsWithoutDDLOrDeletes(t *testing.T) {
 			return err
 		}
 		confirmKey := uuid.NewString()
-		_, _, err = store.Confirm(context.Background(), scope, conversation.ID, saved.ID, confirmKey, preparedTaskFixture(t, saved, confirmKey))
-		return err
+		businessTask, _, err := store.Confirm(context.Background(), scope, conversation.ID, saved.ID, confirmKey, preparedTaskFixture(t, saved, confirmKey))
+		if err != nil {
+			return err
+		}
+		receipt, replay, err := store.BeginTaskAction(context.Background(), scope, aiworkbench.TaskActionInput{
+			TaskID: businessTask.ID, Key: uuid.NewString(), Action: aiworkbench.TaskActionStart})
+		if err != nil || replay || receipt.State != aiworkbench.TaskActionClaimed {
+			return aiworkbench.ErrUnavailable
+		}
+		return store.FinishTaskAction(context.Background(), scope, receipt.Key, aiworkbench.TaskActionComplete)
 	}))
 }
 
@@ -206,6 +214,64 @@ func TestWorkbenchRuntimeRoleRejectsDirectCrossOwnerPrivileges(t *testing.T) {
 		}
 		return VerifySchema(context.Background(), tx)
 	}), aiworkbench.ErrUnavailable, "serving startup must reject a later sequence grant")
+}
+
+func TestTaskActionReceiptReplaysCommittedResultWithoutReclaim(t *testing.T) {
+	db := workbenchDB(t)
+	store, err := New(db)
+	require.NoError(t, err)
+	ctx := context.Background()
+	scope := aiworkbench.Scope{OrganizationID: "B", ActorID: "operator"}
+	conversation, proposal := readyTaskFixture(t, store, scope)
+	confirmKey := uuid.NewString()
+	task, _, err := store.Confirm(ctx, scope, conversation.ID, proposal.ID, confirmKey, preparedTaskFixture(t, proposal, confirmKey))
+	require.NoError(t, err)
+	input := aiworkbench.TaskActionInput{TaskID: task.ID, Key: uuid.NewString(), Action: aiworkbench.TaskActionResume,
+		Revision: 2, Feedback: "Use the verified source wording"}
+	claimed, replay, err := store.BeginTaskAction(ctx, scope, input)
+	require.NoError(t, err)
+	require.False(t, replay)
+	require.Equal(t, aiworkbench.TaskActionClaimed, claimed.State)
+	current, replay, err := store.BeginTaskAction(ctx, scope, input)
+	require.NoError(t, err)
+	require.True(t, replay)
+	require.Equal(t, claimed, current)
+	changed := input
+	changed.Feedback = "A different response"
+	_, _, err = store.BeginTaskAction(ctx, scope, changed)
+	require.ErrorIs(t, err, aiworkbench.ErrIdempotencyConflict)
+	changed = input
+	changed.Action = aiworkbench.TaskActionStart
+	changed.Revision, changed.Feedback = 0, ""
+	_, _, err = store.BeginTaskAction(ctx, scope, changed)
+	require.ErrorIs(t, err, aiworkbench.ErrIdempotencyConflict)
+	require.NoError(t, store.FinishTaskAction(ctx, scope, input.Key, aiworkbench.TaskActionComplete))
+	completed, replay, err := store.BeginTaskAction(ctx, scope, input)
+	require.NoError(t, err)
+	require.True(t, replay)
+	require.Equal(t, aiworkbench.TaskActionComplete, completed.State)
+	failedInput := aiworkbench.TaskActionInput{TaskID: task.ID, Key: uuid.NewString(), Action: aiworkbench.TaskActionStart}
+	_, replay, err = store.BeginTaskAction(ctx, scope, failedInput)
+	require.NoError(t, err)
+	require.False(t, replay)
+	require.NoError(t, store.FinishTaskAction(ctx, scope, failedInput.Key, aiworkbench.TaskActionFailed, "REVISION_MISMATCH"))
+	failed, replay, err := store.BeginTaskAction(ctx, scope, failedInput)
+	require.NoError(t, err)
+	require.True(t, replay)
+	require.Equal(t, aiworkbench.TaskActionFailed, failed.State)
+	require.Equal(t, "REVISION_MISMATCH", failed.ErrorCode)
+	unknownInput := aiworkbench.TaskActionInput{TaskID: task.ID, Key: uuid.NewString(), Action: aiworkbench.TaskActionReview}
+	_, replay, err = store.BeginTaskAction(ctx, scope, unknownInput)
+	require.NoError(t, err)
+	require.False(t, replay)
+	require.NoError(t, store.FinishTaskAction(ctx, scope, unknownInput.Key, aiworkbench.TaskActionUnknown))
+	unknown, replay, err := store.BeginTaskAction(ctx, scope, unknownInput)
+	require.NoError(t, err)
+	require.True(t, replay)
+	require.Equal(t, aiworkbench.TaskActionUnknown, unknown.State)
+	require.ErrorIs(t, store.FinishTaskAction(ctx, scope, unknownInput.Key, aiworkbench.TaskActionComplete), aiworkbench.ErrIdempotencyConflict)
+	_, _, err = store.BeginTaskAction(ctx, aiworkbench.Scope{OrganizationID: "A", ActorID: "operator"}, input)
+	require.ErrorIs(t, err, aiworkbench.ErrNotFound)
 }
 
 func readyTaskFixture(t *testing.T, store *Store, scope aiworkbench.Scope) (aiworkbench.Conversation, aiworkbench.ExecutionProposal) {

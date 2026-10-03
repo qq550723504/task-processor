@@ -198,76 +198,145 @@ func (a *aiWorkbenchApplication) taskAction(c *gin.Context, ctx context.Context,
 		writeAIWorkbenchError(c, err)
 		return
 	}
-	if action == "task-start" {
-		if err := workbenchEmptyBody(c); err != nil {
-			writeAIWorkbenchError(c, err)
-			return
-		}
-		err = (workbenchExecution{agent: a.agent}).Start(ctx, task)
-	} else {
-		var request agent.Request
-		if json.Unmarshal(task.ExecutionRequest, &request) != nil || request.Key != task.ExecutionRequestKey {
-			writeAIWorkbenchError(c, aiworkbench.ErrUnavailable)
-			return
-		}
-		binding, e := a.agent.binding(ctx, task.OperationID, task.TargetPlatform)
-		if e != nil || binding != request.Binding {
-			writeAIWorkbenchError(c, aiworkbench.ErrRevisionMismatch)
-			return
-		}
-		run, found, e := a.agent.store.Lookup(ctx, agent.Scope{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID}, binding, request.Key)
-		if e != nil || !found {
-			writeAIWorkbenchError(c, aiworkbench.ErrUnavailable)
-			return
-		}
-		ctx, e = knowledgeRequestContext(ctx)
-		if e != nil {
-			writeAIWorkbenchError(c, e)
-			return
-		}
-		if action == "task-resume" {
-			var body struct {
-				Revision string `json:"revision"`
-				Feedback string `json:"feedback"`
-			}
-			if workbenchJSON(c, &body) != nil {
-				writeAIWorkbenchError(c, aiworkbench.ErrInvalid)
-				return
-			}
-			revision, parseErr := strconv.ParseUint(body.Revision, 10, 64)
-			if parseErr != nil || revision == 0 || strconv.FormatUint(revision, 10) != body.Revision || revision != run.State.Revision {
-				writeAIWorkbenchError(c, aiworkbench.ErrRevisionMismatch)
-				return
-			}
-			if !a.agent.frozenTitleProfileReady(ctx, run.State.Scope, request) {
-				writeAIWorkbenchError(c, aiworkbench.ErrUnavailable)
-				return
-			}
-			_, err = a.agent.runtime.Resume(ctx, request, revision, body.Feedback)
-		} else {
-			if workbenchEmptyBody(c) != nil {
-				writeAIWorkbenchError(c, aiworkbench.ErrInvalid)
-				return
-			}
-			if !agentRunReviewable(run.State) {
-				writeAIWorkbenchError(c, aiworkbench.ErrRevisionMismatch)
-				return
-			}
-			input := agentReviewInput(binding, run.State.Request.PolicyVersion, run.State.Candidate)
-			input.ContextProvenance, err = agentContextProvenance(run.State)
-			if err == nil {
-				_, err = a.agent.reviews.CreateFromCandidate(ctx, "agent:"+run.State.RunID, input)
-			}
-		}
-	}
+	key, err := workbenchKey(c)
 	if err != nil {
 		writeAIWorkbenchError(c, err)
+		return
+	}
+	input := aiworkbench.TaskActionInput{TaskID: id, Key: key}
+	switch action {
+	case "task-start":
+		input.Action = aiworkbench.TaskActionStart
+	case "task-review":
+		input.Action = aiworkbench.TaskActionReview
+	case "task-resume":
+		input.Action = aiworkbench.TaskActionResume
+	default:
+		writeAIWorkbenchError(c, aiworkbench.ErrInvalid)
+		return
+	}
+	if input.Action == aiworkbench.TaskActionResume {
+		var body struct {
+			Revision string `json:"revision"`
+			Feedback string `json:"feedback"`
+		}
+		if workbenchJSON(c, &body) != nil {
+			writeAIWorkbenchError(c, aiworkbench.ErrInvalid)
+			return
+		}
+		input.Revision, err = strconv.ParseUint(body.Revision, 10, 64)
+		if err != nil || input.Revision == 0 || strconv.FormatUint(input.Revision, 10) != body.Revision {
+			writeAIWorkbenchError(c, aiworkbench.ErrInvalid)
+			return
+		}
+		input.Feedback = body.Feedback
+	} else if workbenchEmptyBody(c) != nil {
+		writeAIWorkbenchError(c, aiworkbench.ErrInvalid)
+		return
+	}
+	receipt, replay, err := a.store.BeginTaskAction(ctx, scope, input)
+	if err != nil {
+		writeAIWorkbenchError(c, err)
+		return
+	}
+	if replay {
+		switch receipt.State {
+		case aiworkbench.TaskActionComplete:
+			view, viewErr := a.taskView(ctx, scope, task)
+			if viewErr != nil {
+				writeAIWorkbenchError(c, aiworkbench.ErrTaskOutcomeUnknown)
+				return
+			}
+			workbenchReply(c, http.StatusOK, gin.H{"task": view, "replay": true})
+		case aiworkbench.TaskActionFailed:
+			if receipt.ErrorCode == "REVISION_MISMATCH" {
+				writeAIWorkbenchError(c, aiworkbench.ErrRevisionMismatch)
+			} else {
+				writeAIWorkbenchError(c, aiworkbench.ErrUnavailable)
+			}
+		default:
+			writeAIWorkbenchError(c, aiworkbench.ErrTaskOutcomeUnknown)
+		}
+		return
+	}
+	crossedOwner, actionErr := a.performTaskAction(ctx, scope, task, input)
+	state := aiworkbench.TaskActionComplete
+	var code []string
+	if actionErr != nil {
+		state = aiworkbench.TaskActionUnknown
+		if !crossedOwner {
+			state = aiworkbench.TaskActionFailed
+			failureCode := "DEPENDENCY_UNAVAILABLE"
+			if errors.Is(actionErr, aiworkbench.ErrRevisionMismatch) || errors.Is(actionErr, agent.ErrConflict) {
+				failureCode = "REVISION_MISMATCH"
+			}
+			code = []string{failureCode}
+		}
+	}
+	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	finishErr := a.store.FinishTaskAction(finishCtx, scope, key, state, code...)
+	cancel()
+	if finishErr != nil || state == aiworkbench.TaskActionUnknown {
+		writeAIWorkbenchError(c, aiworkbench.ErrTaskOutcomeUnknown)
+		return
+	}
+	if actionErr != nil {
+		writeAIWorkbenchError(c, actionErr)
 		return
 	}
 	view, err := a.taskView(ctx, scope, task)
 	if err != nil {
-		writeAIWorkbenchError(c, err)
+		writeAIWorkbenchError(c, aiworkbench.ErrTaskOutcomeUnknown)
 		return
 	}
-	workbenchReply(c, http.StatusOK, gin.H{"task": view})
+	workbenchReply(c, http.StatusOK, gin.H{"task": view, "replay": false})
+}
+
+// crossedOwner means the Agent or Review mutation may have started. An error
+// after that point cannot authorize automatic same-key redispatch.
+func (a *aiWorkbenchApplication) performTaskAction(ctx context.Context, scope aiworkbench.Scope,
+	task aiworkbench.BusinessTask, input aiworkbench.TaskActionInput) (crossedOwner bool, err error) {
+	if input.Action == aiworkbench.TaskActionStart {
+		err := (workbenchExecution{agent: a.agent}).Start(ctx, task)
+		return !errors.Is(err, aiworkbench.ErrRevisionMismatch), err
+	}
+	var request agent.Request
+	if json.Unmarshal(task.ExecutionRequest, &request) != nil || request.Key != task.ExecutionRequestKey {
+		return false, aiworkbench.ErrUnavailable
+	}
+	binding, err := a.agent.binding(ctx, task.OperationID, task.TargetPlatform)
+	if err != nil || binding != request.Binding {
+		return false, aiworkbench.ErrRevisionMismatch
+	}
+	run, found, err := a.agent.store.Lookup(ctx, agent.Scope{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID}, binding, request.Key)
+	if err != nil || !found {
+		return false, aiworkbench.ErrUnavailable
+	}
+	if run.State.Request != request {
+		return false, aiworkbench.ErrRevisionMismatch
+	}
+	ctx, err = knowledgeRequestContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	if input.Action == aiworkbench.TaskActionResume {
+		if input.Revision != run.State.Revision {
+			return false, aiworkbench.ErrRevisionMismatch
+		}
+		if !a.agent.frozenTitleProfileReady(ctx, run.State.Scope, request) {
+			return false, aiworkbench.ErrUnavailable
+		}
+		_, err = a.agent.runtime.Resume(ctx, request, input.Revision, input.Feedback)
+		return true, err
+	}
+	if !agentRunReviewable(run.State) {
+		return false, aiworkbench.ErrRevisionMismatch
+	}
+	reviewInput := agentReviewInput(binding, run.State.Request.PolicyVersion, run.State.Candidate)
+	reviewInput.ContextProvenance, err = agentContextProvenance(run.State)
+	if err != nil {
+		return false, err
+	}
+	_, err = a.agent.reviews.CreateFromCandidate(ctx, "agent:"+run.State.RunID, reviewInput)
+	return true, err
 }

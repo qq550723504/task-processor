@@ -501,7 +501,7 @@ export async function buildWorkbenchUpstreamRequest(
         } else {
           const assertion = validateSourceMutationBoundary(request, authenticatedActorSubject);
           if (assertion) return assertion;
-          if (["conversation-create", "message", "confirm"].includes(action)) {
+          if (["conversation-create", "message", "confirm", "task-start", "task-resume", "task-review"].includes(action)) {
             const key = readCanonicalUUIDHeader(request.headers, "Idempotency-Key");
             if (!key) return protocolError(400, "INVALID_REQUEST", "Idempotency-Key is invalid");
             headers.set("Idempotency-Key", key);

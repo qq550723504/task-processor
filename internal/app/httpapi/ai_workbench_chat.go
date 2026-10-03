@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -216,6 +217,9 @@ func (a *aiWorkbenchApplication) confirmProposal(c *gin.Context, ctx context.Con
 	}
 	task, replay, err := a.service.Confirm(ctx, scope, conversationID, proposalID, key)
 	if err != nil && task.ID == "" {
+		if errors.Is(err, aiworkbench.ErrRevisionMismatch) {
+			err = aiworkbench.ErrProposalStale
+		}
 		writeAIWorkbenchError(c, err)
 		return
 	}

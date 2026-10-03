@@ -79,9 +79,9 @@ export const aiResponseSchemas = {
     confirm: z.object({ task, replay: z.boolean() }),
     "task-list": z.object({ tasks: z.array(task), next: z.string() }),
     "task-read": z.object({ task }),
-    "task-start": z.object({ task }),
-    "task-resume": z.object({ task }),
-    "task-review": z.object({ task }),
+    "task-start": z.object({ task, replay: z.boolean() }),
+    "task-resume": z.object({ task, replay: z.boolean() }),
+    "task-review": z.object({ task, replay: z.boolean() }),
 } as const;
 export function parseAIWorkbenchResponse(route: AIWorkbenchRoute, status: number, value: unknown) {
   if (!(status === 200 || route === "message" && status === 202)) return null;

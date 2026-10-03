@@ -1209,6 +1209,16 @@ Rules:
 - cross-org/other-user exact lookup is unknown-equivalent where disclosure matters;
 - all responses are private/no-store.
 
+Task Start/Resume/Review use a Workbench-local action receipt for this existing HTTP rule.
+The receipt binds `(Organization, actor, canonical key)` to one Task, action, and bounded
+request fingerprint. A short transaction claims the key before the existing Agent/Review owner
+call; no local transaction spans that call. A completed same-key retry reauthorizes the actor
+and returns the current exact Task projection without dispatching again. A changed payload
+conflicts; a known pre-owner revision failure replays its bounded error; an unfinished or
+outcome-unknown claim never automatically redispatches, and the
+Task can still be read from its canonical owners. This receipt has no mutable Task status or
+Review/Agent authority and creates no background recovery loop.
+
 Stable Workbench errors include:
 
 ```text
@@ -1222,6 +1232,7 @@ PLANNER_UNAVAILABLE
 PLANNER_OUTCOME_UNKNOWN
 PROPOSAL_STALE
 TASK_START_NOT_CLAIMED
+TASK_OUTCOME_UNKNOWN
 DEPENDENCY_UNAVAILABLE
 ```
 
@@ -1238,6 +1249,7 @@ ai_workbench.messages
 ai_workbench.commands
 ai_workbench.execution_proposals
 ai_workbench.business_tasks
+ai_workbench.task_action_receipts
 ```
 
 Required identities/constraints:
@@ -1252,6 +1264,9 @@ Required identities/constraints:
 - proposals: UUID + immutable digest; FK to exact Conversation/user+assistant messages;
 - tasks: UUID; unique `(org, owner,execution_request_key)`; immutable confirmation fingerprint;
   FK proposal/conversation;
+- task_action_receipts: scoped canonical operation key, exact Task/action/request fingerprint,
+  `CLAIMED|COMPLETE|FAILED|UNKNOWN` receipt state, bounded error code and timestamps;
+  FK exact Task/owner;
 - all payload columns have DB byte bounds;
 - every FK includes Organization/owner qualification where it prevents accidental cross-scope
   linkage;

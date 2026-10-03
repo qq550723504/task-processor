@@ -60,6 +60,23 @@ describe("AI Workbench BFF boundary", () => {
     expect(JSON.stringify(await buildWorkbenchBrowserResponse(Response.json({ task }), "ai-task-read").then(r => r.json()))).not.toContain("never forward");
   });
 
+  it("requires and forwards a canonical key for each Task mutation", async () => {
+    for (const action of ["start", "resume", "review"] as const) {
+      const body = action === "resume" ? JSON.stringify({ revision: "2", feedback: "Use the source title" }) : undefined;
+      const make = (key?: string) => new Request(`http://localhost/api/workbench/tasks/${id}/${action}`, {
+        method: "POST", headers: { ...scope, Origin: "http://localhost", ...(body ? { "Content-Type": "application/json" } : {}),
+          ...(key ? { "Idempotency-Key": key } : {}) }, ...(body ? { body } : {}),
+      });
+      const path = ["tasks", id, action];
+      const missing = await buildWorkbenchUpstreamRequest(make(), path, "server-token", "user-a");
+      expect(missing).toBeInstanceOf(Response);
+      if (missing instanceof Response) expect(missing.status).toBe(400);
+      const mapped = await buildWorkbenchUpstreamRequest(make(id), path, "server-token", "user-a");
+      expect(mapped).not.toBeInstanceOf(Response);
+      if (!(mapped instanceof Response)) expect(new Headers(mapped.init.headers).get("Idempotency-Key")).toBe(id);
+    }
+  });
+
   it("preserves a verified organization revocation response for Chat", async () => {
     const response = await buildWorkbenchBrowserResponse(Response.json({ code: "ORGANIZATION_ACCESS_REVOKED" }, { status: 403 }), "ai-conversation-read");
     expect(response.status).toBe(403);
