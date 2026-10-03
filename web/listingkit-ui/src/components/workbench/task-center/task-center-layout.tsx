@@ -15,7 +15,7 @@ export function TaskCenterLayout({ completed = false, pendingReview = false, onR
     actions={<><Button asChild variant="outline"><Link href="/workbench/ai/tasks" prefetch={false}>返回业务任务</Link></Button><Button asChild><Link href="/workbench/ai/chat/new" prefetch={false}>向硕米发起任务</Link></Button></>}>
     <div className={styles.metrics}>
       {["待你处理", "执行中", "今日完成"].map((title) => <Card className={styles.metric} key={title}><span className={styles.swatch} aria-hidden="true" /><div><h2>{title}</h2><p>统计暂未接入</p></div></Card>)}
-      <Card className={styles.scope}><p>工作范围</p><h2>通用业务</h2><p>当前企业 · 店铺筛选暂未接入</p></Card>
+      <Card className={styles.scope}><p>工作范围</p><h2>当前企业</h2><p>{completed && !pendingReview ? "已完成记录按条目标注所属店铺 · 店铺筛选暂未接入" : "当前页面按已授权的当前企业展示已接入工作记录"}</p></Card>
     </div>
     <ConsoleToolbar>
       <nav aria-label="任务状态" className={styles.filters}>

@@ -150,4 +150,3 @@ CREATE TABLE IF NOT EXISTS ai_workbench.business_tasks (
 );
 CREATE INDEX IF NOT EXISTS ai_workbench_tasks_owner_recent
     ON ai_workbench.business_tasks (organization_id, owner_user_id, created_at DESC, id DESC);
-

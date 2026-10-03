@@ -8,7 +8,7 @@ const semantics = {
   title: "准备商品上架资料",
   summary: "本地资料已创建；诊断和发布是后续独立操作",
   platform: "SHEIN",
-  work_scope: "general",
+  work_scope: "store",
   completion_basis: "local_record_committed",
 } as const;
 const item = sheinRecordListItemSchema.omit({ record_id: true }).extend({
@@ -20,12 +20,12 @@ const item = sheinRecordListItemSchema.omit({ record_id: true }).extend({
   result: z.strictObject({ kind: z.literal("shein-diagnostic"), href: z.string().max(128) }),
 }).refine((value) => value.result.href === diagnosticHref(value.source_record_id));
 const list = z.strictObject({
-  projection_version: z.literal("1"), coverage: z.literal("listing-local-preparation-only"),
+  projection_version: z.literal("2"), coverage: z.literal("listing-local-preparation-only"),
   items: z.array(item).max(100), next_cursor: sheinRecordCursorSchema.nullable(),
 }).refine((value) => new Set(value.items.map((entry) => entry.source_record_id)).size === value.items.length);
 export type CompletedWorkItem = z.infer<typeof item>;
 export type CompletedWorkList = {
-  projection_version: "1";
+  projection_version: "2";
   coverage: "listing-local-preparation-only";
   items: CompletedWorkItem[];
   next_cursor: string | null;
@@ -41,7 +41,7 @@ export function parseCompletedWorkList(value: unknown): CompletedWorkList | null
 // Its rows represent committed creation operations; this is not Task/Agent state.
 export function projectCompletedWork(source: SheinRecordList): CompletedWorkList {
   return {
-    projection_version: "1", coverage: "listing-local-preparation-only", next_cursor: source.next_cursor,
+    projection_version: "2", coverage: "listing-local-preparation-only", next_cursor: source.next_cursor,
     items: source.items.map(({ record_id, ...metadata }) => ({
       ...metadata, ...semantics, source_record_id: record_id,
       result: { kind: "shein-diagnostic", href: diagnosticHref(record_id) },

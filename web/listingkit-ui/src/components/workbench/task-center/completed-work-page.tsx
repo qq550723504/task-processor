@@ -14,6 +14,7 @@ import { TaskCenterLayout } from "./task-center-layout";
 const PAGE_SIZE = 20;
 const HISTORY_LIMIT = 50;
 type Position = { cursors: (string | undefined)[]; page: number; sequence: number };
+const localActionLabel = (action: CompletedWorkItem["action"]) => action === "save_draft" ? "本地草稿准备" : "本地发布准备";
 
 export function CompletedWorkPageContent({ available, completed = false }: { available: boolean; completed?: boolean }) {
   const context = useWorkbenchContext();
@@ -53,7 +54,8 @@ function WorkRequest({ scope, organizationId, position, refresh, next, previous 
   const data = response.data;
   return <CompletedWorkResults entries={data.items.map((item) => ({
     key: item.source_record_id, heading: item.title, caption: item.product_key,
-    content: <span>{item.platform} · <time dateTime={item.created_at}>{item.created_at.replace("T", " ").replace(/Z$/, " UTC")}</time></span>,
+    content: <><span>记录所属店铺 ID：{item.store_id}</span><span>准备动作：{localActionLabel(item.action)} · 未向平台提交/发布</span>
+      <span>{item.platform} · <time dateTime={item.created_at}>{item.created_at.replace("T", " ").replace(/Z$/, " UTC")}</time></span></>,
     detail: <WorkDetail item={item} />,
   }))} pagination={<div className="mb-4 flex flex-wrap items-center gap-3">
     <p ref={pageLabel} tabIndex={-1} className="rounded text-xs focus-visible:outline-2 focus-visible:outline-ring" role="status">第 {position.page} 页</p>
@@ -66,7 +68,8 @@ function WorkRequest({ scope, organizationId, position, refresh, next, previous 
 
 function WorkDetail({ item }: { item: CompletedWorkItem }) {
   return <WorkResultDetail title={item.title} summary={item.summary}>
-    <dl><dt>来源商品</dt><dd>{item.product_key}</dd><dt>快照版本</dt><dd>{item.snapshot_version}</dd>
+    <dl><dt>记录所属店铺 ID</dt><dd>{item.store_id}</dd><dt>准备动作</dt><dd>{localActionLabel(item.action)} · 未向平台提交/发布</dd>
+      <dt>来源商品</dt><dd>{item.product_key}</dd><dt>快照版本</dt><dd>{item.snapshot_version}</dd>
       <dt>平台</dt><dd>{item.platform}</dd><dt>国家 / 语言</dt><dd>{item.country} / {item.language}</dd>
       <dt>创建时间</dt><dd><time dateTime={item.created_at}>{item.created_at.replace("T", " ").replace(/Z$/, " UTC")}</time></dd>
       <dt>结果引用</dt><dd>{item.source_record_id}</dd></dl>
