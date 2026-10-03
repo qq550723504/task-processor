@@ -15,7 +15,77 @@ type confirmRepository struct {
 	task         BusinessTask
 }
 
+type messageRepository struct {
+	confirmRepository
+	command     PlanningCommand
+	appendCalls int
+}
+
+func (r *messageRepository) ReplayCommand(context.Context, Scope, string, string, MessageInput) (PlanningCommand, bool, error) {
+	return r.command, true, nil
+}
+
+func (r *messageRepository) AppendUser(context.Context, Scope, string, string, MessageInput, PlanPreparer) (PlanningCommand, bool, error) {
+	r.appendCalls++
+	return r.command, true, nil
+}
+func (r *messageRepository) HistoryForCommand(context.Context, Scope, string) ([]Message, PlanningCommand, error) {
+	return []Message{{Author: AuthorUser, Content: "goal"}}, r.command, nil
+}
+func (r *messageRepository) CompletePlan(context.Context, Scope, string, PlanTerminal) (PlanningCommand, bool, error) {
+	r.command.State = PlanningComplete
+	return r.command, false, nil
+}
+
+type messagePlanner struct {
+	admissionCalls int
+	decideCalls    int
+	readyTerminal  bool
+}
+
+func (*messagePlanner) AuthorizeReceipt(context.Context, Scope) error { return nil }
+func (p *messagePlanner) Admission(context.Context, Scope, MessageInput) (PlanPreparer, error) {
+	p.admissionCalls++
+	return nil, ErrUnavailable
+}
+func (p *messagePlanner) Decide(context.Context, PlanningCommand, []Message) (PlanTerminal, error) {
+	if !p.readyTerminal {
+		panic("terminal receipt must not redispatch")
+	}
+	p.decideCalls++
+	return PlanTerminal{Mode: PlanClarify, AssistantText: "What style?"}, nil
+}
+func (*messagePlanner) FailureState(context.Context, PlanningCommand, error) PlanningState {
+	panic("terminal receipt must not finalize again")
+}
+
+func TestMessageReplaysTerminalReceiptBeforeMutableAdmission(t *testing.T) {
+	repo := &messageRepository{command: PlanningCommand{State: PlanningFailedBeforeDispatch}}
+	plan := &messagePlanner{}
+	service := Service{Store: repo, Plan: plan}
+	command, err := service.Message(context.Background(), Scope{OrganizationID: "org", ActorID: "actor"},
+		"conversation", "key", MessageInput{Content: "goal", OperationID: "operation", TargetPlatform: "shein"})
+	if err != nil || command.State != PlanningFailedBeforeDispatch || plan.admissionCalls != 0 || repo.appendCalls != 0 {
+		t.Fatalf("terminal replay consulted mutable admission: command=%+v err=%v admission=%d append=%d", command, err, plan.admissionCalls, repo.appendCalls)
+	}
+}
+
+func TestMessageCanDispatchStoredReadyTurnWithoutMutableAdmission(t *testing.T) {
+	repo := &messageRepository{command: PlanningCommand{State: PlanningReadyToDispatch,
+		ConversationID: "conversation", RequestFingerprint: "wire-fingerprint"}}
+	plan := &messagePlanner{readyTerminal: true}
+	service := Service{Store: repo, Plan: plan}
+	command, err := service.Message(context.Background(), Scope{OrganizationID: "org", ActorID: "actor"},
+		"conversation", "key", MessageInput{Content: "goal", OperationID: "operation", TargetPlatform: "shein"})
+	if err != nil || command.State != PlanningComplete || plan.admissionCalls != 0 || plan.decideCalls != 1 || repo.appendCalls != 0 {
+		t.Fatalf("ready replay did not use frozen turn: command=%+v err=%v admission=%d decide=%d append=%d", command, err, plan.admissionCalls, plan.decideCalls, repo.appendCalls)
+	}
+}
+
 func (r *confirmRepository) AppendUser(context.Context, Scope, string, string, MessageInput, PlanPreparer) (PlanningCommand, bool, error) {
+	panic("unused")
+}
+func (r *confirmRepository) ReplayCommand(context.Context, Scope, string, string, MessageInput) (PlanningCommand, bool, error) {
 	panic("unused")
 }
 func (r *confirmRepository) HistoryForCommand(context.Context, Scope, string) ([]Message, PlanningCommand, error) {

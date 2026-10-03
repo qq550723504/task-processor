@@ -179,6 +179,8 @@ type competingExecution struct {
 	starts   atomic.Int32
 }
 
+func (*competingExecution) AuthorizeReceipt(context.Context, aiworkbench.Scope) error { return nil }
+
 func (x *competingExecution) Prepare(context.Context, aiworkbench.ExecutionProposal, string) (aiworkbench.PreparedTask, error) {
 	if x.prepares.Add(1) == 1 {
 		close(x.entered)
@@ -355,6 +357,9 @@ func TestUnavailablePlannerStillPersistsUserIntentWithoutDispatchProfile(t *test
 	require.NoError(t, err)
 	key := uuid.NewString()
 	input := aiworkbench.MessageInput{Content: "Please suggest a title", OperationID: "op-1", TargetPlatform: "shein"}
+	_, found, err := store.ReplayCommand(ctx, scope, conversation.ID, key, input)
+	require.NoError(t, err)
+	require.False(t, found)
 	prepare := func(history []aiworkbench.Message, invocationID string) (aiworkbench.PreparedPlan, error) {
 		require.Len(t, history, 1)
 		require.NotEmpty(t, invocationID)
@@ -366,6 +371,13 @@ func TestUnavailablePlannerStillPersistsUserIntentWithoutDispatchProfile(t *test
 	require.Equal(t, aiworkbench.PlanningFailedBeforeDispatch, command.State)
 	require.Empty(t, command.ModelProfile)
 	require.Equal(t, input.WorkScope(), command.WorkScope)
+	preflightReceipt, found, err := store.ReplayCommand(ctx, scope, conversation.ID, key, input)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, command.UserMessageID, preflightReceipt.UserMessageID)
+	_, found, err = store.ReplayCommand(ctx, aiworkbench.Scope{OrganizationID: "org-b", ActorID: scope.ActorID}, conversation.ID, key, input)
+	require.NoError(t, err)
+	require.False(t, found)
 	messages, err := store.ListMessages(ctx, scope, conversation.ID, 50)
 	require.NoError(t, err)
 	require.Len(t, messages, 1)
@@ -379,6 +391,8 @@ func TestUnavailablePlannerStillPersistsUserIntentWithoutDispatchProfile(t *test
 	require.Equal(t, aiworkbench.PlanningFailedBeforeDispatch, command.State)
 	changed := input
 	changed.Content = "A different title goal"
+	_, _, err = store.ReplayCommand(ctx, scope, conversation.ID, key, changed)
+	require.ErrorIs(t, err, aiworkbench.ErrIdempotencyConflict)
 	_, _, err = store.AppendUser(ctx, scope, conversation.ID, key, changed, prepare)
 	require.ErrorIs(t, err, aiworkbench.ErrIdempotencyConflict)
 }

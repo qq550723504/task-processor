@@ -112,6 +112,7 @@ function TaskDetail({ scope, authorizationKey, taskId }: { scope: AIScope; autho
     {error ? <ConsoleState kind="error" title="操作未完成">{error}。请刷新原任务查看状态，不要新建任务。</ConsoleState> : null}
     <div className={styles.actions}>
       {item.canStart ? <Button disabled={pending} onClick={() => void act("start")}>启动原任务</Button> : null}
+      {item.canReconcile ? <Button variant="outline" disabled={pending} onClick={() => void act("start")}>核实超期执行结果</Button> : null}
       {item.canResume ? <Card className={styles.actionCard}><label>继续执行的反馈<textarea rows={3} value={feedback} onChange={event => setFeedback(event.target.value)} /></label><Button disabled={pending || !feedback.trim()} onClick={() => void act("resume")}>继续原任务</Button></Card> : null}
       {item.canReview && !item.reviewId ? <Button disabled={pending} onClick={() => void act("review")}>提交标题供人工审核</Button> : null}
       {item.reviewId ? <Button asChild><Link href={`/workbench/ai/tasks/pending/other?proposal_id=${item.reviewId}`} prefetch={false}>查看并处理标题提案</Link></Button> : null}

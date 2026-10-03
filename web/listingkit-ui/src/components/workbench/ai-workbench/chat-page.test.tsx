@@ -47,6 +47,22 @@ it("carries the selected saved product into the newly created conversation", asy
   fixture.search = new URLSearchParams();
 });
 
+it("explains a terminal plan failure before dispatch and keeps the goal for a new attempt", async () => {
+  fixture.request.mockImplementation(async ({ route }) => {
+    if (route === "conversation-read") return { conversation, messages: [], proposals: [], before: "" };
+    if (route === "message") return { state: "FAILED_BEFORE_DISPATCH" };
+    throw new AIWorkbenchError("INVALID_REQUEST");
+  });
+  render(tree());
+  await screen.findByText("开始讨论");
+  fireEvent.change(screen.getByLabelText("采集操作 ID"), { target: { value: operationId } });
+  fireEvent.change(screen.getByLabelText("需求"), { target: { value: "优化标题" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+  expect(await screen.findByText(/规划尚未发送到模型/)).toBeInTheDocument();
+  expect(screen.getByLabelText("需求")).toHaveValue("优化标题");
+  expect(screen.getByRole("button", { name: "发送消息" })).toBeEnabled();
+});
+
 it("keeps the exact message key and body across a lost response and page reload", async () => {
   const view = render(tree());
   await screen.findByText("开始讨论");

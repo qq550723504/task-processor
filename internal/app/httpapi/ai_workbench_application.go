@@ -42,6 +42,14 @@ type workbenchPlanner struct {
 
 type workbenchExecution struct{ agent *productAgentApplication }
 
+func (p *workbenchPlanner) AuthorizeReceipt(ctx context.Context, scope aiworkbench.Scope) error {
+	i, err := p.agent.freshChatIdentity(ctx)
+	if err != nil || i.TenantID != scope.OrganizationID || i.UserID != scope.ActorID {
+		return review.ErrForbidden
+	}
+	return nil
+}
+
 func (x workbenchExecution) AuthorizeReceipt(ctx context.Context, scope aiworkbench.Scope) error {
 	i, err := x.agent.freshChatIdentity(ctx)
 	if err != nil || i.TenantID != scope.OrganizationID || i.UserID != scope.ActorID {

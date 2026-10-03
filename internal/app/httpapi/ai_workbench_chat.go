@@ -159,6 +159,10 @@ func (a *aiWorkbenchApplication) postMessage(c *gin.Context, ctx context.Context
 		}
 		response["proposal"] = a.proposalCard(ctx, proposal)
 	}
+	if accessErr := a.plan.AuthorizeReceipt(ctx, scope); accessErr != nil {
+		writeAIWorkbenchError(c, accessErr)
+		return
+	}
 	status := http.StatusOK
 	if command.State == aiworkbench.PlanningReadyToDispatch || command.State == aiworkbench.PlanningUnknown {
 		status = http.StatusAccepted

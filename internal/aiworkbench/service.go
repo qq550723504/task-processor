@@ -8,6 +8,7 @@ import (
 // Repository contains only Workbench-owned facts. Other owners are reached
 // through the two narrow ports below; no cross-owner SQL transaction exists.
 type Repository interface {
+	ReplayCommand(context.Context, Scope, string, string, MessageInput) (PlanningCommand, bool, error)
 	AppendUser(context.Context, Scope, string, string, MessageInput, PlanPreparer) (PlanningCommand, bool, error)
 	HistoryForCommand(context.Context, Scope, string) ([]Message, PlanningCommand, error)
 	GetCommand(context.Context, Scope, string) (PlanningCommand, error)
@@ -22,6 +23,7 @@ type Repository interface {
 // PlanningPort checks current permissions and work selection outside T0. Its
 // returned PlanPreparer must be pure: Store calls it under a Conversation lock.
 type PlanningPort interface {
+	AuthorizeReceipt(context.Context, Scope) error
 	Admission(context.Context, Scope, MessageInput) (PlanPreparer, error)
 	Decide(context.Context, PlanningCommand, []Message) (PlanTerminal, error)
 	FailureState(context.Context, PlanningCommand, error) PlanningState
@@ -43,16 +45,27 @@ func (s *Service) Message(ctx context.Context, scope Scope, conversationID, key 
 	if s == nil || s.Store == nil || s.Plan == nil {
 		return PlanningCommand{}, ErrUnavailable
 	}
-	prepare, err := s.Plan.Admission(ctx, scope, input)
-	if err != nil {
-		// AppendUser looks up the scoped wire receipt before invoking prepare.
-		// An existing turn remains readable when a mutable Product/model route
-		// has since become unavailable; a new turn still fails before T0.
-		prepare = func([]Message, string) (PreparedPlan, error) { return PreparedPlan{}, err }
+	if err := s.Plan.AuthorizeReceipt(ctx, scope); err != nil {
+		return PlanningCommand{}, err
 	}
-	command, _, err := s.Store.AppendUser(ctx, scope, conversationID, key, input, prepare)
-	if err != nil || command.State != PlanningReadyToDispatch {
-		return command, err
+	command, replay, err := s.Store.ReplayCommand(ctx, scope, conversationID, key, input)
+	if err != nil {
+		return PlanningCommand{}, err
+	}
+	if !replay {
+		prepare, admissionErr := s.Plan.Admission(ctx, scope, input)
+		if admissionErr != nil {
+			// A concurrent T0 may have committed while admission ran. AppendUser
+			// checks the exact scoped key before it invokes this pure failure.
+			prepare = func([]Message, string) (PreparedPlan, error) { return PreparedPlan{}, admissionErr }
+		}
+		command, _, err = s.Store.AppendUser(ctx, scope, conversationID, key, input, prepare)
+		if err != nil {
+			return PlanningCommand{}, err
+		}
+	}
+	if command.State != PlanningReadyToDispatch {
+		return command, nil
 	}
 	history, frozen, err := s.Store.HistoryForCommand(ctx, scope, key)
 	if err != nil {

@@ -27,6 +27,8 @@ func TestTaskProjectionUsesExactAgentAndReviewFacts(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, TaskError, projected.State)
 	require.Equal(t, "EXECUTION_OUTCOME_UNKNOWN", projected.Reason)
+	require.False(t, projected.CanStart, "an expired RUNNING execution cannot be started again")
+	require.True(t, projected.CanReconcile, "the existing Agent owner can finalize the expired RUNNING fact")
 	projected, err = ProjectTask(task, &run, "pending", now)
 	require.NoError(t, err)
 	require.Equal(t, TaskWaitingConfirmation, projected.State)

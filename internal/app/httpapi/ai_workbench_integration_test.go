@@ -158,10 +158,20 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	var count int64
 	require.NoError(t, f.owner.Table("ai_workbench.business_tasks").Count(&count).Error)
 	require.Zero(t, count)
+	// A lost response must replay the frozen receipt even when the planner
+	// route becomes unavailable before the retry. No mutable route read wins.
+	changedRoute := f.owner.Model(&openai.AIClientCredential{}).
+		Where("tenant_id = ? AND user_id = ? AND client_name = ?", "B", "", "chat").
+		Update("enabled", false)
+	require.NoError(t, changedRoute.Error)
+	require.EqualValues(t, 1, changedRoute.RowsAffected)
 	code, raw, err = acquisitionHTTPRequest(server, "POST", messagePath, "operator", "B", messageKey, messageBody)
 	require.NoError(t, err)
 	require.Equal(t, 200, code, string(raw))
 	require.EqualValues(t, 1, plannerCalls.Load())
+	require.NoError(t, f.owner.Model(&openai.AIClientCredential{}).
+		Where("tenant_id = ? AND user_id = ? AND client_name = ?", "B", "", "chat").
+		Update("enabled", true).Error)
 	confirmKey := uuid.NewString()
 	confirmPath := workbenchChatBase + "/" + created.Conversation.ID + "/proposals/" + planned.ProposalID + "/confirm"
 	code, raw, err = acquisitionHTTPRequest(server, "POST", confirmPath, "operator", "B", confirmKey, "")

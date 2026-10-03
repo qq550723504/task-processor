@@ -183,8 +183,9 @@ function ConversationDetail({ scope, authorizationKey, id }: { scope: AIScope; a
       if (result.state === "COMPLETE" || result.state === "FAILED_BEFORE_DISPATCH" || result.state === "PLANNER_UNKNOWN") {
         setPendingMessage(null);
         try { sessionStorage.removeItem(pendingMessageStorageKey(scope, id)); } catch { /* terminal receipt is already displayed */ }
-        if (result.state !== "PLANNER_UNKNOWN") setContent("");
+        if (result.state === "COMPLETE") setContent("");
       }
+      if (result.state === "FAILED_BEFORE_DISPATCH") setError("规划尚未发送到模型。请检查当前企业的模型配置或联系管理员；修复后可用保留的需求发送新消息。");
       if (result.state === "PLANNER_UNKNOWN") setError("模型结果无法确认；本轮不会自动重发。请刷新查看收据。");
       if (result.state === "READY_TO_DISPATCH") setError("本轮仍在处理，请使用相同操作键重试读取结果。");
       setOlder("");

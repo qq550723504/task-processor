@@ -18,11 +18,12 @@ const (
 )
 
 type TaskProjection struct {
-	State     TaskState
-	Reason    string
-	CanStart  bool
-	CanResume bool
-	CanReview bool
+	State        TaskState
+	Reason       string
+	CanStart     bool
+	CanReconcile bool
+	CanResume    bool
+	CanReview    bool
 }
 
 // ProjectTask derives status from the immutable Task and exact current Agent
@@ -67,7 +68,7 @@ func ProjectTask(task BusinessTask, run *agent.Record, reviewState string, now t
 		return TaskProjection{State: TaskPaused, Reason: "AGENT_INTERRUPTED", CanResume: true}, nil
 	case agent.Running:
 		if now.After(s.Deadline.Add(30 * time.Second)) {
-			return TaskProjection{State: TaskError, Reason: "EXECUTION_OUTCOME_UNKNOWN", CanStart: true}, nil
+			return TaskProjection{State: TaskError, Reason: "EXECUTION_OUTCOME_UNKNOWN", CanReconcile: true}, nil
 		}
 		return TaskProjection{State: TaskRunning}, nil
 	case agent.Stopped:

@@ -32,7 +32,7 @@ describe("AI Workbench BFF boundary", () => {
 
   it("accepts only the curated Task projection fields", async () => {
     const task = { id, conversationId: id, proposalId: id, title: "Title suggestion", goalSummary: "Improve title", createdAt: "2026-10-03T00:00:00Z",
-      projectionAvailable: true, state: "WAITING_CONFIRMATION", reason: "pending", canStart: false, canResume: false, canReview: false,
+      projectionAvailable: true, state: "WAITING_CONFIRMATION", reason: "pending", canStart: false, canReconcile: false, canResume: false, canReview: false,
       productDetailsAvailable: false, secret: "never forward" };
     const response = await buildWorkbenchBrowserResponse(Response.json({ task }), "ai-task-read");
     expect(response.status).toBe(200);

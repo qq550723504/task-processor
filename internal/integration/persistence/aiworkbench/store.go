@@ -526,6 +526,36 @@ func (s *Store) historyPrefix(tx *gorm.DB, scope aiworkbench.Scope, conversation
 	return selected, nil
 }
 
+func messageFingerprint(conversationID string, input aiworkbench.MessageInput) string {
+	return digest(struct {
+		Operation      string
+		ConversationID string
+		Input          aiworkbench.MessageInput
+	}{messageOperation, conversationID, input})
+}
+
+// ReplayCommand reads a durable, scoped wire receipt before mutable Product,
+// Knowledge, template or model route admission. It never creates a new turn.
+func (s *Store) ReplayCommand(ctx context.Context, scope aiworkbench.Scope, conversationID, key string, input aiworkbench.MessageInput) (aiworkbench.PlanningCommand, bool, error) {
+	if s == nil || s.db == nil {
+		return aiworkbench.PlanningCommand{}, false, aiworkbench.ErrUnavailable
+	}
+	if !validScope(scope) || !validKey(conversationID) || !validKey(key) || !validMessage(input) {
+		return aiworkbench.PlanningCommand{}, false, aiworkbench.ErrInvalid
+	}
+	row, found, err := s.lookupCommand(s.db.WithContext(ctx), scope, key)
+	if err != nil {
+		return aiworkbench.PlanningCommand{}, false, unavailable(err)
+	}
+	if !found {
+		return aiworkbench.PlanningCommand{}, false, nil
+	}
+	if row.Operation != messageOperation || row.ConversationID != conversationID || row.RequestFingerprint != messageFingerprint(conversationID, input) {
+		return aiworkbench.PlanningCommand{}, false, aiworkbench.ErrIdempotencyConflict
+	}
+	return command(row), true, nil
+}
+
 func (s *Store) AppendUser(ctx context.Context, scope aiworkbench.Scope, conversationID, key string, input aiworkbench.MessageInput, prepare aiworkbench.PlanPreparer) (aiworkbench.PlanningCommand, bool, error) {
 	if s == nil || s.db == nil {
 		return aiworkbench.PlanningCommand{}, false, aiworkbench.ErrUnavailable
@@ -535,11 +565,7 @@ func (s *Store) AppendUser(ctx context.Context, scope aiworkbench.Scope, convers
 	}
 	// The fingerprint is wire identity. A stored receipt is adopted before a
 	// new mutable route/profile is consulted.
-	fingerprint := digest(struct {
-		Operation      string
-		ConversationID string
-		Input          aiworkbench.MessageInput
-	}{messageOperation, conversationID, input})
+	fingerprint := messageFingerprint(conversationID, input)
 	var result aiworkbench.PlanningCommand
 	var replay bool
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

@@ -25,7 +25,7 @@ const proposal = z.object({
 const task = z.object({
   id, conversationId: id, proposalId: id, title: z.string(), goalSummary: z.string(), createdAt: timestamp,
   projectionAvailable: z.boolean(), state: z.enum(["RUNNING", "WAITING_CONFIRMATION", "COMPLETED", "ERROR", "PAUSED"]).optional(),
-  reason: z.string().optional(), canStart: z.boolean(), canResume: z.boolean(), canReview: z.boolean(),
+  reason: z.string().optional(), canStart: z.boolean(), canReconcile: z.boolean(), canResume: z.boolean(), canReview: z.boolean(),
   productDetailsAvailable: z.boolean(), operationId: z.string().optional(), productKey: z.string().optional(),
   targetPlatform: z.string().optional(), agentRunId: z.string().optional(), agentPhase: z.string().optional(),
   agentRevision: z.string().optional(), providerId: z.string().optional(), modelId: z.string().optional(),
