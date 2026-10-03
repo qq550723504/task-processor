@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"task-processor/internal/agent"
 	"task-processor/internal/aiworkbench"
 	"task-processor/internal/authidentity"
+	"task-processor/internal/product/review"
 )
 
 type workbenchTaskView struct {
@@ -71,12 +73,20 @@ func (a *aiWorkbenchApplication) taskView(ctx context.Context, scope aiworkbench
 		runPtr = &run
 		view.AgentRunID, view.AgentPhase, view.AgentRevision = run.State.RunID, run.State.Phase, strconv.FormatUint(run.State.Revision, 10)
 		currentReview, reviewFound, reviewErr := a.agent.reviews.FindAgentReview(ctx, run.State.RunID)
-		if reviewErr != nil {
-			return view, nil
-		}
-		if reviewFound {
+		if errors.Is(reviewErr, review.ErrForbidden) {
+			// Task readers may see the state of their own exact Agent run, but
+			// cannot open the protected Review record or receive its ID.
+			var state string
+			state, reviewFound, reviewErr = a.agent.reviews.FindAgentTaskReviewState(ctx, run.State.RunID)
+			if reviewErr == nil && reviewFound {
+				reviewState = state
+			}
+		} else if reviewErr == nil && reviewFound {
 			reviewState = currentReview.State
 			view.ReviewID, view.ReviewState = currentReview.ID, currentReview.State
+		}
+		if reviewErr != nil {
+			return view, nil
 		}
 	}
 	projection, err := aiworkbench.ProjectTask(task, runPtr, reviewState, time.Now())

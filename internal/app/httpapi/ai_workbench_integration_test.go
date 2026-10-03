@@ -31,6 +31,25 @@ import (
 	"task-processor/internal/workbenchcontext"
 )
 
+type taskViewerGrants struct {
+	base   *titleGrants
+	viewer atomic.Bool
+}
+
+func (g *taskViewerGrants) Load(ctx context.Context, source workbenchcontext.GrantSource, request workbenchcontext.GrantRequest) (workbenchcontext.GrantResult, error) {
+	result, err := (agentFixtureGrants{base: g.base}).Load(ctx, source, request)
+	if request.Subject == "operator" && g.viewer.Load() {
+		for i := range result.Grants {
+			if result.Grants[i].OrganizationID == "B" {
+				result.Grants[i].Roles = []string{"listingkit_viewer"}
+			}
+		}
+	}
+	return result, err
+}
+
+func (g *taskViewerGrants) Invalidate(actor, project string) { g.base.Invalidate(actor, project) }
+
 func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	f := newAcquisitionHTTPFixture(t)
 	op := acquisitionHTTPCall(t, f.server(t), "POST", productAcquisitionBase, "operator", "B", uuid.NewString(),
@@ -114,7 +133,8 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	ledger := aistore.NewGormInvocationRecorder(f.owner)
 	deps := newRouteAuthDependencies()
 	deps.workbenchVerifier = titleVerifier{}
-	deps.organizationResolver = workbenchcontext.NewResolver(agentFixtureGrants{f.grants}, "project", "v1", nil)
+	taskGrants := &taskViewerGrants{base: f.grants}
+	deps.organizationResolver = workbenchcontext.NewResolver(taskGrants, "project", "v1", nil)
 	auth, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
 	deps.authorizer = auth
@@ -228,6 +248,32 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.False(t, confirmed.Replay)
 	require.EqualValues(t, 4, titleCalls.Load(), "confirmation starts the existing Product Agent exactly once")
 	require.Equal(t, "WAITING_CONFIRMATION", confirmed.Task.State)
+	taskGrants.viewer.Store(true)
+	readAsViewer := func(wantState string) {
+		t.Helper()
+		status, body, readErr := acquisitionHTTPRequest(server, "GET", workbenchTaskBase+"/"+confirmed.Task.ID, "operator", "B", "", "")
+		require.NoError(t, readErr)
+		require.Equal(t, 200, status, string(body))
+		var viewer struct {
+			Task struct {
+				State               string `json:"state"`
+				ProjectionAvailable bool   `json:"projectionAvailable"`
+				ReviewID            string `json:"reviewId"`
+				ReviewState         string `json:"reviewState"`
+				CanStart            bool   `json:"canStart"`
+				CanReview           bool   `json:"canReview"`
+			} `json:"task"`
+		}
+		require.NoError(t, json.Unmarshal(body, &viewer))
+		require.True(t, viewer.Task.ProjectionAvailable)
+		require.Equal(t, wantState, viewer.Task.State)
+		require.Empty(t, viewer.Task.ReviewID, "Review owner details remain protected")
+		require.Empty(t, viewer.Task.ReviewState, "Review owner details remain protected")
+		require.False(t, viewer.Task.CanStart)
+		require.False(t, viewer.Task.CanReview)
+	}
+	readAsViewer("WAITING_CONFIRMATION")
+	taskGrants.viewer.Store(false)
 	require.NoError(t, f.owner.Table("ai_workbench.business_tasks").Count(&count).Error)
 	require.EqualValues(t, 1, count)
 	titleBefore := titleCalls.Load()
@@ -271,5 +317,7 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(raw, &finished))
 	require.Equal(t, "COMPLETED", finished.Task.State)
+	taskGrants.viewer.Store(true)
+	readAsViewer("COMPLETED")
 	require.Equal(t, titleBefore, titleCalls.Load())
 }

@@ -236,19 +236,50 @@ func (s *Service) FindAgentReview(ctx context.Context, runID string) (View, bool
 	if err != nil {
 		return View{}, false, err
 	}
-	lookup, ok := s.store.(AgentReviewLookup)
-	if !ok {
-		return View{}, false, ErrUnavailable
-	}
-	id, found, err := lookup.FindAgentReviewID(ctx, scope, runID)
+	record, found, err := s.findAgentReview(ctx, scope, runID)
 	if err != nil || !found {
 		return View{}, found, err
 	}
+	return record.View(), true, nil
+}
+
+// FindAgentTaskReviewState exposes only the current state of this actor's exact
+// Agent review to the BusinessTask projection. It grants no Review View,
+// decision, or Apply authority to a task reader.
+func (s *Service) FindAgentTaskReviewState(ctx context.Context, runID string) (string, bool, error) {
+	if s == nil || ctx == nil || !ValidKey(runID) {
+		return "", false, ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	defer cancel()
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+	if !ok || !ValidKey(identity.UserID) || !ValidKey(identity.EffectiveOrganizationID) ||
+		identity.TenantID != identity.EffectiveOrganizationID || !time.Now().Before(identity.TokenExpiresAt) ||
+		!s.auth.Authorize("", identity.Roles, authz.PermissionWorkbenchTaskRead) {
+		return "", false, ErrForbidden
+	}
+	scope := Scope{Org: identity.EffectiveOrganizationID, Actor: identity.UserID}
+	record, found, err := s.findAgentReview(ctx, scope, runID)
+	if err != nil || !found {
+		return "", found, err
+	}
+	return record.State, true, nil
+}
+
+func (s *Service) findAgentReview(ctx context.Context, scope Scope, runID string) (Record, bool, error) {
+	lookup, ok := s.store.(AgentReviewLookup)
+	if !ok {
+		return Record{}, false, ErrUnavailable
+	}
+	id, found, err := lookup.FindAgentReviewID(ctx, scope, runID)
+	if err != nil || !found {
+		return Record{}, found, err
+	}
 	record, err := s.store.Read(ctx, scope, id)
 	if err != nil || record.Owner != scope.Actor {
-		return View{}, false, ErrUnavailable
+		return Record{}, false, ErrUnavailable
 	}
-	return record.View(), true, nil
+	return record, true, nil
 }
 func (s *Service) Decide(ctx context.Context, key, id string, in DecisionInput) (View, error) {
 	return s.change(ctx, key, id, "decision", in, in.Action != "edit", in.Action != "reject", func(ctx context.Context, tx Tx, r *Record, a Scope) error {
