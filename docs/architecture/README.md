@@ -122,6 +122,10 @@ source of truth for long-lived rules.
 
 ## Supporting Context
 
+- [`issue-36-local-trial-runtime.md`](./issue-36-local-trial-runtime.md)
+  - DRAFT / NOT IMPLEMENTATION_READY #36 durable loopback trial composition
+    for the existing Review/Apply and Listing completed-work paths; separate
+    architecture admission is pending before runtime or schema implementation.
 - [`issue-36-completed-work-store-scope.md`](./issue-36-completed-work-store-scope.md)
   - IMPLEMENTATION_READY #36 bounded completed-work v2 projection of Listing's
     historical Store ID and local preparation action; no Store name read,
