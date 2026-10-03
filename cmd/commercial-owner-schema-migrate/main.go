@@ -89,13 +89,13 @@ func migrateOwnerSchemas(moneyDB, commercialDB *gorm.DB) error {
 	if err != nil {
 		return fmt.Errorf("open commercial catalog owner: %w", err)
 	}
-	dataOffers, err := store.ListDataRowOffers(context.Background())
+	dataOfferIDs, err := store.ListActiveDataRowOfferIDs(context.Background())
 	if err != nil {
 		return fmt.Errorf("inspect existing data-row offers: %w", err)
 	}
-	for _, offer := range dataOffers {
-		if offer.OfferID != "data-row-1688-server-v1" {
-			return fmt.Errorf("existing DATA_ROW offer %q requires an explicit price decision", offer.OfferID)
+	for _, offerID := range dataOfferIDs {
+		if offerID != "data-row-1688-server-v1" {
+			return fmt.Errorf("existing DATA_ROW offer %q requires an explicit price decision", offerID)
 		}
 	}
 	if err := store.CreateOfferIfAbsent(context.Background(), billing.Offer{

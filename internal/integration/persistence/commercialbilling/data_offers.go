@@ -38,3 +38,17 @@ func (r *Repository) ListDataRowOffers(ctx context.Context) ([]billing.Offer, er
 	}
 	return data, nil
 }
+
+// ListActiveDataRowOfferIDs includes scheduled and expired rows that still have
+// ACTIVE status. Schema initialization must not create a second active-status
+// price just because an existing offer is outside its current sale window.
+func (r *Repository) ListActiveDataRowOfferIDs(ctx context.Context) ([]string, error) {
+	if r == nil || r.db == nil {
+		return nil, billing.ErrFeatureUnavailable
+	}
+	var ids []string
+	if err := r.db.WithContext(ctx).Model(&offerRow{}).Where("product_kind = ? AND status = ?", string(billing.ProductDataRow), string(billing.OfferActive)).Order("offer_id").Pluck("offer_id", &ids).Error; err != nil {
+		return nil, billing.ErrFeatureUnavailable
+	}
+	return ids, nil
+}

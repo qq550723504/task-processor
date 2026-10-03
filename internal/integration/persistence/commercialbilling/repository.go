@@ -163,7 +163,19 @@ func (r *Repository) CreateOfferIfAbsent(ctx context.Context, offer billing.Offe
 		return billing.ErrInvalid
 	}
 	row := offerToRow(offer)
-	return r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
+	result := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+	if result.Error != nil || result.RowsAffected == 1 {
+		return result.Error
+	}
+	var existing offerRow
+	if err := r.db.WithContext(ctx).Where("offer_id = ?", offer.OfferID).Take(&existing).Error; err != nil {
+		return billing.ErrFeatureUnavailable
+	}
+	current := offerFromRow(existing)
+	if current.Validate() != nil || current.UnitPriceMinor <= 0 || current.ProductKind != offer.ProductKind || current.ResourceType != offer.ResourceType || current.Currency != offer.Currency {
+		return billing.ErrInvalid
+	}
+	return nil
 }
 
 func (r *Repository) ReadOffer(ctx context.Context, offerID string) (billing.Offer, error) {
