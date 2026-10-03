@@ -22,6 +22,7 @@ type Handler struct {
 	workbenchAuthorizer          *authz.ListingKitAuthorizer
 	profileReader                authidentity.SelfProfileReader
 	aiWorkbenchAvailable         bool
+	aiWorkbenchAdmission         func(string) bool
 	aiWorkbenchPlanningReadiness func(context.Context, string) string
 	aiWorkbenchTitleReadiness    func(context.Context, string) string
 }
@@ -30,6 +31,14 @@ type Handler struct {
 func (h *Handler) SetAIWorkbenchAvailable(available bool) {
 	if h != nil {
 		h.aiWorkbenchAvailable = available
+	}
+}
+
+// SetAIWorkbenchAdmission projects the mounted module's organization allowlist
+// for the selected organization. It does not grant any Chat or Task permission.
+func (h *Handler) SetAIWorkbenchAdmission(admitted func(string) bool) {
+	if h != nil {
+		h.aiWorkbenchAdmission = admitted
 	}
 }
 
@@ -159,11 +168,16 @@ func (h *Handler) writeContext(c *gin.Context) {
 	}
 	planningReadiness := ""
 	titleReadiness := ""
+	available := false
 	if h.aiWorkbenchAvailable {
-		planningReadiness = "UNAVAILABLE"
-		titleReadiness = "UNAVAILABLE"
 		for _, organization := range organizations {
 			if effectiveOrganizationID != nil && organization.ID == *effectiveOrganizationID {
+				available = h.aiWorkbenchAdmission != nil && h.aiWorkbenchAdmission(organization.ID)
+				if !available {
+					break
+				}
+				planningReadiness = "UNAVAILABLE"
+				titleReadiness = "UNAVAILABLE"
 				if h.aiWorkbenchPlanningReadiness != nil {
 					candidate := h.aiWorkbenchPlanningReadiness(c.Request.Context(), organization.ID)
 					if candidate == "AVAILABLE" || candidate == "NEEDS_CONFIGURATION" {
@@ -186,7 +200,7 @@ func (h *Handler) writeContext(c *gin.Context) {
 		EffectiveOrganizationID:      effectiveOrganizationID,
 		SelectionRequired:            effectiveOrganizationID == nil && len(organizations) > 1,
 		Organizations:                organizations,
-		AIWorkbenchAvailable:         h.aiWorkbenchAvailable,
+		AIWorkbenchAvailable:         available,
 		AIWorkbenchPlanningReadiness: planningReadiness,
 		AIWorkbenchTitleReadiness:    titleReadiness,
 	})

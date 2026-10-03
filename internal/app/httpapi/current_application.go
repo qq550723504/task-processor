@@ -544,6 +544,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, module)
 		if workbench.handler != nil {
 			workbench.handler.SetAIWorkbenchAvailable(true)
+			workbench.handler.SetAIWorkbenchAdmission(module.(aiWorkbenchModule).AdmittedOrganization)
 			workbench.handler.SetAIWorkbenchPlanningReadiness(module.(aiWorkbenchModule).PlanningReadiness)
 			workbench.handler.SetAIWorkbenchTitleReadiness(module.(aiWorkbenchModule).TitleReadiness)
 		}

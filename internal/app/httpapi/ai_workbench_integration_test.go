@@ -193,6 +193,8 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.True(t, ok)
 	require.Same(t, agentModule.(productAgentModule).application.textAdmission, plannerText.executor.Admission,
 		"Chat and title must share provider admission within the application")
+	require.True(t, workbenchModule.(aiWorkbenchModule).AdmittedOrganization("B"))
+	require.False(t, workbenchModule.(aiWorkbenchModule).AdmittedOrganization("A"))
 	require.Equal(t, "AVAILABLE", workbenchModule.(aiWorkbenchModule).PlanningReadiness(context.Background(), "B"))
 	require.Equal(t, "UNAVAILABLE", workbenchModule.(aiWorkbenchModule).PlanningReadiness(context.Background(), "A"))
 	routes := append(agentModule.(productAgentModule).routes, workbenchModule.(aiWorkbenchModule).routes...)

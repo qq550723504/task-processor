@@ -71,12 +71,14 @@ func TestAIWorkbenchAvailabilityReflectsMountedCurrentApplicationModule(t *testi
 	}
 	require.NotContains(t, read(), "aiWorkbenchAvailable", "an optional module is absent by default")
 	handler.SetAIWorkbenchAvailable(true)
+	handler.SetAIWorkbenchAdmission(func(string) bool { return true })
 	require.Equal(t, true, read()["aiWorkbenchAvailable"])
 }
 
 func TestAIWorkbenchPlanningReadinessFollowsSelectedOrganization(t *testing.T) {
 	handler := NewHandlerWithWorkbenchAuthorizer(authz.DefaultListingKitAuthorizer())
 	handler.SetAIWorkbenchAvailable(true)
+	handler.SetAIWorkbenchAdmission(func(string) bool { return true })
 	readOrganizations := []string{}
 	handler.SetAIWorkbenchPlanningReadiness(func(_ context.Context, organizationID string) string {
 		readOrganizations = append(readOrganizations, organizationID)
@@ -114,6 +116,36 @@ func TestAIWorkbenchPlanningReadinessFollowsSelectedOrganization(t *testing.T) {
 	require.Equal(t, "AVAILABLE", body["aiWorkbenchTitleReadiness"])
 	require.Equal(t, []string{"org-b", "org-a"}, readOrganizations)
 	require.Equal(t, []string{"org-b", "org-a"}, titleReadOrganizations)
+}
+
+func TestAIWorkbenchAvailabilityRequiresSelectedOrganizationAdmission(t *testing.T) {
+	handler := NewHandlerWithWorkbenchAuthorizer(authz.DefaultListingKitAuthorizer())
+	handler.SetAIWorkbenchAvailable(true)
+	handler.SetAIWorkbenchAdmission(func(organizationID string) bool { return organizationID == "org-a" })
+	readOrganizations := []string{}
+	handler.SetAIWorkbenchPlanningReadiness(func(_ context.Context, organizationID string) string {
+		readOrganizations = append(readOrganizations, organizationID)
+		return "NEEDS_CONFIGURATION"
+	})
+	identity := authidentity.AuthenticatedIdentity{UserID: "actor", HomeOrganizationID: "org-a", EffectiveOrganizationID: "org-a",
+		OrganizationGrants: []authidentity.OrganizationGrant{
+			{OrganizationID: "org-a", OrganizationName: "A", Roles: []string{"listingkit_operator"}},
+			{OrganizationID: "org-b", OrganizationName: "B", Roles: []string{"listingkit_operator"}},
+		},
+	}
+	read := func() map[string]any {
+		response := serveHandler(t, http.MethodGet, "/api/v1/workbench/context", "", identity, handler.GetContext)
+		require.Equal(t, http.StatusOK, response.Code)
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+		return body
+	}
+	require.Equal(t, true, read()["aiWorkbenchAvailable"], "an admitted organization keeps Chat history access when its route needs configuration")
+	require.Equal(t, "NEEDS_CONFIGURATION", read()["aiWorkbenchPlanningReadiness"])
+	identity.EffectiveOrganizationID = "org-b"
+	require.NotContains(t, read(), "aiWorkbenchAvailable", "a valid but non-admitted organization must not advertise Chat or Task Center")
+	require.NotContains(t, read(), "aiWorkbenchPlanningReadiness")
+	require.Equal(t, []string{"org-a", "org-a"}, readOrganizations, "do not resolve a non-admitted organization's model route")
 }
 
 func TestSourceAccountCapabilityDoesNotUseHomeOrAnotherOrganizationRole(t *testing.T) {

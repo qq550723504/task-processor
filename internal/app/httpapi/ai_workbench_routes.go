@@ -44,6 +44,18 @@ func (m aiWorkbenchModule) Register(reg *kernelmodule.Registry) error {
 	return nil
 }
 
+func (m aiWorkbenchModule) AdmittedOrganization(organizationID string) bool {
+	if m.application == nil || m.application.agent == nil || organizationID == "" {
+		return false
+	}
+	for _, admitted := range m.application.agent.config.AllowedOrganizationIDs {
+		if admitted == organizationID {
+			return true
+		}
+	}
+	return false
+}
+
 func (m aiWorkbenchModule) PlanningReadiness(ctx context.Context, organizationID string) string {
 	if m.application == nil || m.application.plan == nil || m.application.plan.routes == nil ||
 		m.application.agent == nil || m.application.agent.titleRoutes == nil {
