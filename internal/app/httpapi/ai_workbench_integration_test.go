@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -28,8 +29,15 @@ import (
 	reviewstore "task-processor/internal/integration/persistence/product/review"
 	"task-processor/internal/ledger/orgresource"
 	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/sourcing"
 	"task-processor/internal/workbenchcontext"
 )
+
+type unavailablePublishedReceipt struct{}
+
+func (unavailablePublishedReceipt) ReadPublished(context.Context, string) (sourcing.PublishedAcquisition, error) {
+	return sourcing.PublishedAcquisition{}, errors.New("published product temporarily unavailable")
+}
 
 type taskViewerGrants struct {
 	base   *titleGrants
@@ -248,6 +256,16 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.False(t, confirmed.Replay)
 	require.EqualValues(t, 4, titleCalls.Load(), "confirmation starts the existing Product Agent exactly once")
 	require.Equal(t, "WAITING_CONFIRMATION", confirmed.Task.State)
+	// The durable Agent run must be adopted by its frozen request even when
+	// the current acquisition binding cannot be read during reconciliation.
+	agentApplication := agentModule.(productAgentModule).application
+	publishedReader := agentApplication.receipts
+	agentApplication.receipts = unavailablePublishedReceipt{}
+	code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchTaskBase+"/"+confirmed.Task.ID+"/start", "operator", "B", "", "")
+	agentApplication.receipts = publishedReader
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.EqualValues(t, 4, titleCalls.Load(), "reconciliation never resends the model")
 	taskGrants.viewer.Store(true)
 	readAsViewer := func(wantState string) {
 		t.Helper()

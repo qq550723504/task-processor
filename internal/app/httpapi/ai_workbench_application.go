@@ -299,12 +299,8 @@ func (x workbenchExecution) Start(ctx context.Context, task aiworkbench.Business
 		request.ConfigurationSnapshotRef != task.ConfigurationSnapshotRef || request.ContextSnapshotRef != task.ContextSnapshotRef {
 		return aiworkbench.ErrUnavailable
 	}
-	binding, err := a.binding(ctx, task.OperationID, task.TargetPlatform)
-	if err != nil || binding != request.Binding {
-		return aiworkbench.ErrRevisionMismatch
-	}
 	scope := agent.Scope{OrganizationID: i.TenantID, ActorID: i.UserID}
-	current, found, err := a.store.Lookup(ctx, scope, binding, request.Key)
+	current, found, err := a.store.Lookup(ctx, scope, request.Binding, request.Key)
 	if err != nil {
 		return err
 	}
@@ -313,10 +309,14 @@ func (x workbenchExecution) Start(ctx context.Context, task aiworkbench.Business
 			return agent.ErrConflict
 		}
 		if current.State.Phase == agent.Running && time.Now().After(current.State.Deadline.Add(30*time.Second)) {
-			_, err = a.store.FinalizeExpiredRunning(ctx, scope, binding, request.Key, current.State.Revision, time.Now())
+			_, err = a.store.FinalizeExpiredRunning(ctx, scope, request.Binding, request.Key, current.State.Revision, time.Now())
 			return err
 		}
 		return nil
+	}
+	binding, err := a.binding(ctx, task.OperationID, task.TargetPlatform)
+	if err != nil || binding != request.Binding {
+		return aiworkbench.ErrRevisionMismatch
 	}
 	if !request.ContextSnapshotRef.Absent() {
 		ctx, err = knowledgeRequestContext(ctx)
