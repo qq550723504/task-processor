@@ -62,6 +62,30 @@ func TestInvocationClaimGrantsOnlyOneDispatch(t *testing.T) {
 	require.False(t, acquired)
 }
 
+func TestDispatchedDiagnosticKeepsUnknownReservationAndDispatchIdentity(t *testing.T) {
+	recorder := NewGormInvocationRecorder(newInvocationLedgerDB(t))
+	settler := &recordingInvocationUsageSettler{}
+	recorder.SetUsageSettler(settler)
+	record := aicapability.InvocationRecord{InvocationID: "diagnosed-unknown", TenantID: "org", UserID: "actor", MemberID: "member", AgentRunID: "run", InputHash: "input", StartedAt: time.Now().UTC(), Outcome: aicapability.InvocationDispatched, Operation: aicapability.OperationProductAgentDecision}
+	won, err := recorder.ClaimInvocation(context.Background(), record)
+	require.NoError(t, err)
+	require.True(t, won)
+	record.ErrorCode = "provider_http_429"
+	require.NoError(t, recorder.RecordInvocation(context.Background(), record))
+	found, ok, err := recorder.FindInvocation(context.Background(), record.TenantID, record.MemberID, record.InvocationID, record.InputHash)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, aicapability.InvocationDispatched, found.Outcome)
+	require.Equal(t, "provider_http_429", found.ErrorCode)
+	require.False(t, found.UsageKnown)
+	require.True(t, found.FinishedAt.IsZero())
+	require.Zero(t, settler.settleCalls)
+	require.Zero(t, settler.releaseCalls)
+	won, err = recorder.ClaimInvocation(context.Background(), record)
+	require.NoError(t, err)
+	require.False(t, won)
+}
+
 func TestAgentObservedInvalidOutputSettlesCurrentUsage(t *testing.T) {
 	db := newInvocationLedgerDB(t)
 	recorder := NewGormInvocationRecorder(db)

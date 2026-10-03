@@ -356,6 +356,19 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 		return m.notDispatched(ctx, record, "rejected_before_dispatch")
 	}
 	if err != nil || response == nil || !response.UsageKnown || response.Usage.PromptTokens > int(p.policy.InputWindowTokens) || response.Usage.CompletionTokens > int(p.policy.OutputWindowTokens) || p.policy.APIStyle == "google-interactions" && response.Usage.CompletionTokens > p.policy.MaximumOutputTokens {
+		if p.policy.APIStyle == "google-interactions" {
+			// Preserve a bounded diagnostic on the already-dispatched fact
+			// without making it terminal or releasing its reservation. Never
+			// persist a raw provider error body or SDK message.
+			record.ErrorCode = openai.TextOutcomeDiagnosticCode(err)
+			if record.ErrorCode == "" && response != nil {
+				record.ErrorCode = response.OutcomeDiagnostic
+			}
+			if record.ErrorCode == "" {
+				record.ErrorCode = "provider_outcome_unknown"
+			}
+			_ = m.record(ctx, record)
+		}
 		return result, openai.ErrTextOutcomeUnknown
 	}
 	record.FinishedAt = time.Now().UTC()

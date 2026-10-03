@@ -144,6 +144,12 @@ Console 设置 `LISTINGKIT_KNOWLEDGE_ENABLED=true` 仅显示选择入口，不�
 运行控制/checkpoint 存在 `product_agent_runs`，安全工具摘要在 `product_agent_tool_calls`；
 模型调用及用量继续由现有 AI invocation/Commercial ledger 保存。Product 和 Review
 保持各自事实 owner。正常停止/重启保留数据库；不把 destroy 或删数据作为停止命令。
+新代码会在 Google 调用已发送但结果仍未知时，把固定的非敏感原因分类写入该调用的
+`ai_invocations.error_code`，例如 `provider_http_429`、`provider_transport_timeout`、
+`provider_response_json` 或 `provider_usage_missing`。只按当前组织和调用编号查询；
+该字段不含上游原始错误、提示词或密钥。分类只帮助定位失败位置，不证明供应商未执行，
+`outcome=dispatched`、未知用量和预留仍保持原样。旧实例及历史 UNKNOWN 没有此字段，
+不能用代码更新倒推其原因。
 
 ## 已验证与待执行
 
@@ -156,6 +162,8 @@ Review 接受与显式 Apply；该实例没有 Google Key，也没有真实供�
 另一个独立的 25544 本地实例仅用合成数据和 Google Free tier Key 调用 Gemini 3.8 原生接口：
 首笔浏览器提前关闭后的调用仍为 UNKNOWN、保留预留；另获授权的新运行有 3 笔完整用量，
 人工编辑/审核并 Apply 到 Product 版本 2。准确源 HEAD、调用次数与用量见 Issue #573 / PR #586。
+其后更丰富的合成商品试用首笔模型调用成功，第二笔已发送后用量未知；该新运行没有标题
+候选，Review/Apply 未执行。未重发任一 UNKNOWN 编号，也未使用当轮剩余两次调用额度。
 这只证明合成数据的本地接线；真实业务数据处理、正式费率/预算、用户试用，以及 #47 样本集
 Agent vs fixed 质量/风险/延迟/成本对照仍为 NOT_RUN。供应商可替换基础实现及本次 Google
 增量的代码 SHA、CI 和独立评审分别维护在 PR #580 / #586；PR #502 的历史证据不作为

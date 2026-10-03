@@ -175,6 +175,47 @@ func TestGoogleInteractionsTitleUsesExistingQuoteLedgerAndReviewAction(t *testin
 	}
 }
 
+func TestGoogleInteractionsUnknownRecordsOnlySafeReasonWithoutSettling(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`sensitive-provider-body`))
+	}))
+	defer srv.Close()
+	m, ctx, in, ledger, _, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`)
+	credentialDB := openTestCredentialDB(t)
+	sqlDB, err := credentialDB.DB()
+	requireNoErrorText(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	resolver := openai.NewOrganizationOnlyCredentialResolver(credentialDB)
+	requireNoErrorText(t, resolver.SaveCredential(ctx, openai.AIClientCredential{TenantID: "org", ClientName: "text", APIKey: "fixture-key", BaseURL: srv.URL, Model: "gemini-3.8-flash", APIStyle: "google-interactions", Enabled: true, TimeoutSecond: 2}))
+	m.manager.SetConfigResolver(resolver)
+	route, err := m.manager.ResolveTextRoute(ctx, "text")
+	requireNoErrorText(t, err)
+	policy := m.policies["org"]
+	policy.ProviderID, policy.APIStyle, policy.Endpoint = "google", "google-interactions", srv.URL
+	policy.OutputLimitField, policy.ThinkingLevel, policy.ReasoningEffort = "max_output_tokens", "low", ""
+	policy.MaximumOutputTokens, policy.AdmittedRoute = 128, route
+	policy.OutputWindowTokens = int64(policy.MaximumOutputTokens)
+	m.policies["org"] = policy
+	quote, err := m.Quote(ctx, in)
+	requireNoErrorText(t, err)
+	in.UpperBound, in.InvocationID = quote, "unknown-native-invocation"
+	result, err := m.Decide(ctx, in)
+	if !errors.Is(err, openai.ErrTextOutcomeUnknown) || result.Usage.Known || calls.Load() != 1 {
+		t.Fatalf("unexpected outcome: result=%+v err=%v calls=%d", result, err, calls.Load())
+	}
+	record := ledger.rows[in.InvocationID]
+	if record.Outcome != aicapability.InvocationDispatched || record.ErrorCode != "provider_http_429" || record.UsageKnown || !record.FinishedAt.IsZero() || record.EstimatedCostKnown || strings.Contains(record.ErrorCode, "sensitive") {
+		t.Fatalf("unknown invocation was settled or lost its safe diagnostic: %+v", record)
+	}
+	_, _ = m.Decide(ctx, in)
+	if calls.Load() != 1 {
+		t.Fatalf("unknown invocation was redispatched: %d", calls.Load())
+	}
+}
+
 func TestAgentTextModelBindsEachOrganizationToItsOwnProviderAndRoute(t *testing.T) {
 	newProvider := func(reasoningEffort string) (*httptest.Server, *atomic.Int32) {
 		calls := &atomic.Int32{}

@@ -42,6 +42,24 @@ type TextCompletionRequest struct {
 type TextCompletionResult struct {
 	ChatCompletionResponse
 	UsageKnown bool
+	// OutcomeDiagnostic is a fixed, non-sensitive reason for unpriceable
+	// provider output. It never contains provider body, prompt or credentials.
+	OutcomeDiagnostic string
+}
+
+type textOutcomeDiagnostic struct{ code string }
+
+func (e textOutcomeDiagnostic) Error() string { return ErrTextOutcomeUnknown.Error() }
+func (e textOutcomeDiagnostic) Unwrap() error { return ErrTextOutcomeUnknown }
+
+// TextOutcomeDiagnosticCode extracts only a code constructed by this transport.
+// Raw SDK/provider errors must never cross the invocation ledger boundary.
+func TextOutcomeDiagnosticCode(err error) string {
+	var diagnostic textOutcomeDiagnostic
+	if errors.As(err, &diagnostic) {
+		return diagnostic.code
+	}
+	return ""
 }
 
 // TextRouteDetails exposes only non-secret configuration needed to match the

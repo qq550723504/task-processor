@@ -6,7 +6,9 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -48,11 +50,18 @@ func completeGoogleInteractionsOnce(ctx context.Context, config *ClientConfig, i
 		GenerationConfig: &interaction.GenerationConfig{MaxOutputTokens: google.Int(input.MaximumOutputTokens), ThinkingLevel: interaction.ThinkingLevelLow.ToPointer()},
 	}
 	response, err := sdk.Interactions.Create(ctx, operations.CreateInteractionRequest{Body: operations.NewCreateInteractionRequestBody(request)}, operations.WithRetries(retry.Config{Strategy: "none"}))
-	if err != nil || response == nil || response.Interaction == nil {
+	if err != nil {
 		if !client.dispatched {
 			return nil, errors.Join(ErrTextNotDispatched, ErrTextInput)
 		}
-		return nil, ErrTextOutcomeUnknown
+		code := client.diagnosticCode
+		if code == "" {
+			code = "provider_response_decode"
+		}
+		return nil, textOutcomeDiagnostic{code: code}
+	}
+	if response == nil || response.Interaction == nil {
+		return nil, textOutcomeDiagnostic{code: "provider_response_empty"}
 	}
 	return mapGoogleInteraction(response.Interaction, config.Model, input.MaximumOutputTokens), nil
 }
@@ -61,6 +70,8 @@ type boundedGoogleHTTPClient struct {
 	client     *http.Client
 	endpoint   string
 	dispatched bool
+	// Fixed diagnostic only; never retain provider response bodies or SDK errors.
+	diagnosticCode string
 }
 
 func (c *boundedGoogleHTTPClient) Do(request *http.Request) (*http.Response, error) {
@@ -95,24 +106,37 @@ func (c *boundedGoogleHTTPClient) Do(request *http.Request) (*http.Response, err
 	c.dispatched = true
 	response, err := c.client.Do(request)
 	if err != nil {
+		c.diagnosticCode = googleTransportDiagnostic(err, request.Context())
 		return nil, ErrTextOutcomeUnknown
 	}
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK || !strings.HasPrefix(response.Header.Get("Content-Type"), "application/json") {
+	if response.StatusCode != http.StatusOK {
+		if response.StatusCode >= 300 && response.StatusCode <= 599 {
+			c.diagnosticCode = fmt.Sprintf("provider_http_%d", response.StatusCode)
+		} else {
+			c.diagnosticCode = "provider_http_unexpected"
+		}
+		return nil, ErrTextOutcomeUnknown
+	}
+	if !strings.HasPrefix(response.Header.Get("Content-Type"), "application/json") {
+		c.diagnosticCode = "provider_response_content_type"
 		return nil, ErrTextOutcomeUnknown
 	}
 	bounded, err := io.ReadAll(io.LimitReader(response.Body, MaxTextResponseBytes+1))
 	if err != nil || len(bounded) > MaxTextResponseBytes {
+		c.diagnosticCode = "provider_response_read"
 		return nil, ErrTextOutcomeUnknown
 	}
 	var metadata struct {
 		Usage map[string]json.RawMessage `json:"usage"`
 	}
 	if json.Unmarshal(bounded, &metadata) != nil {
+		c.diagnosticCode = "provider_response_json"
 		return nil, ErrTextOutcomeUnknown
 	}
 	for name := range metadata.Usage {
 		if strings.HasPrefix(name, "total_") && name != "total_input_tokens" && name != "total_output_tokens" && name != "total_thought_tokens" && name != "total_tokens" && name != "total_cached_tokens" && name != "total_tool_use_tokens" {
+			c.diagnosticCode = "provider_usage_unpriced_dimension"
 			return nil, ErrTextOutcomeUnknown
 		}
 	}
@@ -121,26 +145,48 @@ func (c *boundedGoogleHTTPClient) Do(request *http.Request) (*http.Response, err
 	return response, nil
 }
 
+func googleTransportDiagnostic(err error, ctx context.Context) string {
+	var netErr net.Error
+	switch {
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(ctx.Err(), context.DeadlineExceeded), errors.As(err, &netErr) && netErr.Timeout():
+		return "provider_transport_timeout"
+	case errors.Is(err, context.Canceled), errors.Is(ctx.Err(), context.Canceled):
+		return "provider_transport_canceled"
+	default:
+		return "provider_transport_error"
+	}
+}
+
 func mapGoogleInteraction(source *interaction.Interaction, expectedModel string, maximumOutputTokens int) *TextCompletionResult {
 	result := &TextCompletionResult{}
-	if source == nil || source.Model == nil || string(*source.Model) != expectedModel || source.Usage == nil || source.Usage.TotalInputTokens == nil || source.Usage.TotalOutputTokens == nil || source.Usage.TotalThoughtTokens == nil || source.Usage.TotalTokens == nil {
+	if source == nil || source.Model == nil || string(*source.Model) != expectedModel {
+		result.OutcomeDiagnostic = "provider_model_mismatch"
+		return result
+	}
+	if source.Usage == nil || source.Usage.TotalInputTokens == nil || source.Usage.TotalOutputTokens == nil || source.Usage.TotalThoughtTokens == nil || source.Usage.TotalTokens == nil || source.Usage.TotalToolUseTokens == nil {
+		result.OutcomeDiagnostic = "provider_usage_missing"
 		return result
 	}
 	u := source.Usage
 	input, output, thought, total := *u.TotalInputTokens, *u.TotalOutputTokens, *u.TotalThoughtTokens, *u.TotalTokens
 	if input < 0 || output < 0 || thought < 0 || total <= 0 || input > total || output > total-input || thought != total-input-output || output+thought > maximumOutputTokens {
+		result.OutcomeDiagnostic = "provider_usage_inconsistent"
 		return result
 	}
-	if u.TotalToolUseTokens == nil || *u.TotalToolUseTokens != 0 || len(u.ToolUseTokensByModality) != 0 || len(u.GroundingToolCount) != 0 {
+	if *u.TotalToolUseTokens != 0 || len(u.ToolUseTokensByModality) != 0 || len(u.GroundingToolCount) != 0 {
+		result.OutcomeDiagnostic = "provider_usage_unpriced_dimension"
 		return result
 	}
 	if u.TotalCachedTokens != nil && (*u.TotalCachedTokens < 0 || *u.TotalCachedTokens > input) {
+		result.OutcomeDiagnostic = "provider_usage_inconsistent"
 		return result
 	}
 	if !textOnlyModalityBreakdown(u.InputTokensByModality, input) || !textOnlyModalityBreakdown(u.OutputTokensByModality, output) {
+		result.OutcomeDiagnostic = "provider_usage_unpriced_dimension"
 		return result
 	}
 	if u.CachedTokensByModality != nil && (u.TotalCachedTokens == nil || !textOnlyModalityBreakdown(u.CachedTokensByModality, *u.TotalCachedTokens)) {
+		result.OutcomeDiagnostic = "provider_usage_unpriced_dimension"
 		return result
 	}
 	result.UsageKnown = true
@@ -170,6 +216,7 @@ func mapGoogleInteraction(source *interaction.Interaction, expectedModel string,
 			// An unrequested tool or unknown step can add an unpriced external
 			// dimension. Keep the existing invocation UNKNOWN.
 			result.UsageKnown = false
+			result.OutcomeDiagnostic = "provider_step_unexpected"
 			finish = "other"
 		}
 	}

@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -156,5 +158,64 @@ func TestGoogleInteractionsLostResponseDoesNotRetry(t *testing.T) {
 	_, err := m.CompleteText(context.Background(), "text", route, googleTextTestRequest())
 	if !errors.Is(err, ErrTextOutcomeUnknown) || errors.Is(err, ErrTextNotDispatched) || calls.Load() != 1 {
 		t.Fatalf("calls=%d err=%v", calls.Load(), err)
+	}
+}
+
+func TestGoogleInteractionsUnknownKeepsSafeFailureReason(t *testing.T) {
+	for _, tc := range []struct {
+		name, want string
+		handle     http.HandlerFunc
+	}{
+		{"rate limited", "provider_http_429", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error":"sensitive-provider-body"}`))
+		}},
+		{"response malformed", "provider_response_json", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`not-json-sensitive-provider-body`))
+		}},
+		{"usage missing", "provider_usage_missing", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"i","model":"gemini-3.8-flash","status":"completed","steps":[{"type":"model_output","content":[{"type":"text","text":"ok"}]}],"usage":{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14}}`))
+		}},
+		{"timeout", "provider_transport_timeout", func(w http.ResponseWriter, _ *http.Request) {
+			time.Sleep(1500 * time.Millisecond)
+			w.WriteHeader(http.StatusOK)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(tc.handle)
+			defer srv.Close()
+			m := googleTextTestManager(t, srv.URL)
+			route, err := m.ResolveTextRoute(context.Background(), "text")
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := m.CompleteText(context.Background(), "text", route, googleTextTestRequest())
+			if err != nil && !errors.Is(err, ErrTextOutcomeUnknown) || err == nil && (response == nil || response.UsageKnown) {
+				t.Fatalf("unknown outcome admitted: response=%+v err=%v", response, err)
+			}
+			got := TextOutcomeDiagnosticCode(err)
+			if response != nil {
+				got = response.OutcomeDiagnostic
+			}
+			if got != tc.want || strings.Contains(got, "sensitive") || strings.Contains(strings.ToLower(errString(err)), "sensitive") {
+				t.Fatalf("diagnostic=%q err=%v, want %q", got, err, tc.want)
+			}
+		})
+	}
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+func TestGoogleTransportHeaderTimeoutHasSafeTimeoutReason(t *testing.T) {
+	err := &url.Error{Op: "Post", URL: "https://sensitive.example/path", Err: &net.DNSError{IsTimeout: true}}
+	if got := googleTransportDiagnostic(err, context.Background()); got != "provider_transport_timeout" {
+		t.Fatalf("header timeout classified as %q", got)
 	}
 }
