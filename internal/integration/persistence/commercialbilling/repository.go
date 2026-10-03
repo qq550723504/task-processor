@@ -156,6 +156,16 @@ func (r *Repository) CreateOffer(ctx context.Context, offer billing.Offer) error
 	return r.db.WithContext(ctx).Create(&row).Error
 }
 
+// CreateOfferIfAbsent installs a server-owned catalog entry once. Re-running
+// schema initialization must never replace a later owner-managed price.
+func (r *Repository) CreateOfferIfAbsent(ctx context.Context, offer billing.Offer) error {
+	if r == nil || r.db == nil || offer.Validate() != nil || (offer.ProductKind != billing.ProductSubscriptionPlan && offer.UnitPriceMinor <= 0) {
+		return billing.ErrInvalid
+	}
+	row := offerToRow(offer)
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
+}
+
 func (r *Repository) ReadOffer(ctx context.Context, offerID string) (billing.Offer, error) {
 	if r == nil || r.db == nil || strings.TrimSpace(offerID) == "" {
 		return billing.Offer{}, billing.ErrInvalid

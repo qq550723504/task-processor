@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,7 +9,71 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"task-processor/internal/commercial/billing"
+	commercialstore "task-processor/internal/integration/persistence/commercialbilling"
+	"task-processor/internal/ledger/orgresource"
 )
+
+func TestFreshCommercialOwnerInstallsFiveFenDataRowOfferWithoutOverwritingIt(t *testing.T) {
+	moneyDB := openOwnerSchemaTestDB(t, "money-price")
+	commercialDB := openOwnerSchemaTestDB(t, "commercial-price")
+	if err := migrateOwnerSchemas(moneyDB, commercialDB); err != nil {
+		t.Fatal(err)
+	}
+	store, err := commercialstore.New(commercialDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer, err := store.ReadOffer(context.Background(), "data-row-1688-server-v1")
+	if err != nil {
+		t.Fatalf("fresh installation must expose the approved data-row offer: %v", err)
+	}
+	if offer.UnitPriceMinor != 5 || offer.Currency != "CNY" || offer.PricingVersion != "1688-server-5fen-v1" || offer.MinQuantity != 1 || offer.MaxQuantity < 1 {
+		t.Fatalf("unexpected approved offer: %#v", offer)
+	}
+	quote, err := store.CreateQuote(context.Background(), billing.QuoteRequest{OrganizationID: "test-org", OfferID: offer.OfferID, Quantity: 3})
+	if err != nil || quote.TotalMinor != 15 || quote.ResourceQuantity != 3 || quote.PricingVersion != offer.PricingVersion {
+		t.Fatalf("data-row quote does not freeze 5 fen per row: %#v, %v", quote, err)
+	}
+	offer.UnitPriceMinor = 7 // A later owner-managed catalog change must survive schema initialization.
+	offer.PricingVersion = "operator-next-version"
+	if err := store.SaveOffer(context.Background(), offer); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateOwnerSchemas(moneyDB, commercialDB); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.ReadOffer(context.Background(), offer.OfferID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UnitPriceMinor != 7 || got.PricingVersion != "operator-next-version" {
+		t.Fatalf("schema initialization overwrote an existing offer: %#v", got)
+	}
+}
+
+func TestCommercialOwnerDoesNotCreateCompetingDataRowPrice(t *testing.T) {
+	moneyDB := openOwnerSchemaTestDB(t, "money-existing-price")
+	commercialDB := openOwnerSchemaTestDB(t, "commercial-existing-price")
+	if err := commercialstore.AutoMigrate(commercialDB); err != nil {
+		t.Fatal(err)
+	}
+	store, err := commercialstore.New(commercialDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	existing := billing.Offer{OfferID: "operator-data-row", ProductKind: billing.ProductDataRow, ResourceType: orgresource.ResourceDataRow, Currency: billing.CurrencyCNY, UnitPriceMinor: 7, PricingVersion: "operator-v1", MinQuantity: 1, MaxQuantity: 100, Status: billing.OfferActive}
+	if err := store.CreateOffer(context.Background(), existing); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateOwnerSchemas(moneyDB, commercialDB); err == nil {
+		t.Fatal("a competing active DATA_ROW offer needs an explicit owner decision")
+	}
+	data, err := store.ListDataRowOffers(context.Background())
+	if err != nil || len(data) != 1 || data[0].OfferID != existing.OfferID || data[0].UnitPriceMinor != 7 {
+		t.Fatalf("existing offer changed after rejected initialization: %#v, %v", data, err)
+	}
+}
 
 func TestLoadSchemaOwnerConfigUsesOwnerCredentials(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "schema-owner.json")

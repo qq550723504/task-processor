@@ -14,6 +14,19 @@ type AcquisitionCharges interface {
 	BeforeDispatch(context.Context, sourcing.AcquisitionOperation) error
 	Reconcile(context.Context, sourcing.AcquisitionOperation) error
 }
+
+// Browser Capture is a free, client-captured channel. The common publication
+// orchestration still calls Reconcile after reading a durable receipt, but this
+// channel must never create or inspect a Resource reservation.
+type freeAcquisitionCharges struct{}
+
+func (freeAcquisitionCharges) BeforeDispatch(context.Context, sourcing.AcquisitionOperation) error {
+	return nil
+}
+func (freeAcquisitionCharges) Reconcile(context.Context, sourcing.AcquisitionOperation) error {
+	return nil
+}
+
 type acquisitionChargeCoordinator struct {
 	operations  sourcing.AcquisitionChargeStore
 	charges     orgresource.ConsumerChargePort
