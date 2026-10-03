@@ -75,8 +75,11 @@ credential SELECT、invocation SELECT/INSERT/UPDATE；Review 连接需要既有 
 非文本模态、额外收费维度或超界便保持 UNKNOWN。
 原 `gemini-2.5-flash` 兼容候选在当前 Google 新项目返回 404，3.8 兼容探针的完成量超过
 请求 `max_tokens`；不能沿用它们作为准入证据。`admittedRoute` 仍须由目标组织凭据解析，
-不能手填猜测。当前仅有合成探针和实现测试，没有产品点数费率、真实业务数据处理决定或
-真实调用授权；保持执行关闭，不写入虚假的 `boundEvidence`。已创建的 Google Free tier Key
+不能手填猜测。当前已有隔离实例的合成 Google 标题生成、人工审核和 Product Apply 联调；
+一次浏览器提前关闭留下的 UNKNOWN 仍保留原预留，不能当作成功或自动重发。执行时须保持
+页面打开至请求返回；离开后只用原请求编号读取当前结果。具体运行证据见 Issue #573 / PR #586。
+这不等于正式产品点数费率、真实业务数据处理决定或持续调用授权；正式执行保持关闭，
+不得把合成试用证据直接当作其它组织的 `boundEvidence`。已创建的 Google Free tier Key
 仅限合成数据，不能用来传输真实商品或企业资料。
 
 当前应用没有挂载旧 `listingkit` AI 设置。部署者先在**关闭执行**的私有 manifest 中填入
