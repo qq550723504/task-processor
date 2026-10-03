@@ -219,6 +219,16 @@ func TestArchivePreservesInflightPlannerTerminalization(t *testing.T) {
 	_, replay, err = store.AppendUser(ctx, scope, conversation.ID, key, request, prepared)
 	require.NoError(t, err)
 	require.True(t, replay)
+	unarchived := false
+	conversation, err = store.SetMetadata(ctx, scope, conversation.ID, conversation.MetadataRevision, aiworkbench.MetadataChange{Archived: &unarchived})
+	require.NoError(t, err)
+	_, replay, err = store.AppendUser(ctx, scope, conversation.ID, key, request, prepared)
+	require.NoError(t, err)
+	require.True(t, replay)
+	require.EqualValues(t, 1, providerCalls.Load())
+	_, replay, err = store.AppendUser(ctx, scope, conversation.ID, uuid.NewString(), request, prepared)
+	require.NoError(t, err)
+	require.False(t, replay)
 
 	_, _, err = store.CompletePlan(ctx, scope, key, aiworkbench.PlanTerminal{AssistantText: "不同结果", Mode: aiworkbench.PlanClarify})
 	require.ErrorIs(t, err, aiworkbench.ErrIdempotencyConflict)

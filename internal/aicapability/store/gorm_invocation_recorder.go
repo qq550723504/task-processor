@@ -27,10 +27,13 @@ func (r *GormInvocationRecorder) ClaimInvocation(ctx context.Context, record aic
 	if r == nil || r.db == nil {
 		return false, fmt.Errorf("ai invocation recorder database is nil")
 	}
-	for _, value := range []string{record.InvocationID, record.TenantID, record.UserID, record.MemberID, record.AgentRunID, record.InputHash, string(record.Operation)} {
+	for _, value := range []string{record.InvocationID, record.TenantID, record.UserID, record.MemberID, record.InputHash, string(record.Operation)} {
 		if value == "" || len(value) > 128 || strings.TrimSpace(value) != value {
 			return false, fmt.Errorf("invalid dispatch identity")
 		}
+	}
+	if !validPricedTextOperationIdentity(record) {
+		return false, fmt.Errorf("invalid dispatch operation identity")
 	}
 	if record.Outcome != aicapability.InvocationDispatched || record.StartedAt.IsZero() || !record.FinishedAt.IsZero() || record.UsageKnown || record.PromptTokens != 0 || record.CompletionTokens != 0 || record.TotalTokens != 0 || record.ImageCount != 0 || record.EstimatedCostKnown || record.EstimatedCostMicros != 0 {
 		return false, fmt.Errorf("invalid initial dispatch fact")
@@ -295,7 +298,7 @@ func samePointDispatchMetadata(original, proposed invocationRow) bool {
 
 func validateUsage(record aicapability.InvocationRecord) error {
 	if record.PointTariff != (aicapability.ModelPointTariff{}) || record.MaximumPromptTokens != 0 || record.MaximumCompletionTokens != 0 {
-		if record.Operation != aicapability.OperationProductAgentDecision || !record.PointTariff.Valid() || record.MaximumPromptTokens <= 0 || record.MaximumCompletionTokens <= 0 {
+		if !validPricedTextOperationIdentity(record) || !record.PointTariff.Valid() || record.MaximumPromptTokens <= 0 || record.MaximumCompletionTokens <= 0 {
 			return fmt.Errorf("invalid frozen model point policy")
 		}
 		if _, err := record.PointTariff.Points(record.MaximumPromptTokens, record.MaximumCompletionTokens); err != nil {
@@ -313,6 +316,18 @@ func validateUsage(record aicapability.InvocationRecord) error {
 		return fmt.Errorf("observed-failed invocation requires internally consistent provider token usage")
 	}
 	return nil
+}
+
+func validPricedTextOperationIdentity(record aicapability.InvocationRecord) bool {
+	switch record.Operation {
+	case aicapability.OperationProductAgentDecision:
+		return record.AgentRunID != ""
+	case aicapability.OperationAIWorkbenchChatPlan:
+		return record.AgentRunID == "" && record.BusinessTaskID == "" &&
+			record.Capability == aicapability.CapabilityAIWorkbenchChatPlanning
+	default:
+		return false
+	}
 }
 
 type invocationRow struct {
