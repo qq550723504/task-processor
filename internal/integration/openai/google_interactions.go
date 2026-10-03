@@ -159,6 +159,9 @@ func googleTransportDiagnostic(err error, ctx context.Context) string {
 
 func mapGoogleInteraction(source *interaction.Interaction, expectedModel string, maximumOutputTokens int) *TextCompletionResult {
 	result := &TextCompletionResult{}
+	if source != nil && source.ID != nil {
+		result.ID = *source.ID
+	}
 	if source == nil || source.Model == nil || string(*source.Model) != expectedModel {
 		result.OutcomeDiagnostic = "provider_model_mismatch"
 		return result
@@ -191,9 +194,6 @@ func mapGoogleInteraction(source *interaction.Interaction, expectedModel string,
 	}
 	result.UsageKnown = true
 	result.Usage = Usage{PromptTokens: input, CompletionTokens: output + thought, TotalTokens: total}
-	if source.ID != nil {
-		result.ID = *source.ID
-	}
 	result.Model = expectedModel
 	finish := "other"
 	if source.Status == interaction.InteractionStatusCompleted && len(source.Errors) == 0 {

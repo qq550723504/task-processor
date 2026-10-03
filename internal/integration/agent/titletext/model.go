@@ -355,6 +355,9 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 	if errors.Is(err, openai.ErrTextNotDispatched) {
 		return m.notDispatched(ctx, record, "rejected_before_dispatch")
 	}
+	if response != nil {
+		record.ProviderRequestID = safeTextProviderReference(response.ID)
+	}
 	if err != nil || response == nil || !response.UsageKnown || response.Usage.PromptTokens > int(p.policy.InputWindowTokens) || response.Usage.CompletionTokens > int(p.policy.OutputWindowTokens) || p.policy.APIStyle == "google-interactions" && response.Usage.CompletionTokens > p.policy.MaximumOutputTokens {
 		if p.policy.APIStyle == "google-interactions" {
 			// Preserve a bounded diagnostic on the already-dispatched fact
@@ -410,6 +413,21 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 	result.ContextCitationRefs = citations
 	result.Usage = agent.ObservedUsage{Tokens: int64(record.TotalTokens), CostMicros: record.EstimatedCostMicros, Currency: record.Currency, Known: true}
 	return result, nil
+}
+
+// Provider references are metadata from an untrusted response. Only retain a
+// short, printable identifier; never copy arbitrary provider text into ledger.
+func safeTextProviderReference(value string) string {
+	if value == "" || len(value) > 128 {
+		return ""
+	}
+	for i := 0; i < len(value); i++ {
+		b := value[i]
+		if !(b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '-' || b == '_' || b == '.') {
+			return ""
+		}
+	}
+	return value
 }
 
 func (m *AgentTextModel) notDispatched(ctx context.Context, record aicapability.InvocationRecord, code string) (agent.ModelResult, error) {

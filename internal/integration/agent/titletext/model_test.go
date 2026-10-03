@@ -167,7 +167,7 @@ func TestGoogleInteractionsTitleUsesExistingQuoteLedgerAndReviewAction(t *testin
 			result, err := m.Decide(ctx, in)
 			requireNoErrorText(t, err)
 			record := ledger.rows[in.InvocationID]
-			if string(record.Outcome) != tc.wantOutcome || record.ProviderID != "google" || record.ModelID != "gemini-3.8-flash" || record.PromptTokens != 3 || record.CompletionTokens != 11 || record.TotalTokens != 14 || result.Usage.Tokens != 14 || calls.Load() != 1 {
+			if string(record.Outcome) != tc.wantOutcome || record.ProviderID != "google" || record.ModelID != "gemini-3.8-flash" || record.ProviderRequestID != "interaction" || record.PromptTokens != 3 || record.CompletionTokens != 11 || record.TotalTokens != 14 || result.Usage.Tokens != 14 || calls.Load() != 1 {
 				t.Fatalf("record=%+v result=%+v calls=%d", record, result, calls.Load())
 			}
 			if tc.status == "completed" && result.Action.Kind != "interrupt" || tc.status != "completed" && result.Action.Kind != "" {
@@ -215,6 +215,46 @@ func TestGoogleInteractionsUnknownRecordsOnlySafeReasonWithoutSettling(t *testin
 	_, _ = m.Decide(ctx, in)
 	if calls.Load() != 1 {
 		t.Fatalf("unknown invocation was redispatched: %d", calls.Load())
+	}
+}
+
+func TestGoogleInteractionsUnknownRetainsOnlySafeReturnedReference(t *testing.T) {
+	for _, tc := range []struct{ id, want string }{{"interaction-usage-missing", "interaction-usage-missing"}, {"unsafe\nreference", ""}} {
+		t.Run(strings.ReplaceAll(tc.id, "\n", "_"), func(t *testing.T) {
+			encodedID, _ := json.Marshal(tc.id)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"id":` + string(encodedID) + `,"model":"gemini-3.8-flash","status":"completed","steps":[{"type":"model_output","content":[{"type":"text","text":"ok"}]}],"usage":{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14}}`))
+			}))
+			defer srv.Close()
+			m, ctx, in, ledger, _, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`, titleGoogleFixtureTransport(t, srv.URL))
+			credentialDB := openTestCredentialDB(t)
+			sqlDB, err := credentialDB.DB()
+			requireNoErrorText(t, err)
+			sqlDB.SetMaxOpenConns(1)
+			resolver := openai.NewOrganizationOnlyCredentialResolver(credentialDB)
+			requireNoErrorText(t, resolver.SaveCredential(ctx, openai.AIClientCredential{TenantID: "org", ClientName: "text", APIKey: "fixture-key", BaseURL: "https://generativelanguage.googleapis.com", Model: "gemini-3.8-flash", APIStyle: "google-interactions", Enabled: true, TimeoutSecond: 2}))
+			m.manager.SetConfigResolver(resolver)
+			route, err := m.manager.ResolveTextRoute(ctx, "text")
+			requireNoErrorText(t, err)
+			policy := m.policies["org"]
+			policy.ProviderID, policy.APIStyle, policy.Endpoint = "google", "google-interactions", "https://generativelanguage.googleapis.com"
+			policy.OutputLimitField, policy.ThinkingLevel, policy.ReasoningEffort = "max_output_tokens", "low", ""
+			policy.MaximumOutputTokens, policy.AdmittedRoute = 128, route
+			policy.OutputWindowTokens = int64(policy.MaximumOutputTokens)
+			m.policies["org"] = policy
+			quote, err := m.Quote(ctx, in)
+			requireNoErrorText(t, err)
+			in.UpperBound, in.InvocationID = quote, "unknown-reference-invocation"
+			_, err = m.Decide(ctx, in)
+			if !errors.Is(err, openai.ErrTextOutcomeUnknown) {
+				t.Fatalf("missing usage was not kept unknown: %v", err)
+			}
+			record := ledger.rows[in.InvocationID]
+			if record.Outcome != aicapability.InvocationDispatched || record.UsageKnown || record.ProviderRequestID != tc.want {
+				t.Fatalf("unsafe or missing provider reference: %+v", record)
+			}
+		})
 	}
 }
 
@@ -421,7 +461,7 @@ func TestAgentTextModelClaimAndObservedInvalidOutput(t *testing.T) {
 			if content[0] == '{' && result.Action.Kind == "interrupt" {
 				want = aicapability.InvocationSucceeded
 			}
-			if ledger.rows[in.InvocationID].Outcome != want {
+			if ledger.rows[in.InvocationID].Outcome != want || ledger.rows[in.InvocationID].ProviderRequestID != "provider-test" {
 				t.Fatalf("ledger %+v", ledger.rows)
 			}
 			_, err = m.Decide(ctx, in)
