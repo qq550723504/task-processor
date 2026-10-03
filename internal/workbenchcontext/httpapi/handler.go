@@ -18,8 +18,16 @@ const switchOrganizationRequestBodyMaxBytes = 4096
 
 // Handler exposes only the verified, resolved workbench identity projection.
 type Handler struct {
-	workbenchAuthorizer *authz.ListingKitAuthorizer
-	profileReader       authidentity.SelfProfileReader
+	workbenchAuthorizer  *authz.ListingKitAuthorizer
+	profileReader        authidentity.SelfProfileReader
+	aiWorkbenchAvailable bool
+}
+
+// SetAIWorkbenchAvailable is called during composition, before HTTP serving.
+func (h *Handler) SetAIWorkbenchAvailable(available bool) {
+	if h != nil {
+		h.aiWorkbenchAvailable = available
+	}
 }
 
 func (h *Handler) SetSelfProfileReader(reader authidentity.SelfProfileReader) {
@@ -136,6 +144,7 @@ func (h *Handler) writeContext(c *gin.Context) {
 		EffectiveOrganizationID: effectiveOrganizationID,
 		SelectionRequired:       effectiveOrganizationID == nil && len(organizations) > 1,
 		Organizations:           organizations,
+		AIWorkbenchAvailable:    h.aiWorkbenchAvailable,
 	})
 }
 
@@ -154,6 +163,7 @@ type contextResponse struct {
 	EffectiveOrganizationID *string                `json:"effectiveOrganizationId"`
 	SelectionRequired       bool                   `json:"selectionRequired"`
 	Organizations           []organizationResponse `json:"organizations"`
+	AIWorkbenchAvailable    bool                   `json:"aiWorkbenchAvailable,omitempty"`
 }
 
 type userResponse struct {

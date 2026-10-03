@@ -8,7 +8,7 @@ import { ChatPage } from "./chat-page";
 const fixture = vi.hoisted(() => ({
   request: vi.fn(), push: vi.fn(), search: new URLSearchParams(),
   context: { user: { id: "user-a" }, effectiveOrganization: { id: "org-a", capabilities: { "workbench.chat.use": true } }, roles: ["listingkit_operator"],
-    isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null },
+    aiWorkbenchAvailable: true, isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null },
 }));
 vi.mock("@/lib/api/ai-workbench", async original => ({ ...await original<typeof import("@/lib/api/ai-workbench")>(), requestAIWorkbench: fixture.request }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => fixture.context }));
@@ -26,6 +26,7 @@ beforeEach(() => {
   fixture.context.effectiveOrganization = { id: "org-a", capabilities: { "workbench.chat.use": true } };
   fixture.context.roles = ["listingkit_operator"];
   fixture.context.isSwitching = false;
+  fixture.context.aiWorkbenchAvailable = true;
   fixture.request.mockReset(); fixture.push.mockReset(); sessionStorage.clear();
   fixture.request.mockImplementation(async ({ route }) => {
     if (route === "conversation-read") return { conversation, messages: [], proposals: [], before: "" };
@@ -33,6 +34,13 @@ beforeEach(() => {
   });
 });
 afterEach(() => { cleanup(); client.clear(); sessionStorage.clear(); });
+
+it("shows the unavailable state without sending Chat requests when the module is absent", () => {
+  fixture.context.aiWorkbenchAvailable = false;
+  render(tree());
+  expect(screen.getByText("当前应用未启用硕米 Chat 与业务任务。")).toBeVisible();
+  expect(fixture.request).not.toHaveBeenCalled();
+});
 
 it("carries the selected saved product into the newly created conversation", async () => {
   fixture.search = new URLSearchParams(`operationId=${operationId}`);

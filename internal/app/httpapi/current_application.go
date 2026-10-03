@@ -542,6 +542,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 			return nil, fmt.Errorf("build AI Workbench: %w", e)
 		}
 		modules = append(modules, module)
+		if workbench.handler != nil {
+			workbench.handler.SetAIWorkbenchAvailable(true)
+		}
 	}
 	if factories.buildBrowserCapture != nil {
 		browser, err := factories.buildBrowserCapture(authorizer, *workbench.authDependencies)

@@ -6,13 +6,32 @@ import { BusinessTaskPage } from "./task-page";
 
 const fixture = vi.hoisted(() => ({
   request: vi.fn(),
-  context: { user: { id: "user-a" }, effectiveOrganization: { id: "org-a" }, roles: ["listingkit_operator"],
-    isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null },
+  context: { user: { id: "user-a" }, effectiveOrganization: { id: "org-a", capabilities: { "workbench.chat.use": true } }, roles: ["listingkit_operator"],
+    aiWorkbenchAvailable: true, isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null },
 }));
 vi.mock("@/lib/api/ai-workbench", async original => ({ ...await original<typeof import("@/lib/api/ai-workbench")>(), requestAIWorkbench: fixture.request }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => fixture.context }));
 
-afterEach(() => { cleanup(); fixture.request.mockReset(); });
+afterEach(() => { cleanup(); fixture.request.mockReset(); fixture.context.aiWorkbenchAvailable = true; fixture.context.effectiveOrganization.capabilities["workbench.chat.use"] = true; });
+
+it("keeps Task reads but hides the Chat creation link for a read-only actor", async () => {
+  fixture.context.effectiveOrganization.capabilities["workbench.chat.use"] = false;
+  fixture.request.mockResolvedValue({ tasks: [], next: "" });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><BusinessTaskPage /></QueryClientProvider>);
+  expect(await screen.findByText("当前筛选无任务")).toBeVisible();
+  expect(screen.queryByRole("link", { name: "向硕米发起任务" })).not.toBeInTheDocument();
+  client.clear();
+});
+
+it("does not request BusinessTask data when AI Workbench is not mounted", () => {
+  fixture.context.aiWorkbenchAvailable = false;
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><BusinessTaskPage /></QueryClientProvider>);
+  expect(screen.getByText("当前应用未启用硕米 Chat 与业务任务。")).toBeVisible();
+  expect(fixture.request).not.toHaveBeenCalled();
+  client.clear();
+});
 
 it("offers reconciliation, without a restart claim, for an expired running execution", async () => {
   const taskId = "550e8400-e29b-41d4-a716-446655440000";

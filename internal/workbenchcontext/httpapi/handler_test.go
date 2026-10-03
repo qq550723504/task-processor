@@ -55,6 +55,24 @@ func TestSourceAccountCapabilityUsesConfiguredAuthorityForEachVerifiedGrant(t *t
 	}
 }
 
+func TestAIWorkbenchAvailabilityReflectsMountedCurrentApplicationModule(t *testing.T) {
+	handler := NewHandlerWithWorkbenchAuthorizer(authz.DefaultListingKitAuthorizer())
+	identity := authidentity.AuthenticatedIdentity{UserID: "actor", HomeOrganizationID: "org-a", EffectiveOrganizationID: "org-a",
+		OrganizationGrants: []authidentity.OrganizationGrant{{OrganizationID: "org-a", OrganizationName: "A", Roles: []string{"listingkit_operator"}}},
+	}
+	read := func() map[string]any {
+		t.Helper()
+		response := serveHandler(t, http.MethodGet, "/api/v1/workbench/context", "", identity, handler.GetContext)
+		require.Equal(t, http.StatusOK, response.Code)
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+		return body
+	}
+	require.NotContains(t, read(), "aiWorkbenchAvailable", "an optional module is absent by default")
+	handler.SetAIWorkbenchAvailable(true)
+	require.Equal(t, true, read()["aiWorkbenchAvailable"])
+}
+
 func TestSourceAccountCapabilityDoesNotUseHomeOrAnotherOrganizationRole(t *testing.T) {
 	response := serveHandler(t, http.MethodGet, "/api/v1/workbench/context", "", authidentity.AuthenticatedIdentity{
 		UserID: "actor", HomeOrganizationID: "org-a", EffectiveOrganizationID: "org-b",

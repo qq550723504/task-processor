@@ -41,6 +41,7 @@ export function ChatPage({ mode, conversationId }: { mode: ChatMode | "detail"; 
   return <ConsolePage className="console-chat" title={title} breadcrumbs={route?.trail}
     description="围绕已保存商品讨论标题建议；方案需要确认后才会执行，结果仍须人工审核应用。">
     {!scope ? <ConsoleState kind={context.isSwitching || context.isLoading ? "loading" : "unavailable"} title="企业上下文不可用">请先选择可访问的企业并登录。</ConsoleState> :
+      !context.aiWorkbenchAvailable ? <ConsoleState kind="unavailable" title="暂未启用">当前应用未启用硕米 Chat 与业务任务。</ConsoleState> :
       <ScopedChat key={`${scope.userId}:${scope.organizationId}:${authorizationKey}`} scope={scope} authorizationKey={authorizationKey} canUse={canUse} mode={mode} conversationId={conversationId} />}
   </ConsolePage>;
 }

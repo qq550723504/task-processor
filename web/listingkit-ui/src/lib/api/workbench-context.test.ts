@@ -19,6 +19,11 @@ const VALID_CONTEXT = {
 };
 
 describe("workbench context API", () => {
+  it("accepts only a server-derived boolean AI Workbench availability", () => {
+    expect(parseWorkbenchContextPayload({ ...VALID_CONTEXT, aiWorkbenchAvailable: true }).success).toBe(true);
+    expect(parseWorkbenchContextPayload({ ...VALID_CONTEXT, aiWorkbenchAvailable: false }).success).toBe(true);
+    expect(parseWorkbenchContextPayload({ ...VALID_CONTEXT, aiWorkbenchAvailable: "true" }).success).toBe(false);
+  });
   it.each([true, false])("preserves the server-derived source-account capability %s on GET and switch", async allowed => {
     const context = { ...VALID_CONTEXT, organizations: VALID_CONTEXT.organizations.map(org => ({ ...org, capabilities: { "workbench.source_account.manage": allowed, "workbench.chat.use": allowed } })) };
     vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => Response.json(context)));

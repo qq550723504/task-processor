@@ -266,6 +266,19 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, code, string(raw))
 	require.EqualValues(t, 4, titleCalls.Load(), "reconciliation never resends the model")
+	var unavailableProduct struct {
+		Task struct {
+			ProductDetailsAvailable bool `json:"productDetailsAvailable"`
+			CanStart                bool `json:"canStart"`
+			CanResume               bool `json:"canResume"`
+			CanReview               bool `json:"canReview"`
+		} `json:"task"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &unavailableProduct))
+	require.False(t, unavailableProduct.Task.ProductDetailsAvailable)
+	require.False(t, unavailableProduct.Task.CanStart)
+	require.False(t, unavailableProduct.Task.CanResume)
+	require.False(t, unavailableProduct.Task.CanReview, "review requires the current product binding")
 	taskGrants.viewer.Store(true)
 	readAsViewer := func(wantState string) {
 		t.Helper()

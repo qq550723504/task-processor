@@ -1,6 +1,9 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
+
+const context = vi.hoisted(() => ({ aiWorkbenchAvailable: true, effectiveOrganization: { capabilities: { "workbench.chat.use": true } } }));
+vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => context }));
 import { TaskCenterLayout } from "./task-center-layout";
 import { CompletedWorkResults, WorkResultDetail } from "./completed-work-results";
 
@@ -25,7 +28,23 @@ const entries = fixture.items.map((item) => ({
     <a href={item.result.href}>查看诊断</a>
   </WorkResultDetail>,
 }));
-afterEach(cleanup);
+afterEach(() => { cleanup(); context.aiWorkbenchAvailable = true; context.effectiveOrganization.capabilities["workbench.chat.use"] = true; });
+
+it("keeps independent Review readable but hides the Chat creation link for viewers", () => {
+  context.effectiveOrganization.capabilities["workbench.chat.use"] = false;
+  render(<TaskCenterLayout pendingReview><p>独立标题审核</p></TaskCenterLayout>);
+  expect(screen.getByText("独立标题审核")).toBeVisible();
+  expect(screen.queryByRole("link", { name: "向硕米发起任务" })).not.toBeInTheDocument();
+});
+
+it("does not link legacy Review or history pages to an unmounted AI Workbench", () => {
+  context.aiWorkbenchAvailable = false;
+  render(<TaskCenterLayout pendingReview><p>独立标题审核</p></TaskCenterLayout>);
+  expect(screen.getByText("独立标题审核")).toBeVisible();
+  expect(screen.queryByRole("link", { name: "返回业务任务" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "向硕米发起任务" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("navigation", { name: "任务状态" })).not.toBeInTheDocument();
+});
 
 it("labels the Review owner list as including Task-linked and direct proposals", () => {
   render(<TaskCenterLayout pendingReview><p>提案区域</p></TaskCenterLayout>);

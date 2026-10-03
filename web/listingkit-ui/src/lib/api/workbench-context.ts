@@ -33,6 +33,7 @@ const workbenchContextSchema = z
     homeOrganizationId: safeIdSchema,
     effectiveOrganizationId: safeIdSchema.nullable(),
     selectionRequired: z.boolean(),
+    aiWorkbenchAvailable: z.boolean().optional(),
     organizations: z.array(organizationSchema).max(1000),
   })
   .strict()

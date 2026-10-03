@@ -30,20 +30,22 @@ export function BusinessTaskPage({ mode = "all", taskId }: { mode?: TaskMode; ta
   const scope = context.user && context.effectiveOrganization && !context.selectionRequired && !context.isSwitching && !context.error && !context.blockingError
     ? { userId: context.user.id, organizationId: context.effectiveOrganization.id } : null;
   const authorizationKey = context.roles.join(",");
+  const canUseChat = context.effectiveOrganization?.capabilities?.["workbench.chat.use"] === true;
   const path = taskId ? "/workbench/ai/tasks" : filters.find(item => item.mode === mode)?.href ?? "/workbench/ai/tasks";
   return <ConsolePage title={taskId ? "任务详情" : "任务中心"} breadcrumbs={findConsoleRoute(path)?.trail}
     description="查看已确认的业务任务及其当前执行和审核状态。状态来自 Product Agent 与 Review 的实时投影。">
     {!scope ? <ConsoleState kind={context.isLoading || context.isSwitching ? "loading" : "unavailable"} title="企业上下文不可用">请选择可访问的企业并登录。</ConsoleState> :
-      <ScopedTasks key={`${scope.userId}:${scope.organizationId}:${authorizationKey}`} scope={scope} authorizationKey={authorizationKey} mode={mode} taskId={taskId} />}
+      !context.aiWorkbenchAvailable ? <ConsoleState kind="unavailable" title="暂未启用">当前应用未启用硕米 Chat 与业务任务。</ConsoleState> :
+      <ScopedTasks key={`${scope.userId}:${scope.organizationId}:${authorizationKey}`} scope={scope} authorizationKey={authorizationKey} canUseChat={canUseChat} mode={mode} taskId={taskId} />}
   </ConsolePage>;
 }
 
-function ScopedTasks({ scope, authorizationKey, mode, taskId }: { scope: AIScope; authorizationKey: string; mode: TaskMode; taskId?: string }) {
+function ScopedTasks({ scope, authorizationKey, canUseChat, mode, taskId }: { scope: AIScope; authorizationKey: string; canUseChat: boolean; mode: TaskMode; taskId?: string }) {
   if (taskId) return <TaskDetail scope={scope} authorizationKey={authorizationKey} taskId={taskId} />;
-  return <TaskList key={mode} scope={scope} authorizationKey={authorizationKey} mode={mode} />;
+  return <TaskList key={mode} scope={scope} authorizationKey={authorizationKey} canUseChat={canUseChat} mode={mode} />;
 }
 
-function TaskList({ scope, authorizationKey, mode }: { scope: AIScope; authorizationKey: string; mode: TaskMode }) {
+function TaskList({ scope, authorizationKey, canUseChat, mode }: { scope: AIScope; authorizationKey: string; canUseChat: boolean; mode: TaskMode }) {
   const [after, setAfter] = useState("");
   const tasks = useQuery({ queryKey: ["ai-tasks", scope.userId, scope.organizationId, authorizationKey, mode, after],
     queryFn: ({ signal }) => requestAIWorkbench({ route: "task-list", method: "GET", path: `tasks?limit=50${after ? `&after=${after}` : ""}`, scope, signal }),
@@ -68,7 +70,7 @@ function TaskList({ scope, authorizationKey, mode }: { scope: AIScope; authoriza
       <Card className={styles.scope}><span>工作范围</span><strong>{scope.organizationId}</strong><small>当前企业 · 当前账号</small></Card>
     </div>
     <div className={styles.toolbar}><nav aria-label="任务状态" className={styles.filters}>{filters.map(item => <Link key={item.mode} href={item.href} aria-current={mode === item.mode ? "page" : undefined} prefetch={false}>{item.label}</Link>)}</nav>
-      <Button variant="outline" onClick={refresh}>刷新状态</Button><Button asChild><Link href="/workbench/ai/chat/new" prefetch={false}>向硕米发起任务</Link></Button></div>
+      <Button variant="outline" onClick={refresh}>刷新状态</Button>{canUseChat ? <Button asChild><Link href="/workbench/ai/chat/new" prefetch={false}>向硕米发起任务</Link></Button> : null}</div>
     {tasks.isPending ? <ConsoleState kind="loading" title="正在读取任务" /> : tasks.isError ? <ConsoleState kind="error" title="任务读取失败">{errorText(tasks.error)} <Button variant="outline" onClick={() => void tasks.refetch()}>重试</Button></ConsoleState> :
       tasks.isFetching ? <ConsoleState kind="loading" title="正在查找符合筛选的任务" /> :
       <div className={styles.list}>{visible.length ? visible.map(item => <TaskRow key={item.id} task={item} />) : searching ?

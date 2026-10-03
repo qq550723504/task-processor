@@ -95,7 +95,10 @@ func (a *aiWorkbenchApplication) taskView(ctx context.Context, scope aiworkbench
 	}
 	view.ProjectionAvailable, view.State, view.Reason = true, projection.State, projection.Reason
 	if _, err := a.agent.freshIdentity(ctx); err == nil {
-		view.CanStart, view.CanReconcile, view.CanResume, view.CanReview = projection.CanStart, projection.CanReconcile, projection.CanResume, projection.CanReview
+		view.CanStart = projection.CanStart && view.ProductDetailsAvailable
+		view.CanReconcile = projection.CanReconcile
+		view.CanResume = projection.CanResume && view.ProductDetailsAvailable
+		view.CanReview = projection.CanReview && view.ProductDetailsAvailable
 	}
 	if found && view.ProductDetailsAvailable {
 		if snapshot, err := a.agent.configuration.LoadSnapshot(ctx, run.State.Scope, run.State.Request.ConfigurationSnapshotRef); err == nil {

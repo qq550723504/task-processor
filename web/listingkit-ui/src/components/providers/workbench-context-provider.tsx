@@ -28,6 +28,7 @@ type WorkbenchContextValue = {
   organizations: WorkbenchOrganization[];
   effectiveOrganization: WorkbenchOrganization | null;
   roles: string[];
+  aiWorkbenchAvailable: boolean;
   selectionRequired: boolean;
   isLoading: boolean;
   isSwitching: boolean;
@@ -166,6 +167,7 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       organizations: currentContext?.organizations ?? [],
       effectiveOrganization,
       roles: effectiveOrganization?.roles ?? [],
+      aiWorkbenchAvailable: currentContext?.aiWorkbenchAvailable === true,
       selectionRequired: currentContext?.selectionRequired ?? false,
       isLoading: !blockingError && contextQuery.isPending,
       isSwitching: switchPreparing || switchMutation.isPending || storeMutationsPending > 0,
