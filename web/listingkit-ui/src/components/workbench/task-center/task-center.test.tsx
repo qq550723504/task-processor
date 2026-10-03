@@ -27,11 +27,11 @@ const entries = fixture.items.map((item) => ({
 }));
 afterEach(cleanup);
 
-it("projects pending titles under the existing task center without completed-only coverage", () => {
+it("labels the Review owner list as including Task-linked and direct proposals", () => {
   render(<TaskCenterLayout pendingReview><p>提案区域</p></TaskCenterLayout>);
   expect(screen.getByRole("navigation", { name: "任务状态" }).querySelector('[aria-current="page"]')).toHaveTextContent("待确认");
   expect(screen.getByRole("link", { name: "全部" })).not.toHaveAttribute("aria-current");
-  expect(screen.getByText(/仅覆盖标准商品标题提案/)).toBeVisible();
+  expect(screen.getByText(/包括 BusinessTask 关联的提案与直接提交的提案/)).toBeVisible();
   expect(screen.queryByText(/仅覆盖本地资料准备完成记录/)).not.toBeInTheDocument();
   expect(screen.getAllByText("统计暂未接入")).toHaveLength(3);
 });
@@ -42,8 +42,9 @@ it("states bounded coverage and does not fabricate global metrics or lifecycle a
   expect(screen.getByText(/仅覆盖本地资料准备完成记录/)).toBeVisible();
   expect(screen.getByText(/不代表诊断通过或可发布/)).toBeVisible();
   expect(screen.getByRole("link", { name: "已完成" })).toHaveAttribute("aria-current", "page");
-  expect(screen.getByRole("button", { name: /搜索任务/ })).toBeDisabled();
-  expect(screen.getByRole("button", { name: /向硕米发起任务/ })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: /搜索任务/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "向硕米发起任务" })).toHaveAttribute("href", "/workbench/ai/chat/new");
+  expect(screen.getByRole("link", { name: "返回业务任务" })).toHaveAttribute("href", "/workbench/ai/tasks");
   expect(screen.queryByText(/3 \/ 5|5 \/ 5/)).not.toBeInTheDocument();
 });
 
