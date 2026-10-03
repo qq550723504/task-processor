@@ -49,9 +49,23 @@ func TestWorkbenchPlannerUsesFrozenDeadlineAtModelHandoff(t *testing.T) {
 		WorkScope: aiworkbench.WorkScope{OperationID: request.OperationID, TargetPlatform: request.TargetPlatform},
 		InputHash: prepared.Quote.InputHash, ModelProfile: raw, Deadline: deadline}
 	generator := &delayedWorkbenchGenerator{deadline: deadline}
-	planner := workbenchPlanner{model: einoplanner.Planner{Text: generator}}
+	planner := workbenchPlanner{agent: &productAgentApplication{selectTitleProfile: func(context.Context, string) (aicapability.ModelProfile, error) {
+		return profile, nil
+	}}, model: einoplanner.Planner{Text: generator}}
 	_, err = planner.Decide(context.Background(), command, history)
 	require.ErrorIs(t, err, governed.ErrNotDispatched)
 	require.True(t, generator.called, "the model handoff must be reached before the frozen deadline")
 	require.False(t, generator.sentLate, "an expired planning command cannot send after SDK or admission delay")
+
+	// A T0 receipt may be replayed after the title credential is revoked.
+	// Recheck that consumer route before invoking a still-ready planner.
+	command.Deadline = time.Now().Add(time.Second)
+	replayGenerator := &delayedWorkbenchGenerator{deadline: command.Deadline}
+	planner.agent.selectTitleProfile = func(context.Context, string) (aicapability.ModelProfile, error) {
+		return aicapability.ModelProfile{}, governed.ErrNotDispatched
+	}
+	planner.model.Text = replayGenerator
+	_, err = planner.Decide(context.Background(), command, history)
+	require.ErrorIs(t, err, governed.ErrNotDispatched)
+	require.False(t, replayGenerator.called, "a revoked title route cannot trigger a paid planner replay")
 }

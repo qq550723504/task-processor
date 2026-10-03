@@ -466,4 +466,41 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	taskGrants.viewer.Store(true)
 	readAsViewer("COMPLETED")
 	require.Equal(t, titleBefore, titleCalls.Load())
+
+	// A still-ready planner cannot advertise or charge for a path whose title
+	// route has since been disabled. The same-key receipt remains replayable.
+	taskGrants.viewer.Store(false)
+	currentChat, err := credentials.GetCredential(context.Background(), "B", "", "chat")
+	require.NoError(t, err)
+	readyModule, err := buildAIWorkbenchModule(context.Background(), AIWorkbenchDependencies{DB: f.owner,
+		PlanningTextPolicies: map[string]governed.RoutePolicy{"B": policy(currentChat, profile("chat", "chat-fixture", "ai-workbench-chat-plan-v1", "ai-workbench-plan-decision-v1"))}}, agentModule.(productAgentModule).application)
+	require.NoError(t, err)
+	require.Equal(t, "AVAILABLE", readyModule.(aiWorkbenchModule).PlanningReadiness(context.Background(), "B"))
+	readyRoutes := append(agentModule.(productAgentModule).routes, readyModule.(aiWorkbenchModule).routes...)
+	readyServer := httptest.NewServer(buildIsolatedApplicationHTTPServer(readyRoutes, deps, 2*time.Minute).Handler)
+	defer readyServer.Close()
+	disabledTitle := *titleRow
+	disabledTitle.Enabled = false
+	require.NoError(t, credentials.SaveCredential(context.Background(), disabledTitle))
+	require.Equal(t, "NEEDS_CONFIGURATION", readyModule.(aiWorkbenchModule).PlanningReadiness(context.Background(), "B"))
+	plannerBefore := plannerCalls.Load()
+	code, raw, err = acquisitionHTTPRequest(readyServer, "POST", workbenchChatBase, "operator", "B", uuid.NewString(), `{}`)
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	var unavailableConversation struct {
+		Conversation struct {
+			ID string `json:"ID"`
+		} `json:"conversation"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &unavailableConversation))
+	key := uuid.NewString()
+	path := workbenchChatBase + "/" + unavailableConversation.Conversation.ID + "/messages"
+	body := `{"content":"请优化标题","operationId":"` + op.OperationID + `","targetPlatform":"shein"}`
+	for range 2 {
+		code, raw, err = acquisitionHTTPRequest(readyServer, "POST", path, "operator", "B", key, body)
+		require.NoError(t, err)
+		require.Equal(t, 200, code, string(raw))
+		require.Contains(t, string(raw), `"state":"FAILED_BEFORE_DISPATCH"`)
+	}
+	require.Equal(t, plannerBefore, plannerCalls.Load(), "unready title route must not cause a paid planner send")
 }

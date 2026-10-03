@@ -26,7 +26,7 @@ Remove-Item Env:AI_WORKBENCH_SCHEMA_DSN
 go run ./cmd/current-application -config C:\private\current-application.json
 ```
 
-Console 使用原 `LISTINGKIT_API_BASE` 指向当前 application，并保持现有 Auth.js/ZITADEL 配置。进入 `web/listingkit-ui` 后用正常 `pnpm dev` 或既有构建/启动命令。当前应用未启用 Workbench 或缺 schema/策略时，Chat/Task 请求明确不可用；前端入口本身不证明后端、provider 或付费额度已开放。
+Console 使用原 `LISTINGKIT_API_BASE` 指向当前 application，并保持现有 Auth.js/ZITADEL 配置。进入 `web/listingkit-ui` 后用正常 `pnpm dev` 或既有构建/启动命令。当前应用未启用 Workbench 或缺 schema/策略时，Chat/Task 请求明确不可用；前端入口本身不证明后端、provider 或付费额度已开放。规划与标题两条当前企业路由都就绪时才显示 Chat 规划可用；任一路由失配时保留已有会话读取，新消息不会触发付费规划发送。
 
 ## 使用路径与限制
 

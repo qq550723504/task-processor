@@ -66,6 +66,7 @@ type productAgentApplication struct {
 	configuration      *configstore.Store
 	model              *texteino.AgentTextModel
 	selectTitleProfile func(context.Context, string) (aicapability.ModelProfile, error)
+	titleRoutes        *governed.OrganizationRouteResolver
 	definition         commercetool.AgentDefinition
 	context            *knowledge.ContextService
 	runtime            *einoruntime.Runtime
@@ -208,6 +209,7 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 	if err != nil {
 		return nil, err
 	}
+	a.titleRoutes = routeResolver
 	a.selectTitleProfile = func(ctx context.Context, organizationID string) (aicapability.ModelProfile, error) {
 		route, routeErr := routeResolver.Resolve(ctx, aicapability.TextInputIdentity{OrganizationID: organizationID, Operation: aicapability.OperationProductAgentDecision})
 		return route.Profile, routeErr

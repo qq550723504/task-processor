@@ -131,11 +131,22 @@ func (p *workbenchPlanner) Admission(ctx context.Context, scope aiworkbench.Scop
 			return nil, readErr
 		}
 	}
-	route, routeErr := p.routes.Resolve(ctx, aicapability.TextInputIdentity{OrganizationID: scope.OrganizationID, Operation: aicapability.OperationAIWorkbenchChatPlan})
-	if routeErr != nil {
+	unavailable := func() (aiworkbench.PlanPreparer, error) {
 		return func([]aiworkbench.Message, string) (aiworkbench.PreparedPlan, error) {
 			return aiworkbench.PreparedPlan{MemberID: identity.EffectiveMemberID, Unavailable: true}, nil
 		}, nil
+	}
+	// The paid planner must not run when its only approved consumer cannot
+	// currently form a title proposal. Both checks use execution's route owners.
+	if p.agent.selectTitleProfile == nil {
+		return unavailable()
+	}
+	if _, err := p.agent.selectTitleProfile(ctx, scope.OrganizationID); err != nil {
+		return unavailable()
+	}
+	route, routeErr := p.routes.Resolve(ctx, aicapability.TextInputIdentity{OrganizationID: scope.OrganizationID, Operation: aicapability.OperationAIWorkbenchChatPlan})
+	if routeErr != nil {
+		return unavailable()
 	}
 	profile := route.Profile
 	return func(history []aiworkbench.Message, invocationID string) (aiworkbench.PreparedPlan, error) {
@@ -159,6 +170,12 @@ func (p *workbenchPlanner) Decide(ctx context.Context, command aiworkbench.Plann
 	var profile aicapability.ModelProfile
 	if ctx == nil || json.Unmarshal(command.ModelProfile, &profile) != nil || profile.Validate() != nil || !time.Now().Before(command.Deadline) {
 		return aiworkbench.PlanTerminal{}, aiworkbench.ErrUnavailable
+	}
+	if p.agent == nil || p.agent.selectTitleProfile == nil {
+		return aiworkbench.PlanTerminal{}, governed.ErrNotDispatched
+	}
+	if _, err := p.agent.selectTitleProfile(ctx, command.Scope.OrganizationID); err != nil {
+		return aiworkbench.PlanTerminal{}, governed.ErrNotDispatched
 	}
 	selected := command.WorkScope
 	prepared, err := einoplanner.Prepare(einoplanner.Request{Scope: command.Scope, MemberID: command.MemberID,

@@ -23,6 +23,7 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
+	governed "task-processor/internal/integration/aicapability/einomodel"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/knowledge"
 	"task-processor/internal/product/review"
@@ -44,12 +45,23 @@ func (m aiWorkbenchModule) Register(reg *kernelmodule.Registry) error {
 }
 
 func (m aiWorkbenchModule) PlanningReadiness(ctx context.Context, organizationID string) string {
-	if m.application == nil || m.application.plan == nil || m.application.plan.routes == nil {
+	if m.application == nil || m.application.plan == nil || m.application.plan.routes == nil ||
+		m.application.agent == nil || m.application.agent.titleRoutes == nil {
 		return "UNAVAILABLE"
 	}
-	return string(m.application.plan.routes.Readiness(ctx, aicapability.TextInputIdentity{
+	planning := m.application.plan.routes.Readiness(ctx, aicapability.TextInputIdentity{
 		OrganizationID: organizationID, Operation: aicapability.OperationAIWorkbenchChatPlan,
-	}))
+	})
+	title := m.application.agent.titleRoutes.Readiness(ctx, aicapability.TextInputIdentity{
+		OrganizationID: organizationID, Operation: aicapability.OperationProductAgentDecision,
+	})
+	if planning == governed.RouteUnavailable || title == governed.RouteUnavailable {
+		return string(governed.RouteUnavailable)
+	}
+	if planning == governed.RouteAvailable && title == governed.RouteAvailable {
+		return string(governed.RouteAvailable)
+	}
+	return string(governed.RouteNeedsConfiguration)
 }
 
 func WithAIWorkbench(deps AIWorkbenchDependencies) CurrentApplicationOption {
