@@ -225,6 +225,9 @@ ai_workbench
 
 V1 deploys it in the **same logical PostgreSQL database used by ProductAgent RunDB**, but
 through a distinct `ai_workbench_runtime` login and independent bounded pool.
+The Workbench runtime login is standalone: it neither inherits another role nor grants its
+privileges through role membership. Initialization and serving startup reject such membership;
+distinct login names alone do not establish the required SQL privilege isolation.
 
 Reasons:
 

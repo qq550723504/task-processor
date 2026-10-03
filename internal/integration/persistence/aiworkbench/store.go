@@ -150,6 +150,14 @@ func VerifySchema(ctx context.Context, db *gorm.DB) error {
 	if db == nil || db.Dialector.Name() != "postgres" || ctx == nil {
 		return aiworkbench.ErrUnavailable
 	}
+	var currentRole string
+	if err := db.WithContext(ctx).Raw("SELECT current_user").Scan(&currentRole).Error; err != nil || !roleName.MatchString(currentRole) {
+		return aiworkbench.ErrUnavailable
+	}
+	member, err := hasRoleMembership(db.WithContext(ctx), currentRole)
+	if err != nil || member {
+		return aiworkbench.ErrUnavailable
+	}
 	for _, name := range []string{"conversations", "metadata_audit", "messages", "commands", "execution_proposals", "business_tasks"} {
 		var exists bool
 		if err := db.WithContext(ctx).Raw("SELECT to_regclass(?) IS NOT NULL", "ai_workbench."+name).Scan(&exists).Error; err != nil || !exists {

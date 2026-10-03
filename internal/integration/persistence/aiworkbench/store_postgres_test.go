@@ -107,6 +107,9 @@ func TestWorkbenchRuntimeRoleCanUseReceiptsWithoutDDLOrDeletes(t *testing.T) {
 		if err := tx.Exec("SET LOCAL ROLE " + role).Error; err != nil {
 			return err
 		}
+		if err := VerifySchema(context.Background(), tx); err != nil {
+			return err
+		}
 		store, err := New(tx)
 		if err != nil {
 			return err
@@ -143,6 +146,37 @@ func TestWorkbenchRuntimeRoleCanUseReceiptsWithoutDDLOrDeletes(t *testing.T) {
 		_, _, err = store.Confirm(context.Background(), scope, conversation.ID, saved.ID, confirmKey, preparedTaskFixture(t, saved, confirmKey))
 		return err
 	}))
+}
+
+func TestWorkbenchRuntimeRoleRejectsInheritedCrossOwnerPrivileges(t *testing.T) {
+	db := workbenchDB(t)
+	const workbenchRole = "ai_workbench_runtime"
+	const productRole = "product_agent_runtime"
+	require.NoError(t, db.Exec("CREATE ROLE "+workbenchRole+" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS").Error)
+	require.NoError(t, db.Exec("CREATE ROLE "+productRole+" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS").Error)
+	require.NoError(t, db.Exec("CREATE SCHEMA product_agent_boundary").Error)
+	require.NoError(t, db.Exec("CREATE TABLE product_agent_boundary.private_fact (id integer PRIMARY KEY)").Error)
+	require.NoError(t, db.Exec("GRANT USAGE ON SCHEMA product_agent_boundary TO "+productRole).Error)
+	require.NoError(t, db.Exec("GRANT SELECT ON product_agent_boundary.private_fact TO "+productRole).Error)
+
+	require.NoError(t, db.Exec("GRANT "+productRole+" TO "+workbenchRole).Error)
+	var granted bool
+	require.NoError(t, db.Raw("SELECT has_table_privilege(?,'product_agent_boundary.private_fact','SELECT')", workbenchRole).Scan(&granted).Error)
+	require.True(t, granted, "role membership confers cross-owner read access")
+	require.ErrorIs(t, GrantRuntime(db, workbenchRole), aiworkbench.ErrInvalid)
+	require.NoError(t, db.Exec("REVOKE "+productRole+" FROM "+workbenchRole).Error)
+	require.NoError(t, GrantRuntime(db, workbenchRole))
+
+	require.NoError(t, db.Exec("GRANT "+workbenchRole+" TO "+productRole).Error)
+	require.NoError(t, db.Raw("SELECT has_table_privilege(?,'ai_workbench.conversations','SELECT')", productRole).Scan(&granted).Error)
+	require.True(t, granted, "the Product Agent login can inherit private Workbench reads")
+	require.ErrorIs(t, GrantRuntime(db, workbenchRole), aiworkbench.ErrInvalid)
+	require.ErrorIs(t, db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SET LOCAL ROLE " + workbenchRole).Error; err != nil {
+			return err
+		}
+		return VerifySchema(context.Background(), tx)
+	}), aiworkbench.ErrUnavailable, "serving startup must reject role membership added after initialization")
 }
 
 func readyTaskFixture(t *testing.T, store *Store, scope aiworkbench.Scope) (aiworkbench.Conversation, aiworkbench.ExecutionProposal) {

@@ -10,6 +10,17 @@ import (
 
 var roleName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
 
+// Any membership in either direction can grant inherited access or SET ROLE
+// access across the Workbench and another persistence owner.
+func hasRoleMembership(db *gorm.DB, role string) (bool, error) {
+	var member bool
+	err := db.Raw(`SELECT EXISTS (
+		SELECT 1 FROM pg_auth_members memberships
+		JOIN pg_roles target ON target.oid = memberships.member OR target.oid = memberships.roleid
+		WHERE target.rolname = ?)`, role).Scan(&member).Error
+	return member, err
+}
+
 // GrantRuntime is initializer-only. The caller creates the restricted role
 // separately and uses a privileged, private schema connection for this step.
 func GrantRuntime(db *gorm.DB, role string) error {
@@ -22,6 +33,10 @@ func GrantRuntime(db *gorm.DB, role string) error {
 	}
 	if !exists {
 		return aiworkbench.ErrNotFound
+	}
+	member, err := hasRoleMembership(db, role)
+	if err != nil || member {
+		return aiworkbench.ErrInvalid
 	}
 	var unsafe bool
 	if err := db.Raw(`SELECT rolsuper OR rolcreaterole OR rolbypassrls FROM pg_roles WHERE rolname=?`, role).Scan(&unsafe).Error; err != nil {
