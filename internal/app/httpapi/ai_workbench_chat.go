@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -95,7 +96,9 @@ func (a *aiWorkbenchApplication) getConversation(c *gin.Context, ctx context.Con
 		writeAIWorkbenchError(c, err)
 		return
 	}
-	proposals, err := a.store.ListProposals(ctx, scope, id, 50)
+	// Only the latest proposal can match the latest USER turn and be confirmed.
+	// Older proposal cards are not rendered by the current Conversation view.
+	proposals, err := a.store.ListProposals(ctx, scope, id, 1)
 	if err != nil {
 		writeAIWorkbenchError(c, err)
 		return
@@ -104,7 +107,28 @@ func (a *aiWorkbenchApplication) getConversation(c *gin.Context, ctx context.Con
 	for _, proposal := range proposals {
 		cards = append(cards, a.proposalCard(ctx, proposal))
 	}
-	workbenchReply(c, http.StatusOK, gin.H{"conversation": conversation, "messages": messages, "proposals": cards, "before": next})
+	for {
+		page := gin.H{"conversation": conversation, "messages": messages, "proposals": cards, "before": next}
+		wire, marshalErr := json.Marshal(page)
+		if marshalErr != nil {
+			writeAIWorkbenchError(c, aiworkbench.ErrUnavailable)
+			return
+		}
+		if len(wire) <= workbenchResponseMaxBytes {
+			c.Header("Cache-Control", "private, no-store")
+			c.Data(http.StatusOK, "application/json; charset=utf-8", wire)
+			return
+		}
+		if len(messages) <= 1 {
+			writeAIWorkbenchError(c, aiworkbench.ErrUnavailable)
+			return
+		}
+		// The store returns ascending sequences. Omitted older messages must be
+		// reachable on the next page, even if the original 50-row page had no
+		// database cursor.
+		messages = messages[1:]
+		next = strconv.FormatUint(messages[0].Sequence, 10)
+	}
 }
 
 func (a *aiWorkbenchApplication) changeConversation(c *gin.Context, ctx context.Context, scope aiworkbench.Scope) {

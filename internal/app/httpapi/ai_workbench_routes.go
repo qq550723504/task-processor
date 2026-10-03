@@ -166,9 +166,11 @@ func writeAIWorkbenchError(c *gin.Context, err error) {
 	c.JSON(status, gin.H{"code": code})
 }
 
+const workbenchResponseMaxBytes = 256 << 10
+
 func workbenchReply(c *gin.Context, status int, value any) {
 	wire, err := json.Marshal(value)
-	if err != nil || len(wire) > 256<<10 {
+	if err != nil || len(wire) > workbenchResponseMaxBytes {
 		writeAIWorkbenchError(c, aiworkbench.ErrUnavailable)
 		return
 	}
