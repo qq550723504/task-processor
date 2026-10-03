@@ -45,6 +45,14 @@ func workbenchDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+func testPlanPreparer(history []aiworkbench.Message, invocationID string) (aiworkbench.PreparedPlan, error) {
+	if len(history) == 0 || history[len(history)-1].Author != aiworkbench.AuthorUser || invocationID == "" {
+		return aiworkbench.PreparedPlan{}, aiworkbench.ErrInvalid
+	}
+	return aiworkbench.PreparedPlan{InputHash: fmt.Sprintf("%064x", len(history)),
+		ModelProfile: []byte(`{"profile_id":"test"}`), Deadline: time.Now().Add(time.Minute)}, nil
+}
+
 func TestConversationCreateReceiptIsAtomicAndScoped(t *testing.T) {
 	db := workbenchDB(t)
 	store, err := New(db)
@@ -71,7 +79,7 @@ func TestConversationCreateReceiptIsAtomicAndScoped(t *testing.T) {
 	// Create and message share one operation namespace.
 	_, _, err = restarted.AppendUser(ctx, scope, created.ID, key,
 		aiworkbench.MessageInput{Content: "优化标题", OperationID: "op-a", TargetPlatform: "shein"},
-		aiworkbench.PreparedPlan{InputHash: fmt.Sprintf("%064x", 1), ModelProfile: []byte("{\"profile_id\":\"test\"}"), Deadline: time.Now().Add(time.Minute)})
+		testPlanPreparer)
 	require.ErrorIs(t, err, aiworkbench.ErrIdempotencyConflict)
 
 	other, replayed, err := restarted.Create(ctx, aiworkbench.Scope{OrganizationID: "org-b", ActorID: scope.ActorID}, key, input)
@@ -155,6 +163,40 @@ func TestConversationCreateConcurrentSameKeyOneReceipt(t *testing.T) {
 	require.EqualValues(t, 1, count)
 }
 
+func TestUnavailablePlannerStillPersistsUserIntentWithoutDispatchProfile(t *testing.T) {
+	db := workbenchDB(t)
+	store, err := New(db)
+	require.NoError(t, err)
+	ctx := context.Background()
+	scope := aiworkbench.Scope{OrganizationID: "org-a", ActorID: "user-a"}
+	conversation, _, err := store.Create(ctx, scope, uuid.NewString(), aiworkbench.CreateInput{})
+	require.NoError(t, err)
+	key := uuid.NewString()
+	input := aiworkbench.MessageInput{Content: "Please suggest a title", OperationID: "op-1", TargetPlatform: "shein"}
+	prepare := func(history []aiworkbench.Message, invocationID string) (aiworkbench.PreparedPlan, error) {
+		require.Len(t, history, 1)
+		require.NotEmpty(t, invocationID)
+		return aiworkbench.PreparedPlan{Unavailable: true}, nil
+	}
+	command, replay, err := store.AppendUser(ctx, scope, conversation.ID, key, input, prepare)
+	require.NoError(t, err)
+	require.False(t, replay)
+	require.Equal(t, aiworkbench.PlanningFailedBeforeDispatch, command.State)
+	require.Empty(t, command.ModelProfile)
+	require.Equal(t, input.WorkScope(), command.WorkScope)
+	messages, err := store.ListMessages(ctx, scope, conversation.ID, 50)
+	require.NoError(t, err)
+	require.Len(t, messages, 1)
+	require.Equal(t, input.Content, messages[0].Content)
+	command, replay, err = store.AppendUser(ctx, scope, conversation.ID, key, input, func([]aiworkbench.Message, string) (aiworkbench.PreparedPlan, error) {
+		t.Fatal("replay must not resolve a new profile")
+		return aiworkbench.PreparedPlan{}, nil
+	})
+	require.NoError(t, err)
+	require.True(t, replay)
+	require.Equal(t, aiworkbench.PlanningFailedBeforeDispatch, command.State)
+}
+
 func TestArchivePreservesInflightPlannerTerminalization(t *testing.T) {
 	db := workbenchDB(t)
 	store, err := New(db)
@@ -165,13 +207,22 @@ func TestArchivePreservesInflightPlannerTerminalization(t *testing.T) {
 	require.NoError(t, err)
 	key := uuid.NewString()
 	request := aiworkbench.MessageInput{Content: "请优化标题", OperationID: "operation-1", TargetPlatform: "shein"}
-	prepared := aiworkbench.PreparedPlan{InputHash: fmt.Sprintf("%064x", 2), ModelProfile: []byte("{\"profile_id\":\"test\"}"), Deadline: time.Now().Add(time.Minute)}
+	var captured []aiworkbench.Message
+	prepared := aiworkbench.PlanPreparer(func(history []aiworkbench.Message, invocationID string) (aiworkbench.PreparedPlan, error) {
+		captured = append([]aiworkbench.Message(nil), history...)
+		return testPlanPreparer(history, invocationID)
+	})
 	command, replay, err := store.AppendUser(ctx, scope, conversation.ID, key, request, prepared)
 	require.NoError(t, err)
 	require.False(t, replay)
 	require.EqualValues(t, 1, command.SourceSequence)
 	require.Equal(t, aiworkbench.PlanningReadyToDispatch, command.State)
 	require.NotEmpty(t, command.PlannerInvocationID)
+	require.Equal(t, request.WorkScope(), command.WorkScope)
+	history, frozen, err := store.HistoryForCommand(ctx, scope, key)
+	require.NoError(t, err)
+	require.Equal(t, captured, history)
+	require.Equal(t, command.InputHash, frozen.InputHash)
 
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -207,6 +258,10 @@ func TestArchivePreservesInflightPlannerTerminalization(t *testing.T) {
 	require.Equal(t, aiworkbench.AuthorUser, messages[0].Author)
 	require.Equal(t, aiworkbench.AuthorAssistant, messages[1].Author)
 	require.EqualValues(t, 2, messages[1].Sequence)
+	history, frozen, err = store.HistoryForCommand(ctx, scope, key)
+	require.NoError(t, err)
+	require.Equal(t, captured, history)
+	require.Equal(t, request.WorkScope(), frozen.WorkScope)
 
 	replayed, duplicate, err := store.CompletePlan(ctx, scope, key, aiworkbench.PlanTerminal{AssistantText: "建议突出核心卖点", Mode: aiworkbench.PlanClarify})
 	require.NoError(t, err)

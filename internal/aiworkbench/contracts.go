@@ -68,11 +68,31 @@ type MessageInput struct {
 	KnowledgeBaseID  string
 }
 
+// WorkScope is the exact server-authorized selection frozen with a planning
+// command. It contains no mutable provider or model-selected execution facts.
+type WorkScope struct {
+	OperationID      string `json:"operation_id"`
+	TargetPlatform   string `json:"target_platform"`
+	TemplateID       string `json:"template_id,omitempty"`
+	TemplateRevision string `json:"template_revision,omitempty"`
+	KnowledgeBaseID  string `json:"knowledge_base_id,omitempty"`
+}
+
+func (m MessageInput) WorkScope() WorkScope {
+	return WorkScope{OperationID: m.OperationID, TargetPlatform: m.TargetPlatform,
+		TemplateID: m.TemplateID, TemplateRevision: m.TemplateRevision, KnowledgeBaseID: m.KnowledgeBaseID}
+}
+
 type PreparedPlan struct {
 	InputHash    string
 	ModelProfile []byte
 	Deadline     time.Time
+	Unavailable  bool
 }
+
+// PlanPreparer is a pure calculation over the exact sequence prefix selected
+// under the Conversation row lock. It must not perform external owner I/O.
+type PlanPreparer func(history []Message, invocationID string) (PreparedPlan, error)
 
 type PlanningState string
 
@@ -100,6 +120,7 @@ type PlanningCommand struct {
 	SourceSequence      uint64
 	PlannerInvocationID string
 	InputHash           string
+	WorkScope           WorkScope
 	ModelProfile        []byte
 	StartedAt           time.Time
 	Deadline            time.Time

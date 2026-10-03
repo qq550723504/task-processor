@@ -70,6 +70,7 @@ type commandRow struct {
 	SourceSequence      *uint64
 	PlannerInvocationID *string
 	PlannerInputHash    *string
+	WorkScopeJSON       json.RawMessage `gorm:"column:work_scope;type:jsonb"`
 	PlannerModelProfile json.RawMessage `gorm:"type:jsonb"`
 	PlannerStartedAt    *time.Time
 	PlannerDeadline     *time.Time
@@ -170,6 +171,9 @@ func command(row commandRow) aiworkbench.PlanningCommand {
 	}
 	if row.PlannerInputHash != nil {
 		result.InputHash = *row.PlannerInputHash
+	}
+	if len(row.WorkScopeJSON) != 0 {
+		_ = json.Unmarshal(row.WorkScopeJSON, &result.WorkScope)
 	}
 	if row.PlannerStartedAt != nil {
 		result.StartedAt = *row.PlannerStartedAt
@@ -367,11 +371,36 @@ func initialTitle(content string) string {
 	return title.String()
 }
 
-func (s *Store) AppendUser(ctx context.Context, scope aiworkbench.Scope, conversationID, key string, input aiworkbench.MessageInput, prepared aiworkbench.PreparedPlan) (aiworkbench.PlanningCommand, bool, error) {
+func (s *Store) historyPrefix(tx *gorm.DB, scope aiworkbench.Scope, conversationID string, through uint64, limit, maximumTextBytes int) ([]aiworkbench.Message, error) {
+	var rows []messageRow
+	if err := tx.Where("organization_id = ? AND owner_user_id = ? AND conversation_id = ? AND sequence <= ?",
+		scope.OrganizationID, scope.ActorID, conversationID, through).
+		Order("sequence DESC").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	// Bound the actual text sent to the planner. Keep the newest complete
+	// messages, including the originating USER message, without truncation.
+	selected := make([]aiworkbench.Message, 0, len(rows))
+	contentBytes := 0
+	for _, row := range rows {
+		if contentBytes+len(row.Content) > maximumTextBytes {
+			break
+		}
+		contentBytes += len(row.Content)
+		selected = append(selected, aiworkbench.Message{ID: row.ID, ConversationID: row.ConversationID,
+			Sequence: row.Sequence, Author: aiworkbench.MessageAuthor(row.AuthorKind), Content: row.Content, CreatedAt: row.CreatedAt.UTC()})
+	}
+	for left, right := 0, len(selected)-1; left < right; left, right = left+1, right-1 {
+		selected[left], selected[right] = selected[right], selected[left]
+	}
+	return selected, nil
+}
+
+func (s *Store) AppendUser(ctx context.Context, scope aiworkbench.Scope, conversationID, key string, input aiworkbench.MessageInput, prepare aiworkbench.PlanPreparer) (aiworkbench.PlanningCommand, bool, error) {
 	if s == nil || s.db == nil {
 		return aiworkbench.PlanningCommand{}, false, aiworkbench.ErrUnavailable
 	}
-	if !validScope(scope) || !validKey(conversationID) || !validKey(key) || !validMessage(input) {
+	if !validScope(scope) || !validKey(conversationID) || !validKey(key) || !validMessage(input) || prepare == nil {
 		return aiworkbench.PlanningCommand{}, false, aiworkbench.ErrInvalid
 	}
 	// The fingerprint is wire identity. A stored receipt is adopted before a
@@ -398,9 +427,6 @@ func (s *Store) AppendUser(ctx context.Context, scope aiworkbench.Scope, convers
 			result, replay = command(existing), true
 			return nil
 		}
-		if !validDigest(prepared.InputHash) || !json.Valid(prepared.ModelProfile) || prepared.Deadline.IsZero() {
-			return aiworkbench.ErrInvalid
-		}
 		row, err := s.lookupConversation(tx, scope, conversationID, true)
 		if err != nil {
 			return err
@@ -413,6 +439,28 @@ func (s *Store) AppendUser(ctx context.Context, scope aiworkbench.Scope, convers
 		message := messageRow{ID: messageID, OrganizationID: scope.OrganizationID, OwnerUserID: scope.ActorID,
 			ConversationID: conversationID, Sequence: row.NextSequence, AuthorKind: string(aiworkbench.AuthorUser),
 			Content: input.Content, CreatedAt: now}
+		// The prefix is read after locking this Conversation. A concurrent append
+		// cannot change which facts enter this command's immutable model input.
+		history, err := s.historyPrefix(tx, scope, conversationID, row.NextSequence-1, 49, 64<<10-len(message.Content))
+		if err != nil {
+			return err
+		}
+		history = append(history, aiworkbench.Message{ID: message.ID, ConversationID: message.ConversationID,
+			Sequence: message.Sequence, Author: aiworkbench.AuthorUser, Content: message.Content, CreatedAt: now})
+		invocationID := digest(struct {
+			OrganizationID string
+			ActorID        string
+			ConversationID string
+			Key            string
+			Fingerprint    string
+		}{scope.OrganizationID, scope.ActorID, conversationID, key, fingerprint})
+		prepared, err := prepare(history, invocationID)
+		if err != nil {
+			return err
+		}
+		if !prepared.Unavailable && (!validDigest(prepared.InputHash) || !json.Valid(prepared.ModelProfile) || prepared.Deadline.IsZero()) {
+			return aiworkbench.ErrInvalid
+		}
 		if err := tx.Create(&message).Error; err != nil {
 			return err
 		}
@@ -426,19 +474,24 @@ func (s *Store) AppendUser(ctx context.Context, scope aiworkbench.Scope, convers
 			Updates(map[string]any{"title": row.Title, "next_sequence": row.NextSequence, "updated_at": row.UpdatedAt}).Error; err != nil {
 			return err
 		}
-		invocationID := digest(struct {
-			OrganizationID string
-			ActorID        string
-			ConversationID string
-			Key            string
-			Fingerprint    string
-		}{scope.OrganizationID, scope.ActorID, conversationID, key, fingerprint})
 		profile := json.RawMessage(append([]byte(nil), prepared.ModelProfile...))
+		workScope, _ := json.Marshal(input.WorkScope())
+		state := string(aiworkbench.PlanningReadyToDispatch)
+		var inputHash *string
+		var startedAt, deadline *time.Time
+		if prepared.Unavailable {
+			state = string(aiworkbench.PlanningFailedBeforeDispatch)
+			profile = nil
+		} else {
+			inputHash = &prepared.InputHash
+			startedAt, deadline = &now, &prepared.Deadline
+		}
 		receipt := commandRow{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID, IdempotencyKey: key,
 			Operation: messageOperation, RequestFingerprint: fingerprint, ConversationID: conversationID,
-			State: string(aiworkbench.PlanningReadyToDispatch), UserMessageID: &messageID, SourceSequence: &sourceSequence,
-			PlannerInvocationID: &invocationID, PlannerInputHash: &prepared.InputHash, PlannerModelProfile: profile,
-			PlannerStartedAt: &now, PlannerDeadline: &prepared.Deadline, CreatedAt: now}
+			State: state, UserMessageID: &messageID, SourceSequence: &sourceSequence,
+			PlannerInvocationID: &invocationID, PlannerInputHash: inputHash,
+			WorkScopeJSON: workScope, PlannerModelProfile: profile,
+			PlannerStartedAt: startedAt, PlannerDeadline: deadline, CreatedAt: now}
 		if err := tx.Create(&receipt).Error; err != nil {
 			return err
 		}
@@ -453,6 +506,28 @@ func (s *Store) AppendUser(ctx context.Context, scope aiworkbench.Scope, convers
 		return aiworkbench.PlanningCommand{}, false, unavailable(err)
 	}
 	return result, replay, nil
+}
+
+// HistoryForCommand reconstructs only the immutable prefix used at T0. A
+// later USER or ASSISTANT message cannot enter a replayed model request.
+func (s *Store) HistoryForCommand(ctx context.Context, scope aiworkbench.Scope, key string) ([]aiworkbench.Message, aiworkbench.PlanningCommand, error) {
+	command, err := s.GetCommand(ctx, scope, key)
+	if err != nil {
+		return nil, aiworkbench.PlanningCommand{}, err
+	}
+	if command.SourceSequence == 0 || command.UserMessageID == "" {
+		return nil, aiworkbench.PlanningCommand{}, aiworkbench.ErrUnavailable
+	}
+	history, err := s.historyPrefix(s.db.WithContext(ctx), scope, command.ConversationID, command.SourceSequence, 50, 64<<10)
+	if err != nil {
+		return nil, aiworkbench.PlanningCommand{}, unavailable(err)
+	}
+	if len(history) == 0 || history[len(history)-1].ID != command.UserMessageID ||
+		history[len(history)-1].Sequence != command.SourceSequence ||
+		history[len(history)-1].Author != aiworkbench.AuthorUser {
+		return nil, aiworkbench.PlanningCommand{}, aiworkbench.ErrUnavailable
+	}
+	return history, command, nil
 }
 
 func (s *Store) CompletePlan(ctx context.Context, scope aiworkbench.Scope, key string, terminal aiworkbench.PlanTerminal) (aiworkbench.PlanningCommand, bool, error) {

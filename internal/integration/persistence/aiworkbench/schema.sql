@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS ai_workbench.commands (
     source_sequence bigint,
     planner_invocation_id char(64),
     planner_input_hash char(64),
+    work_scope jsonb CHECK (work_scope IS NULL OR octet_length(work_scope::text) <= 1024),
     planner_model_profile jsonb,
     planner_started_at timestamptz,
     planner_deadline timestamptz,
@@ -67,7 +68,9 @@ CREATE TABLE IF NOT EXISTS ai_workbench.commands (
             AND user_message_id IS NULL AND planner_invocation_id IS NULL)
         OR (operation = 'chat_message_plan' AND user_message_id IS NOT NULL
             AND source_sequence IS NOT NULL AND planner_invocation_id IS NOT NULL
-            AND planner_input_hash IS NOT NULL AND planner_model_profile IS NOT NULL
-            AND planner_started_at IS NOT NULL AND planner_deadline IS NOT NULL))
+            AND work_scope IS NOT NULL
+            AND (state = 'FAILED_BEFORE_DISPATCH' OR
+                (planner_input_hash IS NOT NULL AND planner_model_profile IS NOT NULL
+                 AND planner_started_at IS NOT NULL AND planner_deadline IS NOT NULL))))
 );
 
