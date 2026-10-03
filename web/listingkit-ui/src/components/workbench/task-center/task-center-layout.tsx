@@ -21,9 +21,9 @@ export function TaskCenterLayout({ completed = false, pendingReview = false, onR
       <nav aria-label="任务状态" className={styles.filters}>
         <Link href="/workbench/ai/tasks" prefetch={false} aria-current={!completed && !pendingReview ? "page" : undefined}>全部</Link>
         <Link href="/workbench/ai/tasks/pending" prefetch={false} aria-current={pendingReview ? "page" : undefined}>待确认</Link>
-        <Button variant="outline" disabled>执行中 · 未接入</Button>
+        <Link href="/workbench/ai/tasks/running" prefetch={false}>执行中</Link>
         <Link href="/workbench/ai/tasks/completed" prefetch={false} aria-current={completed ? "page" : undefined}>已完成</Link>
-        <Button variant="outline" disabled>已暂停 · 未接入</Button>
+        <Link href="/workbench/ai/tasks/errors" prefetch={false}>异常任务</Link>
       </nav>
       {onRefresh ? <Button variant="outline" disabled={refreshDisabled} onClick={onRefresh}>刷新记录</Button> : null}
     </ConsoleToolbar>

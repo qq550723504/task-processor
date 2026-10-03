@@ -31,6 +31,8 @@ it("labels the Review owner list as including Task-linked and direct proposals",
   render(<TaskCenterLayout pendingReview><p>提案区域</p></TaskCenterLayout>);
   expect(screen.getByRole("navigation", { name: "任务状态" }).querySelector('[aria-current="page"]')).toHaveTextContent("待确认");
   expect(screen.getByRole("link", { name: "全部" })).not.toHaveAttribute("aria-current");
+  expect(screen.getByRole("link", { name: "执行中" })).toHaveAttribute("href", "/workbench/ai/tasks/running");
+  expect(screen.getByRole("link", { name: "异常任务" })).toHaveAttribute("href", "/workbench/ai/tasks/errors");
   expect(screen.getByText("当前页面按已授权的当前企业展示已接入工作记录")).toBeVisible();
   expect(screen.queryByText(/已完成记录按条目标注所属店铺/)).not.toBeInTheDocument();
   expect(screen.getByText(/包括 BusinessTask 关联的提案与直接提交的提案/)).toBeVisible();
