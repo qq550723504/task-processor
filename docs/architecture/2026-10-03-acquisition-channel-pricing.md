@@ -1,6 +1,6 @@
 # 1688 acquisition channel pricing — design basis for #592
 
-Status: **REVIEW_REQUIRED**. This document is not an implementation authorization until an independent architecture review records `IMPLEMENTATION_READY` in #592.
+Status: **IMPLEMENTATION_READY** (independent architecture review, 2026-10-03; reviewed design blob `0871c1ed77ae4dcc0bdee2461725f3754b987f34`, no design-level `BLOCKER`). The reviewer classified offer initialization and the prior price-delay wording as `IMPLEMENTATION_TEST`; both must be resolved in this batch.
 
 ## Product outcome and authority
 
@@ -32,7 +32,7 @@ Product and Commercial remain distinct consistency boundaries. No new table, fac
 
 Commercial's existing `Offer` contract already supports `ProductDataRow`, `ResourceDataRow`, `CNY`, integer `UnitPriceMinor`, `PricingVersion`, bounds and status. The approved unit price is **5 minor units per data row**. Add one bounded, versioned server-owned catalog entry via the current Commercial owner initialization/configuration path for a **fresh** installation; do not put a price in a browser request or silently overwrite an operator's existing offer. The purchase quote freezes the catalog version/price, existing wallet order and Resource grant remain the only purchase path. If an installation has no approved active offer, show unavailable and refuse purchase; do not fabricate a purchasable UI state. This change only approves the data-row offer; AI points and store-period prices stay as previously configured/unavailable.
 
-The exact offer identifier, quantity bounds and installation mechanism are implementation details to settle within the existing Commercial owner. Prefer its current write API/initializer over direct SQL or a new administration platform; tests must demonstrate that a second initialization does not replace a changed price/version. No mutation of the retained localhost pilots or real data is part of this design/Issue.
+The exact offer identifier and quantity bounds are implementation details within the existing Commercial owner. Its schema-owner initializer is the installation point: use the existing create-only offer path, never `SaveOffer` or serving-runtime writes. Tests must demonstrate that a second initialization does not replace a changed price/version. No mutation of the retained localhost pilots or real data is part of this design/Issue.
 
 ## Verification and handoff
 
