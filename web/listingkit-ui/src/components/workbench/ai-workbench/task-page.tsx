@@ -40,18 +40,27 @@ export function BusinessTaskPage({ mode = "all", taskId }: { mode?: TaskMode; ta
 
 function ScopedTasks({ scope, authorizationKey, mode, taskId }: { scope: AIScope; authorizationKey: string; mode: TaskMode; taskId?: string }) {
   if (taskId) return <TaskDetail scope={scope} authorizationKey={authorizationKey} taskId={taskId} />;
-  return <TaskList scope={scope} authorizationKey={authorizationKey} mode={mode} />;
+  return <TaskList key={mode} scope={scope} authorizationKey={authorizationKey} mode={mode} />;
 }
 
 function TaskList({ scope, authorizationKey, mode }: { scope: AIScope; authorizationKey: string; mode: TaskMode }) {
   const [after, setAfter] = useState("");
-  const tasks = useQuery({ queryKey: ["ai-tasks", scope.userId, scope.organizationId, authorizationKey, after],
+  const tasks = useQuery({ queryKey: ["ai-tasks", scope.userId, scope.organizationId, authorizationKey, mode, after],
     queryFn: ({ signal }) => requestAIWorkbench({ route: "task-list", method: "GET", path: `tasks?limit=50${after ? `&after=${after}` : ""}`, scope, signal }),
     retry: false, staleTime: 0, refetchOnWindowFocus: false });
   const page = tasks.data?.tasks ?? [];
   const visible = page.filter(item => mode === "all" || mode === "pending" && item.state === "WAITING_CONFIRMATION" ||
     mode === "running" && item.state === "RUNNING" || mode === "completed" && item.state === "COMPLETED" ||
     mode === "errors" && (item.state === "ERROR" || item.state === "PAUSED"));
+  const next = tasks.data?.next ?? "";
+  const searching = mode !== "all" && tasks.isSuccess && !tasks.isFetching && visible.length === 0 && next !== "" && next !== after;
+  useEffect(() => {
+    if (!searching) return;
+    let active = true;
+    queueMicrotask(() => { if (active) setAfter(next); });
+    return () => { active = false; };
+  }, [searching, next]);
+  function refresh() { if (after) setAfter(""); else void tasks.refetch(); }
   return <>
     <div className={styles.metrics}>
       {[["待确认", "WAITING_CONFIRMATION"], ["执行中", "RUNNING"], ["已完成", "COMPLETED"]].map(([label, state]) => <Card key={state} className={styles.metric}>
@@ -59,10 +68,14 @@ function TaskList({ scope, authorizationKey, mode }: { scope: AIScope; authoriza
       <Card className={styles.scope}><span>工作范围</span><strong>{scope.organizationId}</strong><small>当前企业 · 当前账号</small></Card>
     </div>
     <div className={styles.toolbar}><nav aria-label="任务状态" className={styles.filters}>{filters.map(item => <Link key={item.mode} href={item.href} aria-current={mode === item.mode ? "page" : undefined} prefetch={false}>{item.label}</Link>)}</nav>
-      <Button variant="outline" onClick={() => void tasks.refetch()}>刷新状态</Button><Button asChild><Link href="/workbench/ai/chat/new" prefetch={false}>向硕米发起任务</Link></Button></div>
+      <Button variant="outline" onClick={refresh}>刷新状态</Button><Button asChild><Link href="/workbench/ai/chat/new" prefetch={false}>向硕米发起任务</Link></Button></div>
     {tasks.isPending ? <ConsoleState kind="loading" title="正在读取任务" /> : tasks.isError ? <ConsoleState kind="error" title="任务读取失败">{errorText(tasks.error)} <Button variant="outline" onClick={() => void tasks.refetch()}>重试</Button></ConsoleState> :
-      <div className={styles.list}>{visible.length ? visible.map(item => <TaskRow key={item.id} task={item} />) : <ConsoleState kind="empty" title="当前筛选无任务">只显示通过 Chat 提案确认创建的 BusinessTask。</ConsoleState>}
-        {tasks.data?.next ? <Button variant="outline" onClick={() => setAfter(tasks.data!.next)}>加载更早任务</Button> : null}</div>}
+      tasks.isFetching ? <ConsoleState kind="loading" title="正在查找符合筛选的任务" /> :
+      <div className={styles.list}>{visible.length ? visible.map(item => <TaskRow key={item.id} task={item} />) : searching ?
+        <ConsoleState kind="loading" title="正在查找符合筛选的任务" /> : next === after && next !== "" ?
+          <ConsoleState kind="error" title="任务分页暂不可继续">请刷新状态重新查询。</ConsoleState> :
+          <ConsoleState kind="empty" title="当前筛选无任务">只显示通过 Chat 提案确认创建的 BusinessTask。</ConsoleState>}
+        {visible.length > 0 && next ? <Button variant="outline" onClick={() => setAfter(next)}>加载更早任务</Button> : null}</div>}
     {mode === "pending" ? <Card className={styles.secondary}><h2>标准商品标题审核</h2><p>查看 Product Review 持有的全部标题提案，包括从 BusinessTask 提交和直接从 Product Agent 提交的提案。接受后仍需单独应用。</p><Button asChild variant="outline"><Link href="/workbench/ai/tasks/pending/other" prefetch={false}>打开标题审核</Link></Button></Card> : null}
     {mode === "completed" ? <Card className={styles.secondary}><h2>历史已完成工作记录</h2><p>原本地资料准备记录继续单独展示，不计入 BusinessTask。</p><Button asChild variant="outline"><Link href="/workbench/ai/tasks/completed/history" prefetch={false}>查看历史记录</Link></Button></Card> : null}
   </>;

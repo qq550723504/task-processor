@@ -20,13 +20,13 @@ const VALID_CONTEXT = {
 
 describe("workbench context API", () => {
   it.each([true, false])("preserves the server-derived source-account capability %s on GET and switch", async allowed => {
-    const context = { ...VALID_CONTEXT, organizations: VALID_CONTEXT.organizations.map(org => ({ ...org, capabilities: { "workbench.source_account.manage": allowed } })) };
+    const context = { ...VALID_CONTEXT, organizations: VALID_CONTEXT.organizations.map(org => ({ ...org, capabilities: { "workbench.source_account.manage": allowed, "workbench.chat.use": allowed } })) };
     vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => Response.json(context)));
     await expect(fetchWorkbenchContext()).resolves.toEqual(context);
     await expect(switchEffectiveOrganization("org-b")).resolves.toEqual(context);
   });
 
-  it.each([{}, null, true, "true", { "workbench.source_account.manage": "true" }, { "workbench.source_account.manage": 1 }, { "workbench.source_account.manage": true, "unknown.permission": true }])("rejects malformed or expanded capabilities %j", capabilities => {
+  it.each([{}, null, true, "true", { "workbench.source_account.manage": "true" }, { "workbench.source_account.manage": 1 }, { "workbench.source_account.manage": true }, { "workbench.source_account.manage": true, "workbench.chat.use": "true" }, { "workbench.source_account.manage": true, "workbench.chat.use": true, "unknown.permission": true }])("rejects malformed or expanded capabilities %j", capabilities => {
     const context = { ...VALID_CONTEXT, organizations: VALID_CONTEXT.organizations.map(org => ({ ...org, capabilities })) };
     expect(parseWorkbenchContextPayload(context).success).toBe(false);
   });

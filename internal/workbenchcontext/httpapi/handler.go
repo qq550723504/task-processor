@@ -110,6 +110,7 @@ func (h *Handler) writeContext(c *gin.Context) {
 	organizations := make([]organizationResponse, 0, len(identity.OrganizationGrants))
 	for _, grant := range identity.OrganizationGrants {
 		canManageSourceAccount := h.workbenchAuthorizer != nil && h.workbenchAuthorizer.Authorize(identity.UserID, grant.Roles, authz.PermissionWorkbenchSourceAccountManage)
+		canUseChat := h.workbenchAuthorizer != nil && h.workbenchAuthorizer.Authorize(identity.UserID, grant.Roles, authz.PermissionWorkbenchChatUse)
 		roles := append([]string(nil), grant.Roles...)
 		if h.workbenchAuthorizer != nil && h.workbenchAuthorizer.Authorize(identity.UserID, roles, authz.PermissionWorkbenchStoreDelete) && !containsRole(roles, "platform_admin") {
 			roles = append(roles, "platform_admin")
@@ -121,7 +122,7 @@ func (h *Handler) writeContext(c *gin.Context) {
 			ID:           grant.OrganizationID,
 			Name:         grant.OrganizationName,
 			Roles:        roles,
-			Capabilities: organizationCapabilitiesResponse{SourceAccountManage: canManageSourceAccount},
+			Capabilities: organizationCapabilitiesResponse{SourceAccountManage: canManageSourceAccount, ChatUse: canUseChat},
 		})
 	}
 
@@ -168,6 +169,7 @@ type organizationResponse struct {
 
 type organizationCapabilitiesResponse struct {
 	SourceAccountManage bool `json:"workbench.source_account.manage"`
+	ChatUse             bool `json:"workbench.chat.use"`
 }
 
 func writeProtocolError(c *gin.Context, status int, code string, message string) {

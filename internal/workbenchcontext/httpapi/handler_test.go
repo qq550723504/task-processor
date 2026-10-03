@@ -25,15 +25,15 @@ func TestSourceAccountCapabilityUsesConfiguredAuthorityForEachVerifiedGrant(t *t
 	for _, tc := range []struct {
 		name, user, role string
 		authorizer       *authz.ListingKitAuthorizer
-		want             bool
+		want, chatUse    bool
 	}{
-		{"viewer", "viewer", "listingkit_viewer", configured, false},
-		{"operator", "operator", "listingkit_operator", configured, true},
-		{"admin", "admin", "listingkit_admin", configured, true},
-		{"configured role", "support", "support-role", configured, true},
-		{"configured user", "support-user", "custom-viewer", configured, true},
-		{"nil authorizer", "admin", "listingkit_admin", nil, false},
-		{"zero authorizer", "admin", "listingkit_admin", &authz.ListingKitAuthorizer{}, false},
+		{"viewer", "viewer", "listingkit_viewer", configured, false, false},
+		{"operator", "operator", "listingkit_operator", configured, true, true},
+		{"admin", "admin", "listingkit_admin", configured, true, true},
+		{"configured role", "support", "support-role", configured, true, true},
+		{"configured user", "support-user", "custom-viewer", configured, true, false},
+		{"nil authorizer", "admin", "listingkit_admin", nil, false, false},
+		{"zero authorizer", "admin", "listingkit_admin", &authz.ListingKitAuthorizer{}, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			response := serveHandler(t, http.MethodGet, "/api/v1/workbench/context", "", authidentity.AuthenticatedIdentity{
@@ -50,7 +50,7 @@ func TestSourceAccountCapabilityUsesConfiguredAuthorityForEachVerifiedGrant(t *t
 			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
 			require.Len(t, result.Organizations, 1)
 			require.Equal(t, "org-b", result.Organizations[0].ID)
-			require.Equal(t, map[string]bool{authz.PermissionWorkbenchSourceAccountManage: tc.want}, result.Organizations[0].Capabilities)
+			require.Equal(t, map[string]bool{authz.PermissionWorkbenchSourceAccountManage: tc.want, authz.PermissionWorkbenchChatUse: tc.chatUse}, result.Organizations[0].Capabilities)
 		})
 	}
 }
@@ -67,8 +67,8 @@ func TestSourceAccountCapabilityDoesNotUseHomeOrAnotherOrganizationRole(t *testi
 		Organizations []struct{ Capabilities map[string]bool }
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
-	require.Equal(t, map[string]bool{authz.PermissionWorkbenchSourceAccountManage: true}, result.Organizations[0].Capabilities)
-	require.Equal(t, map[string]bool{authz.PermissionWorkbenchSourceAccountManage: false}, result.Organizations[1].Capabilities)
+	require.Equal(t, map[string]bool{authz.PermissionWorkbenchSourceAccountManage: true, authz.PermissionWorkbenchChatUse: true}, result.Organizations[0].Capabilities)
+	require.Equal(t, map[string]bool{authz.PermissionWorkbenchSourceAccountManage: false, authz.PermissionWorkbenchChatUse: false}, result.Organizations[1].Capabilities)
 }
 
 type workbenchBodyBoundaryReader struct {
@@ -88,7 +88,7 @@ func TestWorkbenchContextExposesConfiguredPlatformAdminToBrowserRoleChecks(t *te
 	}, NewHandlerWithWorkbenchAuthorizer(authorizer).GetContext)
 
 	require.Equal(t, http.StatusOK, response.Code)
-	require.JSONEq(t, `{"user":{"id":"configured-user"},"homeOrganizationId":"org-a","effectiveOrganizationId":"org-a","selectionRequired":false,"organizations":[{"id":"org-a","name":"Organization A","roles":["custom-role","platform_admin"],"capabilities":{"workbench.source_account.manage":true}}]}`, response.Body.String())
+	require.JSONEq(t, `{"user":{"id":"configured-user"},"homeOrganizationId":"org-a","effectiveOrganizationId":"org-a","selectionRequired":false,"organizations":[{"id":"org-a","name":"Organization A","roles":["custom-role","platform_admin"],"capabilities":{"workbench.source_account.manage":true,"workbench.chat.use":false}}]}`, response.Body.String())
 }
 
 func TestKnowledgeManagementRoleProjectionMatchesAuthorityPerOrganization(t *testing.T) {
@@ -271,7 +271,7 @@ func TestWorkbenchContextGetProjectsOnlyPublicIdentityContract(t *testing.T) {
 		"homeOrganizationId":"org-a",
 		"effectiveOrganizationId":"org-b",
 		"selectionRequired":false,
-		"organizations":[{"id":"org-a","name":"Organization A","roles":["listingkit_admin"],"capabilities":{"workbench.source_account.manage":false}}]
+		"organizations":[{"id":"org-a","name":"Organization A","roles":["listingkit_admin"],"capabilities":{"workbench.source_account.manage":false,"workbench.chat.use":false}}]
 	}`, response.Body.String())
 	for _, forbidden := range []string{"project-secret", "tokenExpiresAt", "authorizationId", `"source":`, "bearer"} {
 		require.NotContains(t, response.Body.String(), forbidden)
@@ -295,8 +295,8 @@ func TestWorkbenchContextGetReturnsSelectionRequiredWithNullEffectiveOrganizatio
 		"effectiveOrganizationId":null,
 		"selectionRequired":true,
 		"organizations":[
-			{"id":"org-a","name":"Organization A","roles":["role-a"],"capabilities":{"workbench.source_account.manage":false}},
-			{"id":"org-b","name":"Organization B","roles":["role-b"],"capabilities":{"workbench.source_account.manage":false}}
+			{"id":"org-a","name":"Organization A","roles":["role-a"],"capabilities":{"workbench.source_account.manage":false,"workbench.chat.use":false}},
+			{"id":"org-b","name":"Organization B","roles":["role-b"],"capabilities":{"workbench.source_account.manage":false,"workbench.chat.use":false}}
 		]
 	}`, response.Body.String())
 }
@@ -333,7 +333,7 @@ func TestWorkbenchContextPutReturnsSamePublicContractAfterLiveSwitch(t *testing.
 		"homeOrganizationId":"org-a",
 		"effectiveOrganizationId":"org-b",
 		"selectionRequired":false,
-		"organizations":[{"id":"org-b","name":"Organization B","roles":["listingkit_admin"],"capabilities":{"workbench.source_account.manage":false}}]
+		"organizations":[{"id":"org-b","name":"Organization B","roles":["listingkit_admin"],"capabilities":{"workbench.source_account.manage":false,"workbench.chat.use":false}}]
 	}`, response.Body.String())
 }
 

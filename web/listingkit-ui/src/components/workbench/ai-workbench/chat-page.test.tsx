@@ -7,7 +7,7 @@ import { ChatPage } from "./chat-page";
 
 const fixture = vi.hoisted(() => ({
   request: vi.fn(), push: vi.fn(), search: new URLSearchParams(),
-  context: { user: { id: "user-a" }, effectiveOrganization: { id: "org-a" }, roles: ["listingkit_operator"],
+  context: { user: { id: "user-a" }, effectiveOrganization: { id: "org-a", capabilities: { "workbench.chat.use": true } }, roles: ["listingkit_operator"],
     isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null },
 }));
 vi.mock("@/lib/api/ai-workbench", async original => ({ ...await original<typeof import("@/lib/api/ai-workbench")>(), requestAIWorkbench: fixture.request }));
@@ -23,7 +23,7 @@ function tree() { return <QueryClientProvider client={client}><ChatPage mode="de
 
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  fixture.context.effectiveOrganization = { id: "org-a" };
+  fixture.context.effectiveOrganization = { id: "org-a", capabilities: { "workbench.chat.use": true } };
   fixture.context.roles = ["listingkit_operator"];
   fixture.context.isSwitching = false;
   fixture.request.mockReset(); fixture.push.mockReset(); sessionStorage.clear();
@@ -57,6 +57,59 @@ it("loads favorites before pagination so an older saved conversation is visible"
   render(<QueryClientProvider client={client}><ChatPage mode="saved" /></QueryClientProvider>);
   expect(await screen.findByRole("link", { name: /重要会话/ })).toBeVisible();
   expect(fixture.request).toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining("saved=true") }));
+});
+
+it("retains the newest message and proposal while loading older messages", async () => {
+  const newest = { ID: operationId, ConversationID: conversationId, Sequence: 102, Author: "USER", Content: "最新需求", CreatedAt: "2026-10-03T00:00:00Z" };
+  const oldest = { ...newest, ID: "11111111-1111-4111-8111-111111111112", Sequence: 1, Content: "最早需求" };
+  const proposal = { id: "d5d9d1ca-1db3-43af-9649-dcdf3663745b", digest: "a".repeat(64), sourceSequence: 102,
+    goalSummary: "最新标题方案", productKey: "product", targetPlatform: "shein", humanReviewRequired: true, detailsAvailable: true };
+  fixture.request.mockImplementation(async ({ route, path }) => {
+    if (route !== "conversation-read") throw new AIWorkbenchError("INVALID_REQUEST");
+    return path.includes("before=53") ? { conversation, messages: [oldest], proposals: [proposal], before: "" }
+      : { conversation, messages: [newest], proposals: [proposal], before: "53" };
+  });
+  render(tree());
+  expect(await screen.findByText("最新需求")).toBeVisible();
+  expect(screen.getByText("最新标题方案")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "加载更早消息" }));
+  expect(await screen.findByText("最早需求")).toBeVisible();
+  expect(screen.getByText("最新需求")).toBeVisible();
+  expect(screen.getByText("最新标题方案")).toBeVisible();
+  expect(screen.getByRole("button", { name: "确认并创建任务" })).toBeEnabled();
+});
+
+it("shows chat history without mutation controls when the current organization lacks chat use", async () => {
+  fixture.context.roles = ["listingkit_viewer"];
+  fixture.context.effectiveOrganization = { id: "org-a", capabilities: { "workbench.chat.use": false } };
+  const proposal = { id: "d5d9d1ca-1db3-43af-9649-dcdf3663745b", digest: "a".repeat(64), sourceSequence: 1,
+    goalSummary: "只读方案", productKey: "product", targetPlatform: "shein", humanReviewRequired: true, detailsAvailable: true };
+  fixture.request.mockImplementation(async ({ route }) => route === "conversation-read" ? { conversation,
+    messages: [{ ID: operationId, ConversationID: conversationId, Sequence: 1, Author: "USER", Content: "已有内容", CreatedAt: "2026-10-03T00:00:00Z" }],
+    proposals: [proposal], before: "" } : Promise.reject(new AIWorkbenchError("FORBIDDEN")));
+  render(tree());
+  expect(await screen.findByText("已有内容")).toBeVisible();
+  expect(screen.getByText("只读方案")).toBeVisible();
+  for (const name of ["收藏", "归档", "发送消息", "确认并创建任务"]) expect(screen.queryByRole("button", { name })).toBeNull();
+  expect(screen.queryByLabelText("需求")).toBeNull();
+  expect(fixture.request).toHaveBeenCalledTimes(1);
+});
+
+it("hides creation for a read-only organization and restores it after switching to a writable one", async () => {
+  fixture.context.roles = ["listingkit_viewer"];
+  fixture.context.effectiveOrganization = { id: "org-a", capabilities: { "workbench.chat.use": false } };
+  fixture.request.mockImplementation(async ({ route }) => route === "conversation-list" ? { conversations: [], next: "" }
+    : Promise.reject(new AIWorkbenchError("FORBIDDEN")));
+  const view = render(<QueryClientProvider client={client}><ChatPage mode="home" /></QueryClientProvider>);
+  await screen.findByText("开始一项新需求");
+  expect(screen.queryByRole("button", { name: "进入新建会话 →" })).toBeNull();
+  fixture.context.roles = ["listingkit_operator"];
+  fixture.context.effectiveOrganization = { id: "org-b", capabilities: { "workbench.chat.use": true } };
+  view.rerender(<QueryClientProvider client={client}><ChatPage mode="home" /></QueryClientProvider>);
+  expect(await screen.findByRole("button", { name: "进入新建会话 →" })).toBeVisible();
+  fixture.context.effectiveOrganization = { id: "org-b", capabilities: { "workbench.chat.use": false } };
+  view.rerender(<QueryClientProvider client={client}><ChatPage mode="home" /></QueryClientProvider>);
+  expect(screen.queryByRole("button", { name: "进入新建会话 →" })).toBeNull();
 });
 
 it("explains a terminal plan failure before dispatch and keeps the goal for a new attempt", async () => {
@@ -108,7 +161,7 @@ it("unmounts the old organization view and never sends its pending draft to the 
   view.rerender(tree());
   expect(screen.queryByDisplayValue("企业甲内容")).toBeNull();
   fixture.context.isSwitching = false;
-  fixture.context.effectiveOrganization = { id: "org-b" };
+  fixture.context.effectiveOrganization = { id: "org-b", capabilities: { "workbench.chat.use": true } };
   fixture.request.mockImplementation(async ({ route }) => route === "conversation-read"
     ? { conversation: { ...conversation, Scope: { OrganizationID: "org-b", ActorID: "user-a" } }, messages: [], proposals: [], before: "" }
     : Promise.reject(new AIWorkbenchError("OUTCOME_UNKNOWN")));
@@ -190,14 +243,14 @@ it("discards an A response that arrives after A to B to A context switching", as
   expect(oldSignal.aborted).toBe(true);
   client.clear();
   fixture.context.isSwitching = false;
-  fixture.context.effectiveOrganization = { id: "org-b" };
+  fixture.context.effectiveOrganization = { id: "org-b", capabilities: { "workbench.chat.use": true } };
   view.rerender(tree());
   await screen.findByText("开始讨论");
   fixture.context.isSwitching = true;
   view.rerender(tree());
   client.clear();
   fixture.context.isSwitching = false;
-  fixture.context.effectiveOrganization = { id: "org-a" };
+  fixture.context.effectiveOrganization = { id: "org-a", capabilities: { "workbench.chat.use": true } };
   view.rerender(tree());
   await screen.findByText("企业甲的当前内容");
   await act(async () => resolveOld({ conversation, messages: [{ ID: operationId, ConversationID: conversationId, Sequence: 1,

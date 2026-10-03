@@ -30,3 +30,61 @@ it("offers reconciliation, without a restart claim, for an expired running execu
   })));
   client.clear();
 });
+
+it("continues across unrelated Task pages before declaring a state view empty", async () => {
+  const first = "550e8400-e29b-41d4-a716-446655440000";
+  const second = "550e8400-e29b-41d4-a716-446655440001";
+  const third = "550e8400-e29b-41d4-a716-446655440002";
+  const task = (id: string, state: string, title: string) => ({ id, title, state, projectionAvailable: true,
+    productDetailsAvailable: false, reason: "pending" });
+  fixture.request.mockImplementation(async ({ route, path }) => {
+    if (route !== "task-list") throw new Error("unexpected route");
+    if (path.includes(`after=${second}`)) return { tasks: [task(third, "WAITING_CONFIRMATION", "Older pending")], next: "" };
+    if (path.includes(`after=${first}`)) return { tasks: [task(second, "COMPLETED", "Unrelated two")], next: second };
+    return { tasks: [task(first, "COMPLETED", "Unrelated one")], next: first };
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><BusinessTaskPage mode="pending" /></QueryClientProvider>);
+  expect(await screen.findByRole("link", { name: /Older pending/ })).toBeVisible();
+  expect(fixture.request).toHaveBeenCalledTimes(3);
+  expect(screen.queryByText("当前筛选无任务")).toBeNull();
+  client.clear();
+});
+
+it("shows an empty state only after every Task page has been checked", async () => {
+  const cursor = "550e8400-e29b-41d4-a716-446655440000";
+  fixture.request.mockImplementation(async ({ route, path }) => {
+    if (route !== "task-list") throw new Error("unexpected route");
+    return path.includes(`after=${cursor}`) ? { tasks: [], next: "" }
+      : { tasks: [{ id: cursor, title: "Unrelated", state: "COMPLETED" }], next: cursor };
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><BusinessTaskPage mode="running" /></QueryClientProvider>);
+  expect(await screen.findByText("当前筛选无任务")).toBeVisible();
+  expect(fixture.request).toHaveBeenCalledTimes(2);
+  client.clear();
+});
+
+it("waits for the refreshed first page before following its old cursor", async () => {
+  const cursor = "550e8400-e29b-41d4-a716-446655440000";
+  const task = (id: string, state: string, title: string) => ({ id, title, state, projectionAvailable: true });
+  let resolveRefresh!: (page: unknown) => void;
+  let firstReads = 0;
+  fixture.request.mockImplementation(async ({ route, path }) => {
+    if (route !== "task-list") throw new Error("unexpected route");
+    if (path.includes(`after=${cursor}`)) return { tasks: [task(cursor, "WAITING_CONFIRMATION", "Older pending")], next: "" };
+    firstReads++;
+    if (firstReads === 1) return { tasks: [task(cursor, "COMPLETED", "Unrelated")], next: cursor };
+    return new Promise(resolve => { resolveRefresh = resolve; });
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><BusinessTaskPage mode="pending" /></QueryClientProvider>);
+  expect(await screen.findByRole("link", { name: /Older pending/ })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "刷新状态" }));
+  await waitFor(() => expect(firstReads).toBe(2));
+  expect(screen.getByText("正在查找符合筛选的任务")).toBeVisible();
+  resolveRefresh({ tasks: [task(cursor, "WAITING_CONFIRMATION", "New pending")], next: cursor });
+  expect(await screen.findByRole("link", { name: /New pending/ })).toBeVisible();
+  expect(screen.queryByRole("link", { name: /Older pending/ })).toBeNull();
+  client.clear();
+});
