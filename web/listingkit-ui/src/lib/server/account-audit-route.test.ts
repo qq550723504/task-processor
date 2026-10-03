@@ -40,6 +40,24 @@ describe("audit BFF exported route", () => {
     expect(result.status).toBe(200);
     expect(fetch.mock.calls[0][0]).toBe("http://127.0.0.1:8085/api/v1/account/audit?limit=20&actor=actor-1&operation=update");
   });
+  it("forwards only bounded content, time and target member filters", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json(empty)); vi.stubGlobal("fetch", fetch);
+    const response = await GET(request("?query=%E6%A8%A1%E5%9E%8B&period=30d&member=member-1"));
+    expect(response.status).toBe(200);
+    const upstream = new URL(fetch.mock.calls[0][0]);
+    expect(upstream.searchParams.get("query")).toBe("模型");
+    expect(upstream.searchParams.get("period")).toBe("30d");
+    expect(upstream.searchParams.get("member")).toBe("member-1");
+  });
+  it.each(["?query=", "?period=90d", "?member=bad%20member", "?query=a&query=b"])("rejects invalid new filter %s", async query => {
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    expect((await GET(request(query))).status).toBe(400); expect(fetch).not.toHaveBeenCalled();
+  });
+  it("rejects U+0085 in content before forwarding to Go", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json(empty)); vi.stubGlobal("fetch", fetch);
+    expect((await GET(request("?query=a%C2%85b"))).status).toBe(400);
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it.each(["?limit=0", "?limit=101", "?limit=1&limit=2", "?org=A", "?cursor=", "?limit=01", "?limit=1&raw=x", "?actor=bad%20actor", "?operation=unknown"])("rejects query %s before upstream", async query => {
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
     expect((await GET(request(query))).status).toBe(400); expect(fetch).not.toHaveBeenCalled();

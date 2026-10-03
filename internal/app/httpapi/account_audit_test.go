@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -28,6 +29,31 @@ type auditHTTPHistory struct {
 
 type imagePointAuditHTTPHistory struct{ calls int }
 
+type completeEmptyUsageAuditHTTP struct{}
+
+func (completeEmptyUsageAuditHTTP) Complete() bool { return true }
+func (completeEmptyUsageAuditHTTP) ListObservedAIUsageAudit(context.Context, string, int, *accountaudit.AuditPosition) (accountaudit.UsageAuditPage, error) {
+	return accountaudit.UsageAuditPage{Items: []accountaudit.UsageAuditEvent{}}, nil
+}
+
+func TestAccountAuditFilterInputAcceptsBoundedSearchTimeAndTargetMember(t *testing.T) {
+	values := url.Values{"query": {"模型实际用量"}, "period": {"30d"}, "member": {"member-1"}, "actor": {"actor-1"}}
+	if _, _, err := accountAuditPageInput(values.Encode()); err != nil {
+		t.Fatal(err)
+	}
+	filter, err := accountAuditFilterInput(values)
+	if err != nil || filter.Content != "模型实际用量" || filter.Period != "30d" || filter.MemberID != "member-1" || filter.ActorSubject != "actor-1" {
+		t.Fatalf("filter=%+v err=%v", filter, err)
+	}
+	for _, bad := range []url.Values{{"query": {strings.Repeat("x", 81)}}, {"period": {"90d"}}, {"member": {"bad space"}}, {"query": {"a", "b"}}} {
+		if _, _, err := accountAuditPageInput(bad.Encode()); err == nil {
+			if _, err := accountAuditFilterInput(bad); err == nil {
+				t.Fatalf("accepted %v", bad)
+			}
+		}
+	}
+}
+
 func (h *imagePointAuditHTTPHistory) ListImagePointDebits(_ context.Context, org, actor string, _ int, _ *orgresource.ImagePointAuditPosition) (orgresource.ImagePointAuditPage, error) {
 	h.calls++
 	if org != "B" {
@@ -36,12 +62,12 @@ func (h *imagePointAuditHTTPHistory) ListImagePointDebits(_ context.Context, org
 	if actor != "" && actor != "safe-actor" {
 		return orgresource.ImagePointAuditPage{}, nil
 	}
-	return orgresource.ImagePointAuditPage{Items: []orgresource.ImagePointDebit{{OrganizationID: org, EventID: "event-1", ActorID: "safe-actor", MemberID: "grant-1", RunID: "run-1", IntentID: "intent-1", PriceVersion: "price-1", Points: 12, CreatedAt: time.Now().UTC().Truncate(time.Microsecond)}}}, nil
+	return orgresource.ImagePointAuditPage{Items: []orgresource.ImagePointDebit{{OrganizationID: org, EventID: "event-1", ActorID: "safe-actor", MemberID: "grant-1", RunID: "run-1", IntentID: "intent-1", PriceVersion: "price-1", Points: 12, CreatedAt: time.Now().UTC().Add(-time.Second).Truncate(time.Microsecond)}}}, nil
 }
 
 func TestAccountAuditHTTPProjectsImagePointsUnderLiveOrgPermission(t *testing.T) {
 	points := &imagePointAuditHTTPHistory{}
-	query, err := accountaudit.NewCurrentAuditSources(&auditHTTPHistory{}, nil, nil, nil, points, nil)
+	query, err := accountaudit.NewCurrentAuditSources(&auditHTTPHistory{}, emptyAdditionalAuditHTTP{}, emptyAdditionalAuditHTTP{}, completeEmptyUsageAuditHTTP{}, points, emptyAdditionalAuditHTTP{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +89,14 @@ func TestAccountAuditHTTPProjectsImagePointsUnderLiveOrgPermission(t *testing.T)
 	w := get("B")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"points":{"memberId":"grant-1","quantity":"12","priceVersion":"price-1","intentId":"intent-1"}`) {
 		t.Fatalf("point read %d %s", w.Code, w.Body.String())
+	}
+	filteredRequest := httptest.NewRequest("GET", accountAuditPath+"?period=all&member=grant-1&query="+url.QueryEscape("图片 AI 点数已扣"), nil)
+	filteredRequest.Header.Set("X-Requested-Organization-ID", "B")
+	filteredRequest.Header.Set("Authorization", "Bearer fixture")
+	filtered := httptest.NewRecorder()
+	server.Handler.ServeHTTP(filtered, filteredRequest)
+	if filtered.Code != 200 || !strings.Contains(filtered.Body.String(), `"eventType":"account_ai_points.committed"`) || strings.Contains(filtered.Body.String(), `"eventType":"source_account.operation_committed"`) {
+		t.Fatalf("filtered point read %d %s", filtered.Code, filtered.Body.String())
 	}
 	before := points.calls
 	if w = get("A"); w.Code != 403 {

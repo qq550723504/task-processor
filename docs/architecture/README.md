@@ -126,6 +126,16 @@ source of truth for long-lived rules.
   - IMPLEMENTATION_READY #36 bounded completed-work v2 projection of Listing's
     historical Store ID and local preparation action; no Store name read,
     remote publication claim, or Product Review dependency.
+- [`ai-workbench-chat-business-task-v1.md`](./ai-workbench-chat-business-task-v1.md)
+  - APPROVED / IMPLEMENTATION_READY #576 Slice E: owner-scoped Conversation,
+    no-tool Eino/eino-ext planning, immutable execution proposals and BusinessTask,
+    exact model-profile/replay semantics and current AgentRun/Review projections.
+    Reuses #580 title policy/organization-only credentials; native protocols and
+    run-profile binding are approved implementation contracts, not deployed capability.
+    Reviewed contract HEAD `620495bf03b57099e4b934f89c04e0d989d543d7` received
+    independent no-major-issues verification and CI `37032794759` SUCCESS.
+    Production Writer waits for PR #578 merge and execution-Issue admission;
+    final-head merge checks and separate rollout/provider permissions still apply.
 
 - [`member-directory-query-v1.md`](./member-directory-query-v1.md)
   - #575 bounded current Membership query increment: complete display-name/login
@@ -141,12 +151,23 @@ source of truth for long-lived rules.
     including Required CI Gate. Production Writer starts only after PR #571 merges
     to main; rollout/provider use remain separately gated.
 
+- [`product-agent-text-provider-neutral-v1.md`](./product-agent-text-provider-neutral-v1.md)
+  - IMPLEMENTATION_READY #573 architecture for organization-scoped,
+    provider-neutral title text admission over OpenAI-compatible routes. The
+    user's new supplier decision supersedes the old GRSAI-only requirement;
+    actual paid execution still requires route-specific metering, limits,
+    pricing and paid-call authorization.
+
 - [`account-audit-summary-v1.md`](./account-audit-summary-v1.md)
   - IMPLEMENTATION_READY #478 four true Account Audit totals over the complete
     30-day window of current committed owner events, preserving live Organization
     authorization, canonical operation identity and existing list pagination.
     Independent Store/Billing history, rollout and product acceptance remain outside
     this bounded increment.
+
+- [`account-audit-filters-v1.md`](./account-audit-filters-v1.md)
+  - IMPLEMENTATION_READY #581: bounded cross-source content, time and affected
+    member filters with complete matching pagination and unchanged fact owners.
 
 - [`unified-base-prepaid-resources-v1.md`](./unified-base-prepaid-resources-v1.md)
   - IMPLEMENTATION_READY design basis for #478/#564: current Figma base plan, native Stores, prepaid purchases, real resource events and Product Agent point metering; supersedes subscription/quota/Token entry paths without changing repository package-boundary rules.
