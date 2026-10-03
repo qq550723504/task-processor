@@ -80,6 +80,7 @@ type productAgentApplication struct {
 	assets             *assetinspect.Invoker
 	readiness          *readinessinspect.Invoker
 	points             *orgresourceadapter.GormModelInvocationRepository
+	textAdmission      *governed.BoundedAdmission
 }
 
 func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, receipts sourcing.PublishedAcquisitionReader, resolver organizationIdentityResolver, auth *authz.ListingKitAuthorizer, cfg ProductAgentDependencies) (*productAgentApplication, error) {
@@ -211,7 +212,8 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 		route, routeErr := routeResolver.Resolve(ctx, aicapability.TextInputIdentity{OrganizationID: organizationID, Operation: aicapability.OperationProductAgentDecision})
 		return route.Profile, routeErr
 	}
-	executor := &governed.Executor{Ledger: cfg.Ledger, Resolve: routeResolver.Resolve, Authorize: func(ctx context.Context, in aicapability.TextInputIdentity) error {
+	a.textAdmission = governed.NewBoundedAdmission()
+	executor := &governed.Executor{Ledger: cfg.Ledger, Admission: a.textAdmission, Resolve: routeResolver.Resolve, Authorize: func(ctx context.Context, in aicapability.TextInputIdentity) error {
 		i, e := a.freshIdentity(ctx)
 		if e != nil || i.TenantID != in.OrganizationID || i.UserID != in.ActorID || i.EffectiveMemberID != in.MemberID {
 			return review.ErrForbidden

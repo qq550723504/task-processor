@@ -32,6 +32,7 @@ type InvocationLedger interface {
 // current route and permission on every call, including the final handoff.
 type Executor struct {
 	Ledger        InvocationLedger
+	Admission     *BoundedAdmission
 	Resolve       func(context.Context, aicapability.TextInputIdentity) (QualifiedRoute, error)
 	Authorize     func(context.Context, aicapability.TextInputIdentity) error
 	BaseTransport http.RoundTripper
@@ -55,7 +56,7 @@ func sameRoute(a, b QualifiedRoute) bool {
 }
 
 func (e *Executor) admitted(ctx context.Context, input aicapability.TextInputIdentity) (QualifiedRoute, error) {
-	if e == nil || e.Ledger == nil || e.Resolve == nil || e.Authorize == nil || ctx == nil || ctx.Err() != nil {
+	if e == nil || e.Ledger == nil || e.Admission == nil || e.Resolve == nil || e.Authorize == nil || ctx == nil || ctx.Err() != nil {
 		return QualifiedRoute{}, ErrNotDispatched
 	}
 	if err := e.Authorize(ctx, input); err != nil {
@@ -110,9 +111,14 @@ func (e *Executor) Generate(ctx context.Context, input aicapability.TextInputIde
 func (e *Executor) GenerateWithGate(ctx context.Context, input aicapability.TextInputIdentity, expected aicapability.TextQuote,
 	validate func(string) error, beforeSend func(context.Context) (func(), error)) (TextOutput, error) {
 	quote, err := aicapability.QuoteText(input)
-	if err != nil || quote != expected || input.InvocationID == "" {
+	if err != nil || quote != expected || input.InvocationID == "" || ctx == nil {
 		return TextOutput{}, ErrNotDispatched
 	}
+	// Admission and the final transport handoff share the frozen attempt bound.
+	// A shorter caller deadline (such as a Workbench command) wins.
+	boundedCtx, cancel := context.WithTimeout(ctx, input.Profile.DeadlineBound)
+	defer cancel()
+	ctx = boundedCtx
 	route, err := e.admitted(ctx, input)
 	if err != nil {
 		return TextOutput{}, err
@@ -128,16 +134,24 @@ func (e *Executor) GenerateWithGate(ctx context.Context, input aicapability.Text
 		MaximumOutputTokens: int(p.MaximumCompletionTokens), MaximumRequestBytes: int64(p.MaximumInputBytes),
 		MaximumResponseBytes: int64(p.MaximumOutputBytes), Timeout: p.DeadlineBound}
 	guard, err := NewGuardedClient(guardCfg, e.BaseTransport, func(gateCtx context.Context) error {
-		current, checkErr := e.admitted(gateCtx, input)
+		// The SDK may construct its own request context. The frozen caller bound
+		// remains authoritative at the actual guarded network handoff.
+		if ctx.Err() != nil || gateCtx.Err() != nil {
+			return ErrNotDispatched
+		}
+		current, checkErr := e.admitted(ctx, input)
 		if checkErr != nil || !sameRoute(route, current) {
 			return ErrNotDispatched
 		}
 		if beforeSend != nil {
 			var permitErr error
-			cleanup, permitErr = beforeSend(gateCtx)
+			cleanup, permitErr = beforeSend(ctx)
 			if permitErr != nil {
 				return permitErr
 			}
+		}
+		if ctx.Err() != nil || gateCtx.Err() != nil {
+			return ErrNotDispatched
 		}
 		return nil
 	})
@@ -168,8 +182,16 @@ func (e *Executor) GenerateWithGate(ctx context.Context, input aicapability.Text
 		}
 		return TextOutput{}, ErrNotDispatched
 	}
-	output, generationErr := GenerateText(ctx, component, input.System, input.Prompt, guard)
-	if guard.NetworkSends() == 0 {
+	var output TextOutput
+	var generationErr error
+	release, admissionErr := e.Admission.Acquire(ctx, input)
+	if admissionErr == nil {
+		func() {
+			defer release()
+			output, generationErr = GenerateText(ctx, component, input.System, input.Prompt, guard)
+		}()
+	}
+	if admissionErr != nil || guard.NetworkSends() == 0 {
 		record.Outcome = aicapability.InvocationFailed
 		record.FinishedAt = time.Now().UTC()
 		record.ErrorCode = "rejected_before_dispatch"

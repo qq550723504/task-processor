@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +21,139 @@ type recordingLedger struct {
 	replayClaim bool
 	reserved    bool
 	records     []aicapability.InvocationRecord
+}
+
+type parallelAdmissionLedger struct {
+	mu      sync.Mutex
+	claimed map[string]bool
+}
+
+func (l *parallelAdmissionLedger) ClaimInvocation(_ context.Context, record aicapability.InvocationRecord) (bool, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.claimed[record.InvocationID] {
+		return false, nil
+	}
+	l.claimed[record.InvocationID] = true
+	return true, nil
+}
+func (*parallelAdmissionLedger) ReserveAIInvocationUsage(context.Context, string, string, string, int64, time.Time) error {
+	return nil
+}
+func (*parallelAdmissionLedger) ReleaseAIInvocationUsage(context.Context, string, string) error {
+	return nil
+}
+func (*parallelAdmissionLedger) RecordInvocation(context.Context, aicapability.InvocationRecord) error {
+	return nil
+}
+
+func TestExecutorBoundsOverlappingSendsForOneCredential(t *testing.T) {
+	var sends atomic.Int32
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		sends.Add(1)
+		<-release
+		_, _ = fmt.Fprint(w, `{"id":"chatcmpl-test","object":"chat.completion","created":1,"model":"synthetic-model","choices":[{"index":0,"message":{"role":"assistant","content":"READY"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`)
+	}))
+	defer server.Close()
+	profile := testTextProfile(server.URL)
+	ledger := &parallelAdmissionLedger{claimed: make(map[string]bool)}
+	executor := Executor{Ledger: ledger, Admission: NewBoundedAdmission(),
+		Resolve: func(context.Context, aicapability.TextInputIdentity) (QualifiedRoute, error) {
+			return QualifiedRoute{Profile: profile, Endpoint: server.URL, APIKey: "synthetic-only"}, nil
+		},
+		Authorize: func(context.Context, aicapability.TextInputIdentity) error { return nil }}
+	var calls sync.WaitGroup
+	for i := range 12 {
+		calls.Add(1)
+		go func(index int) {
+			defer calls.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			defer cancel()
+			input := aicapability.TextInputIdentity{OrganizationID: "org-1", ActorID: "user-1", MemberID: "member-1",
+				Operation: aicapability.OperationAIWorkbenchChatPlan, InvocationID: fmt.Sprintf("inv-%d", index),
+				System: "system", Prompt: "prompt", Profile: profile}
+			quote, err := aicapability.QuoteText(input)
+			if err == nil {
+				_, _ = executor.Generate(ctx, input, quote, nil)
+			}
+		}(i)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for sends.Load() < 10 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	// Give the remaining contenders time to reach the same route's admission.
+	time.Sleep(100 * time.Millisecond)
+	observed := sends.Load()
+	close(release)
+	calls.Wait()
+	require.EqualValues(t, 10, observed, "a credential must not have more than ten simultaneous model sends")
+}
+
+func TestExecutorAdmissionDeadlineLeavesDurableNoSendFact(t *testing.T) {
+	var sends atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { sends.Add(1) }))
+	defer server.Close()
+	profile := testTextProfile(server.URL)
+	input := aicapability.TextInputIdentity{OrganizationID: "org-1", ActorID: "user-1", MemberID: "member-1",
+		Operation: aicapability.OperationAIWorkbenchChatPlan, InvocationID: "admission-expired",
+		System: "system", Prompt: "prompt", Profile: profile}
+	quote, err := aicapability.QuoteText(input)
+	require.NoError(t, err)
+	admission := NewBoundedAdmission()
+	for range 15 {
+		release, acquireErr := admission.Acquire(context.Background(), input)
+		require.NoError(t, acquireErr)
+		release()
+	}
+	ledger := &recordingLedger{}
+	executor := Executor{Ledger: ledger, Admission: admission,
+		Resolve: func(context.Context, aicapability.TextInputIdentity) (QualifiedRoute, error) {
+			return QualifiedRoute{Profile: profile, Endpoint: server.URL, APIKey: "synthetic-only"}, nil
+		},
+		Authorize: func(context.Context, aicapability.TextInputIdentity) error { return nil }}
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	_, err = executor.Generate(ctx, input, quote, nil)
+	require.ErrorIs(t, err, ErrNotDispatched)
+	require.Zero(t, sends.Load())
+	require.Len(t, ledger.records, 2)
+	require.Equal(t, aicapability.InvocationFailed, ledger.records[1].Outcome)
+	require.True(t, ledger.records[1].UsageKnown)
+	require.Zero(t, ledger.records[1].TotalTokens)
+}
+
+func TestExecutorFinalGateRechecksDeadlineAfterSlowAuthorization(t *testing.T) {
+	var sends atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { sends.Add(1) }))
+	defer server.Close()
+	profile := testTextProfile(server.URL)
+	input := aicapability.TextInputIdentity{OrganizationID: "org-1", ActorID: "user-1", MemberID: "member-1",
+		Operation: aicapability.OperationAIWorkbenchChatPlan, InvocationID: "slow-final-gate",
+		System: "system", Prompt: "prompt", Profile: profile}
+	quote, err := aicapability.QuoteText(input)
+	require.NoError(t, err)
+	ledger := &recordingLedger{}
+	var authorizations atomic.Int32
+	executor := Executor{Ledger: ledger, Admission: NewBoundedAdmission(),
+		Resolve: func(context.Context, aicapability.TextInputIdentity) (QualifiedRoute, error) {
+			return QualifiedRoute{Profile: profile, Endpoint: server.URL, APIKey: "synthetic-only"}, nil
+		},
+		Authorize: func(ctx context.Context, _ aicapability.TextInputIdentity) error {
+			if authorizations.Add(1) == 2 {
+				<-ctx.Done() // A stale dependency may still return nil after this wait.
+			}
+			return nil
+		}}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	_, err = executor.Generate(ctx, input, quote, nil)
+	require.ErrorIs(t, err, ErrNotDispatched)
+	require.Zero(t, sends.Load())
+	require.EqualValues(t, 2, authorizations.Load())
+	require.Len(t, ledger.records, 2)
+	require.Equal(t, aicapability.InvocationFailed, ledger.records[1].Outcome)
 }
 
 func (l *recordingLedger) ClaimInvocation(_ context.Context, r aicapability.InvocationRecord) (bool, error) {
@@ -56,7 +191,7 @@ func TestExecutorPreservesUnknownClaimInsteadOfInventingNoDispatch(t *testing.T)
 			quote, err := aicapability.QuoteText(input)
 			require.NoError(t, err)
 			ledger := &recordingLedger{claimErr: tc.claimErr, replayClaim: tc.replay}
-			executor := Executor{Ledger: ledger,
+			executor := Executor{Ledger: ledger, Admission: NewBoundedAdmission(),
 				Resolve: func(context.Context, aicapability.TextInputIdentity) (QualifiedRoute, error) {
 					return QualifiedRoute{Profile: profile, Endpoint: server.URL, APIKey: "synthetic-only"}, nil
 				},
@@ -108,7 +243,7 @@ func TestExecutorSettlesOneObservedPlannerInvocation(t *testing.T) {
 	ledger := &recordingLedger{}
 	authCalls := 0
 	executor := Executor{
-		Ledger: ledger,
+		Ledger: ledger, Admission: NewBoundedAdmission(),
 		Resolve: func(context.Context, aicapability.TextInputIdentity) (QualifiedRoute, error) {
 			return QualifiedRoute{Profile: profile, Endpoint: server.URL, APIKey: "synthetic-only"}, nil
 		},
@@ -158,7 +293,7 @@ func TestExecutorFinalGateDenialHasNoNetworkSend(t *testing.T) {
 	require.NoError(t, err)
 	ledger := &recordingLedger{}
 	checks := 0
-	executor := Executor{Ledger: ledger,
+	executor := Executor{Ledger: ledger, Admission: NewBoundedAdmission(),
 		Resolve: func(context.Context, aicapability.TextInputIdentity) (QualifiedRoute, error) {
 			return QualifiedRoute{Profile: profile, Endpoint: server.URL, APIKey: "synthetic-only"}, nil
 		},

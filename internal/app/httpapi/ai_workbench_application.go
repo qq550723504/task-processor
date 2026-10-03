@@ -59,7 +59,7 @@ func (x workbenchExecution) AuthorizeReceipt(ctx context.Context, scope aiworkbe
 }
 
 func buildAIWorkbenchApplication(ctx context.Context, cfg AIWorkbenchDependencies, a *productAgentApplication) (*aiWorkbenchApplication, error) {
-	if cfg.DB == nil || a == nil || a.config.RunDB == nil || a.config.Ledger == nil || len(cfg.PlanningTextPolicies) == 0 {
+	if cfg.DB == nil || a == nil || a.config.RunDB == nil || a.config.Ledger == nil || a.textAdmission == nil || len(cfg.PlanningTextPolicies) == 0 {
 		return nil, aiworkbench.ErrUnavailable
 	}
 	if err := workstore.VerifySchema(ctx, cfg.DB); err != nil {
@@ -85,7 +85,7 @@ func buildAIWorkbenchApplication(ctx context.Context, cfg AIWorkbenchDependencie
 	if err != nil {
 		return nil, err
 	}
-	executor := &governed.Executor{Ledger: a.config.Ledger, Resolve: resolver.Resolve,
+	executor := &governed.Executor{Ledger: a.config.Ledger, Admission: a.textAdmission, Resolve: resolver.Resolve,
 		Authorize: func(ctx context.Context, in aicapability.TextInputIdentity) error {
 			identity, err := a.freshChatIdentity(ctx)
 			if err != nil || identity.TenantID != in.OrganizationID || identity.UserID != in.ActorID || identity.EffectiveMemberID != in.MemberID {
@@ -157,7 +157,7 @@ func (p *workbenchPlanner) Admission(ctx context.Context, scope aiworkbench.Scop
 
 func (p *workbenchPlanner) Decide(ctx context.Context, command aiworkbench.PlanningCommand, history []aiworkbench.Message) (aiworkbench.PlanTerminal, error) {
 	var profile aicapability.ModelProfile
-	if json.Unmarshal(command.ModelProfile, &profile) != nil || profile.Validate() != nil || time.Now().After(command.Deadline) {
+	if ctx == nil || json.Unmarshal(command.ModelProfile, &profile) != nil || profile.Validate() != nil || !time.Now().Before(command.Deadline) {
 		return aiworkbench.PlanTerminal{}, aiworkbench.ErrUnavailable
 	}
 	selected := command.WorkScope
@@ -168,7 +168,9 @@ func (p *workbenchPlanner) Decide(ctx context.Context, command aiworkbench.Plann
 	if err != nil || prepared.Quote.InputHash != command.InputHash {
 		return aiworkbench.PlanTerminal{}, aiworkbench.ErrUnavailable
 	}
-	decision, err := p.model.Decide(ctx, prepared)
+	callCtx, cancel := context.WithDeadline(ctx, command.Deadline)
+	defer cancel()
+	decision, err := p.model.Decide(callCtx, prepared)
 	if err != nil {
 		return aiworkbench.PlanTerminal{}, err
 	}

@@ -180,6 +180,10 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	workbenchModule, err := buildAIWorkbenchModule(context.Background(), AIWorkbenchDependencies{DB: f.owner,
 		PlanningTextPolicies: map[string]governed.RoutePolicy{"B": policy(chatRow, profile("chat", "chat-fixture", "ai-workbench-chat-plan-v1", "ai-workbench-plan-decision-v1"))}}, agentModule.(productAgentModule).application)
 	require.NoError(t, err)
+	plannerExecutor, ok := workbenchModule.(aiWorkbenchModule).application.plan.model.Text.(*governed.Executor)
+	require.True(t, ok)
+	require.Same(t, agentModule.(productAgentModule).application.textAdmission, plannerExecutor.Admission,
+		"Chat and title must share provider admission within the application")
 	require.Equal(t, "AVAILABLE", workbenchModule.(aiWorkbenchModule).PlanningReadiness(context.Background(), "B"))
 	require.Equal(t, "UNAVAILABLE", workbenchModule.(aiWorkbenchModule).PlanningReadiness(context.Background(), "A"))
 	routes := append(agentModule.(productAgentModule).routes, workbenchModule.(aiWorkbenchModule).routes...)

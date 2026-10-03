@@ -77,7 +77,7 @@ func TestTitleAdapterUsesFrozenProfileAndSharedEinoExecutor(t *testing.T) {
 		Request: agent.Request{Binding: binding, PolicyVersion: "title-review-v1", PromptVersion: "product-title-agent-v1",
 			Limits: agent.Limits{Steps: 12, ModelCalls: 6, Tokens: 10000, CostMicros: 10000, Currency: "USD", Runtime: time.Minute}}}
 	ledger := &testLedger{}
-	executor := &governed.Executor{Ledger: ledger,
+	executor := &governed.Executor{Ledger: ledger, Admission: governed.NewBoundedAdmission(),
 		Authorize: func(context.Context, aicapability.TextInputIdentity) error { return nil },
 		Resolve: func(context.Context, aicapability.TextInputIdentity) (governed.QualifiedRoute, error) {
 			return governed.QualifiedRoute{Profile: profile, Endpoint: server.URL, APIKey: "synthetic-only"}, nil
