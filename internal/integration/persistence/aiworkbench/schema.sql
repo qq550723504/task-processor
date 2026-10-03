@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS ai_workbench.commands (
     operation text NOT NULL CHECK (operation IN ('conversation_create', 'chat_message_plan')),
     request_fingerprint char(64) NOT NULL,
     conversation_id uuid NOT NULL,
-    state text NOT NULL CHECK (state IN ('READY_TO_DISPATCH', 'COMPLETE', 'FAILED_BEFORE_DISPATCH', 'PLANNER_UNKNOWN')),
+    state text NOT NULL CHECK (state IN ('READY_TO_DISPATCH', 'COMPLETE', 'FAILED_BEFORE_DISPATCH', 'PLANNER_INVALID_OUTPUT', 'PLANNER_UNKNOWN')),
     user_message_id uuid,
     source_sequence bigint,
     planner_invocation_id char(64),

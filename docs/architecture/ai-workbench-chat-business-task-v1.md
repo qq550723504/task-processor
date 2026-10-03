@@ -329,7 +329,8 @@ PlanningCommand {
   planner_started_at        # database time frozen once
   planner_deadline          # frozen bounded attempt deadline
   state                     READY_TO_DISPATCH | COMPLETE |
-                            FAILED_BEFORE_DISPATCH | PLANNER_UNKNOWN
+                            FAILED_BEFORE_DISPATCH | PLANNER_INVALID_OUTPUT |
+                            PLANNER_UNKNOWN
   assistant_message_id?
   proposal_id?
   committed_at?
@@ -367,8 +368,23 @@ T0 transaction:
 → Workbench terminal CAS:
      known success             => append one ASSISTANT message + optional proposal + COMPLETE
      authoritative no-dispatch => FAILED_BEFORE_DISPATCH
+     terminal observed-invalid => PLANNER_INVALID_OUTPUT; no ASSISTANT/proposal
      unresolved dispatch after bounded deadline/grace => PLANNER_UNKNOWN
 ```
+
+`PLANNER_INVALID_OUTPUT` is the narrow #588 implementation clarification for a gap in the
+original command-state list: the existing AI invocation owner has durably recorded
+`observed_usage_failed` with structured-output-invalid category and known usage. That ledger
+fact alone does not prove ResourceAIPoint settlement: the ledger writes first. Workbench may
+finalize this state only when the current `Executor.GenerateWithGate` call also returns
+`ErrObservedInvalidSettled` after `RecordInvocation` (including its usage settlement) returned successfully,
+and the scoped ledger fact matches the frozen invocation, member and input hash. A later
+replay cannot infer settlement from the ledger row alone. Workbench only projects this
+proven terminal outcome into its own receipt. It does not copy
+usage, claim a model success, append invented assistant text, or dispatch again. The user can
+see that this attempt failed and may explicitly submit a new message/key after correcting the
+request or route. Missing usage, an uncertain claim, or a failed terminal ledger write still
+follow the existing PENDING/UNKNOWN path.
 
 Important replay rules:
 
@@ -382,8 +398,11 @@ Important replay rules:
   `PLANNER_UNKNOWN`;
 - if the AI invocation becomes terminal but the Workbench assistant/proposal commit was lost,
   Workbench still does **not** redispatch because the AI ledger does not persist provider text.
-  Until the same bounded grace expires it remains PENDING so the original writer can finish;
-  afterwards it becomes `PLANNER_UNKNOWN`;
+  A current call with confirmed settlement and the matching observed-invalid terminal fact
+  can become `PLANNER_INVALID_OUTPUT` immediately, since no assistant/proposal can be
+  committed from invalid text. An unproven ledger row and other terminal facts remain
+  PENDING until the same bounded grace expires so the original writer can finish; afterwards
+  they become `PLANNER_UNKNOWN`;
 - terminal Workbench receipts replay exactly and never call the planner;
 - a user may explicitly send a new message/new key after UNKNOWN; that is a new paid planning
   intent, never a retry of the old invocation.
@@ -1284,6 +1303,8 @@ No fake task count, progress percentage, elapsed estimate, Store association or 
 | crash after USER/command commit but before AI Claim | exact AI invocation absent proves no dispatch; same-key replay may safely claim once with original admissible input/profile/deadline |
 | concurrent planner request loses AI Claim | zero provider send; returns PENDING/terminal replay from same invocation identity |
 | planner no-dispatch failure | durable user message + failure receipt; no assistant/proposal |
+| planner output invalid with matching ledger fact and current successful recorder/settlement return | durable user message + `PLANNER_INVALID_OUTPUT`; no assistant/proposal or automatic re-dispatch; same key replays the terminal receipt |
+| planner output invalid but settlement return lost or failed | no claimed settled terminal result; bounded PENDING then PLANNER_UNKNOWN; no automatic re-dispatch |
 | planner invocation remains dispatched past deadline/grace | durable user message + PLANNER_UNKNOWN; no automatic re-dispatch |
 | terminal AI fact but assistant/proposal commit was lost | bounded PENDING then PLANNER_UNKNOWN; provider output is not fabricated or re-sent |
 | route/model/pricing changes after command or execution proposal preparation | retain exact profile for replay; no automatic substitution; new execution must satisfy current gates or require new confirmation |

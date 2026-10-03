@@ -80,7 +80,7 @@ func (s *Service) Message(ctx context.Context, scope Scope, conversationID, key 
 		if state == PlanningReadyToDispatch {
 			return s.Store.GetCommand(ctx, scope, key)
 		}
-		if state != PlanningFailedBeforeDispatch && state != PlanningUnknown {
+		if state != PlanningFailedBeforeDispatch && state != PlanningInvalidOutput && state != PlanningUnknown {
 			state = PlanningUnknown
 		}
 		updated, finalErr := s.Store.FinalizePlanning(ctx, scope, key, state)

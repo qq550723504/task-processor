@@ -103,6 +103,7 @@ const (
 	PlanningReadyToDispatch      PlanningState = "READY_TO_DISPATCH"
 	PlanningComplete             PlanningState = "COMPLETE"
 	PlanningFailedBeforeDispatch PlanningState = "FAILED_BEFORE_DISPATCH"
+	PlanningInvalidOutput        PlanningState = "PLANNER_INVALID_OUTPUT"
 	PlanningUnknown              PlanningState = "PLANNER_UNKNOWN"
 )
 

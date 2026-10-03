@@ -226,7 +226,7 @@ func (p *workbenchPlanner) buildProposal(ctx context.Context, c aiworkbench.Plan
 	return proposal, nil
 }
 
-func (p *workbenchPlanner) FailureState(ctx context.Context, c aiworkbench.PlanningCommand, _ error) aiworkbench.PlanningState {
+func (p *workbenchPlanner) FailureState(ctx context.Context, c aiworkbench.PlanningCommand, callErr error) aiworkbench.PlanningState {
 	fact, err := p.agent.config.Ledger.ReadModelInvocation(ctx, c.Scope.OrganizationID, c.PlannerInvocationID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return aiworkbench.PlanningFailedBeforeDispatch
@@ -234,6 +234,15 @@ func (p *workbenchPlanner) FailureState(ctx context.Context, c aiworkbench.Plann
 	if err == nil && fact.Operation == aicapability.OperationAIWorkbenchChatPlan && fact.Outcome == aicapability.InvocationFailed &&
 		fact.UsageKnown && fact.TotalTokens == 0 {
 		return aiworkbench.PlanningFailedBeforeDispatch
+	}
+	if errors.Is(callErr, governed.ErrObservedInvalidSettled) && err == nil &&
+		fact.InvocationID == c.PlannerInvocationID && fact.TenantID == c.Scope.OrganizationID &&
+		fact.UserID == c.Scope.ActorID && fact.MemberID == c.MemberID && fact.InputHash == c.InputHash &&
+		fact.Operation == aicapability.OperationAIWorkbenchChatPlan &&
+		fact.Outcome == aicapability.InvocationUsageObservedFailed &&
+		fact.ErrorCategory == aicapability.ErrorStructuredOutputInvalid &&
+		fact.UsageKnown && fact.EstimatedCostKnown && fact.TotalTokens > 0 {
+		return aiworkbench.PlanningInvalidOutput
 	}
 	if err == nil && fact.Operation == aicapability.OperationAIWorkbenchChatPlan &&
 		time.Now().Before(c.Deadline.Add(30*time.Second)) {

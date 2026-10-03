@@ -203,12 +203,13 @@ function ConversationDetail({ scope, authorizationKey, canUse, canPlan, planning
     try {
       const result = await requestAIWorkbench({ route: "message", method: "POST", path: `chat/conversations/${id}/messages`, scope, key: saved.key, signal: controller.signal, body: saved.body });
       if (controller.signal.aborted) return;
-      if (result.state === "COMPLETE" || result.state === "FAILED_BEFORE_DISPATCH" || result.state === "PLANNER_UNKNOWN") {
+      if (result.state === "COMPLETE" || result.state === "FAILED_BEFORE_DISPATCH" || result.state === "PLANNER_INVALID_OUTPUT" || result.state === "PLANNER_UNKNOWN") {
         setPendingMessage(null);
         try { sessionStorage.removeItem(pendingMessageStorageKey(scope, id)); } catch { /* terminal receipt is already displayed */ }
         if (result.state === "COMPLETE") setContent("");
       }
       if (result.state === "FAILED_BEFORE_DISPATCH") setError("规划尚未发送到模型。请检查当前企业的模型配置或联系管理员；修复后可用保留的需求发送新消息。");
+      if (result.state === "PLANNER_INVALID_OUTPUT") setError("模型返回的规划内容格式无效；本轮已产生 AI 用量，不会自动重发。可修改保留的需求后发送新消息。");
       if (result.state === "PLANNER_UNKNOWN") setError("模型结果无法确认；本轮不会自动重发。请刷新查看收据。");
       if (result.state === "READY_TO_DISPATCH") setError("本轮仍在处理，请使用相同操作键重试读取结果。");
       await detail.refetch();

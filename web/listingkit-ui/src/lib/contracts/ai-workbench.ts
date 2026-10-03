@@ -74,7 +74,7 @@ export const aiResponseSchemas = {
     "conversation-create": z.object({ conversation, replay: z.boolean() }),
     "conversation-read": z.object({ conversation, messages: z.array(message), proposals: z.array(proposal), before: z.string() }),
     "conversation-metadata": z.object({ conversation }),
-    message: z.object({ state: z.enum(["READY_TO_DISPATCH", "COMPLETE", "FAILED_BEFORE_DISPATCH", "PLANNER_UNKNOWN"]),
+    message: z.object({ state: z.enum(["READY_TO_DISPATCH", "COMPLETE", "FAILED_BEFORE_DISPATCH", "PLANNER_INVALID_OUTPUT", "PLANNER_UNKNOWN"]),
       userMessageId: id, sourceSequence: z.number().int().positive(), assistantMessageId: z.string(), proposalId: z.string(), proposal: proposal.optional() }),
     confirm: z.object({ task, replay: z.boolean() }),
     "task-list": z.object({ tasks: z.array(task), next: z.string() }),

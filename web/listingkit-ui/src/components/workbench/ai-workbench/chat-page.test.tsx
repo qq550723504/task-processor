@@ -213,6 +213,22 @@ it("explains a terminal plan failure before dispatch and keeps the goal for a ne
   expect(screen.getByRole("button", { name: "发送消息" })).toBeEnabled();
 });
 
+it("explains a settled invalid planner response and releases the composer for a new intent", async () => {
+  fixture.request.mockImplementation(async ({ route }) => {
+    if (route === "conversation-read") return { conversation, messages: [], proposals: [], before: "" };
+    if (route === "message") return { state: "PLANNER_INVALID_OUTPUT" };
+    throw new AIWorkbenchError("INVALID_REQUEST");
+  });
+  render(tree());
+  await screen.findByText("开始讨论");
+  fireEvent.change(screen.getByLabelText("采集操作 ID"), { target: { value: operationId } });
+  fireEvent.change(screen.getByLabelText("需求"), { target: { value: "优化标题" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+  expect(await screen.findByText(/模型返回的规划内容格式无效/)).toBeInTheDocument();
+  expect(screen.getByLabelText("需求")).toHaveValue("优化标题");
+  expect(screen.getByRole("button", { name: "发送消息" })).toBeEnabled();
+});
+
 it("keeps the exact message key and body across a lost response and page reload", async () => {
   const view = render(tree());
   await screen.findByText("开始讨论");

@@ -211,7 +211,7 @@ func (e *Executor) GenerateWithGate(ctx context.Context, input aicapability.Text
 		// The terminal invocation and its observed usage are already durable.
 		// Consumers need that usage to settle their own run budget even though
 		// the content cannot be admitted.
-		return output, ErrInvalid
+		return output, errors.Join(ErrInvalid, ErrObservedInvalidSettled)
 	}
 	return output, nil
 }

@@ -804,7 +804,7 @@ func (s *Store) CompletePlan(ctx context.Context, scope aiworkbench.Scope, key s
 // sends to a provider and never changes an already terminal command.
 func (s *Store) FinalizePlanning(ctx context.Context, scope aiworkbench.Scope, key string, state aiworkbench.PlanningState) (aiworkbench.PlanningCommand, error) {
 	if s == nil || s.db == nil || ctx == nil || !validScope(scope) || !validKey(key) ||
-		(state != aiworkbench.PlanningFailedBeforeDispatch && state != aiworkbench.PlanningUnknown) {
+		(state != aiworkbench.PlanningFailedBeforeDispatch && state != aiworkbench.PlanningInvalidOutput && state != aiworkbench.PlanningUnknown) {
 		return aiworkbench.PlanningCommand{}, aiworkbench.ErrInvalid
 	}
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)

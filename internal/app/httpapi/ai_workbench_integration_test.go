@@ -19,6 +19,7 @@ import (
 	"task-processor/internal/agentconfig"
 	"task-processor/internal/aicapability"
 	aistore "task-processor/internal/aicapability/store"
+	"task-processor/internal/aiworkbench"
 	"task-processor/internal/authz"
 	governed "task-processor/internal/integration/aicapability/einomodel"
 	"task-processor/internal/integration/openai"
@@ -35,6 +36,15 @@ import (
 )
 
 type unavailablePublishedReceipt struct{}
+
+type failedWorkbenchSettlement struct {
+	aicapability.InvocationUsageSettler
+	aicapability.InvocationUsageReservation
+}
+
+func (failedWorkbenchSettlement) SettleAIInvocationUsage(context.Context, string, string, string, int64, time.Time) error {
+	return errors.New("synthetic commercial settlement failure")
+}
 
 func (unavailablePublishedReceipt) ReadPublished(context.Context, string) (sourcing.PublishedAcquisition, error) {
 	return sourcing.PublishedAcquisition{}, errors.New("published product temporarily unavailable")
@@ -92,6 +102,7 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	const approvedGoal = "突出有证据支持的卖点"
 	var plannerCalls, titleCalls atomic.Int32
 	var titleGoalSeen atomic.Bool
+	var invalidPlanner atomic.Bool
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
 			Model    string `json:"model"`
@@ -105,6 +116,9 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 		if request.Model == "chat-fixture" {
 			plannerCalls.Add(1)
 			content = `{"mode":"READY","assistant_text":"已准备好标题优化方案，请确认后执行。","goal_summary":"` + approvedGoal + `"}`
+			if invalidPlanner.Load() {
+				content = "invalid planner JSON"
+			}
 		} else {
 			for _, message := range request.Messages {
 				var text string
@@ -238,6 +252,88 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	var count int64
 	require.NoError(t, f.owner.Table("ai_workbench.business_tasks").Count(&count).Error)
 	require.Zero(t, count)
+	var consumedBefore int64
+	require.NoError(t, f.owner.Table("saas_organization_resource_buckets").Where("organization_id = ? AND resource_type = ?", "B", "ai_point").
+		Pluck("consumed", &consumedBefore).Error)
+	// A metered, strictly invalid planning result is terminal without an
+	// invented assistant or a second model send on the same command key.
+	taskGrants.viewer.Store(false)
+	invalidPlanner.Store(true)
+	code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchChatBase, "operator", "B", uuid.NewString(), `{}`)
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	var invalidConversation struct {
+		Conversation struct {
+			ID string `json:"ID"`
+		} `json:"conversation"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &invalidConversation))
+	invalidKey := uuid.NewString()
+	invalidPath := workbenchChatBase + "/" + invalidConversation.Conversation.ID + "/messages"
+	code, raw, err = acquisitionHTTPRequest(server, "POST", invalidPath, "operator", "B", invalidKey, messageBody)
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	var invalidReceipt struct {
+		State string `json:"state"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &invalidReceipt))
+	require.Equal(t, "PLANNER_INVALID_OUTPUT", invalidReceipt.State)
+	command, err := workbenchModule.(aiWorkbenchModule).application.store.GetCommand(context.Background(),
+		aiworkbench.Scope{OrganizationID: "B", ActorID: "operator"}, invalidKey)
+	require.NoError(t, err)
+	fact, err := ledger.ReadModelInvocation(context.Background(), "B", command.PlannerInvocationID)
+	require.NoError(t, err)
+	require.Equal(t, aicapability.InvocationUsageObservedFailed, fact.Outcome)
+	require.Equal(t, aicapability.ErrorStructuredOutputInvalid, fact.ErrorCategory)
+	require.True(t, fact.UsageKnown)
+	var consumedAfterInvalid int64
+	require.NoError(t, f.owner.Table("saas_organization_resource_buckets").Where("organization_id = ? AND resource_type = ?", "B", "ai_point").
+		Pluck("consumed", &consumedAfterInvalid).Error)
+	require.Greater(t, consumedAfterInvalid, consumedBefore, "invalid observed output must settle its AI points")
+	require.EqualValues(t, 2, plannerCalls.Load())
+	code, raw, err = acquisitionHTTPRequest(server, "POST", invalidPath, "operator", "B", invalidKey, messageBody)
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.NoError(t, json.Unmarshal(raw, &invalidReceipt))
+	require.Equal(t, "PLANNER_INVALID_OUTPUT", invalidReceipt.State)
+	require.EqualValues(t, 2, plannerCalls.Load(), "terminal invalid planning must not redispatch")
+	messages, err := workbenchModule.(aiWorkbenchModule).application.store.ListMessages(context.Background(),
+		aiworkbench.Scope{OrganizationID: "B", ActorID: "operator"}, invalidConversation.Conversation.ID, 50)
+	require.NoError(t, err)
+	require.Len(t, messages, 1)
+	require.Equal(t, aiworkbench.AuthorUser, messages[0].Author)
+
+	// The AI ledger writes observed usage before ResourceAIPoint settlement.
+	// A failed settlement must never be projected as the settled terminal state.
+	pointOwner := agentModule.(productAgentModule).application.points
+	ledger.SetUsageSettler(failedWorkbenchSettlement{InvocationUsageSettler: pointOwner, InvocationUsageReservation: pointOwner})
+	code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchChatBase, "operator", "B", uuid.NewString(), `{}`)
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.NoError(t, json.Unmarshal(raw, &invalidConversation))
+	unsettledKey := uuid.NewString()
+	unsettledPath := workbenchChatBase + "/" + invalidConversation.Conversation.ID + "/messages"
+	code, raw, err = acquisitionHTTPRequest(server, "POST", unsettledPath, "operator", "B", unsettledKey, messageBody)
+	require.NoError(t, err)
+	require.Equal(t, 202, code, string(raw))
+	require.NoError(t, json.Unmarshal(raw, &invalidReceipt))
+	require.Equal(t, "READY_TO_DISPATCH", invalidReceipt.State)
+	unsettled, err := workbenchModule.(aiWorkbenchModule).application.store.GetCommand(context.Background(),
+		aiworkbench.Scope{OrganizationID: "B", ActorID: "operator"}, unsettledKey)
+	require.NoError(t, err)
+	fact, err = ledger.ReadModelInvocation(context.Background(), "B", unsettled.PlannerInvocationID)
+	require.NoError(t, err)
+	require.Equal(t, aicapability.InvocationUsageObservedFailed, fact.Outcome)
+	var consumedAfterFailure int64
+	require.NoError(t, f.owner.Table("saas_organization_resource_buckets").Where("organization_id = ? AND resource_type = ?", "B", "ai_point").
+		Pluck("consumed", &consumedAfterFailure).Error)
+	require.Equal(t, consumedAfterInvalid, consumedAfterFailure, "failed settlement must not claim consumed AI points")
+	code, raw, err = acquisitionHTTPRequest(server, "POST", unsettledPath, "operator", "B", unsettledKey, messageBody)
+	require.NoError(t, err)
+	require.Equal(t, 202, code, string(raw))
+	require.EqualValues(t, 3, plannerCalls.Load(), "unsettled replay cannot resend or claim settlement")
+	ledger.SetUsageSettler(pointOwner)
+
 	// A lost response must replay the frozen receipt even when the planner
 	// route becomes unavailable before the retry. No mutable route read wins.
 	changedRoute := f.owner.Model(&openai.AIClientCredential{}).
@@ -248,7 +344,7 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	code, raw, err = acquisitionHTTPRequest(server, "POST", messagePath, "operator", "B", messageKey, messageBody)
 	require.NoError(t, err)
 	require.Equal(t, 200, code, string(raw))
-	require.EqualValues(t, 1, plannerCalls.Load())
+	require.EqualValues(t, 3, plannerCalls.Load())
 	require.NoError(t, f.owner.Model(&openai.AIClientCredential{}).
 		Where("tenant_id = ? AND user_id = ? AND client_name = ?", "B", "", "chat").
 		Update("enabled", true).Error)
