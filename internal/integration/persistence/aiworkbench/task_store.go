@@ -55,11 +55,12 @@ func canonicalRequest(raw []byte) ([]byte, agent.Request, error) {
 func task(row taskRow) (aiworkbench.BusinessTask, error) {
 	var config agent.ConfigurationSnapshotRef
 	var contextRef agent.ContextSnapshotRef
-	requestJSON, _, err := canonicalRequest(row.ExecutionRequest)
+	requestJSON, request, err := canonicalRequest(row.ExecutionRequest)
 	if err != nil || json.Unmarshal(row.ConfigurationSnapshotRef, &config) != nil ||
 		json.Unmarshal(row.ContextSnapshotRef, &contextRef) != nil ||
 		!config.ValidOrAbsent() || config.Absent() || !contextRef.ValidOrAbsent() ||
-		!validDigest(row.ExecutionRequestDigest) || digest(json.RawMessage(requestJSON)) != row.ExecutionRequestDigest {
+		!validDigest(row.ExecutionRequestDigest) || digest(json.RawMessage(requestJSON)) != row.ExecutionRequestDigest ||
+		request.GoalSummary != row.GoalSummary {
 		return aiworkbench.BusinessTask{}, aiworkbench.ErrUnavailable
 	}
 	return aiworkbench.BusinessTask{ID: row.ID,
@@ -110,6 +111,7 @@ func validatePreparedTask(p aiworkbench.PreparedTask, proposal proposalRow, key 
 	canonical, request, err := canonicalRequest(p.ExecutionRequest)
 	if err != nil ||
 		request.Key != key || !request.Binding.Valid() || !request.Limits.Valid() ||
+		request.GoalSummary != proposal.GoalSummary || !agent.ValidGoalSummary(request.GoalSummary) ||
 		request.ConfigurationSnapshotRef != p.ConfigurationSnapshotRef ||
 		request.ContextSnapshotRef != p.ContextSnapshotRef ||
 		request.Binding.ContextID != proposal.OperationID ||

@@ -73,11 +73,14 @@ func knowledgeRequestContext(ctx context.Context) (context.Context, error) {
 }
 
 func (a *productAgentApplication) startRequest(ctx context.Context, binding agent.Binding, key, baseID string, template *agentconfig.TemplateRef) (agent.Request, error) {
-	return a.startRequestWithProfile(ctx, binding, key, baseID, "", template, aicapability.ModelProfile{})
+	return a.startRequestWithProfile(ctx, binding, key, baseID, "", template, aicapability.ModelProfile{}, "")
 }
 
-func (a *productAgentApplication) startRequestWithProfile(ctx context.Context, binding agent.Binding, key, baseID, expectedRevisionSet string, template *agentconfig.TemplateRef, expectedProfile aicapability.ModelProfile) (agent.Request, error) {
-	request := agent.Request{Key: key, Binding: binding, PolicyVersion: "title-review-v1", PromptVersion: "product-title-agent-v1", Limits: a.config.Limits}
+func (a *productAgentApplication) startRequestWithProfile(ctx context.Context, binding agent.Binding, key, baseID, expectedRevisionSet string, template *agentconfig.TemplateRef, expectedProfile aicapability.ModelProfile, goalSummary string) (agent.Request, error) {
+	if !agent.ValidGoalSummary(goalSummary) {
+		return agent.Request{}, agent.ErrInvalid
+	}
+	request := agent.Request{Key: key, Binding: binding, GoalSummary: goalSummary, PolicyVersion: "title-review-v1", PromptVersion: "product-title-agent-v1", Limits: a.config.Limits}
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
 	if !ok {
 		return agent.Request{}, knowledge.ErrForbidden

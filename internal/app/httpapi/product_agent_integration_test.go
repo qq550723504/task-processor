@@ -296,7 +296,7 @@ func testProductAgentOwners(t *testing.T, mode string) {
 		bound := agent.Binding{ContextKind: "acquisition", ContextID: op.OperationID, ProductKey: op.ProductKey,
 			CatalogVersion: op.CatalogVersion, PublicationID: op.PublicationID, TargetPlatform: "shein"}
 		requestCtx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "B", UserID: "operator"})
-		_, err = module.(productAgentModule).application.startRequestWithProfile(requestCtx, bound, key, "", "", &agentconfig.TemplateRef{TemplateID: selectedTemplate.TemplateID, Revision: "1"}, wrongProfile)
+		_, err = module.(productAgentModule).application.startRequestWithProfile(requestCtx, bound, key, "", "", &agentconfig.TemplateRef{TemplateID: selectedTemplate.TemplateID, Revision: "1"}, wrongProfile, "")
 		require.ErrorIs(t, err, agentconfig.ErrConflict, "a Chat proposal cannot adopt a different frozen Agent model under a reused key")
 		configurationScope := agent.Scope{OrganizationID: "B", ActorID: "admin"}
 		_, err = configuration.Execute(context.Background(), agentconfig.Command{Scope: configurationScope, Key: uuid.NewString(), AgentID: "product.title.agent", Operation: "update-template", TemplateID: selectedTemplate.TemplateID, Expected: 1, Input: agentconfig.TemplateInput{Name: "new v2", TargetPlatform: "temu"}})

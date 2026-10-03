@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -88,18 +89,29 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	now := time.Now().UTC()
 	require.NoError(t, f.owner.Exec("INSERT INTO saas_organization_resource_buckets (organization_id,resource_type,available,allocated,reserved,consumed,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)",
 		"B", "ai_point", 10000000, 0, 0, 0, now, now).Error)
+	const approvedGoal = "突出有证据支持的卖点"
 	var plannerCalls, titleCalls atomic.Int32
+	var titleGoalSeen atomic.Bool
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
-			Model string `json:"model"`
+			Model    string `json:"model"`
+			Messages []struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"messages"`
 		}
 		body := json.NewDecoder(r.Body)
 		require.NoError(t, body.Decode(&request))
 		var content string
 		if request.Model == "chat-fixture" {
 			plannerCalls.Add(1)
-			content = `{"mode":"READY","assistant_text":"已准备好标题优化方案，请确认后执行。","goal_summary":"优化当前商品的平台标题"}`
+			content = `{"mode":"READY","assistant_text":"已准备好标题优化方案，请确认后执行。","goal_summary":"` + approvedGoal + `"}`
 		} else {
+			for _, message := range request.Messages {
+				var text string
+				if json.Unmarshal(message.Content, &text) == nil && strings.Contains(text, approvedGoal) {
+					titleGoalSeen.Store(true)
+				}
+			}
 			step := titleCalls.Add(1)
 			switch step {
 			case 1:
@@ -257,6 +269,7 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.NotEmpty(t, confirmed.Task.ID)
 	require.False(t, confirmed.Replay)
 	require.EqualValues(t, 4, titleCalls.Load(), "confirmation starts the existing Product Agent exactly once")
+	require.True(t, titleGoalSeen.Load(), "the confirmed Chat goal must reach the actual title model input")
 	require.Equal(t, "WAITING_CONFIRMATION", confirmed.Task.State)
 	// The durable Agent run must be adopted by its frozen request even when
 	// the current acquisition binding cannot be read during reconciliation.

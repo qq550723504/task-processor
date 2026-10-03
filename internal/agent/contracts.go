@@ -80,8 +80,15 @@ type Request struct {
 	ContextSnapshotRef           ContextSnapshotRef       `json:",omitzero"`
 	Key                          string
 	Binding                      Binding
+	GoalSummary                  string
 	PolicyVersion, PromptVersion string
 	Limits                       Limits
+}
+
+// Direct Product Agent requests have no Chat goal. Confirmed Chat requests
+// carry one bounded, immutable objective as data for the title model.
+func ValidGoalSummary(value string) bool {
+	return len(value) <= 512 && utf8.ValidString(value) && strings.TrimSpace(value) == value
 }
 
 // Authorizer freshly resolves current identity/grants AND validates the exact
@@ -139,6 +146,7 @@ type ModelInput struct {
 	ConfigurationSnapshotRef                   ConfigurationSnapshotRef `json:",omitzero"`
 	ContextSnapshotRef                         ContextSnapshotRef       `json:",omitzero"`
 	Binding                                    Binding
+	GoalSummary                                string
 	PolicyVersion, PromptVersion, InvocationID string
 	History                                    []Observation
 	Validation                                 *Validation
@@ -153,6 +161,7 @@ func (s State) ModelInput(definition commercetool.AgentDefinition) ModelInput {
 	return ModelInput{
 		ConfigurationSnapshotRef: s.Request.ConfigurationSnapshotRef,
 		ContextSnapshotRef:       s.Request.ContextSnapshotRef, Binding: s.Request.Binding,
+		GoalSummary:   s.Request.GoalSummary,
 		PolicyVersion: s.Request.PolicyVersion, PromptVersion: s.Request.PromptVersion,
 		History: s.History, Validation: s.Validation, UserFeedback: s.UserFeedback,
 		AgentRunID: s.RunID, AgentID: definition.ID, AgentVersion: definition.Version, TraceID: s.TraceID,

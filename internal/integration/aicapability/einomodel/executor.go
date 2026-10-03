@@ -153,7 +153,10 @@ func (e *Executor) GenerateWithGate(ctx context.Context, input aicapability.Text
 	record := textRecord(input, quote, now)
 	acquired, err := e.Ledger.ClaimInvocation(ctx, record)
 	if err != nil || !acquired {
-		return TextOutput{}, ErrNotDispatched
+		// The claim may have committed even when its response was lost. A
+		// duplicate also has an existing durable fact. Neither proves a
+		// terminal no-send outcome or permits another provider attempt.
+		return TextOutput{}, ErrOutcomeUnknown
 	}
 	if err := e.Ledger.ReserveAIInvocationUsage(ctx, record.TenantID, record.MemberID, record.InvocationID, quote.MaximumTokens, now); err != nil {
 		record.Outcome = aicapability.InvocationFailed

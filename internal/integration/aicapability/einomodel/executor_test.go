@@ -14,18 +14,62 @@ import (
 )
 
 type recordingLedger struct {
-	claimed  bool
-	reserved bool
-	records  []aicapability.InvocationRecord
+	claimed     bool
+	claimErr    error
+	replayClaim bool
+	reserved    bool
+	records     []aicapability.InvocationRecord
 }
 
 func (l *recordingLedger) ClaimInvocation(_ context.Context, r aicapability.InvocationRecord) (bool, error) {
 	l.records = append(l.records, r)
+	if l.claimErr != nil {
+		l.claimed = true // The durable insert may have committed before its response was lost.
+		return false, l.claimErr
+	}
+	if l.replayClaim {
+		return false, nil
+	}
 	if l.claimed {
 		return false, nil
 	}
 	l.claimed = true
 	return true, nil
+}
+
+func TestExecutorPreservesUnknownClaimInsteadOfInventingNoDispatch(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		claimErr error
+		replay   bool
+	}{
+		{name: "lost claim response", claimErr: errors.New("claim response lost")},
+		{name: "existing claim", replay: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sends := 0
+			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { sends++ }))
+			defer server.Close()
+			profile := testTextProfile(server.URL)
+			input := aicapability.TextInputIdentity{OrganizationID: "org-1", ActorID: "user-1", MemberID: "member-1", Operation: aicapability.OperationAIWorkbenchChatPlan, InvocationID: "inv-claim",
+				System: "system", Prompt: "prompt", Profile: profile}
+			quote, err := aicapability.QuoteText(input)
+			require.NoError(t, err)
+			ledger := &recordingLedger{claimErr: tc.claimErr, replayClaim: tc.replay}
+			executor := Executor{Ledger: ledger,
+				Resolve: func(context.Context, aicapability.TextInputIdentity) (QualifiedRoute, error) {
+					return QualifiedRoute{Profile: profile, Endpoint: server.URL, APIKey: "synthetic-only"}, nil
+				},
+				Authorize: func(context.Context, aicapability.TextInputIdentity) error { return nil },
+			}
+			_, err = executor.Generate(context.Background(), input, quote, nil)
+			require.ErrorIs(t, err, ErrOutcomeUnknown)
+			require.NotErrorIs(t, err, ErrNotDispatched)
+			require.Zero(t, sends)
+			require.False(t, ledger.reserved)
+			require.Len(t, ledger.records, 1, "no terminal no-dispatch fact may be invented")
+		})
+	}
 }
 func (l *recordingLedger) ReserveAIInvocationUsage(context.Context, string, string, string, int64, time.Time) error {
 	l.reserved = true

@@ -123,7 +123,7 @@ func preparedTaskFixture(t *testing.T, p aiworkbench.ExecutionProposal, key stri
 	request := agent.Request{Key: key,
 		Binding: agent.Binding{ContextKind: "acquisition", ContextID: p.OperationID, ProductKey: p.ProductKey,
 			CatalogVersion: p.CatalogVersion, PublicationID: p.PublicationID, TargetPlatform: p.TargetPlatform},
-		ConfigurationSnapshotRef: ref, PolicyVersion: "policy-v1", PromptVersion: "prompt-v1",
+		ConfigurationSnapshotRef: ref, GoalSummary: p.GoalSummary, PolicyVersion: "policy-v1", PromptVersion: "prompt-v1",
 		Limits: agent.Limits{Steps: 12, ModelCalls: 6, Tokens: 500000, CostMicros: 500000, Currency: "USD", Runtime: time.Minute}}
 	raw, err := json.Marshal(request)
 	require.NoError(t, err)
@@ -138,6 +138,14 @@ func TestConfirmReceiptPrecedesLaterStalenessAndKeepsOneTask(t *testing.T) {
 	conversation, proposal := readyTaskFixture(t, store, scope)
 	key := uuid.NewString()
 	prepared := preparedTaskFixture(t, proposal, key)
+	var changedRequest agent.Request
+	require.NoError(t, json.Unmarshal(prepared.ExecutionRequest, &changedRequest))
+	changedRequest.GoalSummary = "A different title goal"
+	changed := prepared
+	changed.ExecutionRequest, err = json.Marshal(changedRequest)
+	require.NoError(t, err)
+	_, _, err = store.Confirm(ctx, scope, conversation.ID, proposal.ID, key, changed)
+	require.ErrorIs(t, err, aiworkbench.ErrInvalid, "the confirmed proposal goal must match the frozen Agent request")
 	task, replay, err := store.Confirm(ctx, scope, conversation.ID, proposal.ID, key, prepared)
 	require.NoError(t, err)
 	require.False(t, replay)

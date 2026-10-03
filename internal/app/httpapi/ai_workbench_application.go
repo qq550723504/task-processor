@@ -276,7 +276,7 @@ func (x workbenchExecution) Prepare(ctx context.Context, p aiworkbench.Execution
 		}
 	}
 	request, err := a.startRequestWithProfile(requestCtx, binding, key, p.KnowledgeBaseID,
-		p.KnowledgeRevisionSetDigest, template, profile)
+		p.KnowledgeRevisionSetDigest, template, profile, p.GoalSummary)
 	if err != nil {
 		return aiworkbench.PreparedTask{}, err
 	}
@@ -296,6 +296,7 @@ func (x workbenchExecution) Start(ctx context.Context, task aiworkbench.Business
 	}
 	var request agent.Request
 	if json.Unmarshal(task.ExecutionRequest, &request) != nil || request.Key != task.ExecutionRequestKey ||
+		request.GoalSummary != task.GoalSummary ||
 		request.ConfigurationSnapshotRef != task.ConfigurationSnapshotRef || request.ContextSnapshotRef != task.ContextSnapshotRef {
 		return aiworkbench.ErrUnavailable
 	}

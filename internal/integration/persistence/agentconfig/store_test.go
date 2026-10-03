@@ -323,6 +323,10 @@ func TestSnapshotAdmissionAndDisableABA(t *testing.T) {
 	changed.Request.Binding.TargetPlatform = "amazon"
 	_, e = s.Prepare(ctx, changed)
 	require.ErrorIs(t, e, agentconfig.ErrConflict)
+	changed = start
+	changed.Request.GoalSummary = "Highlight verified bottle evidence"
+	_, e = s.Prepare(ctx, changed)
+	require.ErrorIs(t, e, agentconfig.ErrConflict, "a different Chat goal cannot reuse the frozen Agent configuration")
 	request := snap.Request
 	request.ConfigurationSnapshotRef = agent.ConfigurationSnapshotRef{Kind: agentconfig.SnapshotKind, ID: snap.ID, Digest: snap.Digest}
 	now := time.Now().UTC().Truncate(time.Microsecond)
