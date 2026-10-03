@@ -27,7 +27,11 @@ func (r *GormInvocationRecorder) ListObservedUsage(ctx context.Context, org, nam
 	if r == nil || r.db == nil || org == "" || strings.TrimSpace(org) != org || len(org) > 128 || (namespace != "image" && namespace != "product") || limit < 1 || limit > 50 {
 		return ObservedUsagePage{}, fmt.Errorf("invalid invocation usage query")
 	}
-	query := r.db.WithContext(ctx).Model(&invocationRow{}).Where("tenant_id = ? AND usage_known = ? AND outcome IN ? AND total_tokens > 0 AND member_id <> '' AND finished_at IS NOT NULL", org, true, []string{"succeeded", "usage_observed_failed"})
+	// Select every field this projection consumes, even on an empty page. A
+	// missing column must fail before Account Audit calls it a complete history.
+	query := r.db.WithContext(ctx).Model(&invocationRow{}).
+		Select("invocation_id", "member_id", "prompt_tokens", "completion_tokens", "total_tokens", "finished_at").
+		Where("tenant_id = ? AND usage_known = ? AND outcome IN ? AND total_tokens > 0 AND member_id <> '' AND finished_at IS NOT NULL", org, true, []string{"succeeded", "usage_observed_failed"})
 	if after != nil {
 		if after.At.IsZero() || len(after.Key) > 160 || (!strings.HasPrefix(after.Key, "image:") && !strings.HasPrefix(after.Key, "product:")) {
 			return ObservedUsagePage{}, fmt.Errorf("invalid invocation usage position")

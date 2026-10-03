@@ -79,6 +79,9 @@ func execute() error {
 		OpenImageAgent: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
+		OpenAccountAuditUsage: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingReadOnlyContext(ctx, databaseConfig(cfg))
+		},
 		OpenProductAgent: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
@@ -137,6 +140,9 @@ func execute() error {
 			}
 			if features.ImageAgentDB != nil {
 				options = append(options, httpapi.WithAcquisitionImageAgent(features.ImageAgentDB, features.ImageAgentWorkflow))
+			}
+			if features.AccountAuditImageDB != nil || features.AccountAuditProductDB != nil {
+				options = append(options, httpapi.WithAccountAuditUsageSources(features.AccountAuditImageDB, features.AccountAuditProductDB))
 			}
 			if features.ReferralDB != nil {
 				options = append(options, httpapi.WithReferrals(features.ReferralDB))
