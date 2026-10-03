@@ -24,7 +24,7 @@
 .row { display: flex; width: 100%; text-align: left; align-items: center; gap: 16px; padding: 14px; border: 1px solid var(--border); border-radius: 11px; background: var(--secondary); cursor: pointer; min-height: 112px; overflow-wrap: anywhere; }
 .row[aria-pressed="true"] { border-color: var(--primary); background: var(--accent); }
 .rowMarker { display: block; width: 8px; min-height: 62px; align-self: stretch; border-radius: 4px; background: var(--console-purple); flex-shrink: 0; }
-.rowMain { display: grid; gap: 5px; min-width: 0; flex: 1; font-size: 11px; color: var(--muted-foreground); }
+.rowMain { display: grid; gap: 5px; min-width: 0; flex: 1; font-size: 11px; color: var(--muted-foreground); overflow-wrap: anywhere; }
 .rowMain strong { color: var(--foreground); font-size: 15px; }
 .completed { color: var(--console-purple); font-size: 12px; }
 .rowAction { color: var(--primary); font-size: 12px; flex-shrink: 0; }

@@ -31,6 +31,34 @@ it("consumes the actual typed client once, keeps exact versions and opens only i
   expect(state.fetch.mock.calls[0][0]).toMatchObject({ organizationId: "200", limit: 20 });
 });
 
+it("shows the historical Store ID and local publish preparation in both row and detail", async () => {
+  const data = completedWorkFixture();
+  state.fetch.mockResolvedValue(data);
+  render(tree());
+  const row = await screen.findByRole("button", { name: /synthetic-product-1/ });
+  expect(row).toHaveTextContent(`记录所属店铺 ID：${data.items[0].store_id}`);
+  expect(row).toHaveTextContent("本地发布准备");
+  expect(screen.queryByText("通用业务")).not.toBeInTheDocument();
+  await userEvent.click(row);
+  const detail = screen.getByRole("region", { name: "工作记录详情" });
+  expect(detail).toHaveTextContent(`记录所属店铺 ID${data.items[0].store_id}`);
+  expect(detail).toHaveTextContent("本地发布准备");
+  expect(detail).toHaveTextContent("未向平台提交/发布");
+  expect(detail).not.toHaveTextContent("已发布");
+});
+
+it("labels save_draft as local draft preparation without claiming a platform draft", async () => {
+  const data = completedWorkFixture();
+  data.items[0].action = "save_draft";
+  state.fetch.mockResolvedValue(data);
+  render(tree());
+  const row = await screen.findByRole("button", { name: /synthetic-product-1/ });
+  expect(row).toHaveTextContent("本地草稿准备");
+  expect(row).toHaveTextContent("未向平台提交/发布");
+  await userEvent.click(row);
+  expect(screen.getByRole("region", { name: "工作记录详情" })).toHaveTextContent("本地草稿准备");
+});
+
 it("paginates opaque cursors, clears selection and refreshes at page one", async () => {
   state.fetch.mockImplementation(async ({ cursor }) => cursor ? completedWorkFixture(null, "2") : completedWorkFixture("opaque-next"));
   render(tree());

@@ -17,8 +17,10 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"task-processor/internal/authz"
+	assetstore "task-processor/internal/integration/persistence/product/asset"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/product/catalog"
+	"task-processor/internal/storecenter"
 	"task-processor/internal/workbenchcontext"
 	contextapi "task-processor/internal/workbenchcontext/httpapi"
 )
@@ -54,9 +56,12 @@ func TestProductTitleReviewBrowserFixture(t *testing.T) {
 	require.True(t, strings.HasPrefix(dsn, "host=127.0.0.1 ") && strings.Contains(dsn, " dbname=issue344_fixture "), "requires task-only loopback database")
 	t.Setenv("ISSUE382_TEST_DSN", dsn)
 	f := newTitleFixture(t) // actual SRC-1/Catalog publication and exact reads
+	require.NoError(t, assetstore.AutoMigrate(f.db))
+	require.NoError(t, storecenter.AutoMigrateStoreRepository(f.db))
 	schema, err := os.ReadFile("../listingrecordstore/schema.sql")
 	require.NoError(t, err)
 	require.NoError(t, f.db.Exec(string(schema)).Error)
+	prepareRecordStore(t, f.db, "200")
 	identity := &titleBrowserIdentity{browserFixtureIdentity: browserFixtureIdentity{actors: map[string]browserFixtureActor{}}}
 	tokens := map[string]string{}
 	for name, role := range map[string]string{"owner": "listingkit_operator", "other": "listingkit_operator", "admin": "listingkit_admin", "readonly": "admin", "store": "store_viewer", "revoked": "listingkit_admin", "slow": "listingkit_operator", "unavailable": "listingkit_operator"} {
@@ -72,6 +77,9 @@ func TestProductTitleReviewBrowserFixture(t *testing.T) {
 		for _, key := range []string{"product", "edit-product", "lost-product", "revoked-product"} {
 			p := f.publishSource(t, org, key, "fixture-initial-"+key, f.source)
 			bases = append(bases, p)
+			if org == "200" && key == "product" {
+				prepareApprovedAssets(t, f.db, org, key, p.Version)
+			}
 		}
 	}
 	application := func() *http.Server {

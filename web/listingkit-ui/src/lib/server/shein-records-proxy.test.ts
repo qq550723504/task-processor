@@ -2,7 +2,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { proxySheinRecords } from "./shein-records-proxy";
 
-const sheinRecordListFixture = () => ({ items: [{ record_id: "12345678-1234-4234-8234-123456789abc", product_key: "source-product", snapshot_version: "1", country: "US", language: "en", created_at: "2026-09-06T01:02:03Z" }], next_cursor: "opaque-cursor_1" });
+const sheinRecordListFixture = () => ({ items: [{ record_id: "12345678-1234-4234-8234-123456789abc", product_key: "source-product", snapshot_version: "1", store_id: "11111111-1111-4111-8111-111111111111", country: "US", language: "en", action: "publish", created_at: "2026-09-06T01:02:03Z" }], next_cursor: "opaque-cursor_1" });
 
 function request(query = "limit=20", headers: HeadersInit = {}) {
   return new Request(`http://localhost/api/listing/shein-records${query ? `?${query}` : ""}`, { headers: { cookie: "shuomi_effective_organization=200; private=x", "X-Expected-Organization-ID": "200", ...headers } });
