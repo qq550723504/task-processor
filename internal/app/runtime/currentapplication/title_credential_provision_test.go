@@ -95,3 +95,38 @@ func TestTitleCredentialProvisionWritesOnlyTheAdmittedOrganizationRow(t *testing
 		t.Fatalf("failed route resolution committed a credential change: %+v, %v", org, err)
 	}
 }
+
+func TestTitleCredentialProvisionAdmitsOnlyFrozenGoogleInteractionsRoute(t *testing.T) {
+	cfg := agentRuntimeConfig()
+	cfg.ProductAgent.Enabled = false
+	policy := cfg.ProductAgent.TextPolicies["org"]
+	policy.ProviderID, policy.Endpoint, policy.APIStyle = "google", "https://generativelanguage.googleapis.com", "google-interactions"
+	policy.OutputLimitField, policy.ThinkingLevel, policy.ReasoningEffort = "max_output_tokens", "low", ""
+	policy.OutputWindowTokens = int64(policy.MaximumOutputTokens)
+	policy.AdmittedRoute.ProviderID, policy.AdmittedRoute.ModelID = "google", "gemini-3.8-flash"
+	cfg.ProductAgent.TextPolicies["org"] = policy
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&openai.AIClientCredential{}); err != nil {
+		t.Fatal(err)
+	}
+	writerDB := cfg.ProductAgent.Database
+	writerDB.User = "title_credential_writer"
+	request := TitleCredentialProvision{Action: "upsert", OrganizationID: "org", ClientName: "text", APIKey: "synthetic-only", BaseURL: policy.Endpoint, Model: "gemini-3.8-flash", APIStyle: "google-interactions", TimeoutSecond: 3, WriterDatabase: writerDB}
+	// The admission route must be the manager's exact effective credential version.
+	// An operator policy with an unrelated frozen version does not authorize use.
+	if _, err := SaveTitleCredential(context.Background(), cfg, request, db); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := openai.NewOrganizationOnlyCredentialResolver(db).ResolveClientConfig(openai.WithTenantID(context.Background(), "org"), "text", nil)
+	if err != nil || selected.Config.APIStyle != "google-interactions" {
+		t.Fatalf("Google organization credential missing: %+v %v", selected, err)
+	}
+	bad := request
+	bad.BaseURL = "https://other.example.test"
+	if _, err := SaveTitleCredential(context.Background(), cfg, bad, db); err == nil {
+		t.Fatal("alternate Google endpoint admitted")
+	}
+}

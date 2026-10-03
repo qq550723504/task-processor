@@ -99,6 +99,82 @@ func agentModelFixture(t *testing.T, content, usage string) (*AgentTextModel, co
 	return m, authidentity.WithAuthenticatedIdentity(context.Background(), identity), in, ledger, &calls, &fresh
 }
 
+func TestGoogleInteractionsPolicyRequiresNativeControlsAndExactRoute(t *testing.T) {
+	m, _, _, _, _, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`)
+	p := m.policies["org"]
+	p.ProviderID = "google"
+	p.Endpoint = "https://generativelanguage.googleapis.com"
+	p.APIStyle = "google-interactions"
+	p.AdmittedRoute.ProviderID = "google"
+	p.AdmittedRoute.ModelID = "gemini-3.8-flash"
+	p.OutputLimitField = "max_output_tokens"
+	p.ThinkingLevel = "low"
+	p.ReasoningEffort = ""
+	p.OutputWindowTokens = int64(p.MaximumOutputTokens)
+	if err := p.Validate(); err != nil {
+		t.Fatalf("valid native policy rejected: %v", err)
+	}
+	for _, mutate := range []func(*AgentTextPolicy){
+		func(p *AgentTextPolicy) { p.OutputLimitField = "max_tokens" },
+		func(p *AgentTextPolicy) { p.ReasoningEffort = "none" },
+		func(p *AgentTextPolicy) { p.ThinkingLevel = "high" },
+		func(p *AgentTextPolicy) { p.OutputWindowTokens++ },
+		func(p *AgentTextPolicy) { p.Endpoint = "https://other.example.test" },
+		func(p *AgentTextPolicy) { p.AdmittedRoute.ModelID = "gemini-2.5-flash" },
+	} {
+		invalid := p
+		mutate(&invalid)
+		if err := invalid.Validate(); err == nil {
+			t.Fatalf("invalid native policy admitted: %+v", invalid)
+		}
+	}
+}
+
+func TestGoogleInteractionsTitleUsesExistingQuoteLedgerAndReviewAction(t *testing.T) {
+	for _, tc := range []struct{ status, wantOutcome string }{{"completed", string(aicapability.InvocationSucceeded)}, {"incomplete", string(aicapability.InvocationUsageObservedFailed)}} {
+		t.Run(tc.status, func(t *testing.T) {
+			var calls atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"id":"interaction","model":"gemini-3.8-flash","status":"` + tc.status + `","steps":[{"type":"model_output","content":[{"type":"text","text":"{\"Kind\":\"interrupt\"}"}]}],"usage":{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14,"total_tool_use_tokens":0}}`))
+			}))
+			defer srv.Close()
+			m, ctx, in, ledger, _, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`)
+			credentialDB := openTestCredentialDB(t)
+			sqlDB, err := credentialDB.DB()
+			requireNoErrorText(t, err)
+			sqlDB.SetMaxOpenConns(1)
+			resolver := openai.NewOrganizationOnlyCredentialResolver(credentialDB)
+			requireNoErrorText(t, resolver.SaveCredential(ctx, openai.AIClientCredential{TenantID: "org", ClientName: "text", APIKey: "fixture-key", BaseURL: srv.URL, Model: "gemini-3.8-flash", APIStyle: "google-interactions", Enabled: true, TimeoutSecond: 2}))
+			m.manager.SetConfigResolver(resolver)
+			route, err := m.manager.ResolveTextRoute(ctx, "text")
+			requireNoErrorText(t, err)
+			policy := m.policies["org"]
+			policy.ProviderID, policy.APIStyle, policy.Endpoint = "google", "google-interactions", srv.URL
+			policy.OutputLimitField, policy.ThinkingLevel, policy.ReasoningEffort = "max_output_tokens", "low", ""
+			policy.MaximumOutputTokens, policy.AdmittedRoute = 128, route
+			policy.OutputWindowTokens = int64(policy.MaximumOutputTokens)
+			m.policies["org"] = policy
+			if got := m.RouteReadiness(ctx); got != TextRouteAvailable {
+				t.Fatalf("native organization route not ready: %s", got)
+			}
+			quote, err := m.Quote(ctx, in)
+			requireNoErrorText(t, err)
+			in.UpperBound, in.InvocationID = quote, "google-invocation"
+			result, err := m.Decide(ctx, in)
+			requireNoErrorText(t, err)
+			record := ledger.rows[in.InvocationID]
+			if string(record.Outcome) != tc.wantOutcome || record.ProviderID != "google" || record.ModelID != "gemini-3.8-flash" || record.PromptTokens != 3 || record.CompletionTokens != 11 || record.TotalTokens != 14 || result.Usage.Tokens != 14 || calls.Load() != 1 {
+				t.Fatalf("record=%+v result=%+v calls=%d", record, result, calls.Load())
+			}
+			if tc.status == "completed" && result.Action.Kind != "interrupt" || tc.status != "completed" && result.Action.Kind != "" {
+				t.Fatalf("unexpected action on status %s: %+v", tc.status, result.Action)
+			}
+		})
+	}
+}
+
 func TestAgentTextModelBindsEachOrganizationToItsOwnProviderAndRoute(t *testing.T) {
 	newProvider := func(reasoningEffort string) (*httptest.Server, *atomic.Int32) {
 		calls := &atomic.Int32{}

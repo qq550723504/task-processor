@@ -41,21 +41,22 @@ credential SELECT、invocation SELECT/INSERT/UPDATE；Review 连接需要既有 
 `textPolicies[organizationId]` 字段（只有完整 route、计量证据、定价和付费授权都具备时才启用）：
 
 - `providerID`：真实供应商身份，与兼容协议名分离；`clientName`：当前企业组织凭据名称，例如 `default`。
-- `endpoint`、`apiStyle`、`admittedRoute.modelID`：部署者预定的精确 endpoint、OpenAI 兼容协议形式和模型；企业成员不能从浏览器修改该策略。
+- `endpoint`、`apiStyle`、`admittedRoute.modelID`：部署者预定的精确 endpoint、已准入传输协议和模型；企业成员不能从浏览器修改该策略。
 - `policyVersion`：`title-review-v1`；`pricingVersion`：获准估价策略的版本标识。
 - `currency`：当前策略的三字符货币；`inputMicrosPerMillion` 和
   `outputMicrosPerMillion`：每百万 token 的货币微单位估价，必须显式冻结。
-- `inputWindowTokens`、`outputWindowTokens`：该 route 有证据支持的输入和输出硬上界；
-  `maximumOutputTokens` 和 `outputLimitField`：本次请求输出上限及供应商确实执行的
-  `max_tokens` 或 `max_completion_tokens` 字段。字段支持必须有该 route 的证据。
-- `reasoningEffort`：可选，当前只支持空值或 `none`；随策略版本进入报价引用。Google 官方
-  `gemini-2.5-flash` 兼容接口候选使用 `none` 关闭思考；不能将此设置推断为兼容层输出上限或
-  usage 已经实测。其他 route 未验证接受该参数时留空。
+- `inputWindowTokens`、`outputWindowTokens`：该 route 实际强制的输入和输出硬上界；
+  `maximumOutputTokens` 和 `outputLimitField`：本次请求输出上限及供应商执行的字段。兼容
+  route 仅用已证明的 `max_tokens` 或 `max_completion_tokens`。Google 原生 Interactions
+  route 必须用 `max_output_tokens`，且 `outputWindowTokens=maximumOutputTokens`；可低于模型
+  65,536 的最大窗口，以较小的实际硬上限报价。
+- `reasoningEffort`：兼容 route 可选，当前只支持空值或 `none`；Google 原生 route 必须留空，
+  另填 `thinkingLevel: "low"`。两种参数均随策略进入报价引用，不能互换。
 - `admittedRoute`：通过当前 Manager 的 `ResolveTextRoute` 在该组织凭据下取得的
   `ProviderID`、`ModelID`、`CredentialReference`、`ConfigurationVersion` 非敏感元数据。
   其中兼容 route 的 Manager `ProviderID` 可能只是 `openai` 协议提示；实际供应商由策略的
   `providerID` 指明。不可猜测 version，也不能把其他组织的结果照搬。
-- `boundEvidence`：已复核的该供应商精确 route 的完整两项 Token 计量、输出上界和无额外收费维度的依据标识；
+- `boundEvidence`：已复核的该供应商精确 route 的完整 Token 计量、输出上界和无额外收费维度的依据标识；Google 原生 route 须包含独立思考量如何并入输出账本的证据；
   别家模型窗口、一般兼容说明或价格页不能自行当成该 route 已被验证的证据。
 - `pointPricing`：沿用 #564 冻结积分计费，显式设置获准 `priceVersion` 和正整数
   `inputPointsPerMillionTokens` / `outputPointsPerMillionTokens`。不默认费率；预留企业积分
@@ -66,12 +67,16 @@ credential SELECT、invocation SELECT/INSERT/UPDATE；Review 连接需要既有 
 未知响应/用量保持既有预留，不能通过新请求编号绕过。调整配置或凭据后必须重新核对 route。
 当前只交付受控接线，未提供通用模型/计费配置平台；目标环境的 route 及证明仍需交付者配置。
 
-首条真实候选改为 Google 官方 Gemini API 的 OpenAI 兼容入口
-`https://generativelanguage.googleapis.com/v1beta/openai/`，`providerID=google`、
-`model=gemini-2.5-flash`、`apiStyle=openai-compatible`、`reasoningEffort=none`。
-该入口和模型来自 Google 官方文档；`admittedRoute` 仍须用目标组织真实凭据解析，不能手填猜测。
-Google 原生接口的输出硬上界不自动证明兼容接口 `max_tokens` 的执行；当前未取得精确 route
-的 usage 和上界实测、产品点数费率与付费预算，保持执行关闭，不写入虚假的 `boundEvidence`。
+首条 Google 候选为官方 Gemini Interactions API：`endpoint=https://generativelanguage.googleapis.com`、
+`apiStyle=google-interactions`、`providerID=google`、`model=gemini-3.8-flash`、
+`outputLimitField=max_output_tokens`、`thinkingLevel=low`。请求固定为单次非流式、
+`store=false`、`background=false`，不带历史或工具。完整 usage 的输入量进入原 PromptTokens，
+可见输出和思考量之和进入原 CompletionTokens；任一计数缺失、额外收费维度或超界便保持 UNKNOWN。
+原 `gemini-2.5-flash` 兼容候选在当前 Google 新项目返回 404，3.8 兼容探针的完成量超过
+请求 `max_tokens`；不能沿用它们作为准入证据。`admittedRoute` 仍须由目标组织凭据解析，
+不能手填猜测。当前仅有合成探针和实现测试，没有产品点数费率、真实业务数据处理决定或
+真实调用授权；保持执行关闭，不写入虚假的 `boundEvidence`。已创建的 Google Free tier Key
+仅限合成数据，不能用来传输真实商品或企业资料。
 
 当前应用没有挂载旧 `listingkit` AI 设置。部署者先在**关闭执行**的私有 manifest 中填入
 企业 allowlist 及预定策略（首次 `admittedRoute.configurationVersion` 暂缺）；另备私有凭据输入，
