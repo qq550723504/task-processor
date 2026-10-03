@@ -11,7 +11,15 @@ import (
 )
 
 func (a *aiWorkbenchApplication) listConversations(c *gin.Context, ctx context.Context, scope aiworkbench.Scope) {
-	if len(c.Request.URL.Query()) > 2 || c.Query("after") != "" && !acquisitionHTTPUUID(c.Query("after")) {
+	values := c.Request.URL.Query()
+	for name, entries := range values {
+		if len(entries) != 1 || (name != "after" && name != "limit" && name != "saved") {
+			writeAIWorkbenchError(c, aiworkbench.ErrInvalid)
+			return
+		}
+	}
+	if c.Query("after") != "" && !acquisitionHTTPUUID(c.Query("after")) ||
+		(values.Has("saved") && c.Query("saved") != "true") {
 		writeAIWorkbenchError(c, aiworkbench.ErrInvalid)
 		return
 	}
@@ -20,7 +28,7 @@ func (a *aiWorkbenchApplication) listConversations(c *gin.Context, ctx context.C
 		writeAIWorkbenchError(c, err)
 		return
 	}
-	items, next, err := a.store.ListConversations(ctx, scope, c.Query("after"), limit)
+	items, next, err := a.store.ListConversations(ctx, scope, c.Query("after"), limit, c.Query("saved") == "true")
 	if err != nil {
 		writeAIWorkbenchError(c, err)
 		return

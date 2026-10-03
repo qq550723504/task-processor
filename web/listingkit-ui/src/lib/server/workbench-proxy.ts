@@ -481,12 +481,14 @@ export async function buildWorkbenchUpstreamRequest(
       if (listed) {
         if (!(await requestHasNoBody(request))) return protocolError(400, "INVALID_REQUEST", "Body is not allowed");
         const url = new URL(request.url);
-        const allowed = action === "conversation-read" ? new Set(["limit", "before"]) : new Set(["limit", "after"]);
+        const allowed = action === "conversation-read" ? new Set(["limit", "before"])
+          : action === "conversation-list" ? new Set(["limit", "after", "saved"]) : new Set(["limit", "after"]);
         const selected = new URLSearchParams();
         for (const [name, value] of url.searchParams) {
           if (!allowed.has(name) || selected.has(name) || !value ||
             (name === "limit" && (!/^[1-9][0-9]?$/.test(value) || Number(value) > 50)) ||
             (name === "after" && !isAcquisitionUUID(value)) ||
+            (name === "saved" && value !== "true") ||
             (name === "before" && !/^[1-9][0-9]*$/.test(value))) return protocolError(400, "INVALID_REQUEST", "Query is invalid");
           selected.set(name, value);
         }

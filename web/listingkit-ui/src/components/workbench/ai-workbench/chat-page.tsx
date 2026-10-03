@@ -65,8 +65,8 @@ function ChatCollection({ scope, authorizationKey, mode }: { scope: AIScope; aut
     return () => { active = false; };
   }, [createStorageKey]);
   useEffect(() => () => abort.current?.abort(), []);
-  const conversations = useQuery({ queryKey: ["ai-chat", scope.userId, scope.organizationId, authorizationKey, "list", after],
-    queryFn: ({ signal }) => requestAIWorkbench({ route: "conversation-list", method: "GET", path: `chat/conversations?limit=50${after ? `&after=${after}` : ""}`, scope, signal }),
+  const conversations = useQuery({ queryKey: ["ai-chat", scope.userId, scope.organizationId, authorizationKey, "list", mode, after],
+    queryFn: ({ signal }) => requestAIWorkbench({ route: "conversation-list", method: "GET", path: `chat/conversations?limit=50${mode === "saved" ? "&saved=true" : ""}${after ? `&after=${after}` : ""}`, scope, signal }),
     retry: false, staleTime: 0, refetchOnWindowFocus: false });
   const visible = useMemo(() => (conversations.data?.conversations ?? []).filter(item => !item.Archived && (mode !== "saved" || item.Favorite)), [conversations.data, mode]);
   async function create() {

@@ -17,6 +17,7 @@ import (
 	"task-processor/internal/agentconfig"
 	"task-processor/internal/aicapability"
 	aistore "task-processor/internal/aicapability/store"
+	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	governed "task-processor/internal/integration/aicapability/einomodel"
 	"task-processor/internal/integration/openai"
@@ -288,6 +289,15 @@ func testProductAgentOwners(t *testing.T, mode string) {
 	if mode == "configuration" {
 		require.Equal(t, &agentconfig.TemplateRef{TemplateID: selectedTemplate.TemplateID, Revision: "1"}, result.TemplateSelection)
 		require.Nil(t, result.Knowledge, "template default never opts into Knowledge")
+		wrongProfile, profileErr := module.(productAgentModule).application.selectTitleProfile(context.Background(), "B")
+		require.NoError(t, profileErr)
+		wrongProfile.ModelID = "another-title-model"
+		require.NoError(t, wrongProfile.Validate())
+		bound := agent.Binding{ContextKind: "acquisition", ContextID: op.OperationID, ProductKey: op.ProductKey,
+			CatalogVersion: op.CatalogVersion, PublicationID: op.PublicationID, TargetPlatform: "shein"}
+		requestCtx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "B", UserID: "operator"})
+		_, err = module.(productAgentModule).application.startRequestWithProfile(requestCtx, bound, key, "", "", &agentconfig.TemplateRef{TemplateID: selectedTemplate.TemplateID, Revision: "1"}, wrongProfile)
+		require.ErrorIs(t, err, agentconfig.ErrConflict, "a Chat proposal cannot adopt a different frozen Agent model under a reused key")
 		configurationScope := agent.Scope{OrganizationID: "B", ActorID: "admin"}
 		_, err = configuration.Execute(context.Background(), agentconfig.Command{Scope: configurationScope, Key: uuid.NewString(), AgentID: "product.title.agent", Operation: "update-template", TemplateID: selectedTemplate.TemplateID, Expected: 1, Input: agentconfig.TemplateInput{Name: "new v2", TargetPlatform: "temu"}})
 		require.NoError(t, err)
@@ -295,10 +305,19 @@ func testProductAgentOwners(t *testing.T, mode string) {
 		require.NoError(t, err)
 		_, err = configuration.Execute(context.Background(), agentconfig.Command{Scope: configurationScope, Key: uuid.NewString(), AgentID: "product.title.agent", Operation: "disable", Expected: 1})
 		require.NoError(t, err)
+		// The committed run is an immutable receipt. A route or credential change
+		// cannot turn an exact same-key retry into a new model selection.
+		require.NoError(t, f.owner.Model(&openai.AIClientCredential{}).
+			Where("tenant_id = ? AND user_id = ? AND client_name = ?", "B", "", "default").
+			Update("enabled", false).Error)
+		code, raw, err = acquisitionHTTPRequest(server, "POST", path, "operator", "B", key, startBody)
+		require.NoError(t, err)
+		require.Equal(t, 200, code, string(raw))
+		require.Contains(t, string(raw), result.RunID)
+		require.EqualValues(t, 4, calls.Load())
 		code, raw, err = acquisitionHTTPRequest(server, "POST", path, "operator", "B", uuid.NewString(), startBody)
 		require.NoError(t, err)
-		require.Equal(t, 409, code, string(raw))
-		require.Contains(t, string(raw), "AGENT_NOT_ENABLED")
+		require.Equal(t, 503, code, string(raw), "new work cannot select the disabled model route")
 		require.EqualValues(t, 4, calls.Load())
 		application := module.(productAgentModule).application
 		recent, _, recentErr := configuration.Recent(context.Background(), agent.Scope{OrganizationID: "B", ActorID: "operator"}, "product.title.agent", "", 20, application.store, func(b agent.Binding) error { require.Equal(t, op.ProductKey, b.ProductKey); return nil })

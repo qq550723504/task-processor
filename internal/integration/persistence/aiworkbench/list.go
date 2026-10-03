@@ -8,21 +8,28 @@ import (
 )
 
 // Cursors name a scoped row rather than accepting caller-supplied timestamps.
-// Every page read is bounded and has one stable created-at/ID ordering.
-func (s *Store) ListConversations(ctx context.Context, scope aiworkbench.Scope, after string, limit int) ([]aiworkbench.Conversation, string, error) {
+// Filters are applied before the page boundary. A returned cursor belongs to
+// the same active/saved view and orders by last activity, then ID.
+func (s *Store) ListConversations(ctx context.Context, scope aiworkbench.Scope, after string, limit int, savedOnly bool) ([]aiworkbench.Conversation, string, error) {
 	if s == nil || s.db == nil || ctx == nil || !validScope(scope) || limit < 1 || limit > 50 || (after != "" && !validKey(after)) {
 		return nil, "", aiworkbench.ErrInvalid
 	}
-	query := s.db.WithContext(ctx).Where("organization_id = ? AND owner_user_id = ?", scope.OrganizationID, scope.ActorID)
+	query := s.db.WithContext(ctx).Where("organization_id = ? AND owner_user_id = ? AND lifecycle = ?", scope.OrganizationID, scope.ActorID, "ACTIVE")
+	if savedOnly {
+		query = query.Where("favorite = ?", true)
+	}
 	if after != "" {
 		cursor, err := s.lookupConversation(s.db.WithContext(ctx), scope, after, false)
 		if err != nil {
 			return nil, "", err
 		}
-		query = query.Where("(created_at < ? OR (created_at = ? AND id < ?))", cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
+		if cursor.Lifecycle != "ACTIVE" || savedOnly && !cursor.Favorite {
+			return nil, "", aiworkbench.ErrNotFound
+		}
+		query = query.Where("(updated_at < ? OR (updated_at = ? AND id < ?))", cursor.UpdatedAt, cursor.UpdatedAt, cursor.ID)
 	}
 	var rows []conversationRow
-	if err := query.Order("created_at DESC, id DESC").Limit(limit + 1).Find(&rows).Error; err != nil {
+	if err := query.Order("updated_at DESC, id DESC").Limit(limit + 1).Find(&rows).Error; err != nil {
 		return nil, "", unavailable(err)
 	}
 	next := ""

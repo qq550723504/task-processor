@@ -30,6 +30,21 @@ describe("AI Workbench BFF boundary", () => {
     if (mapped instanceof Response) expect(mapped.status).toBe(409);
   });
 
+  it("forwards only the scoped saved-conversation page filter", async () => {
+    const headers = { ...scope };
+    const accepted = new Request(`http://localhost/api/workbench/chat/conversations?limit=50&saved=true&after=${id}`, { headers });
+    const mapped = await buildWorkbenchUpstreamRequest(accepted, ["chat", "conversations"], "server-token", "user-a");
+    expect(mapped).not.toBeInstanceOf(Response);
+    if (mapped instanceof Response) return;
+    expect(mapped.url).toContain(`?limit=50&saved=true&after=${id}`);
+    for (const suffix of ["saved=false", "saved=true&saved=true", "unknown=true"]) {
+      const rejected = new Request(`http://localhost/api/workbench/chat/conversations?${suffix}`, { headers });
+      const result = await buildWorkbenchUpstreamRequest(rejected, ["chat", "conversations"], "server-token", "user-a");
+      expect(result).toBeInstanceOf(Response);
+      if (result instanceof Response) expect(result.status).toBe(400);
+    }
+  });
+
   it("accepts only the curated Task projection fields", async () => {
     const task = { id, conversationId: id, proposalId: id, title: "Title suggestion", goalSummary: "Improve title", createdAt: "2026-10-03T00:00:00Z",
       projectionAvailable: true, state: "WAITING_CONFIRMATION", reason: "pending", canStart: false, canReconcile: false, canResume: false, canReview: false,

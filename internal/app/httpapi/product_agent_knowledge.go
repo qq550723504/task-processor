@@ -85,24 +85,21 @@ func (a *productAgentApplication) startRequestWithProfile(ctx context.Context, b
 	if a.configuration == nil || a.store == nil {
 		return agent.Request{}, agentconfig.ErrUnavailable
 	}
-	if a.selectTitleProfile == nil {
-		return agent.Request{}, agent.ErrUnavailable
-	}
-	profile, err := a.selectTitleProfile(ctx, identity.TenantID)
-	if err != nil || profile.Validate() != nil || (expectedProfile.Validate() == nil && profile != expectedProfile) {
-		return agent.Request{}, agent.ErrUnavailable
-	}
 	if baseID != "" {
 		request.PromptVersion = "product-title-agent-knowledge-v1"
 	}
-	input := agentconfig.StartCommand{Scope: agent.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, AgentID: a.definition.ID, AgentVersion: a.definition.Version, KnowledgeBaseID: baseID, Template: template, Request: request, ExecutionModelProfile: profile}
+	input := agentconfig.StartCommand{Scope: agent.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, AgentID: a.definition.ID, AgentVersion: a.definition.Version, KnowledgeBaseID: baseID, Template: template, Request: request}
 	existing, found, readErr := a.store.Lookup(ctx, input.Scope, binding, key)
 	if readErr != nil {
 		return agent.Request{}, readErr
 	}
 	if found {
-		if _, err := a.configuration.Match(ctx, input, existing.State.Request.ConfigurationSnapshotRef); err != nil {
+		frozen, err := a.configuration.Match(ctx, input, existing.State.Request.ConfigurationSnapshotRef)
+		if err != nil {
 			return agent.Request{}, err
+		}
+		if expectedProfile.Validate() == nil && frozen.ExecutionModelProfile != expectedProfile {
+			return agent.Request{}, agentconfig.ErrConflict
 		}
 		if baseID != "" {
 			if a.context == nil {
@@ -116,6 +113,14 @@ func (a *productAgentApplication) startRequestWithProfile(ctx context.Context, b
 		}
 		return existing.State.Request, nil
 	}
+	if a.selectTitleProfile == nil {
+		return agent.Request{}, agent.ErrUnavailable
+	}
+	profile, err := a.selectTitleProfile(ctx, identity.TenantID)
+	if err != nil || profile.Validate() != nil || (expectedProfile.Validate() == nil && profile != expectedProfile) {
+		return agent.Request{}, agent.ErrUnavailable
+	}
+	input.ExecutionModelProfile = profile
 	snapshot, err := a.configuration.Prepare(ctx, input)
 	if err != nil {
 		return agent.Request{}, err

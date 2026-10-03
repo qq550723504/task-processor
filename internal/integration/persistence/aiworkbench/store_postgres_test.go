@@ -237,6 +237,72 @@ func testPlanPreparer(history []aiworkbench.Message, invocationID string) (aiwor
 		ModelProfile: []byte(`{"profile_id":"test"}`), Deadline: time.Now().Add(time.Minute)}, nil
 }
 
+func TestConversationRecentPageOrdersByLastActivity(t *testing.T) {
+	store, err := New(workbenchDB(t))
+	require.NoError(t, err)
+	ctx := context.Background()
+	scope := aiworkbench.Scope{OrganizationID: "org-a", ActorID: "actor-a"}
+	older, _, err := store.Create(ctx, scope, uuid.NewString(), aiworkbench.CreateInput{})
+	require.NoError(t, err)
+	newer, _, err := store.Create(ctx, scope, uuid.NewString(), aiworkbench.CreateInput{})
+	require.NoError(t, err)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	require.NoError(t, store.db.Model(&conversationRow{}).Where("id = ?", older.ID).
+		Updates(map[string]any{"created_at": now.Add(-2 * time.Hour), "updated_at": now.Add(-2 * time.Hour)}).Error)
+	require.NoError(t, store.db.Model(&conversationRow{}).Where("id = ?", newer.ID).
+		Updates(map[string]any{"created_at": now.Add(-time.Hour), "updated_at": now.Add(-time.Hour)}).Error)
+	title := "Active again"
+	_, err = store.SetMetadata(ctx, scope, older.ID, older.MetadataRevision, aiworkbench.MetadataChange{Title: &title})
+	require.NoError(t, err)
+	first, next, err := store.ListConversations(ctx, scope, "", 1, false)
+	require.NoError(t, err)
+	require.Len(t, first, 1)
+	require.Equal(t, older.ID, first[0].ID)
+	require.Equal(t, older.ID, next)
+	second, next, err := store.ListConversations(ctx, scope, next, 1, false)
+	require.NoError(t, err)
+	require.Len(t, second, 1)
+	require.Equal(t, newer.ID, second[0].ID)
+	require.Empty(t, next)
+	key := uuid.NewString()
+	_, _, err = store.AppendUser(ctx, scope, older.ID, key,
+		aiworkbench.MessageInput{Content: "Next request", OperationID: "op-1", TargetPlatform: "shein"}, testPlanPreparer)
+	require.NoError(t, err)
+	// Isolate the assistant append from the preceding USER timestamp update.
+	require.NoError(t, store.db.Model(&conversationRow{}).Where("id = ?", older.ID).
+		Update("updated_at", now.Add(-2*time.Hour)).Error)
+	_, _, err = store.CompletePlan(ctx, scope, key, aiworkbench.PlanTerminal{AssistantText: "Please clarify", Mode: aiworkbench.PlanClarify})
+	require.NoError(t, err)
+	first, _, err = store.ListConversations(ctx, scope, "", 1, false)
+	require.NoError(t, err)
+	require.Equal(t, older.ID, first[0].ID, "assistant activity also refreshes recent order")
+}
+
+func TestSavedConversationFilterPrecedesPaginationAndExcludesArchived(t *testing.T) {
+	store, err := New(workbenchDB(t))
+	require.NoError(t, err)
+	ctx := context.Background()
+	scope := aiworkbench.Scope{OrganizationID: "org-a", ActorID: "actor-a"}
+	oldFavorite, _, err := store.Create(ctx, scope, uuid.NewString(), aiworkbench.CreateInput{Favorite: true})
+	require.NoError(t, err)
+	for range 3 {
+		_, _, err = store.Create(ctx, scope, uuid.NewString(), aiworkbench.CreateInput{})
+		require.NoError(t, err)
+	}
+	saved, next, err := store.ListConversations(ctx, scope, "", 1, true)
+	require.NoError(t, err)
+	require.Len(t, saved, 1)
+	require.Equal(t, oldFavorite.ID, saved[0].ID)
+	require.Empty(t, next)
+	archived := true
+	_, err = store.SetMetadata(ctx, scope, oldFavorite.ID, oldFavorite.MetadataRevision, aiworkbench.MetadataChange{Archived: &archived})
+	require.NoError(t, err)
+	saved, next, err = store.ListConversations(ctx, scope, "", 1, true)
+	require.NoError(t, err)
+	require.Empty(t, saved)
+	require.Empty(t, next)
+}
+
 func TestConversationCreateReceiptIsAtomicAndScoped(t *testing.T) {
 	db := workbenchDB(t)
 	store, err := New(db)

@@ -47,6 +47,18 @@ it("carries the selected saved product into the newly created conversation", asy
   fixture.search = new URLSearchParams();
 });
 
+it("loads favorites before pagination so an older saved conversation is visible", async () => {
+  const saved = { ...conversation, ID: "d5d9d1ca-1db3-43af-9649-dcdf3663745b", Title: "重要会话", Favorite: true };
+  fixture.request.mockImplementation(async ({ route, path }) => {
+    if (route !== "conversation-list") throw new AIWorkbenchError("INVALID_REQUEST");
+    return path.includes("saved=true") ? { conversations: [saved], next: "" }
+      : { conversations: [conversation], next: conversation.ID };
+  });
+  render(<QueryClientProvider client={client}><ChatPage mode="saved" /></QueryClientProvider>);
+  expect(await screen.findByRole("link", { name: /重要会话/ })).toBeVisible();
+  expect(fixture.request).toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining("saved=true") }));
+});
+
 it("explains a terminal plan failure before dispatch and keeps the goal for a new attempt", async () => {
   fixture.request.mockImplementation(async ({ route }) => {
     if (route === "conversation-read") return { conversation, messages: [], proposals: [], before: "" };
