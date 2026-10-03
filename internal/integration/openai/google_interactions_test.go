@@ -41,7 +41,7 @@ func TestGoogleInteractionsSingleStatelessWireAndThoughtUsage(t *testing.T) {
 			t.Errorf("unexpected Google request path=%q payload=%#v", r.URL.Path, payload)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"interaction-1","model":"gemini-3.8-flash","status":"completed","steps":[{"type":"thought","content":[]},{"type":"model_output","content":[{"type":"text","text":"{\"Kind\":\"interrupt\"}"}]}],"usage":{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14,"total_tool_use_tokens":0}}`))
+		_, _ = w.Write([]byte(`{"id":"interaction-1","model":"gemini-3.8-flash","status":"completed","steps":[{"type":"thought","content":[]},{"type":"model_output","content":[{"type":"text","text":"{\"Kind\":\"interrupt\"}"}]}],"usage":{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14,"total_tool_use_tokens":0,"input_tokens_by_modality":[{"modality":"text","tokens":3}],"output_tokens_by_modality":[{"modality":"text","tokens":4}]}}`))
 	}))
 	defer srv.Close()
 	m := googleTextTestManager(t, srv.URL)
@@ -62,6 +62,13 @@ func TestGoogleInteractionsMissingOrUnpriceableUsageFailsClosed(t *testing.T) {
 		{"inconsistent", `{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":13}`},
 		{"tool use", `{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":15,"total_tool_use_tokens":1}`},
 		{"tool modality despite zero", `{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14,"total_tool_use_tokens":0,"tool_use_tokens_by_modality":[{"modality":"text","tokens":1}]}`},
+		{"image input", `{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14,"total_tool_use_tokens":0,"input_tokens_by_modality":[{"modality":"text","tokens":2},{"modality":"image","tokens":1}]}`},
+		{"audio output", `{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14,"total_tool_use_tokens":0,"output_tokens_by_modality":[{"modality":"text","tokens":3},{"modality":"audio","tokens":1}]}`},
+		{"image cache", `{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14,"total_tool_use_tokens":0,"total_cached_tokens":1,"cached_tokens_by_modality":[{"modality":"image","tokens":1}]}`},
+		{"inconsistent text breakdown", `{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14,"total_tool_use_tokens":0,"input_tokens_by_modality":[{"modality":"text","tokens":2}]}`},
+		{"empty input breakdown", `{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14,"total_tool_use_tokens":0,"input_tokens_by_modality":[]}`},
+		{"empty output breakdown", `{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14,"total_tool_use_tokens":0,"output_tokens_by_modality":[]}`},
+		{"empty cache breakdown", `{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14,"total_tool_use_tokens":0,"total_cached_tokens":1,"cached_tokens_by_modality":[]}`},
 		{"unpriced dimension", `{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14,"total_other_tokens":1}`},
 		{"over cap", `{"total_input_tokens":3,"total_output_tokens":120,"total_thought_tokens":9,"total_tokens":132}`},
 	} {

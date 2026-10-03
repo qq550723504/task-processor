@@ -71,7 +71,8 @@ credential SELECT、invocation SELECT/INSERT/UPDATE；Review 连接需要既有 
 `apiStyle=google-interactions`、`providerID=google`、`model=gemini-3.8-flash`、
 `outputLimitField=max_output_tokens`、`thinkingLevel=low`。请求固定为单次非流式、
 `store=false`、`background=false`，不带历史或工具。完整 usage 的输入量进入原 PromptTokens，
-可见输出和思考量之和进入原 CompletionTokens；任一计数缺失、额外收费维度或超界便保持 UNKNOWN。
+可见输出和思考量之和进入原 CompletionTokens；任一计数缺失、工具量未明确为零、
+非文本模态、额外收费维度或超界便保持 UNKNOWN。
 原 `gemini-2.5-flash` 兼容候选在当前 Google 新项目返回 404，3.8 兼容探针的完成量超过
 请求 `max_tokens`；不能沿用它们作为准入证据。`admittedRoute` 仍须由目标组织凭据解析，
 不能手填猜测。当前仅有合成探针和实现测试，没有产品点数费率、真实业务数据处理决定或

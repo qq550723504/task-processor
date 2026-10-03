@@ -128,7 +128,19 @@ func mapGoogleInteraction(source *interaction.Interaction, expectedModel string,
 	}
 	u := source.Usage
 	input, output, thought, total := *u.TotalInputTokens, *u.TotalOutputTokens, *u.TotalThoughtTokens, *u.TotalTokens
-	if input < 0 || output < 0 || thought < 0 || total <= 0 || input > total || output > total-input || thought != total-input-output || output+thought > maximumOutputTokens || u.TotalToolUseTokens == nil || *u.TotalToolUseTokens != 0 || len(u.ToolUseTokensByModality) != 0 || u.TotalCachedTokens != nil && (*u.TotalCachedTokens < 0 || *u.TotalCachedTokens > input) || len(u.GroundingToolCount) != 0 {
+	if input < 0 || output < 0 || thought < 0 || total <= 0 || input > total || output > total-input || thought != total-input-output || output+thought > maximumOutputTokens {
+		return result
+	}
+	if u.TotalToolUseTokens == nil || *u.TotalToolUseTokens != 0 || len(u.ToolUseTokensByModality) != 0 || len(u.GroundingToolCount) != 0 {
+		return result
+	}
+	if u.TotalCachedTokens != nil && (*u.TotalCachedTokens < 0 || *u.TotalCachedTokens > input) {
+		return result
+	}
+	if !textOnlyModalityBreakdown(u.InputTokensByModality, input) || !textOnlyModalityBreakdown(u.OutputTokensByModality, output) {
+		return result
+	}
+	if u.CachedTokensByModality != nil && (u.TotalCachedTokens == nil || !textOnlyModalityBreakdown(u.CachedTokensByModality, *u.TotalCachedTokens)) {
 		return result
 	}
 	result.UsageKnown = true
@@ -166,4 +178,18 @@ func mapGoogleInteraction(source *interaction.Interaction, expectedModel string,
 	}
 	result.Choices = []ChatCompletionChoice{{Message: ChatCompletionMessage{Content: content}, FinishReason: finish}}
 	return result
+}
+
+func textOnlyModalityBreakdown(rows []interaction.ModalityTokens, expected int) bool {
+	if rows == nil {
+		return true
+	}
+	remaining := expected
+	for _, row := range rows {
+		if row.Modality == nil || *row.Modality != interaction.ResponseModalityText || row.Tokens == nil || *row.Tokens < 0 || *row.Tokens > remaining {
+			return false
+		}
+		remaining -= *row.Tokens
+	}
+	return remaining == 0
 }
