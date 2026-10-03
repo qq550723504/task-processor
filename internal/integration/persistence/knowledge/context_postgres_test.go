@@ -193,7 +193,7 @@ func (f *contextFixture) request() k.ContextRequest {
 
 func TestKnowledgeSelectionRevisionSetFencesChatMaterialization(t *testing.T) {
 	f := newContextFixture(t)
-	f.source("first revision", "")
+	source := f.source("first revision", "")
 	ctx := context.Background()
 	observed, err := f.repo.ObserveSelection(ctx, f.scope, f.base.ID)
 	require.NoError(t, err)
@@ -203,7 +203,11 @@ func TestKnowledgeSelectionRevisionSetFencesChatMaterialization(t *testing.T) {
 	request.ExpectedRevisionSetDigest = observed.Digest
 	_, err = f.repo.Materialize(ctx, request)
 	require.NoError(t, err)
-	f.source("new selected source", "")
+	created := f.apply(k.Command{Kind: "revision_create", SourceID: source.ID, Version: source.Version, Name: source.Name,
+		Upload: &k.Revision{Filename: "next.txt", ContentType: "text/plain", SizeBytes: 5, SHA256: k.Digest([]byte("newer"))}})
+	f.promote(*created.Revision, "new current revision", "")
+	_, err = f.repo.Materialize(ctx, request)
+	require.ErrorIs(t, err, k.ErrSelectionChanged, "same-key adoption must recheck the observed revision set before T1")
 	changed := f.request()
 	changed.ExpectedRevisionSetDigest = observed.Digest
 	_, err = f.repo.Materialize(ctx, changed)

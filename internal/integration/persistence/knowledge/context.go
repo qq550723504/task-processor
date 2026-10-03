@@ -205,6 +205,18 @@ func (r *Repository) Materialize(ctx context.Context, req k.ContextRequest) (k.C
 			if existing.Fingerprint != fingerprint {
 				return k.ErrConflict
 			}
+			if req.ExpectedRevisionSetDigest != "" {
+				// A bundle may outlive the currently readable revision set. A
+				// same-key first-confirm retry must still fence that selection;
+				// a claimed Agent run uses ValidateMaterializedRequest instead.
+				_, _, currentDigest, err := selectRevisionSet(tx, req.Scope.OrganizationID, existing.BaseID)
+				if err != nil {
+					return err
+				}
+				if currentDigest != req.ExpectedRevisionSetDigest {
+					return k.ErrSelectionChanged
+				}
+			}
 			if _, err := lifecycleBundle(tx, existing); err != nil {
 				return err
 			}
