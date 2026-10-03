@@ -140,6 +140,33 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(raw, &created))
 	require.NotEmpty(t, created.Conversation.ID)
+	code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchChatBase, "operator", "B", uuid.NewString(), `{"favorite":true}`)
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	var saved struct {
+		Conversation struct {
+			ID string `json:"ID"`
+		} `json:"conversation"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &saved))
+	for range 2 {
+		code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchChatBase, "operator", "B", uuid.NewString(), `{}`)
+		require.NoError(t, err)
+		require.Equal(t, 200, code, string(raw))
+	}
+	code, raw, err = acquisitionHTTPRequest(server, "GET", workbenchChatBase+"?limit=1&saved=true", "operator", "B", "", "")
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	var savedPage struct {
+		Conversations []struct {
+			ID string `json:"ID"`
+		} `json:"conversations"`
+		Next string `json:"next"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &savedPage))
+	require.Len(t, savedPage.Conversations, 1)
+	require.Equal(t, saved.Conversation.ID, savedPage.Conversations[0].ID, "favorite filter runs before limit")
+	require.Empty(t, savedPage.Next)
 	messageKey := uuid.NewString()
 	messageBody := `{"content":"请优化这个商品在 SHEIN 的标题","operationId":"` + op.OperationID + `","targetPlatform":"shein"}`
 	messagePath := workbenchChatBase + "/" + created.Conversation.ID + "/messages"
@@ -155,6 +182,17 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.NotEmpty(t, planned.ProposalID)
 	require.EqualValues(t, 1, plannerCalls.Load())
 	require.Zero(t, titleCalls.Load())
+	code, raw, err = acquisitionHTTPRequest(server, "GET", workbenchChatBase+"?limit=1", "operator", "B", "", "")
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	var recentPage struct {
+		Conversations []struct {
+			ID string `json:"ID"`
+		} `json:"conversations"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &recentPage))
+	require.Len(t, recentPage.Conversations, 1)
+	require.Equal(t, created.Conversation.ID, recentPage.Conversations[0].ID, "message activity moves an older conversation to recent")
 	var count int64
 	require.NoError(t, f.owner.Table("ai_workbench.business_tasks").Count(&count).Error)
 	require.Zero(t, count)
