@@ -34,6 +34,19 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); client.clear(); sessionStorage.clear(); });
 
+it("carries the selected saved product into the newly created conversation", async () => {
+  fixture.search = new URLSearchParams(`operationId=${operationId}`);
+  fixture.request.mockImplementation(async ({ route }) => {
+    if (route === "conversation-list") return { conversations: [], next: "" };
+    if (route === "conversation-create") return { conversation };
+    throw new AIWorkbenchError("INVALID_REQUEST");
+  });
+  render(<QueryClientProvider client={client}><ChatPage mode="new" /></QueryClientProvider>);
+  fireEvent.click(await screen.findByRole("button", { name: "新建会话" }));
+  await waitFor(() => expect(fixture.push).toHaveBeenCalledWith(`/workbench/ai/chat/${conversationId}?operationId=${operationId}`));
+  fixture.search = new URLSearchParams();
+});
+
 it("keeps the exact message key and body across a lost response and page reload", async () => {
   const view = render(tree());
   await screen.findByText("开始讨论");

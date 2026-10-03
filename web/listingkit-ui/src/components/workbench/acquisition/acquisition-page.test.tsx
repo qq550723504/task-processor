@@ -8,6 +8,7 @@ const calls = vi.hoisted(() => ({ acquire: vi.fn(), verify: vi.fn(), read: vi.fn
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => calls.context }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: calls.push }), useSearchParams: () => new URLSearchParams() }));
 vi.mock("@/lib/api/product-acquisition", async original => ({ ...await original<object>(), acquire1688: calls.acquire, verify1688: calls.verify, readAcquisition: calls.read, readAcquisitionProduct: calls.readProduct }));
+vi.mock("./product-agent-panel", () => ({ ProductAgentPanel: () => null }));
 
 const operationID = "11111111-1111-4111-8111-111111111111";
 function deferred<T>() { let resolve!: (value: T) => void, reject!: (reason?: unknown) => void; const promise = new Promise<T>((ok, fail) => { resolve = ok; reject = fail; }); return { promise, resolve, reject }; }
@@ -173,4 +174,16 @@ it("renders source warnings preserved by the operation-bound Catalog product", a
 
   expect(await screen.findByRole("heading", { name: "采集警告" })).toBeInTheDocument();
   expect(screen.getByText("variants[].sku：MISSING_FACT（共 45 处）")).toBeInTheDocument();
+});
+
+it("offers Chat from an authorized saved product with its exact operation selected", async () => {
+  calls.readProduct.mockResolvedValueOnce({
+    schemaVersion: 1, operationId: operationID, productKey: "crawler:1688:123",
+    publicationId: `source-run:acquisition:${operationID}`, catalogVersion: "1",
+    title: "Captured product", sources: [], images: [], specifications: [], warnings: [], missingFacts: [],
+  });
+  render(<AcquisitionPage operationId={operationID} agentEnabled />);
+  expect(await screen.findByRole("link", { name: "在硕米 Chat 讨论标题" })).toHaveAttribute(
+    "href", `/workbench/ai/chat/new?operationId=${operationID}`,
+  );
 });

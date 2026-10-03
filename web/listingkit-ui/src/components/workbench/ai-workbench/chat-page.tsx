@@ -51,6 +51,8 @@ function ScopedChat({ scope, authorizationKey, mode, conversationId }: { scope: 
 
 function ChatCollection({ scope, authorizationKey, mode }: { scope: AIScope; authorizationKey: string; mode: ChatMode }) {
   const router = useRouter();
+  const search = useSearchParams();
+  const selectedOperationId = search.get("operationId");
   const [after, setAfter] = useState("");
   const [createKey, setCreateKey] = useState("");
   const [creating, setCreating] = useState(false);
@@ -77,7 +79,7 @@ function ChatCollection({ scope, authorizationKey, mode }: { scope: AIScope; aut
       if (controller.signal.aborted) return;
       setCreateKey("");
       try { sessionStorage.removeItem(pendingCreateStorageKey(scope)); } catch { /* navigation still succeeds */ }
-      router.push(`/workbench/ai/chat/${result.conversation.ID}`);
+      router.push(`/workbench/ai/chat/${result.conversation.ID}${selectedOperationId && isAcquisitionUUID(selectedOperationId) ? `?operationId=${selectedOperationId}` : ""}`);
     } catch (cause) { if (!controller.signal.aborted) setError(errorText(cause)); }
     finally { if (!controller.signal.aborted) setCreating(false); abort.current = null; }
   }
