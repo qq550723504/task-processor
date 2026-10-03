@@ -38,7 +38,11 @@ describe("AI Workbench BFF boundary", () => {
     expect(mapped).not.toBeInstanceOf(Response);
     if (mapped instanceof Response) return;
     expect(mapped.url).toContain(`?limit=50&saved=true&after=${cursor}`);
-    for (const suffix of ["saved=false", "saved=true&saved=true", "unknown=true", `after=${id}`]) {
+    const archived = new Request(`http://localhost/api/workbench/chat/conversations?archived=true&after=${cursor}`, { headers });
+    const archivedMapped = await buildWorkbenchUpstreamRequest(archived, ["chat", "conversations"], "server-token", "user-a");
+    expect(archivedMapped).not.toBeInstanceOf(Response);
+    if (!(archivedMapped instanceof Response)) expect(archivedMapped.url).toContain(`?archived=true&after=${cursor}`);
+    for (const suffix of ["saved=false", "saved=true&saved=true", "archived=false", "saved=true&archived=true", "unknown=true", `after=${id}`]) {
       const rejected = new Request(`http://localhost/api/workbench/chat/conversations?${suffix}`, { headers });
       const result = await buildWorkbenchUpstreamRequest(rejected, ["chat", "conversations"], "server-token", "user-a");
       expect(result).toBeInstanceOf(Response);

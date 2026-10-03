@@ -13,13 +13,14 @@ import (
 func (a *aiWorkbenchApplication) listConversations(c *gin.Context, ctx context.Context, scope aiworkbench.Scope) {
 	values := c.Request.URL.Query()
 	for name, entries := range values {
-		if len(entries) != 1 || (name != "after" && name != "limit" && name != "saved") {
+		if len(entries) != 1 || (name != "after" && name != "limit" && name != "saved" && name != "archived") {
 			writeAIWorkbenchError(c, aiworkbench.ErrInvalid)
 			return
 		}
 	}
 	if values.Has("after") && len(c.Query("after")) != 32 ||
-		(values.Has("saved") && c.Query("saved") != "true") {
+		(values.Has("saved") && c.Query("saved") != "true") ||
+		(values.Has("archived") && c.Query("archived") != "true") || values.Has("saved") && values.Has("archived") {
 		writeAIWorkbenchError(c, aiworkbench.ErrInvalid)
 		return
 	}
@@ -28,7 +29,7 @@ func (a *aiWorkbenchApplication) listConversations(c *gin.Context, ctx context.C
 		writeAIWorkbenchError(c, err)
 		return
 	}
-	items, next, err := a.store.ListConversations(ctx, scope, c.Query("after"), limit, c.Query("saved") == "true")
+	items, next, err := a.store.ListConversations(ctx, scope, c.Query("after"), limit, c.Query("saved") == "true", c.Query("archived") == "true")
 	if err != nil {
 		writeAIWorkbenchError(c, err)
 		return

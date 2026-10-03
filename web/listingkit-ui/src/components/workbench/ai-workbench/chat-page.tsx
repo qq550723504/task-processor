@@ -14,7 +14,7 @@ import { aiMessageBody, type AIConversation, type AIProposal } from "@/lib/contr
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 import styles from "./chat-page.module.css";
 
-type ChatMode = "home" | "new" | "recent" | "saved";
+type ChatMode = "home" | "new" | "recent" | "saved" | "archived";
 type MessageBody = ReturnType<typeof aiMessageBody.parse>;
 type PendingMessage = { key: string; body: MessageBody };
 type ConfirmationReceipt = { key: string; taskId?: string };
@@ -37,7 +37,7 @@ export function ChatPage({ mode, conversationId }: { mode: ChatMode | "detail"; 
     ? { userId: context.user.id, organizationId: context.effectiveOrganization.id } : null;
   const canUse = context.effectiveOrganization?.capabilities?.["workbench.chat.use"] === true;
   const authorizationKey = `${context.roles.join(",")}:${canUse}`;
-  const title = mode === "home" ? "硕米Chat" : mode === "new" ? "新建会话" : mode === "recent" ? "最近会话" : mode === "saved" ? "收藏会话" : "业务会话";
+  const title = mode === "home" ? "硕米Chat" : mode === "new" ? "新建会话" : mode === "recent" ? "最近会话" : mode === "saved" ? "收藏会话" : mode === "archived" ? "归档会话" : "业务会话";
   return <ConsolePage className="console-chat" title={title} breadcrumbs={route?.trail}
     description="围绕已保存商品讨论标题建议；方案需要确认后才会执行，结果仍须人工审核应用。">
     {!scope ? <ConsoleState kind={context.isSwitching || context.isLoading ? "loading" : "unavailable"} title="企业上下文不可用">请先选择可访问的企业并登录。</ConsoleState> :
@@ -67,9 +67,9 @@ function ChatCollection({ scope, authorizationKey, canUse, mode }: { scope: AISc
   }, [createStorageKey]);
   useEffect(() => () => abort.current?.abort(), []);
   const conversations = useQuery({ queryKey: ["ai-chat", scope.userId, scope.organizationId, authorizationKey, "list", mode, after],
-    queryFn: ({ signal }) => requestAIWorkbench({ route: "conversation-list", method: "GET", path: `chat/conversations?limit=50${mode === "saved" ? "&saved=true" : ""}${after ? `&after=${after}` : ""}`, scope, signal }),
+    queryFn: ({ signal }) => requestAIWorkbench({ route: "conversation-list", method: "GET", path: `chat/conversations?limit=50${mode === "saved" ? "&saved=true" : mode === "archived" ? "&archived=true" : ""}${after ? `&after=${after}` : ""}`, scope, signal }),
     retry: false, staleTime: 0, refetchOnWindowFocus: false });
-  const visible = useMemo(() => (conversations.data?.conversations ?? []).filter(item => !item.Archived && (mode !== "saved" || item.Favorite)), [conversations.data, mode]);
+  const visible = useMemo(() => (conversations.data?.conversations ?? []).filter(item => item.Archived === (mode === "archived") && (mode !== "saved" || item.Favorite)), [conversations.data, mode]);
   async function create() {
     const key = createKey || crypto.randomUUID();
     setCreateKey(key); setCreating(true); setError("");
@@ -92,10 +92,13 @@ function ChatCollection({ scope, authorizationKey, canUse, mode }: { scope: AISc
         <Card className={`${styles.landingCard} ${styles.recentCard}`}><span className={styles.accent} /><h2>最近会话</h2><h3>继续之前的工作</h3><p>查看当前账号的对话与提案，从上次讨论的位置继续。</p><Button asChild variant="outline"><Link href="/workbench/ai/chat/recent" prefetch={false}>查看最近会话 →</Link></Button></Card>
         <Card className={`${styles.landingCard} ${styles.savedCard}`}><span className={styles.accent} /><h2>收藏会话</h2><h3>沉淀重要内容</h3><p>收藏仍在使用的会话，随时继续查看已保存的内容。</p><Button asChild variant="outline"><Link href="/workbench/ai/chat/saved" prefetch={false}>进入收藏会话 →</Link></Button></Card>
       </div>
-    </> : <div className={styles.toolbar}>{canUse ? <Button onClick={create} disabled={creating}>{creating ? "正在创建…" : "新建会话"}</Button> : null}<Button variant="outline" onClick={() => void conversations.refetch()}>刷新</Button></div>}
+    </> : <div className={styles.toolbar}>{canUse ? <Button onClick={create} disabled={creating}>{creating ? "正在创建…" : "新建会话"}</Button> : null}
+      {mode === "archived" ? <Button asChild variant="outline"><Link href="/workbench/ai/chat/recent" prefetch={false}>返回最近会话</Link></Button> :
+        mode === "recent" ? <Button asChild variant="outline"><Link href="/workbench/ai/chat/archived" prefetch={false}>查看归档会话</Link></Button> : null}
+      <Button variant="outline" onClick={() => void conversations.refetch()}>刷新</Button></div>}
     {error ? <ConsoleState kind="error" title="操作未完成">{error}</ConsoleState> : null}
     {conversations.isPending ? <ConsoleState kind="loading" title="正在读取会话" /> : conversations.isError ? <ConsoleState kind="error" title="会话读取失败">{errorText(conversations.error)} <Button variant="outline" onClick={() => void conversations.refetch()}>重试</Button></ConsoleState> :
-      mode !== "home" ? <section className={styles.list} aria-label="会话列表">{visible.length ? visible.map(item => <ConversationLink key={item.ID} item={item} />) : <ConsoleState kind="empty" title={mode === "saved" ? "暂无收藏会话" : "暂无会话"}>新建会话后，会保存到当前账号。</ConsoleState>}
+      mode !== "home" ? <section className={styles.list} aria-label="会话列表">{visible.length ? visible.map(item => <ConversationLink key={item.ID} item={item} />) : <ConsoleState kind="empty" title={mode === "saved" ? "暂无收藏会话" : mode === "archived" ? "暂无归档会话" : "暂无会话"}>{mode === "archived" ? "已归档会话会出现在这里，可打开详情恢复。" : "新建会话后，会保存到当前账号。"}</ConsoleState>}
         {conversations.data?.next ? <Button variant="outline" onClick={() => setAfter(conversations.data!.next)}>加载更早会话</Button> : null}</section> : null}
   </>;
 }
@@ -224,7 +227,7 @@ function ConversationDetail({ scope, authorizationKey, canUse, id }: { scope: AI
   return <div className={styles.detail}>
     <div className={styles.toolbar}><strong>{current.Title || "未命名会话"}</strong><span>当前企业：{scope.organizationId}</span>
       {canUse ? <Button variant="outline" disabled={pending} onClick={() => void change({ favorite: !current.Favorite })}>{current.Favorite ? "取消收藏" : "收藏"}</Button> : null}
-      {canUse ? <Button variant="outline" disabled={pending || current.Archived} onClick={() => void change({ archived: true })}>归档</Button> : null}
+      {canUse ? <Button variant="outline" disabled={pending} onClick={() => void change({ archived: !current.Archived })}>{current.Archived ? "恢复会话" : "归档"}</Button> : null}
       <Button variant="outline" onClick={() => void detail.refetch()}>刷新</Button></div>
     <div className={styles.messages} aria-label="会话消息">{messages.length ? messages.map(item => <Card key={item.ID} className={item.Author === "USER" ? styles.userMessage : styles.assistantMessage}>
       <small>{item.Author === "USER" ? "我" : "硕米"} · {new Date(item.CreatedAt).toLocaleString("zh-CN")}</small><p>{item.Content}</p></Card>) : <ConsoleState kind="empty" title="开始讨论">先选定已有商品，再描述标题优化目标。</ConsoleState>}

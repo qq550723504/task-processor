@@ -482,16 +482,17 @@ export async function buildWorkbenchUpstreamRequest(
         if (!(await requestHasNoBody(request))) return protocolError(400, "INVALID_REQUEST", "Body is not allowed");
         const url = new URL(request.url);
         const allowed = action === "conversation-read" ? new Set(["limit", "before"])
-          : action === "conversation-list" ? new Set(["limit", "after", "saved"]) : new Set(["limit", "after"]);
+          : action === "conversation-list" ? new Set(["limit", "after", "saved", "archived"]) : new Set(["limit", "after"]);
         const selected = new URLSearchParams();
         for (const [name, value] of url.searchParams) {
           if (!allowed.has(name) || selected.has(name) || !value ||
             (name === "limit" && (!/^[1-9][0-9]?$/.test(value) || Number(value) > 50)) ||
             (name === "after" && !(action === "conversation-list" ? /^[A-Za-z0-9_-]{32}$/.test(value) : isAcquisitionUUID(value))) ||
-            (name === "saved" && value !== "true") ||
+            ((name === "saved" || name === "archived") && value !== "true") ||
             (name === "before" && !/^[1-9][0-9]*$/.test(value))) return protocolError(400, "INVALID_REQUEST", "Query is invalid");
           selected.set(name, value);
         }
+        if (selected.has("saved") && selected.has("archived")) return protocolError(400, "INVALID_REQUEST", "Query is invalid");
         query = selected.size ? `?${selected.toString()}` : "";
       } else {
         if (!hasExactNoQuery(request)) return protocolError(400, "INVALID_REQUEST", "Query is not allowed");

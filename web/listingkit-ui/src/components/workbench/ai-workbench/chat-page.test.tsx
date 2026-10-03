@@ -59,6 +59,19 @@ it("loads favorites before pagination so an older saved conversation is visible"
   expect(fixture.request).toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining("saved=true") }));
 });
 
+it("lists archived conversations through the scoped archive filter", async () => {
+  const archived = { ...conversation, Title: "已归档的标题讨论", Archived: true };
+  fixture.request.mockImplementation(async ({ route, path }) => {
+    if (route !== "conversation-list") throw new AIWorkbenchError("INVALID_REQUEST");
+    return path.includes("archived=true") ? { conversations: [archived], next: "" }
+      : { conversations: [], next: "" };
+  });
+  render(<QueryClientProvider client={client}><ChatPage mode="archived" /></QueryClientProvider>);
+  expect(await screen.findByRole("link", { name: /已归档的标题讨论/ })).toHaveAttribute("href", `/workbench/ai/chat/${conversationId}`);
+  expect(screen.getByRole("link", { name: "返回最近会话" })).toHaveAttribute("href", "/workbench/ai/chat/recent");
+  expect(fixture.request).toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining("archived=true") }));
+});
+
 it("retains the newest message and proposal while loading older messages", async () => {
   const newest = { ID: operationId, ConversationID: conversationId, Sequence: 102, Author: "USER", Content: "最新需求", CreatedAt: "2026-10-03T00:00:00Z" };
   const oldest = { ...newest, ID: "11111111-1111-4111-8111-111111111112", Sequence: 1, Content: "最早需求" };
@@ -93,6 +106,25 @@ it("shows chat history without mutation controls when the current organization l
   for (const name of ["收藏", "归档", "发送消息", "确认并创建任务"]) expect(screen.queryByRole("button", { name })).toBeNull();
   expect(screen.queryByLabelText("需求")).toBeNull();
   expect(fixture.request).toHaveBeenCalledTimes(1);
+});
+
+it("restores an archived conversation using its current metadata revision", async () => {
+  let current = { ...conversation, Archived: true, MetadataRevision: 2 };
+  fixture.request.mockImplementation(async ({ route, method, body, revision }) => {
+    if (route === "conversation-read") return { conversation: current, messages: [], proposals: [], before: "" };
+    if (route === "conversation-metadata" && method === "PATCH") {
+      expect(body).toEqual({ archived: false });
+      expect(revision).toBe(2);
+      current = { ...current, Archived: false, MetadataRevision: 3 };
+      return { conversation: current };
+    }
+    throw new AIWorkbenchError("INVALID_REQUEST");
+  });
+  render(tree());
+  expect(await screen.findByText("会话已归档")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "恢复会话" }));
+  expect(await screen.findByLabelText("需求")).toBeVisible();
+  expect(screen.queryByText("会话已归档")).toBeNull();
 });
 
 it("hides creation for a read-only organization and restores it after switching to a writable one", async () => {

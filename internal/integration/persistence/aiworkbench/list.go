@@ -45,11 +45,15 @@ func parseConversationCursor(value string) (string, time.Time, error) {
 
 // Filters are applied before pagination; the cursor cannot grant access to
 // another owner even if its opaque boundary is modified by a caller.
-func (s *Store) ListConversations(ctx context.Context, scope aiworkbench.Scope, after string, limit int, savedOnly bool) ([]aiworkbench.Conversation, string, error) {
-	if s == nil || s.db == nil || ctx == nil || !validScope(scope) || limit < 1 || limit > 50 {
+func (s *Store) ListConversations(ctx context.Context, scope aiworkbench.Scope, after string, limit int, savedOnly, archivedOnly bool) ([]aiworkbench.Conversation, string, error) {
+	if s == nil || s.db == nil || ctx == nil || !validScope(scope) || limit < 1 || limit > 50 || savedOnly && archivedOnly {
 		return nil, "", aiworkbench.ErrInvalid
 	}
-	query := s.db.WithContext(ctx).Where("organization_id = ? AND owner_user_id = ? AND lifecycle = ?", scope.OrganizationID, scope.ActorID, "ACTIVE")
+	lifecycle := "ACTIVE"
+	if archivedOnly {
+		lifecycle = "ARCHIVED"
+	}
+	query := s.db.WithContext(ctx).Where("organization_id = ? AND owner_user_id = ? AND lifecycle = ?", scope.OrganizationID, scope.ActorID, lifecycle)
 	if savedOnly {
 		query = query.Where("favorite = ?", true)
 	}

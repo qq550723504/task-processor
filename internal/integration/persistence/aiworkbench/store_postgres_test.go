@@ -254,17 +254,17 @@ func TestConversationRecentPageOrdersByLastActivity(t *testing.T) {
 	title := "Active again"
 	_, err = store.SetMetadata(ctx, scope, older.ID, older.MetadataRevision, aiworkbench.MetadataChange{Title: &title})
 	require.NoError(t, err)
-	first, next, err := store.ListConversations(ctx, scope, "", 1, false)
+	first, next, err := store.ListConversations(ctx, scope, "", 1, false, false)
 	require.NoError(t, err)
 	require.Len(t, first, 1)
 	require.Equal(t, older.ID, first[0].ID)
 	require.NotEmpty(t, next)
 	require.Len(t, next, 32)
-	_, _, err = store.ListConversations(ctx, aiworkbench.Scope{OrganizationID: "other-org", ActorID: scope.ActorID}, next, 1, false)
+	_, _, err = store.ListConversations(ctx, aiworkbench.Scope{OrganizationID: "other-org", ActorID: scope.ActorID}, next, 1, false, false)
 	require.ErrorIs(t, err, aiworkbench.ErrNotFound)
-	_, _, err = store.ListConversations(ctx, scope, older.ID, 1, false)
+	_, _, err = store.ListConversations(ctx, scope, older.ID, 1, false, false)
 	require.ErrorIs(t, err, aiworkbench.ErrInvalid, "a row ID is not a frozen page coordinate")
-	second, next, err := store.ListConversations(ctx, scope, next, 1, false)
+	second, next, err := store.ListConversations(ctx, scope, next, 1, false, false)
 	require.NoError(t, err)
 	require.Len(t, second, 1)
 	require.Equal(t, newer.ID, second[0].ID)
@@ -278,7 +278,7 @@ func TestConversationRecentPageOrdersByLastActivity(t *testing.T) {
 		Update("updated_at", now.Add(-2*time.Hour)).Error)
 	_, _, err = store.CompletePlan(ctx, scope, key, aiworkbench.PlanTerminal{AssistantText: "Please clarify", Mode: aiworkbench.PlanClarify})
 	require.NoError(t, err)
-	first, _, err = store.ListConversations(ctx, scope, "", 1, false)
+	first, _, err = store.ListConversations(ctx, scope, "", 1, false, false)
 	require.NoError(t, err)
 	require.Equal(t, older.ID, first[0].ID, "assistant activity also refreshes recent order")
 }
@@ -299,7 +299,7 @@ func TestConversationCursorKeepsOriginalBoundaryAfterCursorActivity(t *testing.T
 		require.NoError(t, store.db.Model(&conversationRow{}).Where("id = ?", id).
 			Update("updated_at", now.Add(-time.Duration(i+1)*time.Hour)).Error)
 	}
-	first, cursor, err := store.ListConversations(ctx, scope, "", 2, true)
+	first, cursor, err := store.ListConversations(ctx, scope, "", 2, true, false)
 	require.NoError(t, err)
 	require.Equal(t, []string{ids[0], ids[1]}, []string{first[0].ID, first[1].ID})
 	require.NotEmpty(t, cursor)
@@ -308,7 +308,7 @@ func TestConversationCursorKeepsOriginalBoundaryAfterCursorActivity(t *testing.T
 	title := "Updated while paging"
 	_, err = store.SetMetadata(ctx, scope, ids[1], 1, aiworkbench.MetadataChange{Title: &title})
 	require.NoError(t, err)
-	second, _, err := store.ListConversations(ctx, scope, cursor, 2, true)
+	second, _, err := store.ListConversations(ctx, scope, cursor, 2, true, false)
 	require.NoError(t, err)
 	require.Len(t, second, 1)
 	require.Equal(t, ids[2], second[0].ID)
@@ -330,13 +330,13 @@ func TestSavedCursorContinuesAfterCursorIsUnfavoritedAndArchived(t *testing.T) {
 		require.NoError(t, store.db.Model(&conversationRow{}).Where("id = ?", id).
 			Update("updated_at", now.Add(-time.Duration(i+1)*time.Hour)).Error)
 	}
-	_, cursor, err := store.ListConversations(ctx, scope, "", 2, true)
+	_, cursor, err := store.ListConversations(ctx, scope, "", 2, true, false)
 	require.NoError(t, err)
 	require.NotEmpty(t, cursor)
 	favorite, archived := false, true
 	_, err = store.SetMetadata(ctx, scope, ids[1], 1, aiworkbench.MetadataChange{Favorite: &favorite, Archived: &archived})
 	require.NoError(t, err)
-	second, _, err := store.ListConversations(ctx, scope, cursor, 2, true)
+	second, _, err := store.ListConversations(ctx, scope, cursor, 2, true, false)
 	require.NoError(t, err)
 	require.Len(t, second, 1)
 	require.Equal(t, ids[2], second[0].ID)
@@ -353,7 +353,7 @@ func TestSavedConversationFilterPrecedesPaginationAndExcludesArchived(t *testing
 		_, _, err = store.Create(ctx, scope, uuid.NewString(), aiworkbench.CreateInput{})
 		require.NoError(t, err)
 	}
-	saved, next, err := store.ListConversations(ctx, scope, "", 1, true)
+	saved, next, err := store.ListConversations(ctx, scope, "", 1, true, false)
 	require.NoError(t, err)
 	require.Len(t, saved, 1)
 	require.Equal(t, oldFavorite.ID, saved[0].ID)
@@ -361,10 +361,49 @@ func TestSavedConversationFilterPrecedesPaginationAndExcludesArchived(t *testing
 	archived := true
 	_, err = store.SetMetadata(ctx, scope, oldFavorite.ID, oldFavorite.MetadataRevision, aiworkbench.MetadataChange{Archived: &archived})
 	require.NoError(t, err)
-	saved, next, err = store.ListConversations(ctx, scope, "", 1, true)
+	saved, next, err = store.ListConversations(ctx, scope, "", 1, true, false)
 	require.NoError(t, err)
 	require.Empty(t, saved)
 	require.Empty(t, next)
+}
+
+func TestArchivedConversationCanBeFoundAndRestoredWithinOwnerScope(t *testing.T) {
+	store, err := New(workbenchDB(t))
+	require.NoError(t, err)
+	ctx := context.Background()
+	scope := aiworkbench.Scope{OrganizationID: "org-a", ActorID: "actor-a"}
+	archived, _, err := store.Create(ctx, scope, uuid.NewString(), aiworkbench.CreateInput{})
+	require.NoError(t, err)
+	for range 3 {
+		_, _, err = store.Create(ctx, scope, uuid.NewString(), aiworkbench.CreateInput{})
+		require.NoError(t, err)
+	}
+	yes, no := true, false
+	archived, err = store.SetMetadata(ctx, scope, archived.ID, archived.MetadataRevision, aiworkbench.MetadataChange{Archived: &yes})
+	require.NoError(t, err)
+	items, next, err := store.ListConversations(ctx, scope, "", 1, false, true)
+	require.NoError(t, err)
+	require.Len(t, items, 1, "archived filter runs before pagination")
+	require.Equal(t, archived.ID, items[0].ID)
+	require.True(t, items[0].Archived)
+	require.Empty(t, next)
+	other := aiworkbench.Scope{OrganizationID: "org-a", ActorID: "actor-b"}
+	items, _, err = store.ListConversations(ctx, other, "", 1, false, true)
+	require.NoError(t, err)
+	require.Empty(t, items)
+	_, err = store.SetMetadata(ctx, other, archived.ID, archived.MetadataRevision, aiworkbench.MetadataChange{Archived: &no})
+	require.ErrorIs(t, err, aiworkbench.ErrNotFound)
+	restored, err := store.SetMetadata(ctx, scope, archived.ID, archived.MetadataRevision, aiworkbench.MetadataChange{Archived: &no})
+	require.NoError(t, err)
+	items, _, err = store.ListConversations(ctx, scope, "", 1, false, true)
+	require.NoError(t, err)
+	require.Empty(t, items)
+	items, _, err = store.ListConversations(ctx, scope, "", 50, false, false)
+	require.NoError(t, err)
+	require.False(t, restored.Archived)
+	require.NotEmpty(t, items)
+	require.Equal(t, restored.ID, items[0].ID)
+	require.False(t, items[0].Archived)
 }
 
 func TestConversationCreateReceiptIsAtomicAndScoped(t *testing.T) {
