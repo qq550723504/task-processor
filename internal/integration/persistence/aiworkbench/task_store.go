@@ -218,6 +218,24 @@ func (s *Store) GetTask(ctx context.Context, scope aiworkbench.Scope, id string)
 	return task(row)
 }
 
+// LookupTask is the receipt-first read for a confirm replay. The key is
+// scoped to the original organization and actor before any mutable Product,
+// AgentConfig, Knowledge or provider preflight is consulted.
+func (s *Store) LookupTask(ctx context.Context, scope aiworkbench.Scope, conversationID, proposalID, key string) (aiworkbench.BusinessTask, bool, error) {
+	if s == nil || s.db == nil || ctx == nil || !validScope(scope) ||
+		!validKey(conversationID) || !validKey(proposalID) || !validKey(key) {
+		return aiworkbench.BusinessTask{}, false, aiworkbench.ErrInvalid
+	}
+	result, found, err := s.lookupTaskKey(s.db.WithContext(ctx), scope, key, confirmFingerprint(conversationID, proposalID, key))
+	if err != nil {
+		if errors.Is(err, aiworkbench.ErrIdempotencyConflict) {
+			return aiworkbench.BusinessTask{}, false, err
+		}
+		return aiworkbench.BusinessTask{}, false, unavailable(err)
+	}
+	return result, found, nil
+}
+
 // ReplayOrFail serializes an external-owner preflight rejection with a
 // competing T1. Only authoritative absence under the same scoped key lock
 // permits the original preflight error to be returned.

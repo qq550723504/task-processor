@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	_ "modernc.org/sqlite"
+	governed "task-processor/internal/integration/aicapability/einomodel"
 	"task-processor/internal/integration/openai"
 )
 
@@ -30,9 +31,9 @@ func TestTitleCredentialProvisionWritesOnlyTheAdmittedOrganizationRow(t *testing
 	}
 	writerDB := cfg.ProductAgent.Database
 	writerDB.User = "title_credential_writer"
-	request := TitleCredentialProvision{Action: "upsert", OrganizationID: "org", ClientName: "text", APIKey: "organization-key", BaseURL: "https://grsaiapi.com/v1", Model: "gemini-2.5-flash", APIStyle: "grsai", TimeoutSecond: 3, WriterDatabase: writerDB}
+	request := TitleCredentialProvision{Action: "upsert", Consumer: "title", OrganizationID: "org", ClientName: "text", APIKey: "organization-key", BaseURL: "https://grsaiapi.com/v1", Model: "gemini-2.5-flash", APIStyle: "grsai", TimeoutSecond: 3, WriterDatabase: writerDB}
 	result, err := SaveTitleCredential(context.Background(), cfg, request, db)
-	if err != nil || result.ProviderID != "grsai" || result.Route == nil || result.Route.ModelID != "gemini-2.5-flash" || result.Route.ConfigurationVersion == "" {
+	if err != nil || result.ProviderID != "grsai" || result.CredentialVersion == "" || result.EndpointIdentityDigest == "" {
 		t.Fatalf("provision result = %+v, %v", result, err)
 	}
 	encoded, err := json.Marshal(result)
@@ -67,10 +68,10 @@ func TestTitleCredentialProvisionWritesOnlyTheAdmittedOrganizationRow(t *testing
 	if _, err := SaveTitleCredential(context.Background(), cfg, wrong, db); err == nil {
 		t.Fatal("endpoint outside operator admission profile accepted")
 	}
-	if _, err := SaveTitleCredential(context.Background(), cfg, TitleCredentialProvision{Action: "disable", OrganizationID: "org", ClientName: "image", WriterDatabase: writerDB}, db); err == nil {
+	if _, err := SaveTitleCredential(context.Background(), cfg, TitleCredentialProvision{Action: "disable", Consumer: "title", OrganizationID: "org", ClientName: "image", WriterDatabase: writerDB}, db); err == nil {
 		t.Fatal("disable escaped title client scope")
 	}
-	_, err = SaveTitleCredential(context.Background(), cfg, TitleCredentialProvision{Action: "disable", OrganizationID: "org", ClientName: "text", WriterDatabase: writerDB}, db)
+	_, err = SaveTitleCredential(context.Background(), cfg, TitleCredentialProvision{Action: "disable", Consumer: "title", OrganizationID: "org", ClientName: "text", WriterDatabase: writerDB}, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,14 +85,49 @@ func TestTitleCredentialProvisionWritesOnlyTheAdmittedOrganizationRow(t *testing
 	}
 	malformed := request
 	malformed.APIStyle = "gemini"
-	policy := cfg.ProductAgent.TextPolicies["org"]
-	policy.APIStyle = "gemini"
-	cfg.ProductAgent.TextPolicies["org"] = policy
 	if _, err := SaveTitleCredential(context.Background(), cfg, malformed, db); err == nil {
 		t.Fatal("unsupported protocol was reported as provisioned")
 	}
 	org, err = writer.GetCredential(context.Background(), "org", "", "text")
 	if err != nil || org == nil || org.Enabled || org.APIStyle != "grsai" {
 		t.Fatalf("failed route resolution committed a credential change: %+v, %v", org, err)
+	}
+}
+
+func TestPlanningCredentialProvisionUsesItsOwnAdmittedRoute(t *testing.T) {
+	cfg := agentRuntimeConfig()
+	planning := cfg.ProductAgent.TextPolicies["org"]
+	planning.Profile.ClientName = "chat"
+	planning.Profile.ProviderID = "anthropic"
+	planning.Profile.AdapterKind = "claude-native"
+	planning.Profile.ModelID = "claude-fixture"
+	planning.Profile.PromptVersion = "ai-workbench-chat-plan-v1"
+	planning.Profile.OutputSchemaVersion = "ai-workbench-plan-decision-v1"
+	planning.AdmittedEndpointIdentityDigest = governed.EndpointIdentityDigest("https://api.anthropic.com")
+	cfg.AIWorkbench = &AIWorkbenchConfig{Enabled: true, Database: cfg.ProductAgent.Database,
+		PlanningTextPolicies: map[string]governed.RoutePolicy{"org": planning}}
+	cfg.AIWorkbench.Database.User = "ai_workbench_runtime"
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&openai.AIClientCredential{}); err != nil {
+		t.Fatal(err)
+	}
+	writerDB := cfg.ProductAgent.Database
+	writerDB.User = "credential_writer"
+	input := TitleCredentialProvision{Action: "upsert", Consumer: "planning", OrganizationID: "org", ClientName: "chat",
+		APIKey: "synthetic-key", BaseURL: "https://api.anthropic.com", Model: "claude-fixture", APIStyle: "claude-native", TimeoutSecond: 3, WriterDatabase: writerDB}
+	result, err := SaveTitleCredential(context.Background(), cfg, input, db)
+	if err != nil || result.ProviderID != "anthropic" || result.CredentialVersion == "" {
+		t.Fatalf("planning provision = %+v, %v", result, err)
+	}
+	stored, err := openai.NewOrganizationOnlyCredentialResolver(db).GetCredential(context.Background(), "org", "", "chat")
+	if err != nil || stored == nil || stored.APIStyle != "claude-native" {
+		t.Fatalf("planning row = %+v, %v", stored, err)
+	}
+	input.Consumer = "title"
+	if _, err := SaveTitleCredential(context.Background(), cfg, input, db); err == nil {
+		t.Fatal("planning credential admitted as title route")
 	}
 }

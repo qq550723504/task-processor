@@ -99,12 +99,17 @@ func (p ModelProfile) Digest() (string, error) {
 }
 
 func (p ModelProfile) MaximumCost() (int64, error) {
-	if p.MaximumPromptTokens < 0 || p.MaximumCompletionTokens < 0 ||
+	return p.CostFor(p.MaximumPromptTokens, p.MaximumCompletionTokens)
+}
+
+func (p ModelProfile) CostFor(promptTokens, completionTokens int64) (int64, error) {
+	if promptTokens < 0 || completionTokens < 0 || promptTokens > p.MaximumPromptTokens ||
+		completionTokens > p.MaximumCompletionTokens ||
 		p.InputMicrosPerMillion <= 0 || p.OutputMicrosPerMillion <= 0 {
 		return 0, ErrTextProfile
 	}
-	cost := new(big.Int).Mul(big.NewInt(p.MaximumPromptTokens), big.NewInt(p.InputMicrosPerMillion))
-	cost.Add(cost, new(big.Int).Mul(big.NewInt(p.MaximumCompletionTokens), big.NewInt(p.OutputMicrosPerMillion)))
+	cost := new(big.Int).Mul(big.NewInt(promptTokens), big.NewInt(p.InputMicrosPerMillion))
+	cost.Add(cost, new(big.Int).Mul(big.NewInt(completionTokens), big.NewInt(p.OutputMicrosPerMillion)))
 	cost.Add(cost, big.NewInt(999999))
 	cost.Div(cost, big.NewInt(1000000))
 	if !cost.IsInt64() {
@@ -173,11 +178,12 @@ func QuoteText(input TextInputIdentity) (TextQuote, error) {
 		return TextQuote{}, ErrTextEnvelope
 	}
 	sum := sha256.Sum256(wire)
-	cost, err := input.Profile.MaximumCost()
+	promptBound := int64(len(wire) + 1024)
+	cost, err := input.Profile.CostFor(promptBound, input.Profile.MaximumCompletionTokens)
 	if err != nil {
 		return TextQuote{}, err
 	}
 	return TextQuote{InputHash: hex.EncodeToString(sum[:]), ProfileDigest: profileDigest,
-		MaximumTokens:     input.Profile.MaximumPromptTokens + input.Profile.MaximumCompletionTokens,
+		MaximumTokens:     promptBound + input.Profile.MaximumCompletionTokens,
 		MaximumCostMicros: cost, Currency: input.Profile.Currency}, nil
 }

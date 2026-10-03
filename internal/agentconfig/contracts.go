@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"strings"
 	"task-processor/internal/agent"
+	"task-processor/internal/aicapability"
 	"task-processor/internal/commercetool"
 	"time"
 	"unicode"
@@ -98,6 +99,7 @@ type StartCommand struct {
 	AgentID, AgentVersion, KnowledgeBaseID string
 	Template                               *TemplateRef
 	Request                                agent.Request
+	ExecutionModelProfile                  aicapability.ModelProfile
 }
 type Snapshot struct {
 	ID, Digest                                                   string
@@ -105,6 +107,7 @@ type Snapshot struct {
 	AgentID, AgentVersion, KnowledgeBaseID, Epoch, AgentRevision string
 	Template                                                     *TemplateRef
 	Request                                                      agent.Request
+	ExecutionModelProfile                                        aicapability.ModelProfile
 }
 type Capability struct {
 	ID         string    `json:"id"`

@@ -133,6 +133,21 @@ func New(db *gorm.DB) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+// Startup checks an explicitly installed owner schema. A serving constructor
+// never creates or migrates Workbench business tables.
+func VerifySchema(ctx context.Context, db *gorm.DB) error {
+	if db == nil || db.Dialector.Name() != "postgres" || ctx == nil {
+		return aiworkbench.ErrUnavailable
+	}
+	for _, name := range []string{"conversations", "messages", "commands", "execution_proposals", "business_tasks"} {
+		var exists bool
+		if err := db.WithContext(ctx).Raw("SELECT to_regclass(?) IS NOT NULL", "ai_workbench."+name).Scan(&exists).Error; err != nil || !exists {
+			return aiworkbench.ErrUnavailable
+		}
+	}
+	return nil
+}
+
 func validScope(scope aiworkbench.Scope) bool {
 	return validName(scope.OrganizationID) && validName(scope.ActorID)
 }

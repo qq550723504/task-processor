@@ -86,13 +86,9 @@ func textRecord(input aicapability.TextInputIdentity, quote aicapability.TextQuo
 		ConfigurationVersion: p.CredentialVersion, PolicyVersion: p.CostPricingVersion,
 		PromptKey: p.OutputSchemaVersion, PromptVersion: p.PromptVersion, PromptHash: hex.EncodeToString(prompt[:]),
 		InputHash: quote.InputHash, PointTariff: p.PointTariff,
-		MaximumPromptTokens: p.MaximumPromptTokens, MaximumCompletionTokens: p.MaximumCompletionTokens,
+		MaximumPromptTokens: quote.MaximumTokens - p.MaximumCompletionTokens, MaximumCompletionTokens: p.MaximumCompletionTokens,
 		StartedAt: now, Attempt: 1, Outcome: aicapability.InvocationDispatched, Currency: p.Currency,
 	}
-}
-
-func observedCost(p aicapability.ModelProfile, input, output int) int64 {
-	return (int64(input)*p.InputMicrosPerMillion + int64(output)*p.OutputMicrosPerMillion + 999999) / 1000000
 }
 
 func (e *Executor) terminal(ctx context.Context, record aicapability.InvocationRecord) error {
@@ -106,6 +102,13 @@ func (e *Executor) terminal(ctx context.Context, record aicapability.InvocationR
 // replay cannot acquire a second provider send: the ledger claim owns that
 // boundary. The output validator runs only after provider usage is observed.
 func (e *Executor) Generate(ctx context.Context, input aicapability.TextInputIdentity, expected aicapability.TextQuote, validate func(string) error) (TextOutput, error) {
+	return e.GenerateWithGate(ctx, input, expected, validate, nil)
+}
+
+// GenerateWithGate lets a consumer acquire an existing-owner permit exactly
+// at the final transport handoff. cleanup runs after every model outcome.
+func (e *Executor) GenerateWithGate(ctx context.Context, input aicapability.TextInputIdentity, expected aicapability.TextQuote,
+	validate func(string) error, beforeSend func(context.Context) (func(), error)) (TextOutput, error) {
 	quote, err := aicapability.QuoteText(input)
 	if err != nil || quote != expected || input.InvocationID == "" {
 		return TextOutput{}, ErrNotDispatched
@@ -115,6 +118,12 @@ func (e *Executor) Generate(ctx context.Context, input aicapability.TextInputIde
 		return TextOutput{}, err
 	}
 	p := input.Profile
+	var cleanup func()
+	defer func() {
+		if cleanup != nil {
+			cleanup()
+		}
+	}()
 	guardCfg := GuardConfig{Adapter: AdapterKind(p.AdapterKind), Endpoint: route.Endpoint, ModelID: p.ModelID,
 		MaximumOutputTokens: int(p.MaximumCompletionTokens), MaximumRequestBytes: int64(p.MaximumInputBytes),
 		MaximumResponseBytes: int64(p.MaximumOutputBytes), Timeout: p.DeadlineBound}
@@ -122,6 +131,13 @@ func (e *Executor) Generate(ctx context.Context, input aicapability.TextInputIde
 		current, checkErr := e.admitted(gateCtx, input)
 		if checkErr != nil || !sameRoute(route, current) {
 			return ErrNotDispatched
+		}
+		if beforeSend != nil {
+			var permitErr error
+			cleanup, permitErr = beforeSend(gateCtx)
+			if permitErr != nil {
+				return permitErr
+			}
 		}
 		return nil
 	})
@@ -160,7 +176,7 @@ func (e *Executor) Generate(ctx context.Context, input aicapability.TextInputIde
 		}
 		return TextOutput{}, ErrNotDispatched
 	}
-	if !output.Usage.Known || output.Usage.PromptTokens > int(p.MaximumPromptTokens) ||
+	if !output.Usage.Known || output.Usage.PromptTokens > int(record.MaximumPromptTokens) ||
 		output.Usage.CompletionTokens > int(p.MaximumCompletionTokens) ||
 		errors.Is(generationErr, ErrOutcomeUnknown) || errors.Is(generationErr, ErrUsageUnknown) {
 		return TextOutput{}, ErrOutcomeUnknown
@@ -169,7 +185,10 @@ func (e *Executor) Generate(ctx context.Context, input aicapability.TextInputIde
 	record.LatencyMilliseconds = record.FinishedAt.Sub(now).Milliseconds()
 	record.PromptTokens, record.CompletionTokens, record.TotalTokens = output.Usage.PromptTokens, output.Usage.CompletionTokens, output.Usage.TotalTokens
 	record.UsageKnown, record.EstimatedCostKnown = true, true
-	record.EstimatedCostMicros = observedCost(p, record.PromptTokens, record.CompletionTokens)
+	record.EstimatedCostMicros, err = p.CostFor(int64(record.PromptTokens), int64(record.CompletionTokens))
+	if err != nil {
+		return TextOutput{}, ErrOutcomeUnknown
+	}
 	record.Outcome = aicapability.InvocationUsageObservedFailed
 	record.ErrorCategory = aicapability.ErrorStructuredOutputInvalid
 	validErr := generationErr

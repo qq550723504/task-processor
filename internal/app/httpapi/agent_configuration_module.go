@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/commercetool"
 	"task-processor/internal/httproute"
-	"task-processor/internal/integration/agent/titletext"
+	texteino "task-processor/internal/integration/agent/einomodel"
 	"task-processor/internal/integration/knowledgeauth"
 	configstore "task-processor/internal/integration/persistence/agentconfig"
 	kernelmodule "task-processor/internal/kernel/module"
@@ -95,7 +95,7 @@ func buildAgentConfigurationModule(ctx context.Context, db *gorm.DB, resolver or
 	h.Capabilities = func(ctx context.Context, _ agentconfig.CatalogEntry) []agentconfig.Capability {
 		now := time.Now().UTC()
 		text := agentconfig.Capability{ID: "text.generate", Support: "REQUIRED", Readiness: "UNAVAILABLE", Reason: "当前环境尚未开放标题执行", ObservedAt: now}
-		if runtime != nil && runtime.model != nil && runtime.config.Manager != nil {
+		if runtime != nil && runtime.model != nil {
 			original, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
 			capability, bound := ctx.Value(productReviewCapabilityContextKey{}).(productReviewRequestCapability)
 			if ok && bound && capability.actorID == original.UserID && capability.effectiveOrganizationID == original.EffectiveOrganizationID {
@@ -107,10 +107,10 @@ func buildAgentConfigurationModule(ctx context.Context, db *gorm.DB, resolver or
 				if err == nil && allowed && fresh.UserID == original.UserID && fresh.TenantID == original.EffectiveOrganizationID && fresh.EffectiveOrganizationID == fresh.TenantID {
 					status := runtime.model.RouteReadinessForVerifiedOrganization(authidentity.WithAuthenticatedIdentity(ctx, fresh), fresh.EffectiveOrganizationID)
 					switch status {
-					case titletext.TextRouteAvailable:
+					case texteino.TextRouteAvailable:
 						text.Readiness = "AVAILABLE"
 						text.Reason = "文本配置已接入，执行时重新确认权限、点数与预算"
-					case titletext.TextRouteNeedsConfiguration:
+					case texteino.TextRouteNeedsConfiguration:
 						text.Readiness = "NEEDS_CONFIGURATION"
 						text.Reason = "当前企业标题模型凭据需由部署者配置"
 					default:

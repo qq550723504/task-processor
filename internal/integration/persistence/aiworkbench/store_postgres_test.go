@@ -48,6 +48,53 @@ func workbenchDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+func TestWorkbenchRuntimeRoleCanUseReceiptsWithoutDDLOrDeletes(t *testing.T) {
+	db := workbenchDB(t)
+	const role = "ai_workbench_runtime"
+	require.NoError(t, db.Exec("CREATE ROLE "+role+" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS").Error)
+	require.NoError(t, GrantRuntime(db, role))
+	var granted bool
+	require.NoError(t, db.Raw("SELECT has_schema_privilege(?,'ai_workbench','CREATE')", role).Scan(&granted).Error)
+	require.False(t, granted)
+	require.NoError(t, db.Raw("SELECT has_table_privilege(?,'ai_workbench.business_tasks','DELETE')", role).Scan(&granted).Error)
+	require.False(t, granted)
+	require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SET LOCAL ROLE " + role).Error; err != nil {
+			return err
+		}
+		store, err := New(tx)
+		if err != nil {
+			return err
+		}
+		scope := aiworkbench.Scope{OrganizationID: "B", ActorID: "operator"}
+		conversation, _, err := store.Create(context.Background(), scope, uuid.NewString(), aiworkbench.CreateInput{})
+		if err != nil {
+			return err
+		}
+		key := uuid.NewString()
+		if _, _, err = store.AppendUser(context.Background(), scope, conversation.ID, key,
+			aiworkbench.MessageInput{Content: "Improve title", OperationID: "op-1", TargetPlatform: "shein"}, testPlanPreparer); err != nil {
+			return err
+		}
+		proposal := &aiworkbench.ExecutionProposal{Kind: "product.title.optimize", GoalSummary: "Improve title", OperationID: "op-1",
+			ProductKey: "product-1", CatalogVersion: "1", PublicationID: "publication-1", TargetPlatform: "shein",
+			AgentID: "product.title.agent", AgentVersion: "v1.0.0", ObservedAgentRevision: "revision-1",
+			ObservedActivationEpoch: "epoch-1", ExecutionModelProfile: []byte(`{"profile_id":"execution-v1"}`)}
+		planned, _, err := store.CompletePlan(context.Background(), scope, key,
+			aiworkbench.PlanTerminal{AssistantText: "Ready for review", Mode: aiworkbench.PlanReady, GoalSummary: proposal.GoalSummary, Proposal: proposal})
+		if err != nil {
+			return err
+		}
+		saved, err := store.GetProposal(context.Background(), scope, planned.ProposalID)
+		if err != nil {
+			return err
+		}
+		confirmKey := uuid.NewString()
+		_, _, err = store.Confirm(context.Background(), scope, conversation.ID, saved.ID, confirmKey, preparedTaskFixture(t, saved, confirmKey))
+		return err
+	}))
+}
+
 func readyTaskFixture(t *testing.T, store *Store, scope aiworkbench.Scope) (aiworkbench.Conversation, aiworkbench.ExecutionProposal) {
 	t.Helper()
 	ctx := context.Background()

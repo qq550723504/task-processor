@@ -54,7 +54,11 @@ func TestGovernedTextQuoteBindsCompleteInputAndReservesCeiling(t *testing.T) {
 	}
 	quote, err := QuoteText(input)
 	require.NoError(t, err)
-	require.EqualValues(t, 11000, quote.MaximumTokens)
+	require.Greater(t, quote.MaximumTokens, int64(1000))
+	require.Less(t, quote.MaximumTokens, int64(11000))
+	cost, err := profile.CostFor(quote.MaximumTokens-profile.MaximumCompletionTokens, profile.MaximumCompletionTokens)
+	require.NoError(t, err)
+	require.Equal(t, cost, quote.MaximumCostMicros)
 	require.Greater(t, quote.MaximumCostMicros, int64(0))
 	require.NotEmpty(t, quote.InputHash)
 	changed := input

@@ -136,7 +136,8 @@ type ModelResult struct {
 var ErrModelNotDispatched = errors.New("model was not dispatched; reservation resolved")
 
 type ModelInput struct {
-	ContextSnapshotRef                         ContextSnapshotRef `json:",omitzero"`
+	ConfigurationSnapshotRef                   ConfigurationSnapshotRef `json:",omitzero"`
+	ContextSnapshotRef                         ContextSnapshotRef       `json:",omitzero"`
 	Binding                                    Binding
 	PolicyVersion, PromptVersion, InvocationID string
 	History                                    []Observation
@@ -150,7 +151,8 @@ type ModelInput struct {
 // validation. The caller owns isolation/cloning and all authorization.
 func (s State) ModelInput(definition commercetool.AgentDefinition) ModelInput {
 	return ModelInput{
-		ContextSnapshotRef: s.Request.ContextSnapshotRef, Binding: s.Request.Binding,
+		ConfigurationSnapshotRef: s.Request.ConfigurationSnapshotRef,
+		ContextSnapshotRef:       s.Request.ContextSnapshotRef, Binding: s.Request.Binding,
 		PolicyVersion: s.Request.PolicyVersion, PromptVersion: s.Request.PromptVersion,
 		History: s.History, Validation: s.Validation, UserFeedback: s.UserFeedback,
 		AgentRunID: s.RunID, AgentID: definition.ID, AgentVersion: definition.Version, TraceID: s.TraceID,

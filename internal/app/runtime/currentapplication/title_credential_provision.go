@@ -10,14 +10,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
 	"task-processor/internal/agent"
 	coreconfig "task-processor/internal/core/config"
+	governed "task-processor/internal/integration/aicapability/einomodel"
 	"task-processor/internal/integration/openai"
 )
 
@@ -25,6 +24,7 @@ import (
 // request. WriterDatabase is a separate, restricted connection to ProductAgentDB.
 type TitleCredentialProvision struct {
 	Action         string         `json:"action"`
+	Consumer       string         `json:"consumer"`
 	OrganizationID string         `json:"organizationId"`
 	ClientName     string         `json:"clientName"`
 	APIKey         string         `json:"apiKey,omitempty"`
@@ -36,10 +36,11 @@ type TitleCredentialProvision struct {
 }
 
 type TitleCredentialProvisionResult struct {
-	OrganizationID string                       `json:"organizationId"`
-	ProviderID     string                       `json:"providerId,omitempty"`
-	Enabled        bool                         `json:"enabled"`
-	Route          *openai.EffectiveClientRoute `json:"route,omitempty"`
+	OrganizationID         string `json:"organizationId"`
+	ProviderID             string `json:"providerId,omitempty"`
+	Enabled                bool   `json:"enabled"`
+	CredentialVersion      string `json:"credentialVersion,omitempty"`
+	EndpointIdentityDigest string `json:"endpointIdentityDigest,omitempty"`
 }
 
 func LoadTitleCredentialProvision(path string) (TitleCredentialProvision, error) {
@@ -94,8 +95,17 @@ func ValidateTitleCredentialProvision(cfg *Config, input TitleCredentialProvisio
 	if !allowed {
 		return errors.New("title credential organization is not admitted")
 	}
-	policy, found := cfg.ProductAgent.TextPolicies[input.OrganizationID]
-	if !found || policy.ClientName != input.ClientName {
+	var policy governed.RoutePolicy
+	var found bool
+	switch input.Consumer {
+	case "title":
+		policy, found = cfg.ProductAgent.TextPolicies[input.OrganizationID]
+	case "planning":
+		if cfg.AIWorkbench != nil && cfg.AIWorkbench.Enabled {
+			policy, found = cfg.AIWorkbench.PlanningTextPolicies[input.OrganizationID]
+		}
+	}
+	if !found || policy.Profile.ClientName != input.ClientName {
 		return errors.New("title credential client is not admitted")
 	}
 	if input.Action == "disable" {
@@ -107,7 +117,9 @@ func ValidateTitleCredentialProvision(cfg *Config, input TitleCredentialProvisio
 	if input.Action != "upsert" {
 		return errors.New("title credential action is unsupported")
 	}
-	if input.BaseURL != policy.Endpoint || input.Model != policy.AdmittedRoute.ModelID || input.APIStyle != policy.APIStyle || strings.TrimSpace(input.APIKey) == "" || len(input.APIKey) > 4096 || input.TimeoutSecond < 1 || input.TimeoutSecond > 300 {
+	if governed.EndpointIdentityDigest(input.BaseURL) != policy.AdmittedEndpointIdentityDigest || input.Model != policy.Profile.ModelID ||
+		(input.APIStyle != policy.Profile.AdapterKind && !(policy.Profile.AdapterKind == "openai-compatible" && (input.APIStyle == "openai" || input.APIStyle == "grsai"))) ||
+		strings.TrimSpace(input.APIKey) == "" || len(input.APIKey) > 4096 || input.TimeoutSecond < 1 || input.TimeoutSecond > 120 {
 		return errors.New("title credential does not match the operator admission profile")
 	}
 	return nil
@@ -142,20 +154,18 @@ func SaveTitleCredential(ctx context.Context, cfg *Config, input TitleCredential
 		if !result.Enabled {
 			return nil
 		}
-		log := logrus.New()
-		log.SetOutput(io.Discard)
-		manager, err := openai.NewManager(&openai.ManagerConfig{Logger: openai.AdaptLogrus(log.WithField("component", "title-credential-provision")), Clients: map[string]*openai.ClientConfig{input.ClientName: openai.NewClientConfig("", "", "", 25)}, ConfigResolver: openai.NewOrganizationOnlyCredentialResolver(tx)})
-		if err != nil {
-			return err
-		}
-		defer manager.Close()
-		lookupCtx, cancel := context.WithTimeout(openai.WithTenantID(ctx, input.OrganizationID), 5*time.Second)
-		defer cancel()
-		details, err := manager.ResolveTextRouteDetails(lookupCtx, input.ClientName)
-		if err != nil || details.Endpoint != input.BaseURL || details.APIStyle != input.APIStyle {
+		stored, err := store.GetCredential(ctx, input.OrganizationID, "", input.ClientName)
+		if err != nil || stored == nil || !stored.Enabled || stored.UserID != "" || stored.TenantID != input.OrganizationID ||
+			stored.BaseURL != input.BaseURL || stored.Model != input.Model || stored.APIStyle != input.APIStyle {
 			return errors.New("title route resolution failed")
 		}
-		result.ProviderID, result.Route = cfg.ProductAgent.TextPolicies[input.OrganizationID].ProviderID, &details.Route
+		if input.Consumer == "planning" {
+			result.ProviderID = cfg.AIWorkbench.PlanningTextPolicies[input.OrganizationID].Profile.ProviderID
+		} else {
+			result.ProviderID = cfg.ProductAgent.TextPolicies[input.OrganizationID].Profile.ProviderID
+		}
+		result.CredentialVersion = governed.CredentialVersion(*stored)
+		result.EndpointIdentityDigest = governed.EndpointIdentityDigest(stored.BaseURL)
 		return nil
 	})
 	if err != nil {

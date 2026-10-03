@@ -44,6 +44,7 @@ type Config struct {
 	ProductAcquisitionDatabase *DatabaseConfig               `json:"productAcquisitionDatabase,omitempty"`
 	ImageAgent                 *ImageAgentConfig             `json:"imageAgent,omitempty"`
 	ProductAgent               *ProductAgentConfig           `json:"productAgent,omitempty"`
+	AIWorkbench                *AIWorkbenchConfig            `json:"aiWorkbench,omitempty"`
 	Membership                 *MembershipConfig             `json:"membership,omitempty"`
 	ListingKitAuthorization    ListingKitAuthorizationConfig `json:"listingKitAuthorization,omitempty"`
 	Referrals                  ReferralsConfig               `json:"referrals"`
@@ -384,6 +385,11 @@ func (cfg *Config) validate() error {
 	}
 	if cfg.ProductAgent != nil {
 		if err := cfg.ProductAgent.validate(cfg); err != nil {
+			return err
+		}
+	}
+	if cfg.AIWorkbench != nil {
+		if err := cfg.AIWorkbench.validate(cfg); err != nil {
 			return err
 		}
 	}

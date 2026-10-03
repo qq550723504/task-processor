@@ -129,6 +129,8 @@ type currentApplicationOptions struct {
 	browserCaptures         int
 	productAgent            *ProductAgentDependencies
 	productAgents           int
+	aiWorkbench             *AIWorkbenchDependencies
+	aiWorkbenches           int
 }
 
 // WithRuntimeContext supplies the long-lived application context for bounded
@@ -247,7 +249,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		option(&supplied)
 	}
-	if supplied.storeCenters > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 {
+	if supplied.storeCenters > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
 	}
 	if supplied.knowledgeServices > 1 || supplied.knowledgeServices > 0 && supplied.knowledge == nil {
@@ -275,6 +277,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	}
 	if supplied.productAgent != nil && supplied.productAcquisitionDB == nil {
 		return nil, errors.New("product agent requires current acquisition owner")
+	}
+	if supplied.aiWorkbench != nil && (supplied.productAgent == nil || supplied.aiWorkbench.DB == nil || supplied.aiWorkbench.DB == supplied.productAgent.RunDB || supplied.aiWorkbench.DB == sourceAccountDB || supplied.aiWorkbench.DB == supplied.commercialOwnerDB) {
+		return nil, errors.New("AI Workbench requires distinct bounded pool and Product Agent")
 	}
 	if supplied.productAcquisitionDB != nil && (supplied.productAcquisitionDB == sourceAccountDB) {
 		return nil, errors.New("product acquisition requires an independent pool")
@@ -515,6 +520,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		modules = append(modules, m)
 	}
+	if supplied.aiWorkbench != nil {
+		module, e := buildAIWorkbenchModule(ctx, *supplied.aiWorkbench, productRuntime)
+		if e != nil {
+			return nil, fmt.Errorf("build AI Workbench: %w", e)
+		}
+		modules = append(modules, module)
+	}
 	if factories.buildBrowserCapture != nil {
 		browser, err := factories.buildBrowserCapture(authorizer, *workbench.authDependencies)
 		if err != nil {
@@ -607,6 +619,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		Knowledge:           supplied.knowledgeServices > 0,
 		AcquisitionImage:    factories.buildAcquisitionImage != nil,
 		ProductAgent:        supplied.productAgent != nil,
+		AIWorkbench:         supplied.aiWorkbench != nil,
 		AgentConfiguration:  supplied.agentConfigurationDB != nil,
 		MemberPoints:        includeMemberPoints,
 		MemberResources:     includeMemberResources,
@@ -696,6 +709,7 @@ type currentApplicationOptionalRoutes struct {
 	SubjectVerification bool
 	AcquisitionImage    bool
 	ProductAgent        bool
+	AIWorkbench         bool
 	MemberPoints        bool
 	MemberResources     bool
 }
@@ -780,6 +794,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			if r.Method == http.MethodPost && r.Path == "/api/product/text-proposals" {
 				continue
 			}
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
+	if optional.AIWorkbench {
+		for _, r := range aiWorkbenchRoutes(nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
 		}
 	}
@@ -894,6 +913,24 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 		}
 		if strings.HasPrefix(descriptor.Path, productAgentBase) && (descriptor.Module != "product-agent" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionListingKitAdminWrite || descriptor.RequestTimeout != 2*time.Minute) {
 			return errors.New("product agent loses fresh permission boundary")
+		}
+		if strings.HasPrefix(descriptor.Path, workbenchChatBase) || strings.HasPrefix(descriptor.Path, workbenchTaskBase) {
+			if !optional.AIWorkbench || descriptor.Module != "ai-workbench" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Handler == nil {
+				return errors.New("AI Workbench loses scoped permission boundary")
+			}
+			var matched bool
+			for _, expectedRoute := range aiWorkbenchRoutes(nil) {
+				if expectedRoute.Method == descriptor.Method && expectedRoute.Path == descriptor.Path {
+					matched = true
+					if descriptor.Permission != expectedRoute.Permission || descriptor.RequestTimeout != expectedRoute.RequestTimeout || descriptor.OrganizationTargetResolver != nil {
+						return errors.New("AI Workbench route changes permission or deadline")
+					}
+					break
+				}
+			}
+			if !matched {
+				return errors.New("AI Workbench route not admitted")
+			}
 		}
 		if strings.HasPrefix(descriptor.Path, memberPointLimitBase) {
 			permission := authz.PermissionWorkbenchOrganizationMemberRead

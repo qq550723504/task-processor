@@ -28,6 +28,19 @@ type RoutePolicy struct {
 	AdmittedEndpointIdentityDigest string
 }
 
+// ShapeProfile validates a deployment profile before its first credential
+// write. An empty admitted version keeps execution unavailable until the
+// operator binds the returned row version in deployment configuration.
+func (p RoutePolicy) ShapeProfile() aicapability.ModelProfile {
+	profile := p.Profile
+	profile.CredentialVersion = p.AdmittedCredentialVersion
+	if profile.CredentialVersion == "" {
+		profile.CredentialVersion = "unadmitted"
+	}
+	profile.EndpointIdentityDigest = p.AdmittedEndpointIdentityDigest
+	return profile
+}
+
 type OrganizationRouteResolver struct {
 	credentials OrganizationCredentialReader
 	policies    map[RouteKey]RoutePolicy
@@ -42,6 +55,8 @@ func CredentialVersion(row openai.AIClientCredential) string {
 	return "org-credential:v1:" + hex.EncodeToString(sum[:])
 }
 
+func EndpointIdentityDigest(endpoint string) string { return endpointDigest(endpoint) }
+
 func NewOrganizationRouteResolver(credentials OrganizationCredentialReader, policies map[RouteKey]RoutePolicy) (*OrganizationRouteResolver, error) {
 	if credentials == nil || len(policies) == 0 || len(policies) > 128 {
 		return nil, ErrInvalid
@@ -50,12 +65,10 @@ func NewOrganizationRouteResolver(credentials OrganizationCredentialReader, poli
 	for key, policy := range policies {
 		if key.OrganizationID == "" || len(key.OrganizationID) > 128 ||
 			(key.Operation != aicapability.OperationAIWorkbenchChatPlan && key.Operation != aicapability.OperationProductAgentDecision) ||
-			policy.AdmittedCredentialVersion == "" || policy.AdmittedEndpointIdentityDigest == "" {
+			policy.AdmittedEndpointIdentityDigest == "" {
 			return nil, ErrInvalid
 		}
-		policy.Profile.CredentialVersion = policy.AdmittedCredentialVersion
-		policy.Profile.EndpointIdentityDigest = policy.AdmittedEndpointIdentityDigest
-		if policy.Profile.Validate() != nil {
+		if policy.ShapeProfile().Validate() != nil {
 			return nil, ErrInvalid
 		}
 		frozen[key] = policy
@@ -68,9 +81,10 @@ func (r *OrganizationRouteResolver) Resolve(ctx context.Context, input aicapabil
 		return QualifiedRoute{}, ErrNotDispatched
 	}
 	policy, ok := r.policies[RouteKey{OrganizationID: input.OrganizationID, Operation: input.Operation}]
-	if !ok {
+	if !ok || policy.AdmittedCredentialVersion == "" {
 		return QualifiedRoute{}, ErrNotDispatched
 	}
+	policy.Profile = policy.ShapeProfile()
 	// The exact organization row is selected. A member row, process default or
 	// another capability's policy cannot be borrowed when this row is missing.
 	row, err := r.credentials.GetCredential(ctx, input.OrganizationID, "", policy.Profile.ClientName)

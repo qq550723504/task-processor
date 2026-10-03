@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS ai_workbench.conversations (
 CREATE INDEX IF NOT EXISTS ai_workbench_conversations_owner_recent
     ON ai_workbench.conversations
     (organization_id, owner_user_id, lifecycle, updated_at DESC, id);
+CREATE INDEX IF NOT EXISTS ai_workbench_conversations_owner_page
+    ON ai_workbench.conversations (organization_id, owner_user_id, created_at DESC, id DESC);
 
 CREATE TABLE IF NOT EXISTS ai_workbench.messages (
     id uuid PRIMARY KEY,
@@ -147,5 +149,5 @@ CREATE TABLE IF NOT EXISTS ai_workbench.business_tasks (
         REFERENCES ai_workbench.messages (organization_id, owner_user_id, conversation_id, id)
 );
 CREATE INDEX IF NOT EXISTS ai_workbench_tasks_owner_recent
-    ON ai_workbench.business_tasks (organization_id, owner_user_id, created_at DESC, id);
+    ON ai_workbench.business_tasks (organization_id, owner_user_id, created_at DESC, id DESC);
 

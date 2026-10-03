@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"task-processor/internal/agent"
 	"task-processor/internal/agentconfig"
+	"task-processor/internal/aicapability"
 	runstore "task-processor/internal/integration/persistence/agent"
 	"testing"
 	"time"
@@ -304,7 +305,8 @@ func TestSnapshotAdmissionAndDisableABA(t *testing.T) {
 	ctx := context.Background()
 	scope := agent.Scope{OrganizationID: "org-a", ActorID: "actor-a"}
 	limits := agent.Limits{Steps: 8, ModelCalls: 3, Tokens: 100, CostMicros: 100, Currency: "CNY", Runtime: time.Minute}
-	start := agentconfig.StartCommand{Scope: scope, AgentID: "product.title.agent", AgentVersion: "v1.0.0", Request: agent.Request{Key: uuid.NewString(), Binding: agent.Binding{ContextKind: "acquisition", ContextID: uuid.NewString(), ProductKey: "p", CatalogVersion: "1", PublicationID: "pub", TargetPlatform: "shein"}, PolicyVersion: "title-review-v1", PromptVersion: "product-title-agent-v1", Limits: limits}}
+	profile := aicapability.ModelProfile{ClientName: "title", ProviderID: "synthetic", AdapterKind: "openai-compatible", ModelID: "model", EndpointIdentityDigest: "endpoint", CredentialVersion: "credential", RoutingPolicyVersion: "routing", AdapterPolicyVersion: "adapter", PromptVersion: "prompt", OutputSchemaVersion: "schema", UsageMappingVersion: "usage", CostPricingVersion: "cost", PointTariff: aicapability.ModelPointTariff{PriceVersion: "points", InputPointsPerMillionTokens: 1000000, OutputPointsPerMillionTokens: 1000000}, Currency: "CNY", InputMicrosPerMillion: 1000000, OutputMicrosPerMillion: 1000000, MaximumPromptTokens: 1000, MaximumCompletionTokens: 100, MaximumInputBytes: 4096, MaximumOutputBytes: 4096, DeadlineBound: time.Minute}
+	start := agentconfig.StartCommand{Scope: scope, AgentID: "product.title.agent", AgentVersion: "v1.0.0", ExecutionModelProfile: profile, Request: agent.Request{Key: uuid.NewString(), Binding: agent.Binding{ContextKind: "acquisition", ContextID: uuid.NewString(), ProductKey: "p", CatalogVersion: "1", PublicationID: "pub", TargetPlatform: "shein"}, PolicyVersion: "title-review-v1", PromptVersion: "product-title-agent-v1", Limits: limits}}
 	_, e := s.Prepare(ctx, start)
 	require.ErrorIs(t, e, agentconfig.ErrNotEnabled)
 	enable := command(scope, "enable", 0)

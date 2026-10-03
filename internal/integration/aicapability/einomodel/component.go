@@ -98,6 +98,7 @@ type GuardedClient struct {
 	base      http.RoundTripper
 	finalGate func(context.Context) error
 	sent      atomic.Bool
+	sendMu    sync.Mutex
 	mu        sync.Mutex
 	usage     ObservedUsage
 }
@@ -171,12 +172,20 @@ func (g *GuardedClient) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err != nil || int64(len(body)) > g.cfg.MaximumRequestBytes || !validWire(body, g.cfg) {
 		return nil, ErrNotDispatched
 	}
+	g.sendMu.Lock()
+	if g.sent.Load() {
+		g.sendMu.Unlock()
+		return nil, ErrOutcomeUnknown
+	}
 	if err := g.finalGate(req.Context()); err != nil {
+		g.sendMu.Unlock()
 		return nil, errors.Join(ErrNotDispatched, err)
 	}
 	if !g.sent.CompareAndSwap(false, true) {
+		g.sendMu.Unlock()
 		return nil, ErrOutcomeUnknown
 	}
+	g.sendMu.Unlock()
 	req.Body = io.NopCloser(bytes.NewReader(body))
 	req.ContentLength = int64(len(body))
 	req.GetBody = nil

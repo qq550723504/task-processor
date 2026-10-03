@@ -17,9 +17,8 @@ import (
 	"task-processor/internal/agentconfig"
 	"task-processor/internal/aicapability"
 	aistore "task-processor/internal/aicapability/store"
-	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
-	"task-processor/internal/integration/agent/titletext"
+	governed "task-processor/internal/integration/aicapability/einomodel"
 	"task-processor/internal/integration/openai"
 	resourceadapter "task-processor/internal/integration/orgresource"
 	agentstore "task-processor/internal/integration/persistence/agent"
@@ -165,12 +164,9 @@ func testProductAgentOwners(t *testing.T, mode string) {
 	defer provider.Close()
 	credentials := openai.NewOrganizationOnlyCredentialResolver(f.owner)
 	require.NoError(t, credentials.SaveCredential(context.Background(), openai.AIClientCredential{TenantID: "B", ClientName: "default", APIKey: "isolated-fixture-key", BaseURL: provider.URL + "/v1", Model: "gemini-2.5-flash", APIStyle: "grsai", Enabled: true, TimeoutSecond: 3}))
-	m, err := openai.NewManager(&openai.ManagerConfig{Clients: map[string]*openai.ClientConfig{"default": openai.NewClientConfig("unused-placeholder", "gemini-2.5-flash", provider.URL+"/v1", 3)}, ConfigResolver: credentials})
+	row, err := credentials.GetCredential(context.Background(), "B", "", "default")
 	require.NoError(t, err)
-	defer m.Close()
-	i := authidentity.AuthenticatedIdentity{TenantID: "B", EffectiveOrganizationID: "B", UserID: "operator", EffectiveMemberID: "member-B-operator", TokenExpiresAt: now.Add(time.Hour)}
-	route, err := m.ResolveTextRoute(authidentity.WithAuthenticatedIdentity(context.Background(), i), "default")
-	require.NoError(t, err)
+	require.NotNil(t, row)
 	ledger := aistore.NewGormInvocationRecorder(f.owner)
 	deps := newRouteAuthDependencies()
 	deps.workbenchVerifier = titleVerifier{}
@@ -178,7 +174,7 @@ func testProductAgentOwners(t *testing.T, mode string) {
 	auth, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
 	deps.authorizer = auth
-	settings := ProductAgentDependencies{Enabled: true, AllowedOrganizationIDs: []string{"B"}, RunDB: f.owner, PointAccountingDB: f.owner, AssetDB: f.owner, ReviewDB: f.owner, Manager: m, Ledger: ledger, TextPolicies: map[string]titletext.AgentTextPolicy{"B": {ProviderID: "grsai", Endpoint: provider.URL + "/v1", APIStyle: "grsai", ClientName: "default", PolicyVersion: "title-review-v1", PricingVersion: "fixture-v1", BoundEvidence: "fixture-metering-v1", Currency: "CNY", InputWindowTokens: 1048576, OutputWindowTokens: 65536, MaximumOutputTokens: 8192, OutputLimitField: "max_tokens", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000, AdmittedRoute: route, PointPricing: &aicapability.ModelPointTariff{PriceVersion: "synthetic-points-v1", InputPointsPerMillionTokens: 1000000, OutputPointsPerMillionTokens: 2000000}}}, Limits: agent.Limits{Steps: 12, ModelCalls: 6, Tokens: 5000000, CostMicros: 5000000, Currency: "CNY", Runtime: time.Minute}}
+	settings := ProductAgentDependencies{Enabled: true, AllowedOrganizationIDs: []string{"B"}, RunDB: f.owner, PointAccountingDB: f.owner, AssetDB: f.owner, ReviewDB: f.owner, Ledger: ledger, TextPolicies: map[string]governed.RoutePolicy{"B": {AdmittedCredentialVersion: governed.CredentialVersion(*row), AdmittedEndpointIdentityDigest: governed.EndpointIdentityDigest(provider.URL + "/v1"), Profile: aicapability.ModelProfile{ClientName: "default", ProviderID: "grsai", AdapterKind: "openai-compatible", ModelID: "gemini-2.5-flash", RoutingPolicyVersion: "route-v1", AdapterPolicyVersion: "adapter-v1", PromptVersion: "product-title-agent-v1", OutputSchemaVersion: "product-title-action-v1", UsageMappingVersion: "usage-v1", CostPricingVersion: "fixture-v1", PointTariff: aicapability.ModelPointTariff{PriceVersion: "synthetic-points-v1", InputPointsPerMillionTokens: 1000000, OutputPointsPerMillionTokens: 2000000}, Currency: "CNY", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000, MaximumPromptTokens: 1048576, MaximumCompletionTokens: 8192, MaximumInputBytes: 1 << 20, MaximumOutputBytes: 16 << 10, DeadlineBound: 3 * time.Second}}}, Limits: agent.Limits{Steps: 12, ModelCalls: 6, Tokens: 5000000, CostMicros: 5000000, Currency: "CNY", Runtime: time.Minute}}
 	if kf != nil {
 		settings.Knowledge = kf.service
 	}
