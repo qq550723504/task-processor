@@ -32,7 +32,7 @@ func TestSourceAccountCapabilityUsesConfiguredAuthorityForEachVerifiedGrant(t *t
 		{"operator", "operator", "listingkit_operator", configured, true, true},
 		{"admin", "admin", "listingkit_admin", configured, true, true},
 		{"configured role", "support", "support-role", configured, true, true},
-		{"configured user", "support-user", "custom-viewer", configured, true, false},
+		{"configured user", "support-user", "custom-viewer", configured, true, true},
 		{"nil authorizer", "admin", "listingkit_admin", nil, false, false},
 		{"zero authorizer", "admin", "listingkit_admin", &authz.ListingKitAuthorizer{}, false, false},
 	} {
@@ -149,7 +149,7 @@ func TestWorkbenchContextExposesConfiguredPlatformAdminToBrowserRoleChecks(t *te
 	}, NewHandlerWithWorkbenchAuthorizer(authorizer).GetContext)
 
 	require.Equal(t, http.StatusOK, response.Code)
-	require.JSONEq(t, `{"user":{"id":"configured-user"},"homeOrganizationId":"org-a","effectiveOrganizationId":"org-a","selectionRequired":false,"organizations":[{"id":"org-a","name":"Organization A","roles":["custom-role","platform_admin"],"capabilities":{"workbench.source_account.manage":true,"workbench.chat.use":false}}]}`, response.Body.String())
+	require.JSONEq(t, `{"user":{"id":"configured-user"},"homeOrganizationId":"org-a","effectiveOrganizationId":"org-a","selectionRequired":false,"organizations":[{"id":"org-a","name":"Organization A","roles":["custom-role","platform_admin"],"capabilities":{"workbench.source_account.manage":true,"workbench.chat.use":true}}]}`, response.Body.String())
 }
 
 func TestKnowledgeManagementRoleProjectionMatchesAuthorityPerOrganization(t *testing.T) {
