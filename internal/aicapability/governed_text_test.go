@@ -76,3 +76,12 @@ func TestGovernedTextQuoteBindsCompleteInputAndReservesCeiling(t *testing.T) {
 	_, err = QuoteText(changed)
 	require.Error(t, err)
 }
+
+func TestModelProfileCostRoundsInputAndOutputSeparately(t *testing.T) {
+	profile := testTextProfile()
+	profile.InputMicrosPerMillion = 400000
+	profile.OutputMicrosPerMillion = 400000
+	cost, err := profile.CostFor(1, 1)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), cost)
+}

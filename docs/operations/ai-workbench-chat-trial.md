@@ -20,7 +20,7 @@ Remove-Item Env:AI_WORKBENCH_SCHEMA_DSN
 
 命令在一个事务中安装 `ai_workbench` schema 并授予 runtime 对五张表的限定 SELECT/INSERT/列级 UPDATE；该 runtime 不能 DELETE/TRUNCATE/DDL。应用启动只验证 schema，不自动安装或迁移。这里的连接与私有 manifest 不提交到仓库。运行前按现有 PostgreSQL 备份/恢复规程覆盖新增 schema；正常 stop/restart 保留 Conversation、PlanningCommand、Proposal、BusinessTask，销毁数据库不是停止操作。
 
-通过现有 `cmd/product-agent-credential-provision` 给规划 route 写独立的组织凭据：私有输入 `consumer: "planning"`，其他字段及独立 writer 角色要求与标题凭据相同；标题使用 `consumer: "title"`。该命令只返回非敏感的 `credentialVersion` 与 `endpointIdentityDigest`，填入相应策略的 `AdmittedCredentialVersion`、`AdmittedEndpointIdentityDigest` 后再启用。轮换或停用会改变准入状态，不会自动改用其他企业、成员或默认凭据。OpenAI 兼容与 Claude 原生组件均需为精确 route 核实计量与计价，不能由协议兼容性推断付费可用。
+首次配置时，先保持 `productAgent.enabled: false`、`aiWorkbench.enabled: false`，在获准企业的 title/planning 策略中留下空的 `AdmittedCredentialVersion` 和 `AdmittedEndpointIdentityDigest`。通过现有 `cmd/product-agent-credential-provision` 给规划 route 写独立的组织凭据：私有输入 `consumer: "planning"`，其他字段及独立 writer 角色要求与标题凭据相同；标题使用 `consumer: "title"`。该命令验证策略形状及输入 endpoint 后，只返回非敏感的 `credentialVersion` 与 `endpointIdentityDigest`；将两者填入对应策略，再启用服务。轮换或停用会改变准入状态，不会自动改用其他企业、成员或默认凭据。OpenAI 兼容与 Claude 原生组件均需为精确 route 核实计量与计价，不能由协议兼容性推断付费可用。
 
 ```powershell
 go run ./cmd/current-application -config C:\private\current-application.json

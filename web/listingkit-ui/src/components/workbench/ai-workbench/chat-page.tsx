@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import { Button } from "@/components/ui/button";
@@ -61,7 +61,6 @@ function ChatCollection({ scope, authorizationKey, canUse, canPlan, planningRead
   const router = useRouter();
   const search = useSearchParams();
   const selectedOperationId = search.get("operationId");
-  const [after, setAfter] = useState("");
   const [createKey, setCreateKey] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
@@ -73,10 +72,18 @@ function ChatCollection({ scope, authorizationKey, canUse, canPlan, planningRead
     return () => { active = false; };
   }, [createStorageKey]);
   useEffect(() => () => abort.current?.abort(), []);
-  const conversations = useQuery({ queryKey: ["ai-chat", scope.userId, scope.organizationId, authorizationKey, "list", mode, after],
-    queryFn: ({ signal }) => requestAIWorkbench({ route: "conversation-list", method: "GET", path: `chat/conversations?limit=50${mode === "saved" ? "&saved=true" : mode === "archived" ? "&archived=true" : ""}${after ? `&after=${after}` : ""}`, scope, signal }),
+  const conversations = useInfiniteQuery({ queryKey: ["ai-chat", scope.userId, scope.organizationId, authorizationKey, "list", mode], initialPageParam: "",
+    queryFn: ({ signal, pageParam }) => requestAIWorkbench({ route: "conversation-list", method: "GET", path: `chat/conversations?limit=50${mode === "saved" ? "&saved=true" : mode === "archived" ? "&archived=true" : ""}${pageParam ? `&after=${pageParam}` : ""}`, scope, signal }),
+    getNextPageParam: page => page.next || undefined,
     retry: false, staleTime: 0, refetchOnWindowFocus: false });
-  const visible = useMemo(() => (conversations.data?.conversations ?? []).filter(item => item.Archived === (mode === "archived") && (mode !== "saved" || item.Favorite)), [conversations.data, mode]);
+  const visible = useMemo(() => {
+    const seen = new Set<string>();
+    return (conversations.data?.pages.flatMap(page => page.conversations) ?? []).filter(item => {
+      if (seen.has(item.ID) || item.Archived !== (mode === "archived") || (mode === "saved" && !item.Favorite)) return false;
+      seen.add(item.ID);
+      return true;
+    });
+  }, [conversations.data, mode]);
   async function create() {
     const key = createKey || crypto.randomUUID();
     setCreateKey(key); setCreating(true); setError("");
@@ -105,9 +112,11 @@ function ChatCollection({ scope, authorizationKey, canUse, canPlan, planningRead
         mode === "recent" ? <Button asChild variant="outline"><Link href="/workbench/ai/chat/archived" prefetch={false}>查看归档会话</Link></Button> : null}
       <Button variant="outline" onClick={() => void conversations.refetch()}>刷新</Button></div>}
     {error ? <ConsoleState kind="error" title="操作未完成">{error}</ConsoleState> : null}
-    {conversations.isPending ? <ConsoleState kind="loading" title="正在读取会话" /> : conversations.isError ? <ConsoleState kind="error" title="会话读取失败">{errorText(conversations.error)} <Button variant="outline" onClick={() => void conversations.refetch()}>重试</Button></ConsoleState> :
-      mode !== "home" ? <section className={styles.list} aria-label="会话列表">{visible.length ? visible.map(item => <ConversationLink key={item.ID} item={item} />) : <ConsoleState kind="empty" title={mode === "saved" ? "暂无收藏会话" : mode === "archived" ? "暂无归档会话" : "暂无会话"}>{mode === "archived" ? "已归档会话会出现在这里，可打开详情恢复。" : "新建会话后，会保存到当前账号。"}</ConsoleState>}
-        {conversations.data?.next ? <Button variant="outline" onClick={() => setAfter(conversations.data!.next)}>加载更早会话</Button> : null}</section> : null}
+    {conversations.isPending ? <ConsoleState kind="loading" title="正在读取会话" /> : conversations.isError && !conversations.data ? <ConsoleState kind="error" title="会话读取失败">{errorText(conversations.error)} <Button variant="outline" onClick={() => void conversations.refetch()}>重试</Button></ConsoleState> :
+      mode !== "home" ? <section className={styles.list} aria-label="会话列表">
+        {conversations.isError ? <ConsoleState kind="error" title="部分会话读取失败">{errorText(conversations.error)} <Button variant="outline" onClick={() => void (conversations.isFetchNextPageError ? conversations.fetchNextPage() : conversations.refetch())}>重试</Button></ConsoleState> : null}
+        {visible.length ? visible.map(item => <ConversationLink key={item.ID} item={item} />) : <ConsoleState kind="empty" title={mode === "saved" ? "暂无收藏会话" : mode === "archived" ? "暂无归档会话" : "暂无会话"}>{mode === "archived" ? "已归档会话会出现在这里，可打开详情恢复。" : "新建会话后，会保存到当前账号。"}</ConsoleState>}
+        {conversations.hasNextPage ? <Button variant="outline" disabled={conversations.isFetchingNextPage} onClick={() => void conversations.fetchNextPage()}>加载更早会话</Button> : null}</section> : null}
   </>;
 }
 

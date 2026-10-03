@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -101,7 +102,7 @@ func ValidateTitleCredentialProvision(cfg *Config, input TitleCredentialProvisio
 	case "title":
 		policy, found = cfg.ProductAgent.TextPolicies[input.OrganizationID]
 	case "planning":
-		if cfg.AIWorkbench != nil && cfg.AIWorkbench.Enabled {
+		if cfg.AIWorkbench != nil {
 			policy, found = cfg.AIWorkbench.PlanningTextPolicies[input.OrganizationID]
 		}
 	}
@@ -117,12 +118,38 @@ func ValidateTitleCredentialProvision(cfg *Config, input TitleCredentialProvisio
 	if input.Action != "upsert" {
 		return errors.New("title credential action is unsupported")
 	}
-	if governed.EndpointIdentityDigest(input.BaseURL) != policy.AdmittedEndpointIdentityDigest || input.Model != policy.Profile.ModelID ||
+	endpointDigest := governed.EndpointIdentityDigest(input.BaseURL)
+	if !governed.ValidEndpoint(input.BaseURL) ||
+		(policy.AdmittedEndpointIdentityDigest != "" && endpointDigest != policy.AdmittedEndpointIdentityDigest) ||
+		!validProvisionPolicy(cfg, input.Consumer, policy, endpointDigest) || input.Model != policy.Profile.ModelID ||
 		(input.APIStyle != policy.Profile.AdapterKind && !(policy.Profile.AdapterKind == "openai-compatible" && (input.APIStyle == "openai" || input.APIStyle == "grsai"))) ||
-		strings.TrimSpace(input.APIKey) == "" || len(input.APIKey) > 4096 || input.TimeoutSecond < 1 || input.TimeoutSecond > 120 {
+		strings.TrimSpace(input.APIKey) == "" || len(input.APIKey) > 4096 || input.TimeoutSecond < 1 || input.TimeoutSecond > 120 ||
+		time.Duration(input.TimeoutSecond)*time.Second < policy.Profile.DeadlineBound {
 		return errors.New("title credential does not match the operator admission profile")
 	}
 	return nil
+}
+
+func validProvisionPolicy(cfg *Config, consumer string, policy governed.RoutePolicy, endpointDigest string) bool {
+	profile := policy.ShapeProfile()
+	profile.EndpointIdentityDigest = endpointDigest
+	if profile.Validate() != nil || profile.Currency != cfg.ProductAgent.Currency ||
+		profile.MaximumPromptTokens+profile.MaximumCompletionTokens > cfg.ProductAgent.Tokens {
+		return false
+	}
+	maximumCost, err := profile.MaximumCost()
+	if err != nil || maximumCost > cfg.ProductAgent.CostMicros {
+		return false
+	}
+	switch consumer {
+	case "title":
+		return profile.PromptVersion == "product-title-agent-v1" && profile.OutputSchemaVersion == "product-title-action-v1"
+	case "planning":
+		return profile.PromptVersion == "ai-workbench-chat-plan-v1" && profile.OutputSchemaVersion == "ai-workbench-plan-decision-v1" &&
+			profile.MaximumCompletionTokens <= 4096 && profile.MaximumInputBytes <= 128<<10 && profile.MaximumOutputBytes <= 16<<10
+	default:
+		return false
+	}
 }
 
 // SaveTitleCredential uses the credential owner's existing write method. The

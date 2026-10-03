@@ -94,6 +94,37 @@ it("lists archived conversations through the scoped archive filter", async () =>
   expect(fixture.request).toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining("archived=true") }));
 });
 
+it.each(["recent", "saved", "archived"] as const)("keeps the first %s page visible after loading older conversations", async mode => {
+  const first = { ...conversation, ID: "d5d9d1ca-1db3-43af-9649-dcdf3663745b", Title: "较新的会话", Favorite: mode === "saved", Archived: mode === "archived" };
+  const older = { ...first, ID: "5892474d-1c8a-47e4-9550-45ed946e8197", Title: "较早的会话" };
+  fixture.request.mockImplementation(async ({ route, path }) => {
+    if (route !== "conversation-list") throw new AIWorkbenchError("INVALID_REQUEST");
+    return path.includes("after=older") ? { conversations: [older], next: "" } : { conversations: [first], next: "older" };
+  });
+  render(<QueryClientProvider client={client}><ChatPage mode={mode} /></QueryClientProvider>);
+  expect(await screen.findByRole("link", { name: /较新的会话/ })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "加载更早会话" }));
+  expect(await screen.findByRole("link", { name: /较早的会话/ })).toBeVisible();
+  expect(screen.getByRole("link", { name: /较新的会话/ })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+  await waitFor(() => expect(fixture.request.mock.calls.filter(call => call[0].route === "conversation-list" && !call[0].path.includes("after=")).length).toBeGreaterThan(1));
+  expect(screen.getByRole("link", { name: /较新的会话/ })).toBeVisible();
+});
+
+it("keeps loaded conversations visible when an older page fails", async () => {
+  const first = { ...conversation, Title: "已有会话" };
+  fixture.request.mockImplementation(async ({ route, path }) => {
+    if (route !== "conversation-list") throw new AIWorkbenchError("INVALID_REQUEST");
+    if (path.includes("after=older")) throw new AIWorkbenchError("DEPENDENCY_UNAVAILABLE");
+    return { conversations: [first], next: "older" };
+  });
+  render(<QueryClientProvider client={client}><ChatPage mode="recent" /></QueryClientProvider>);
+  expect(await screen.findByRole("link", { name: /已有会话/ })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "加载更早会话" }));
+  expect(await screen.findByText(/服务暂不可用/)).toBeVisible();
+  expect(screen.getByRole("link", { name: /已有会话/ })).toBeVisible();
+});
+
 it("retains the newest message and proposal while loading older messages", async () => {
   const newest = { ID: operationId, ConversationID: conversationId, Sequence: 102, Author: "USER", Content: "最新需求", CreatedAt: "2026-10-03T00:00:00Z" };
   const oldest = { ...newest, ID: "11111111-1111-4111-8111-111111111112", Sequence: 1, Content: "最早需求" };

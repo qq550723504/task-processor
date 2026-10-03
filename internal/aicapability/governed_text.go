@@ -108,10 +108,13 @@ func (p ModelProfile) CostFor(promptTokens, completionTokens int64) (int64, erro
 		p.InputMicrosPerMillion <= 0 || p.OutputMicrosPerMillion <= 0 {
 		return 0, ErrTextProfile
 	}
-	cost := new(big.Int).Mul(big.NewInt(promptTokens), big.NewInt(p.InputMicrosPerMillion))
-	cost.Add(cost, new(big.Int).Mul(big.NewInt(completionTokens), big.NewInt(p.OutputMicrosPerMillion)))
-	cost.Add(cost, big.NewInt(999999))
-	cost.Div(cost, big.NewInt(1000000))
+	ceilMicros := func(tokens, rate int64) *big.Int {
+		amount := new(big.Int).Mul(big.NewInt(tokens), big.NewInt(rate))
+		amount.Add(amount, big.NewInt(999999))
+		return amount.Div(amount, big.NewInt(1000000))
+	}
+	cost := ceilMicros(promptTokens, p.InputMicrosPerMillion)
+	cost.Add(cost, ceilMicros(completionTokens, p.OutputMicrosPerMillion))
 	if !cost.IsInt64() {
 		return 0, ErrTextProfile
 	}

@@ -119,6 +119,9 @@ func validEndpoint(raw string) bool {
 	return strings.EqualFold(host, "localhost") || net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback()
 }
 
+// ValidEndpoint uses the same endpoint admission rule as the final transport.
+func ValidEndpoint(raw string) bool { return validEndpoint(raw) }
+
 // NewGuardedClient creates a per-invocation transport. Even if an SDK retries,
 // follows a redirect, or Generate is called twice, only one underlying model
 // RoundTrip can occur. finalGate runs at the actual HTTP handoff.
