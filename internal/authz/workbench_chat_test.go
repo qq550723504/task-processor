@@ -24,3 +24,13 @@ func TestWorkbenchChatAndTaskPermissionsAreExplicit(t *testing.T) {
 		require.Equal(t, tc.task, a.Authorize("", []string{tc.role}, PermissionWorkbenchTaskRead), tc.role)
 	}
 }
+
+func TestConfiguredPlatformAdminChatUseHasTitleExecutionPrerequisites(t *testing.T) {
+	a, err := NewListingKitAuthorizer(nil, []string{"custom_platform_admin"})
+	require.NoError(t, err)
+	roles := []string{"custom_platform_admin"}
+	require.True(t, a.Authorize("", roles, PermissionWorkbenchChatUse))
+	require.True(t, a.Authorize("", roles, PermissionWorkbenchAgentUse))
+	require.True(t, a.Authorize("", roles, PermissionListingKitAdminWrite))
+	require.False(t, a.Authorize("", []string{"listingkit_viewer"}, PermissionWorkbenchChatUse))
+}

@@ -40,6 +40,24 @@ type workbenchPlanner struct {
 	model  einoplanner.Planner
 }
 
+type titleGatedPlanningText struct {
+	executor           *governed.Executor
+	selectTitleProfile func(context.Context, string) (aicapability.ModelProfile, error)
+}
+
+func (t *titleGatedPlanningText) Generate(ctx context.Context, input aicapability.TextInputIdentity, quote aicapability.TextQuote,
+	validate func(string) error) (governed.TextOutput, error) {
+	if t == nil || t.executor == nil || t.selectTitleProfile == nil {
+		return governed.TextOutput{}, governed.ErrNotDispatched
+	}
+	return t.executor.GenerateWithGate(ctx, input, quote, validate, func(gateCtx context.Context) (func(), error) {
+		if _, err := t.selectTitleProfile(gateCtx, input.OrganizationID); err != nil {
+			return nil, governed.ErrNotDispatched
+		}
+		return nil, nil
+	})
+}
+
 type workbenchExecution struct{ agent *productAgentApplication }
 
 func (p *workbenchPlanner) AuthorizeReceipt(ctx context.Context, scope aiworkbench.Scope) error {
@@ -93,7 +111,9 @@ func buildAIWorkbenchApplication(ctx context.Context, cfg AIWorkbenchDependencie
 			}
 			return nil
 		}}
-	planner := &workbenchPlanner{agent: a, routes: resolver, model: einoplanner.Planner{Text: executor}}
+	planner := &workbenchPlanner{agent: a, routes: resolver, model: einoplanner.Planner{Text: &titleGatedPlanningText{
+		executor: executor, selectTitleProfile: a.selectTitleProfile,
+	}}}
 	service := &aiworkbench.Service{Store: store, Plan: planner, Execute: workbenchExecution{agent: a}}
 	return &aiWorkbenchApplication{store: store, service: service, agent: a, plan: planner}, nil
 }

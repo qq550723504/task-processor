@@ -180,9 +180,9 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	workbenchModule, err := buildAIWorkbenchModule(context.Background(), AIWorkbenchDependencies{DB: f.owner,
 		PlanningTextPolicies: map[string]governed.RoutePolicy{"B": policy(chatRow, profile("chat", "chat-fixture", "ai-workbench-chat-plan-v1", "ai-workbench-plan-decision-v1"))}}, agentModule.(productAgentModule).application)
 	require.NoError(t, err)
-	plannerExecutor, ok := workbenchModule.(aiWorkbenchModule).application.plan.model.Text.(*governed.Executor)
+	plannerText, ok := workbenchModule.(aiWorkbenchModule).application.plan.model.Text.(*titleGatedPlanningText)
 	require.True(t, ok)
-	require.Same(t, agentModule.(productAgentModule).application.textAdmission, plannerExecutor.Admission,
+	require.Same(t, agentModule.(productAgentModule).application.textAdmission, plannerText.executor.Admission,
 		"Chat and title must share provider admission within the application")
 	require.Equal(t, "AVAILABLE", workbenchModule.(aiWorkbenchModule).PlanningReadiness(context.Background(), "B"))
 	require.Equal(t, "UNAVAILABLE", workbenchModule.(aiWorkbenchModule).PlanningReadiness(context.Background(), "A"))
@@ -503,4 +503,58 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 		require.Contains(t, string(raw), `"state":"FAILED_BEFORE_DISPATCH"`)
 	}
 	require.Equal(t, plannerBefore, plannerCalls.Load(), "unready title route must not cause a paid planner send")
+
+	// Rotation after the first route check but during the planner reservation
+	// must still be rejected by the final guarded transport handoff.
+	invalidPlanner.Store(false)
+	disabledTitle.Enabled = true
+	require.NoError(t, credentials.SaveCredential(context.Background(), disabledTitle))
+	currentTitle, err := credentials.GetCredential(context.Background(), "B", "", "title")
+	require.NoError(t, err)
+	var rotated atomic.Bool
+	rotatingSettings := settings
+	rotatingSettings.TextPolicies = map[string]governed.RoutePolicy{"B": policy(currentTitle, profile("title", "title-fixture", "product-title-agent-v1", "product-title-action-v1"))}
+	rotatingSettings.Ledger = agentReserveHook{ProductAgentInvocationLedger: ledger, afterReserve: func() {
+		result := f.owner.Model(&openai.AIClientCredential{}).
+			Where("tenant_id = ? AND user_id = ? AND client_name = ?", "B", "", "title").Update("enabled", false)
+		if result.Error != nil || result.RowsAffected != 1 {
+			t.Errorf("synthetic title rotation failed: %v rows=%d", result.Error, result.RowsAffected)
+		}
+		rotated.Store(true)
+	}}
+	rotatingAgent, err := buildProductAgentModule(context.Background(), f.db, deps, auth, rotatingSettings, nil)
+	require.NoError(t, err)
+	rotatingWorkbench, err := buildAIWorkbenchModule(context.Background(), AIWorkbenchDependencies{DB: f.owner,
+		PlanningTextPolicies: map[string]governed.RoutePolicy{"B": policy(currentChat, profile("chat", "chat-fixture", "ai-workbench-chat-plan-v1", "ai-workbench-plan-decision-v1"))}}, rotatingAgent.(productAgentModule).application)
+	require.NoError(t, err)
+	rotatingRoutes := append(rotatingAgent.(productAgentModule).routes, rotatingWorkbench.(aiWorkbenchModule).routes...)
+	rotatingServer := httptest.NewServer(buildIsolatedApplicationHTTPServer(rotatingRoutes, deps, 2*time.Minute).Handler)
+	defer rotatingServer.Close()
+	require.Equal(t, "AVAILABLE", rotatingWorkbench.(aiWorkbenchModule).PlanningReadiness(context.Background(), "B"))
+	var consumedBeforeRotation int64
+	require.NoError(t, f.owner.Table("saas_organization_resource_buckets").Where("organization_id = ? AND resource_type = ?", "B", "ai_point").
+		Pluck("consumed", &consumedBeforeRotation).Error)
+	code, raw, err = acquisitionHTTPRequest(rotatingServer, "POST", workbenchChatBase, "operator", "B", uuid.NewString(), `{}`)
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.NoError(t, json.Unmarshal(raw, &unavailableConversation))
+	rotationKey := uuid.NewString()
+	code, raw, err = acquisitionHTTPRequest(rotatingServer, "POST", workbenchChatBase+"/"+unavailableConversation.Conversation.ID+"/messages", "operator", "B", rotationKey, body)
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.True(t, rotated.Load(), "title route must change after reservation and before transport handoff")
+	require.Contains(t, string(raw), `"state":"FAILED_BEFORE_DISPATCH"`)
+	require.Equal(t, plannerBefore, plannerCalls.Load(), "rotation at final handoff cannot issue a paid planner request")
+	rotationReceipt, err := rotatingWorkbench.(aiWorkbenchModule).application.store.GetCommand(context.Background(),
+		aiworkbench.Scope{OrganizationID: "B", ActorID: "operator"}, rotationKey)
+	require.NoError(t, err)
+	rotationFact, err := ledger.ReadModelInvocation(context.Background(), "B", rotationReceipt.PlannerInvocationID)
+	require.NoError(t, err)
+	require.Equal(t, aicapability.InvocationFailed, rotationFact.Outcome)
+	require.True(t, rotationFact.UsageKnown)
+	require.Zero(t, rotationFact.TotalTokens)
+	var consumedAfterRotation int64
+	require.NoError(t, f.owner.Table("saas_organization_resource_buckets").Where("organization_id = ? AND resource_type = ?", "B", "ai_point").
+		Pluck("consumed", &consumedAfterRotation).Error)
+	require.Equal(t, consumedBeforeRotation, consumedAfterRotation, "no-send rotation must not consume AI points")
 }

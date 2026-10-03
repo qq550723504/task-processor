@@ -212,6 +212,13 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 				return nil, err
 			}
 		}
+		// A configured platform-admin role with Chat use must pass the same
+		// existing Product Agent gates as the built-in platform_admin role.
+		for _, permission := range []string{PermissionWorkbenchAgentUse, PermissionListingKitAdminWrite} {
+			if _, err := enforcer.AddPolicy(role, permission); err != nil {
+				return nil, err
+			}
+		}
 		for _, permission := range workbenchKnowledgePermissions {
 			if _, err := enforcer.AddPolicy(role, permission); err != nil {
 				return nil, err
