@@ -45,6 +45,7 @@ type Config struct {
 	ImageAgent                 *ImageAgentConfig             `json:"imageAgent,omitempty"`
 	ProductAgent               *ProductAgentConfig           `json:"productAgent,omitempty"`
 	AIWorkbench                *AIWorkbenchConfig            `json:"aiWorkbench,omitempty"`
+	AccountAuditUsage          *AccountAuditUsageConfig      `json:"accountAuditUsage,omitempty"`
 	Membership                 *MembershipConfig             `json:"membership,omitempty"`
 	ListingKitAuthorization    ListingKitAuthorizationConfig `json:"listingKitAuthorization,omitempty"`
 	Referrals                  ReferralsConfig               `json:"referrals"`
@@ -80,6 +81,37 @@ type ImageAgentConfig struct {
 	PublicBase                 string                                `json:"publicBase"`
 	Bucket                     string                                `json:"bucket"`
 	IsolatedTrialGeneratedURLs bool                                  `json:"isolatedTrialGeneratedURLs,omitempty"`
+}
+
+// AccountAuditUsageConfig supplies bounded, read-only pools for the existing
+// image and product invocation owners without enabling either Agent runtime.
+type AccountAuditUsageConfig struct {
+	Image   DatabaseConfig `json:"image"`
+	Product DatabaseConfig `json:"product"`
+}
+
+func (a *AccountAuditUsageConfig) validate(cfg *Config) error {
+	if a == nil {
+		return nil
+	}
+	for _, target := range []struct {
+		name, database, user string
+		value                DatabaseConfig
+	}{
+		{"image", "image_agent", "account_audit_image_reader", a.Image},
+		{"product", "product_agent", "account_audit_product_reader", a.Product},
+	} {
+		if err := target.value.validate("accountAuditUsage." + target.name); err != nil {
+			return err
+		}
+		if target.value.Database != target.database || target.value.User != target.user || target.value.MaxConnections > 2 || target.value.Host != cfg.SourceAccountDatabase.Host || target.value.Port != cfg.SourceAccountDatabase.Port {
+			return fmt.Errorf("account audit %s requires its dedicated local read-only owner", target.name)
+		}
+	}
+	if cfg.ImageAgent != nil || cfg.ProductAgent != nil && cfg.ProductAgent.Enabled {
+		return errors.New("account audit read-only sources cannot overlap Agent execution sources")
+	}
+	return nil
 }
 
 // ListingKitAuthorizationConfig carries only the platform-admin caller allowlists.
@@ -392,6 +424,9 @@ func (cfg *Config) validate() error {
 		if err := cfg.AIWorkbench.validate(cfg); err != nil {
 			return err
 		}
+	}
+	if err := cfg.AccountAuditUsage.validate(cfg); err != nil {
+		return err
 	}
 	if err := validatePlatformAdminAllowlist("listingKitAuthorization.platformAdminUsers", cfg.ListingKitAuthorization.PlatformAdminUsers); err != nil {
 		return err

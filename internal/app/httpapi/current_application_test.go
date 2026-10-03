@@ -166,11 +166,12 @@ func TestCurrentApplicationAuditFactoryAdmission(t *testing.T) {
 	if defaultCurrentApplicationFactories(context.Background()).buildAccountAudit == nil {
 		t.Fatal("default application omitted audit factory")
 	}
-	for _, mode := range []string{"enabled", "error", "nil", "missing-route", "wrong-permission", "missing-summary", "summary-wrong-permission"} {
+	for _, mode := range []string{"enabled", "sources", "bad-sources", "duplicate-sources", "error", "nil", "missing-route", "wrong-permission", "missing-summary", "summary-wrong-permission"} {
 		t.Run(mode, func(t *testing.T) {
 			cfg := currentApplicationTestConfig()
 			sourceDB := &gorm.DB{}
 			resourceDB := &gorm.DB{}
+			imageDB, productDB := &gorm.DB{}, &gorm.DB{}
 			factories := currentApplicationFactories{
 				buildWorkbench: func(*config.Config, *logrus.Logger) (workbenchContextBuildResult, error) {
 					dependencies := newRouteAuthDependencies()
@@ -186,6 +187,9 @@ func TestCurrentApplicationAuditFactoryAdmission(t *testing.T) {
 					if got != sourceDB || gotMembership != nil || gotResource != resourceDB || authorizer == nil {
 						t.Fatal("audit did not reuse its distinct owner pools/authorizer")
 					}
+					if mode == "sources" && (sources["image"] != imageDB || sources["product"] != productDB || len(sources) != 2) {
+						t.Fatal("audit did not receive both read-only owners")
+					}
 					if mode == "error" {
 						return nil, errors.New("audit construction failed")
 					}
@@ -196,8 +200,18 @@ func TestCurrentApplicationAuditFactoryAdmission(t *testing.T) {
 					return currentAuditTestModule{inner: accountAuditModule{query: query}, mode: mode}, nil
 				},
 			}
-			server, err := buildCurrentApplication(context.Background(), sourceDB, cfg, logrus.New(), factories, WithCommercialOwnerDatabase(resourceDB))
-			if mode == "enabled" {
+			options := []CurrentApplicationOption{WithCommercialOwnerDatabase(resourceDB)}
+			if mode == "sources" {
+				options = append(options, WithAccountAuditUsageSources(imageDB, productDB))
+			}
+			if mode == "bad-sources" {
+				options = append(options, WithAccountAuditUsageSources(imageDB, nil))
+			}
+			if mode == "duplicate-sources" {
+				options = append(options, WithAccountAuditUsageSources(imageDB, productDB), WithAccountAuditUsageSources(imageDB, productDB))
+			}
+			server, err := buildCurrentApplication(context.Background(), sourceDB, cfg, logrus.New(), factories, options...)
+			if mode == "enabled" || mode == "sources" {
 				if err != nil || server == nil {
 					t.Fatalf("audit assembly: %v", err)
 				}

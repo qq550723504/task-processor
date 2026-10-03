@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 	"task-processor/internal/aicapability"
 )
 
@@ -46,4 +48,16 @@ func TestObservedUsageReadsNativeFactsWithStableScope(t *testing.T) {
 	empty, err := recorder.ListObservedUsage(context.Background(), "empty", "image", 10, nil)
 	require.NoError(t, err)
 	require.Empty(t, empty.Items)
+}
+
+func TestObservedUsageRejectsIncompleteEmptyLedgerSchema(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`CREATE TABLE ai_invocations (
+		invocation_id TEXT, tenant_id TEXT, usage_known BOOLEAN, outcome TEXT,
+		total_tokens INTEGER, member_id TEXT, finished_at DATETIME,
+		completion_tokens INTEGER
+	)`).Error)
+	_, err = NewGormInvocationRecorder(db).ListObservedUsage(context.Background(), "unused", "image", 1, nil)
+	require.Error(t, err, "a missing prompt_tokens column must not look like complete empty usage history")
 }

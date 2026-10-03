@@ -19,6 +19,9 @@ zitadel_api_secrets=/zitadel-api-secrets
 tofu_inputs=/tofu-inputs
 frontend_secrets=/frontend-secrets
 image_db_owner_secret=/image-db-owner-secret
+product_agent_db_owner_secret=/product-agent-db-owner-secret
+image_audit_reader_secret=/image-audit-reader-secret
+product_audit_reader_secret=/product-audit-reader-secret
 image_runtime_secret=/image-runtime-secret
 image_worker_secret=/image-worker-secret
 acquisition_db_owner_secret=/acquisition-db-owner-secret
@@ -54,6 +57,9 @@ if [ -f "$marker" ]; then
   test -s "$commercial_runtime_secret/money-owner-password" || { echo 'wallet top-up owner requires a new empty project' >&2; exit 1; }
   for path in "$image_db_owner_secret/image-db-password" "$image_runtime_secret/image-runtime-password" "$image_worker_secret/image-worker-password" \
       "$acquisition_db_owner_secret/acquisition-db-password" "$acquisition_runtime_secret/acquisition-runtime-password"; do test -f "$path"; done
+  for path in "$product_agent_db_owner_secret/product-agent-db-password" "$image_audit_reader_secret/password" "$product_audit_reader_secret/password"; do
+    test -s "$path" || { echo 'Account Audit sources require a new empty project' >&2; exit 1; }
+  done
   if [ "${ACCOUNT_IMAGE_AGENT_TRIAL:-}" = ISOLATED_TRIAL_ONLY ]; then test -s "$image_minio_secret/minio-root-password"; fi
   exit 0
 fi
@@ -98,7 +104,11 @@ write_random 24 "$membership_db_owner_secret/membership-db-password"
 write_random 24 "$membership_runtime_secret/membership-runtime-password"
 write_random 32 "$frontend_secrets/auth-secret"
 mkdir -p "$image_db_owner_secret" "$image_runtime_secret" "$image_worker_secret" "$acquisition_db_owner_secret" "$acquisition_runtime_secret" "$image_minio_secret"
+mkdir -p "$product_agent_db_owner_secret" "$image_audit_reader_secret" "$product_audit_reader_secret"
 write_random 24 "$image_db_owner_secret/image-db-password"
+write_random 24 "$product_agent_db_owner_secret/product-agent-db-password"
+write_random 24 "$image_audit_reader_secret/password"
+write_random 24 "$product_audit_reader_secret/password"
 write_random 24 "$image_runtime_secret/image-runtime-password"
 write_random 24 "$image_worker_secret/image-worker-password"
 write_random 24 "$acquisition_db_owner_secret/acquisition-db-password"
@@ -111,6 +121,7 @@ chown 70:70 "$source_db_owner_secret/source-db-password" "$source_runtime_secret
   "$commercial_runtime_secret/commercial-owner-password" "$referral_db_owner_secret/referral-db-password" \
   "$referral_runtime_secret/referral-runtime-password" "$membership_db_owner_secret/membership-db-password" \
   "$membership_runtime_secret/membership-runtime-password" "$image_db_owner_secret/image-db-password" \
+  "$product_agent_db_owner_secret/product-agent-db-password" "$image_audit_reader_secret/password" "$product_audit_reader_secret/password" \
   "$image_runtime_secret/image-runtime-password" "$image_worker_secret/image-worker-password" \
   "$acquisition_db_owner_secret/acquisition-db-password" "$acquisition_runtime_secret/acquisition-runtime-password"
 if [ "${ACCOUNT_IMAGE_AGENT_TRIAL:-}" = ISOLATED_TRIAL_ONLY ]; then

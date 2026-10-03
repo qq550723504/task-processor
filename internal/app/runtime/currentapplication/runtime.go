@@ -11,6 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
+	aistore "task-processor/internal/aicapability/store"
 	coreconfig "task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/knowledge"
@@ -29,6 +30,7 @@ type Dependencies struct {
 	OpenMoneyOwner               func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenProductAcquisition       func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenImageAgent               func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenAccountAuditUsage        func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	DialImageAgentWorkflow       func(context.Context, string, string) (imageagent.WorkflowClient, func() error, error)
 	OpenReferrals                func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenMembership               func(context.Context, DatabaseConfig) (*gorm.DB, error)
@@ -56,6 +58,7 @@ type ApplicationFeatures struct {
 	MoneyOwnerDB                                         *gorm.DB
 	ProductAcquisitionDB                                 *gorm.DB
 	ImageAgentDB                                         *gorm.DB
+	AccountAuditImageDB, AccountAuditProductDB           *gorm.DB
 	ImageAgentWorkflow                                   imageagent.WorkflowClient
 	ReferralDB                                           *gorm.DB
 	MembershipDB                                         *gorm.DB
@@ -130,6 +133,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	if cfg.ImageAgent != nil && (dependencies.OpenImageAgent == nil || dependencies.DialImageAgentWorkflow == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("current image agent owner and organization workflow lifecycle unavailable")
+	}
+	if cfg.AccountAuditUsage != nil && (dependencies.OpenAccountAuditUsage == nil || dependencies.NewApplicationWithFeatures == nil) {
+		return errors.New("account audit usage read-only lifecycle unavailable")
 	}
 	if cfg.CommercialOwnerDatabase != nil && dependencies.OpenCommercialOwner == nil {
 		return errors.New("current commercial owner lifecycle unavailable")
@@ -269,6 +275,34 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		}
 		defer func() { resultErr = errors.Join(resultErr, closeWorkflow()) }()
 	}
+	var auditImageDB, auditProductDB *gorm.DB
+	if cfg.AccountAuditUsage != nil {
+		for _, target := range []struct {
+			cfg  DatabaseConfig
+			dest **gorm.DB
+		}{
+			{cfg.AccountAuditUsage.Image, &auditImageDB},
+			{cfg.AccountAuditUsage.Product, &auditProductDB},
+		} {
+			pool, openErr := dependencies.OpenAccountAuditUsage(startupContext, target.cfg)
+			if openErr != nil {
+				return fmt.Errorf("open account audit %s read-only owner: %w", target.cfg.Database, openErr)
+			}
+			if pool == nil || pool == sourceAccountDB || pool == commercialOwnerDB || pool == productDB || pool == imageDB || pool == auditImageDB {
+				return errors.New("account audit usage requires independent owner pools")
+			}
+			*target.dest = pool
+			defer func(db *gorm.DB) { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(db)) }(pool)
+		}
+		for _, target := range []struct {
+			namespace string
+			pool      *gorm.DB
+		}{{"image", auditImageDB}, {"product", auditProductDB}} {
+			if _, err := aistore.NewGormInvocationRecorder(target.pool).ListObservedUsage(startupContext, "__account_audit_probe__", target.namespace, 1, nil); err != nil {
+				return fmt.Errorf("account audit %s usage owner unreadable: %w", target.namespace, err)
+			}
+		}
+	}
 	var referralDB *gorm.DB
 	if cfg.Referrals.Enabled {
 		referralDB, err = dependencies.OpenReferrals(startupContext, cfg.Referrals.Database)
@@ -352,7 +386,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreProvider: officialProvider, OfficialStoreProtection: officialProtection, StoreCenterDB: storeDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreProvider: officialProvider, OfficialStoreProtection: officialProtection, StoreCenterDB: storeDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {
