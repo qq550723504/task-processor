@@ -29,22 +29,23 @@ export function BusinessTaskPage({ mode = "all", taskId }: { mode?: TaskMode; ta
   const context = useWorkbenchContext();
   const scope = context.user && context.effectiveOrganization && !context.selectionRequired && !context.isSwitching && !context.error && !context.blockingError
     ? { userId: context.user.id, organizationId: context.effectiveOrganization.id } : null;
+  const authorizationKey = context.roles.join(",");
   const path = taskId ? "/workbench/ai/tasks" : filters.find(item => item.mode === mode)?.href ?? "/workbench/ai/tasks";
   return <ConsolePage title={taskId ? "任务详情" : "任务中心"} breadcrumbs={findConsoleRoute(path)?.trail}
     description="查看已确认的业务任务及其当前执行和审核状态。状态来自 Product Agent 与 Review 的实时投影。">
     {!scope ? <ConsoleState kind={context.isLoading || context.isSwitching ? "loading" : "unavailable"} title="企业上下文不可用">请选择可访问的企业并登录。</ConsoleState> :
-      <ScopedTasks key={`${scope.userId}:${scope.organizationId}:${context.roles.join(",")}`} scope={scope} mode={mode} taskId={taskId} />}
+      <ScopedTasks key={`${scope.userId}:${scope.organizationId}:${authorizationKey}`} scope={scope} authorizationKey={authorizationKey} mode={mode} taskId={taskId} />}
   </ConsolePage>;
 }
 
-function ScopedTasks({ scope, mode, taskId }: { scope: AIScope; mode: TaskMode; taskId?: string }) {
-  if (taskId) return <TaskDetail scope={scope} taskId={taskId} />;
-  return <TaskList scope={scope} mode={mode} />;
+function ScopedTasks({ scope, authorizationKey, mode, taskId }: { scope: AIScope; authorizationKey: string; mode: TaskMode; taskId?: string }) {
+  if (taskId) return <TaskDetail scope={scope} authorizationKey={authorizationKey} taskId={taskId} />;
+  return <TaskList scope={scope} authorizationKey={authorizationKey} mode={mode} />;
 }
 
-function TaskList({ scope, mode }: { scope: AIScope; mode: TaskMode }) {
+function TaskList({ scope, authorizationKey, mode }: { scope: AIScope; authorizationKey: string; mode: TaskMode }) {
   const [after, setAfter] = useState("");
-  const tasks = useQuery({ queryKey: ["ai-tasks", scope.userId, scope.organizationId, after],
+  const tasks = useQuery({ queryKey: ["ai-tasks", scope.userId, scope.organizationId, authorizationKey, after],
     queryFn: ({ signal }) => requestAIWorkbench({ route: "task-list", method: "GET", path: `tasks?limit=50${after ? `&after=${after}` : ""}`, scope, signal }),
     retry: false, staleTime: 0, refetchOnWindowFocus: false });
   const page = tasks.data?.tasks ?? [];
@@ -74,13 +75,13 @@ function TaskRow({ task }: { task: AITask }) {
   </Link>;
 }
 
-function TaskDetail({ scope, taskId }: { scope: AIScope; taskId: string }) {
+function TaskDetail({ scope, authorizationKey, taskId }: { scope: AIScope; authorizationKey: string; taskId: string }) {
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
-  const task = useQuery({ queryKey: ["ai-task", scope.userId, scope.organizationId, taskId],
+  const task = useQuery({ queryKey: ["ai-task", scope.userId, scope.organizationId, authorizationKey, taskId],
     queryFn: ({ signal }) => requestAIWorkbench({ route: "task-read", method: "GET", path: `tasks/${taskId}`, scope, signal }),
     retry: false, staleTime: 0, refetchOnWindowFocus: false });
   const item = task.data?.task;

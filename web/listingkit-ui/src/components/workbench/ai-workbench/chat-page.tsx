@@ -35,20 +35,21 @@ export function ChatPage({ mode, conversationId }: { mode: ChatMode | "detail"; 
   const route = findConsoleRoute(mode === "detail" ? "/workbench/ai/chat" : mode === "home" ? "/workbench/ai/chat" : `/workbench/ai/chat/${mode}`);
   const scope = context.user && context.effectiveOrganization && !context.selectionRequired && !context.isSwitching && !context.error && !context.blockingError
     ? { userId: context.user.id, organizationId: context.effectiveOrganization.id } : null;
+  const authorizationKey = context.roles.join(",");
   const title = mode === "home" ? "硕米Chat" : mode === "new" ? "新建会话" : mode === "recent" ? "最近会话" : mode === "saved" ? "收藏会话" : "业务会话";
   return <ConsolePage className="console-chat" title={title} breadcrumbs={route?.trail}
     description="围绕已保存商品讨论标题建议；方案需要确认后才会执行，结果仍须人工审核应用。">
     {!scope ? <ConsoleState kind={context.isSwitching || context.isLoading ? "loading" : "unavailable"} title="企业上下文不可用">请先选择可访问的企业并登录。</ConsoleState> :
-      <ScopedChat key={`${scope.userId}:${scope.organizationId}:${context.roles.join(",")}`} scope={scope} mode={mode} conversationId={conversationId} />}
+      <ScopedChat key={`${scope.userId}:${scope.organizationId}:${authorizationKey}`} scope={scope} authorizationKey={authorizationKey} mode={mode} conversationId={conversationId} />}
   </ConsolePage>;
 }
 
-function ScopedChat({ scope, mode, conversationId }: { scope: AIScope; mode: ChatMode | "detail"; conversationId?: string }) {
-  if (mode === "detail" && conversationId) return <ConversationDetail scope={scope} id={conversationId} />;
-  return <ChatCollection scope={scope} mode={mode === "detail" ? "home" : mode} />;
+function ScopedChat({ scope, authorizationKey, mode, conversationId }: { scope: AIScope; authorizationKey: string; mode: ChatMode | "detail"; conversationId?: string }) {
+  if (mode === "detail" && conversationId) return <ConversationDetail scope={scope} authorizationKey={authorizationKey} id={conversationId} />;
+  return <ChatCollection scope={scope} authorizationKey={authorizationKey} mode={mode === "detail" ? "home" : mode} />;
 }
 
-function ChatCollection({ scope, mode }: { scope: AIScope; mode: ChatMode }) {
+function ChatCollection({ scope, authorizationKey, mode }: { scope: AIScope; authorizationKey: string; mode: ChatMode }) {
   const router = useRouter();
   const [after, setAfter] = useState("");
   const [createKey, setCreateKey] = useState("");
@@ -57,7 +58,7 @@ function ChatCollection({ scope, mode }: { scope: AIScope; mode: ChatMode }) {
   const abort = useRef<AbortController | null>(null);
   useEffect(() => { try { setCreateKey(sessionStorage.getItem(pendingCreateStorageKey(scope)) ?? ""); } catch { /* storage may be unavailable */ } }, [scope.userId, scope.organizationId]);
   useEffect(() => () => abort.current?.abort(), []);
-  const conversations = useQuery({ queryKey: ["ai-chat", scope.userId, scope.organizationId, "list", after],
+  const conversations = useQuery({ queryKey: ["ai-chat", scope.userId, scope.organizationId, authorizationKey, "list", after],
     queryFn: ({ signal }) => requestAIWorkbench({ route: "conversation-list", method: "GET", path: `chat/conversations?limit=50${after ? `&after=${after}` : ""}`, scope, signal }),
     retry: false, staleTime: 0, refetchOnWindowFocus: false });
   const visible = useMemo(() => (conversations.data?.conversations ?? []).filter(item => !item.Archived && (mode !== "saved" || item.Favorite)), [conversations.data, mode]);
@@ -97,7 +98,7 @@ function ConversationLink({ item }: { item: AIConversation }) {
   </Link>;
 }
 
-function ConversationDetail({ scope, id }: { scope: AIScope; id: string }) {
+function ConversationDetail({ scope, authorizationKey, id }: { scope: AIScope; authorizationKey: string; id: string }) {
   const router = useRouter();
   const search = useSearchParams();
   const [older, setOlder] = useState("");
@@ -111,7 +112,7 @@ function ConversationDetail({ scope, id }: { scope: AIScope; id: string }) {
   const [confirmReceipts, setConfirmReceipts] = useState<Record<string, ConfirmationReceipt>>({});
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const detail = useQuery({ queryKey: ["ai-chat", scope.userId, scope.organizationId, id, older],
+  const detail = useQuery({ queryKey: ["ai-chat", scope.userId, scope.organizationId, authorizationKey, id, older],
     queryFn: ({ signal }) => requestAIWorkbench({ route: "conversation-read", method: "GET", path: `chat/conversations/${id}?limit=50${older ? `&before=${older}` : ""}`, scope, signal }),
     retry: false, staleTime: 0, refetchOnWindowFocus: false });
   const current = detail.data?.conversation;

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { AIWorkbenchError } from "@/lib/api/ai-workbench";
@@ -24,6 +24,7 @@ function tree() { return <QueryClientProvider client={client}><ChatPage mode="de
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   fixture.context.effectiveOrganization = { id: "org-a" };
+  fixture.context.roles = ["listingkit_operator"];
   fixture.context.isSwitching = false;
   fixture.request.mockReset(); fixture.push.mockReset(); sessionStorage.clear();
   fixture.request.mockImplementation(async ({ route }) => {
@@ -107,4 +108,59 @@ it("reuses the confirmation key after a lost response and links to the committed
   expect(second.key).toBe(first.key);
   expect(await screen.findByRole("link", { name: "查看已确认任务" })).toHaveAttribute("href", `/workbench/ai/tasks/${taskId}`);
   expect(fixture.push).toHaveBeenCalledWith(`/workbench/ai/tasks/${taskId}`);
+});
+
+it("does not show a cached conversation when the current role set changes", async () => {
+  let reads = 0;
+  fixture.request.mockImplementation(async ({ route }) => {
+    if (route !== "conversation-read") throw new AIWorkbenchError("INVALID_REQUEST");
+    reads++;
+    if (reads === 1) return { conversation, messages: [{ ID: operationId, ConversationID: conversationId, Sequence: 1,
+      Author: "USER", Content: "之前有权查看的内容", CreatedAt: "2026-10-03T00:00:00Z" }], proposals: [], before: "" };
+    return new Promise(() => {});
+  });
+  const view = render(tree());
+  await screen.findByText("之前有权查看的内容");
+  fixture.context.roles = ["listingkit_viewer"];
+  view.rerender(tree());
+  await screen.findByText("正在读取会话");
+  expect(screen.queryByText("之前有权查看的内容")).toBeNull();
+  expect(reads).toBe(2);
+});
+
+it("discards an A response that arrives after A to B to A context switching", async () => {
+  let resolveOld!: (value: unknown) => void;
+  const old = new Promise<unknown>(resolve => { resolveOld = resolve; });
+  let aReads = 0;
+  fixture.request.mockImplementation(async ({ route, scope }) => {
+    if (route !== "conversation-read") throw new AIWorkbenchError("INVALID_REQUEST");
+    if (scope.organizationId === "org-b") return { conversation: { ...conversation, Scope: { OrganizationID: "org-b", ActorID: "user-a" } },
+      messages: [], proposals: [], before: "" };
+    aReads++;
+    if (aReads === 1) return old;
+    return { conversation, messages: [{ ID: operationId, ConversationID: conversationId, Sequence: 1,
+      Author: "USER", Content: "企业甲的当前内容", CreatedAt: "2026-10-03T00:00:00Z" }], proposals: [], before: "" };
+  });
+  const view = render(tree());
+  await waitFor(() => expect(aReads).toBe(1));
+  const oldSignal: AbortSignal = fixture.request.mock.calls[0][0].signal;
+  fixture.context.isSwitching = true;
+  view.rerender(tree());
+  expect(oldSignal.aborted).toBe(true);
+  client.clear();
+  fixture.context.isSwitching = false;
+  fixture.context.effectiveOrganization = { id: "org-b" };
+  view.rerender(tree());
+  await screen.findByText("开始讨论");
+  fixture.context.isSwitching = true;
+  view.rerender(tree());
+  client.clear();
+  fixture.context.isSwitching = false;
+  fixture.context.effectiveOrganization = { id: "org-a" };
+  view.rerender(tree());
+  await screen.findByText("企业甲的当前内容");
+  await act(async () => resolveOld({ conversation, messages: [{ ID: operationId, ConversationID: conversationId, Sequence: 1,
+    Author: "USER", Content: "企业甲的过期响应", CreatedAt: "2026-10-03T00:00:00Z" }], proposals: [], before: "" }));
+  expect(screen.queryByText("企业甲的过期响应")).toBeNull();
+  expect(screen.getByText("企业甲的当前内容")).toBeVisible();
 });
