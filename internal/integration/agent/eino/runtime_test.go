@@ -118,6 +118,7 @@ type fakeStore struct {
 	mu         sync.Mutex
 	record     agent.Record
 	exists     bool
+	failClaim  bool
 	failCommit bool
 }
 
@@ -130,6 +131,9 @@ func copyRecord(r agent.Record) agent.Record {
 func (s *fakeStore) Claim(_ context.Context, input agent.Record, expected uint64) (agent.Record, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.failClaim {
+		return agent.Record{}, false, agent.ErrUnavailable
+	}
 	if !s.exists {
 		if expected != 0 {
 			return agent.Record{}, false, agent.ErrConflict
@@ -185,6 +189,30 @@ func fixture(t *testing.T, actions ...agent.Action) (*Runtime, agent.Request, *f
 }
 func proposal(value string) agent.Action {
 	return agent.Action{Kind: "propose", Candidate: enrichment.Candidate{Changes: []enrichment.FieldChange{{Field: "title", Value: value, EvidenceIDs: []string{"source-1"}}}}}
+}
+
+func TestRuntimeReportsWhetherClaimWasAttempted(t *testing.T) {
+	runtime, request, _, _, _, auth, store := fixture(t, proposal("supported title"))
+	auth.denied = true
+	_, attempted, err := runtime.StartWithClaimAttempt(context.Background(), request)
+	if err == nil || attempted || store.exists {
+		t.Fatalf("revoked Start must fail before Claim: attempted=%v, err=%v", attempted, err)
+	}
+	_, attempted, err = runtime.ResumeWithClaimAttempt(context.Background(), request, 1, "feedback")
+	if err == nil || attempted || store.exists {
+		t.Fatalf("revoked Resume must fail before Claim: attempted=%v, err=%v", attempted, err)
+	}
+	auth.denied = false
+	store.failClaim = true
+	_, attempted, err = runtime.StartWithClaimAttempt(context.Background(), request)
+	if err == nil || !attempted || store.exists {
+		t.Fatalf("a failed Claim must remain outcome-unknown to the caller: attempted=%v, err=%v", attempted, err)
+	}
+	store.failClaim = false
+	_, attempted, err = runtime.StartWithClaimAttempt(context.Background(), request)
+	if !attempted || !store.exists || err != nil {
+		t.Fatalf("admitted Start must report its Claim attempt: attempted=%v, err=%v", attempted, err)
+	}
 }
 
 func TestGraphReadsProposesRepairsAndStopsForHuman(t *testing.T) {

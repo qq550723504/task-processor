@@ -83,25 +83,36 @@ func nilPort(value any) bool {
 }
 
 func (r *Runtime) Start(ctx context.Context, request agent.Request) (agent.Record, error) {
-	return r.run(ctx, request, 0, "")
+	record, _, err := r.StartWithClaimAttempt(ctx, request)
+	return record, err
 }
 func (r *Runtime) Resume(ctx context.Context, request agent.Request, revision uint64, feedback string) (agent.Record, error) {
-	if revision == 0 || len(feedback) > 8<<10 || !utf8.ValidString(feedback) {
-		return agent.Record{}, agent.ErrInvalid
-	}
-	return r.run(ctx, request, revision, feedback)
+	record, _, err := r.ResumeWithClaimAttempt(ctx, request, revision, feedback)
+	return record, err
 }
 
-func (r *Runtime) run(ctx context.Context, request agent.Request, expected uint64, feedback string) (agent.Record, error) {
+// ClaimAttempt is true from the point Store.Claim is called, including an
+// ambiguous Claim error. It never infers a safe retry from a failed lookup.
+func (r *Runtime) StartWithClaimAttempt(ctx context.Context, request agent.Request) (agent.Record, bool, error) {
+	return r.runWithClaimAttempt(ctx, request, 0, "")
+}
+func (r *Runtime) ResumeWithClaimAttempt(ctx context.Context, request agent.Request, revision uint64, feedback string) (agent.Record, bool, error) {
+	if revision == 0 || len(feedback) > 8<<10 || !utf8.ValidString(feedback) {
+		return agent.Record{}, false, agent.ErrInvalid
+	}
+	return r.runWithClaimAttempt(ctx, request, revision, feedback)
+}
+
+func (r *Runtime) runWithClaimAttempt(ctx context.Context, request agent.Request, expected uint64, feedback string) (agent.Record, bool, error) {
 	if !request.ContextSnapshotRef.ValidOrAbsent() || !request.ConfigurationSnapshotRef.ValidOrAbsent() {
-		return agent.Record{}, agent.ErrInvalid
+		return agent.Record{}, false, agent.ErrInvalid
 	}
 	if ctx == nil || r == nil || !request.Binding.Valid() || !agent.ValidID(request.Key) || !agent.ValidID(request.PolicyVersion) || !agent.ValidID(request.PromptVersion) || !agent.ValidGoalSummary(request.GoalSummary) || !request.Limits.Valid() || request.Limits.Steps > (1<<29) {
-		return agent.Record{}, agent.ErrInvalid
+		return agent.Record{}, false, agent.ErrInvalid
 	}
 	scope, err := r.config.Authorizer.Authorize(ctx, request.Binding)
 	if err != nil || !agent.ValidID(scope.OrganizationID) || !agent.ValidID(scope.ActorID) {
-		return agent.Record{}, agent.ErrInvalid
+		return agent.Record{}, false, agent.ErrInvalid
 	}
 	fingerprint, err := digest(struct {
 		Scope      agent.Scope
@@ -109,7 +120,7 @@ func (r *Runtime) run(ctx context.Context, request agent.Request, expected uint6
 		Definition commercetool.AgentDefinition
 	}{scope, request, r.config.Definition})
 	if err != nil {
-		return agent.Record{}, agent.ErrInvalid
+		return agent.Record{}, false, agent.ErrInvalid
 	}
 	now := time.Now().UTC()
 	initial := agent.Record{State: agent.State{RunID: uuid.NewString(), Scope: scope, Request: request, Fingerprint: fingerprint, Phase: agent.Running, StartedAt: now, Deadline: now.Add(request.Limits.Runtime)}}
@@ -119,16 +130,16 @@ func (r *Runtime) run(ctx context.Context, request agent.Request, expected uint6
 	}
 	record, acquired, err := r.config.Store.Claim(ctx, initial, expected)
 	if err != nil {
-		return agent.Record{}, err
+		return agent.Record{}, true, err
 	}
 	if record.State.Fingerprint != fingerprint || record.State.Scope != scope || record.State.Request != request || !agent.ValidID(record.State.RunID) || record.State.Revision == 0 {
-		return agent.Record{}, agent.ErrConflict
+		return agent.Record{}, true, agent.ErrConflict
 	}
 	if !acquired {
-		return record, nil
+		return record, true, nil
 	}
 	if record.State.Phase != agent.Running || expected > 0 && len(record.Checkpoint) == 0 || len(record.Checkpoint) > agent.MaxStateBytes {
-		return agent.Record{}, agent.ErrConflict
+		return agent.Record{}, true, agent.ErrConflict
 	}
 	ctx, cancel := context.WithDeadline(ctx, record.State.Deadline)
 	defer cancel()
@@ -136,7 +147,7 @@ func (r *Runtime) run(ctx context.Context, request agent.Request, expected uint6
 	flow := &execution{runtime: r, record: record, last: &flowState{State: record.State, Next: "model"}, checkpoint: checkpoint, feedback: feedback}
 	graph, err := flow.graph(ctx)
 	if err != nil {
-		return agent.Record{}, fmt.Errorf("%w: graph construction: %v", agent.ErrUnavailable, err)
+		return agent.Record{}, true, fmt.Errorf("%w: graph construction: %v", agent.ErrUnavailable, err)
 	}
 	result, graphErr := graph.Invoke(ctx, flow.last, compose.WithCheckPointID(record.State.RunID))
 	if result != nil {
@@ -171,13 +182,14 @@ func (r *Runtime) run(ctx context.Context, request agent.Request, expected uint6
 		final = agent.Record{State: flow.last.State}
 	}
 	if !fits(final, agent.MaxStateBytes) {
-		return agent.Record{}, fmt.Errorf("%w: invalid or oversized final state", agent.ErrInvalid)
+		return agent.Record{}, true, fmt.Errorf("%w: invalid or oversized final state", agent.ErrInvalid)
 	}
 	// Persist the computed outcome even when execution was canceled. This single
 	// synchronous CAS has its own short deadline; an unconfirmed write still fails.
 	commitCtx, commitCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer commitCancel()
-	return r.config.Store.Commit(commitCtx, final, record.State.Revision)
+	committed, err := r.config.Store.Commit(commitCtx, final, record.State.Revision)
+	return committed, true, err
 }
 
 func digest(value any) (string, error) {

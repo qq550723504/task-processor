@@ -390,8 +390,8 @@ func (x workbenchExecution) startTask(ctx context.Context, task aiworkbench.Busi
 			return false, err
 		}
 	}
-	_, err = a.runtime.Start(ctx, request)
-	return true, err
+	_, claimAttempted, err := a.runtime.StartWithClaimAttempt(ctx, request)
+	return claimAttempted, err
 }
 
 var _ aiworkbench.PlanningPort = (*workbenchPlanner)(nil)

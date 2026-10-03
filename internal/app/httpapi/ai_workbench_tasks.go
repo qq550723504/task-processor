@@ -269,6 +269,11 @@ func (a *aiWorkbenchApplication) taskAction(c *gin.Context, ctx context.Context,
 			failureCode := "DEPENDENCY_UNAVAILABLE"
 			if errors.Is(actionErr, aiworkbench.ErrRevisionMismatch) || errors.Is(actionErr, agent.ErrConflict) {
 				failureCode = "REVISION_MISMATCH"
+				actionErr = aiworkbench.ErrRevisionMismatch
+			} else {
+				// A second authorization can fail inside Runtime after the
+				// Workbench gate. Keep first response and durable replay aligned.
+				actionErr = aiworkbench.ErrUnavailable
 			}
 			code = []string{failureCode}
 		}
@@ -325,8 +330,8 @@ func (a *aiWorkbenchApplication) performTaskAction(ctx context.Context, scope ai
 		if !a.agent.frozenTitleProfileReady(ctx, run.State.Scope, request) {
 			return false, aiworkbench.ErrUnavailable
 		}
-		_, err = a.agent.runtime.Resume(ctx, request, input.Revision, input.Feedback)
-		return true, err
+		_, claimAttempted, err := a.agent.runtime.ResumeWithClaimAttempt(ctx, request, input.Revision, input.Feedback)
+		return claimAttempted, err
 	}
 	if !agentRunReviewable(run.State) {
 		return false, aiworkbench.ErrRevisionMismatch
