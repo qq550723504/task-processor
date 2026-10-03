@@ -4,8 +4,8 @@ const pending = (label: string, href: string, children?: readonly ConsoleNavNode
 export const consoleNavigation: readonly ConsoleNavNode[] = [
   { label: "运营驾驶舱", href: "/workbench", availability: "unavailable", children: [pending("目标管理", "overview/goals"), pending("店铺矩阵", "overview/stores"), pending("经营预警", "overview/alerts"), pending("经营建议", "overview/advice")] },
   pending("AI工作台", "ai", [
-    pending("硕米Chat", "ai/chat", [pending("新建会话", "ai/chat/new"), pending("最近会话", "ai/chat/recent"), pending("收藏会话", "ai/chat/saved")]),
-    { label: "任务中心", href: "/workbench/ai/tasks", availability: "connected", children: [pending("进行中", "ai/tasks/running"), { label: "待确认", href: "/workbench/ai/tasks/pending", availability: "connected" }, { label: "已完成", href: "/workbench/ai/tasks/completed", availability: "connected" }, pending("异常任务", "ai/tasks/errors")] },
+    { label: "硕米Chat", href: "/workbench/ai/chat", availability: "connected", children: [{ label: "新建会话", href: "/workbench/ai/chat/new", availability: "connected" }, { label: "最近会话", href: "/workbench/ai/chat/recent", availability: "connected" }, { label: "收藏会话", href: "/workbench/ai/chat/saved", availability: "connected" }] },
+    { label: "任务中心", href: "/workbench/ai/tasks", availability: "connected", children: [{ label: "进行中", href: "/workbench/ai/tasks/running", availability: "connected" }, { label: "待确认", href: "/workbench/ai/tasks/pending", availability: "connected" }, { label: "已完成", href: "/workbench/ai/tasks/completed", availability: "connected" }, { label: "异常任务", href: "/workbench/ai/tasks/errors", availability: "connected" }] },
     pending("项目中心", "ai/projects"), pending("知识库", "ai/knowledge"), pending("我的报告", "ai/reports"),
   ]),
   pending("供应市场", "supply", [
@@ -61,6 +61,16 @@ export function findConsoleRoute(pathname: string): ConsoleRoute | undefined {
     const parent=findConsoleRoute("/workbench/agents/mine")!;
     const node:ConsoleNavNode={label:"智能体配置",href:pathname,availability:"connected"};
     return {node,trail:[...parent.trail,node]};
+  }
+  if (/^\/workbench\/ai\/chat\/[0-9a-f-]{36}$/.test(pathname)) {
+    const parent = findConsoleRoute("/workbench/ai/chat")!;
+    const node: ConsoleNavNode = { label: "业务会话", href: pathname, availability: "connected" };
+    return { node, trail: [...parent.trail, node] };
+  }
+  if (/^\/workbench\/ai\/tasks\/[0-9a-f-]{36}$/.test(pathname)) {
+    const parent = findConsoleRoute("/workbench/ai/tasks")!;
+    const node: ConsoleNavNode = { label: "任务详情", href: pathname, availability: "connected" };
+    return { node, trail: [...parent.trail, node] };
   }
   if (pathname === "/workbench/account/referrals/complete") {
     const parent = findConsoleRoute("/workbench/account/referrals")!;
