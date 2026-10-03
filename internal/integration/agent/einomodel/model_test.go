@@ -96,4 +96,8 @@ func TestTitleAdapterUsesFrozenProfileAndSharedEinoExecutor(t *testing.T) {
 	require.Equal(t, 1, sends)
 	require.Len(t, ledger.records, 2)
 	require.Equal(t, aicapability.InvocationSucceeded, ledger.records[1].Outcome)
+	for _, record := range ledger.records {
+		require.Empty(t, record.BusinessTaskID, "acquisition operation ID is not a BusinessTask ID")
+		require.Equal(t, input.AgentRunID, record.AgentRunID)
+	}
 }

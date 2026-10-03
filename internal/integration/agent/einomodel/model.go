@@ -175,7 +175,7 @@ func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (prep
 	}
 	p.text = aicapability.TextInputIdentity{OrganizationID: identity.TenantID, ActorID: identity.UserID,
 		MemberID: identity.EffectiveMemberID, Operation: aicapability.OperationProductAgentDecision,
-		AgentRunID: in.AgentRunID, BusinessTaskID: in.Binding.ContextID,
+		AgentRunID: in.AgentRunID,
 		System: system, Prompt: string(prompt), Profile: p.profile}
 	p.quote, err = aicapability.QuoteText(p.text)
 	if err != nil {

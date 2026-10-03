@@ -28,6 +28,7 @@ type PlanningPort interface {
 }
 
 type ExecutionPort interface {
+	AuthorizeReceipt(context.Context, Scope) error
 	Prepare(context.Context, ExecutionProposal, string) (PreparedTask, error)
 	Start(context.Context, BusinessTask) error
 }
@@ -85,9 +86,18 @@ func (s *Service) Confirm(ctx context.Context, scope Scope, conversationID, prop
 	if s == nil || s.Store == nil || s.Execute == nil {
 		return BusinessTask{}, false, ErrUnavailable
 	}
+	if err := s.Execute.AuthorizeReceipt(ctx, scope); err != nil {
+		return BusinessTask{}, false, err
+	}
 	current, found, err := s.Store.LookupTask(ctx, scope, conversationID, proposalID, key)
-	if err != nil || found {
-		return current, found, err
+	if err != nil {
+		return BusinessTask{}, false, err
+	}
+	if found {
+		if err := s.Execute.AuthorizeReceipt(ctx, scope); err != nil {
+			return BusinessTask{}, false, err
+		}
+		return current, true, nil
 	}
 	proposal, err := s.Store.GetProposal(ctx, scope, proposalID)
 	if err == nil && proposal.ConversationID != conversationID {
@@ -98,16 +108,30 @@ func (s *Service) Confirm(ctx context.Context, scope Scope, conversationID, prop
 		prepared, err = s.Execute.Prepare(ctx, proposal, key)
 	}
 	if err != nil {
-		return s.Store.ReplayOrFail(ctx, scope, conversationID, proposalID, key, err)
+		if accessErr := s.Execute.AuthorizeReceipt(ctx, scope); accessErr != nil {
+			return BusinessTask{}, false, accessErr
+		}
+		resolved, replay, exitErr := s.Store.ReplayOrFail(ctx, scope, conversationID, proposalID, key, err)
+		if accessErr := s.Execute.AuthorizeReceipt(ctx, scope); accessErr != nil {
+			return BusinessTask{}, false, accessErr
+		}
+		return resolved, replay, exitErr
 	}
 	task, replay, err := s.Store.Confirm(ctx, scope, conversationID, proposalID, key, prepared)
 	if err != nil || replay {
+		if accessErr := s.Execute.AuthorizeReceipt(ctx, scope); accessErr != nil {
+			return BusinessTask{}, false, accessErr
+		}
 		return task, replay, err
 	}
 	// T1 is durable now. A T2 failure is visible through the exact Task receipt;
 	// the caller can use the explicit start action without minting another key.
-	if err := s.Execute.Start(ctx, task); err != nil {
-		return task, false, errors.Join(ErrUnavailable, err)
+	startErr := s.Execute.Start(ctx, task)
+	if accessErr := s.Execute.AuthorizeReceipt(ctx, scope); accessErr != nil {
+		return BusinessTask{}, false, accessErr
+	}
+	if startErr != nil {
+		return task, false, errors.Join(ErrUnavailable, startErr)
 	}
 	return task, false, nil
 }

@@ -63,7 +63,7 @@ function TaskList({ scope, authorizationKey, mode }: { scope: AIScope; authoriza
     {tasks.isPending ? <ConsoleState kind="loading" title="正在读取任务" /> : tasks.isError ? <ConsoleState kind="error" title="任务读取失败">{errorText(tasks.error)} <Button variant="outline" onClick={() => void tasks.refetch()}>重试</Button></ConsoleState> :
       <div className={styles.list}>{visible.length ? visible.map(item => <TaskRow key={item.id} task={item} />) : <ConsoleState kind="empty" title="当前筛选无任务">只显示通过 Chat 提案确认创建的 BusinessTask。</ConsoleState>}
         {tasks.data?.next ? <Button variant="outline" onClick={() => setAfter(tasks.data!.next)}>加载更早任务</Button> : null}</div>}
-    {mode === "pending" ? <Card className={styles.secondary}><h2>其他待确认提案</h2><p>不属于 BusinessTask 的旧标题提案，保留在原 Review 流程中。</p><Button asChild variant="outline"><Link href="/workbench/ai/tasks/pending/other" prefetch={false}>查看其他提案</Link></Button></Card> : null}
+    {mode === "pending" ? <Card className={styles.secondary}><h2>标准商品标题审核</h2><p>查看 Product Review 持有的全部标题提案，包括从 BusinessTask 提交和直接从 Product Agent 提交的提案。接受后仍需单独应用。</p><Button asChild variant="outline"><Link href="/workbench/ai/tasks/pending/other" prefetch={false}>打开标题审核</Link></Button></Card> : null}
     {mode === "completed" ? <Card className={styles.secondary}><h2>历史已完成工作记录</h2><p>原本地资料准备记录继续单独展示，不计入 BusinessTask。</p><Button asChild variant="outline"><Link href="/workbench/ai/tasks/completed/history" prefetch={false}>查看历史记录</Link></Button></Card> : null}
   </>;
 }

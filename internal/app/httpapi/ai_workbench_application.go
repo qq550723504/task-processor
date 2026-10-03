@@ -42,6 +42,14 @@ type workbenchPlanner struct {
 
 type workbenchExecution struct{ agent *productAgentApplication }
 
+func (x workbenchExecution) AuthorizeReceipt(ctx context.Context, scope aiworkbench.Scope) error {
+	i, err := x.agent.freshChatIdentity(ctx)
+	if err != nil || i.TenantID != scope.OrganizationID || i.UserID != scope.ActorID {
+		return review.ErrForbidden
+	}
+	return nil
+}
+
 func buildAIWorkbenchApplication(ctx context.Context, cfg AIWorkbenchDependencies, a *productAgentApplication) (*aiWorkbenchApplication, error) {
 	if cfg.DB == nil || a == nil || a.config.RunDB == nil || a.config.Ledger == nil || len(cfg.PlanningTextPolicies) == 0 {
 		return nil, aiworkbench.ErrUnavailable

@@ -16,6 +16,7 @@ func maintainedOperationalCommands() map[string]struct{} {
 	return map[string]struct{}{
 		"account-acceptance-fixture":          {},
 		"agent-configuration-schema-init":     {},
+		"ai-workbench-schema-init":             {},
 		"1688-batch-import":                   {},
 		"1688-local-agent":                    {},
 		"commercial-owner-schema-migrate":     {},

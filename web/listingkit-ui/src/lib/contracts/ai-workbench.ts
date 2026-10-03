@@ -32,10 +32,6 @@ const task = z.object({
   tokens: z.number().int().optional(), estimatedCostMicros: z.number().int().optional(), currency: z.string().optional(),
   usageStatus: z.string().optional(), reviewId: z.string().optional(), reviewState: z.string().optional(),
 });
-export const aiConversationSchema = conversation;
-export const aiMessageSchema = message;
-export const aiProposalSchema = proposal;
-export const aiTaskSchema = task;
 export const aiCreateBody = z.strictObject({ favorite: z.boolean().optional() });
 export const aiMessageBody = z.strictObject({
   content: z.string().min(1).refine(v => new TextEncoder().encode(v).length <= 8192), operationId: id,
@@ -46,7 +42,6 @@ export const aiMetadataBody = z.strictObject({ title: z.string().max(256).option
 export const aiResumeBody = z.strictObject({ revision: z.string().regex(/^[1-9][0-9]*$/), feedback: z.string().max(8192) });
 
 export type AIConversation = z.infer<typeof conversation>;
-export type AIMessage = z.infer<typeof message>;
 export type AIProposal = z.infer<typeof proposal>;
 export type AITask = z.infer<typeof task>;
 

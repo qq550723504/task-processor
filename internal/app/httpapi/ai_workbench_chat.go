@@ -187,5 +187,9 @@ func (a *aiWorkbenchApplication) confirmProposal(c *gin.Context, ctx context.Con
 		writeAIWorkbenchError(c, viewErr)
 		return
 	}
+	if accessErr := (workbenchExecution{agent: a.agent}).AuthorizeReceipt(ctx, scope); accessErr != nil {
+		writeAIWorkbenchError(c, accessErr)
+		return
+	}
 	workbenchReply(c, http.StatusOK, gin.H{"task": view, "replay": replay})
 }

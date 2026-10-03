@@ -56,7 +56,12 @@ function ChatCollection({ scope, authorizationKey, mode }: { scope: AIScope; aut
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const abort = useRef<AbortController | null>(null);
-  useEffect(() => { try { setCreateKey(sessionStorage.getItem(pendingCreateStorageKey(scope)) ?? ""); } catch { /* storage may be unavailable */ } }, [scope.userId, scope.organizationId]);
+  const createStorageKey = pendingCreateStorageKey(scope);
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => { if (active) { try { setCreateKey(sessionStorage.getItem(createStorageKey) ?? ""); } catch { /* storage may be unavailable */ } } });
+    return () => { active = false; };
+  }, [createStorageKey]);
   useEffect(() => () => abort.current?.abort(), []);
   const conversations = useQuery({ queryKey: ["ai-chat", scope.userId, scope.organizationId, authorizationKey, "list", after],
     queryFn: ({ signal }) => requestAIWorkbench({ route: "conversation-list", method: "GET", path: `chat/conversations?limit=50${after ? `&after=${after}` : ""}`, scope, signal }),
@@ -112,6 +117,8 @@ function ConversationDetail({ scope, authorizationKey, id }: { scope: AIScope; a
   const [confirmReceipts, setConfirmReceipts] = useState<Record<string, ConfirmationReceipt>>({});
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const messageStorageKey = pendingMessageStorageKey(scope, id);
+  const confirmationStorageKey = confirmStorageKey(scope, id);
   const detail = useQuery({ queryKey: ["ai-chat", scope.userId, scope.organizationId, authorizationKey, id, older],
     queryFn: ({ signal }) => requestAIWorkbench({ route: "conversation-read", method: "GET", path: `chat/conversations/${id}?limit=50${older ? `&before=${older}` : ""}`, scope, signal }),
     retry: false, staleTime: 0, refetchOnWindowFocus: false });
@@ -120,8 +127,10 @@ function ConversationDetail({ scope, authorizationKey, id }: { scope: AIScope; a
   const activeProposal = detail.data?.proposals.find(p => p.sourceSequence === latestUser);
   const abort = useRef<AbortController | null>(null);
   useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem(pendingMessageStorageKey(scope, id));
+    let active = true;
+    queueMicrotask(() => { if (!active) return;
+      try {
+      const saved = sessionStorage.getItem(messageStorageKey);
       if (!saved) return;
       const value: unknown = JSON.parse(saved);
       if (!value || typeof value !== "object" || !("key" in value) || typeof value.key !== "string" || !isAcquisitionUUID(value.key) || !("body" in value)) throw new Error("invalid pending message");
@@ -130,11 +139,15 @@ function ConversationDetail({ scope, authorizationKey, id }: { scope: AIScope; a
       setPendingMessage({ key: value.key, body: checked.data });
       setContent(checked.data.content); setOperationId(checked.data.operationId); setPlatform(checked.data.targetPlatform);
       setTemplateId(checked.data.templateId ?? ""); setTemplateRevision(checked.data.templateRevision ?? ""); setKnowledgeBaseId(checked.data.knowledgeBaseId ?? "");
-    } catch { try { sessionStorage.removeItem(pendingMessageStorageKey(scope, id)); } catch { /* storage may be unavailable */ } }
-  }, [scope.userId, scope.organizationId, id]);
+      } catch { try { sessionStorage.removeItem(messageStorageKey); } catch { /* storage may be unavailable */ } }
+    });
+    return () => { active = false; };
+  }, [messageStorageKey]);
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(confirmStorageKey(scope, id));
+    let active = true;
+    queueMicrotask(() => { if (!active) return;
+      try {
+      const raw = sessionStorage.getItem(confirmationStorageKey);
       if (!raw) return;
       const values: unknown = JSON.parse(raw);
       if (!values || typeof values !== "object" || Array.isArray(values)) return;
@@ -146,8 +159,10 @@ function ConversationDetail({ scope, authorizationKey, id }: { scope: AIScope; a
         safe[proposalId] = { key: receipt.key, ...(taskId ? { taskId } : {}) };
       }
       setConfirmReceipts(safe);
-    } catch { /* a missing browser store cannot authorize an operation */ }
-  }, [scope.userId, scope.organizationId, id]);
+      } catch { /* a missing browser store cannot authorize an operation */ }
+    });
+    return () => { active = false; };
+  }, [confirmationStorageKey]);
   useEffect(() => () => abort.current?.abort(), []);
   async function send() {
     const draft = pendingMessage ?? { key: crypto.randomUUID(), body: {
