@@ -31,6 +31,8 @@ type AgentTextPolicy struct {
 	ProviderID                                                         string
 	Endpoint, APIStyle                                                 string
 	OutputLimitField                                                   string
+	ReasoningEffort                                                    string
+	ThinkingLevel                                                      string
 	InputWindowTokens, OutputWindowTokens                              int64
 	MaximumOutputTokens                                                int
 	InputMicrosPerMillion, OutputMicrosPerMillion                      int64
@@ -56,7 +58,14 @@ func (p AgentTextPolicy) Validate() error {
 			return agent.ErrUnavailable
 		}
 	}
-	if len(p.Currency) != 3 || (p.OutputLimitField != "max_tokens" && p.OutputLimitField != "max_completion_tokens") || p.InputWindowTokens <= 0 || p.InputWindowTokens > agentInputWindow || p.OutputWindowTokens <= 0 || p.OutputWindowTokens > agentOutputWindow || p.MaximumOutputTokens <= 0 || int64(p.MaximumOutputTokens) > p.OutputWindowTokens {
+	if len(p.Currency) != 3 || p.InputWindowTokens <= 0 || p.InputWindowTokens > agentInputWindow || p.OutputWindowTokens <= 0 || p.OutputWindowTokens > agentOutputWindow || p.MaximumOutputTokens <= 0 || int64(p.MaximumOutputTokens) > p.OutputWindowTokens {
+		return agent.ErrUnavailable
+	}
+	if p.APIStyle == "google-interactions" {
+		if p.OutputLimitField != "max_output_tokens" || p.ThinkingLevel != "low" || p.ReasoningEffort != "" || p.ProviderID != "google" || p.AdmittedRoute.ProviderID != "google" || p.AdmittedRoute.ModelID != "gemini-3.8-flash" || p.OutputWindowTokens != int64(p.MaximumOutputTokens) || !openai.ValidGoogleInteractionsEndpoint(p.Endpoint) {
+			return agent.ErrUnavailable
+		}
+	} else if (p.OutputLimitField != "max_tokens" && p.OutputLimitField != "max_completion_tokens") || (p.ReasoningEffort != "" && p.ReasoningEffort != "none") || p.ThinkingLevel != "" {
 		return agent.ErrUnavailable
 	}
 	if p.InputMicrosPerMillion <= 0 || p.InputMicrosPerMillion > 1e12 || p.OutputMicrosPerMillion <= 0 || p.OutputMicrosPerMillion > 1e12 || p.PointPricing == nil || p.ValidatePointPricing() != nil {
@@ -83,7 +92,7 @@ func (p AgentTextPolicy) UpperBound() (tokens, costMicros int64, err error) {
 }
 
 func supportedTextAPIStyle(style string) bool {
-	return style == "openai" || style == "openai-compatible" || style == "grsai"
+	return style == "openai" || style == "openai-compatible" || style == "grsai" || style == "google-interactions"
 }
 
 func isLoopbackTextEndpoint(host string) bool {
@@ -269,7 +278,7 @@ func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (prep
 	if err != nil {
 		return p, agent.ErrInvalid
 	}
-	p.request = openai.TextCompletionRequest{System: agentTextSystem, Prompt: string(wire), MaximumOutputTokens: policy.MaximumOutputTokens, OutputLimitField: policy.OutputLimitField}
+	p.request = openai.TextCompletionRequest{System: agentTextSystem, Prompt: string(wire), MaximumOutputTokens: policy.MaximumOutputTokens, OutputLimitField: policy.OutputLimitField, ReasoningEffort: policy.ReasoningEffort, ThinkingLevel: policy.ThinkingLevel}
 	if p.knowledge != nil {
 		p.request.System += "\n" + knowledgeTextSystem
 	}
@@ -346,7 +355,23 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 	if errors.Is(err, openai.ErrTextNotDispatched) {
 		return m.notDispatched(ctx, record, "rejected_before_dispatch")
 	}
-	if err != nil || response == nil || !response.UsageKnown || response.Usage.PromptTokens > int(p.policy.InputWindowTokens) || response.Usage.CompletionTokens > int(p.policy.OutputWindowTokens) {
+	if response != nil {
+		record.ProviderRequestID = safeTextProviderReference(response.ID)
+	}
+	if err != nil || response == nil || !response.UsageKnown || response.Usage.PromptTokens > int(p.policy.InputWindowTokens) || response.Usage.CompletionTokens > int(p.policy.OutputWindowTokens) || p.policy.APIStyle == "google-interactions" && response.Usage.CompletionTokens > p.policy.MaximumOutputTokens {
+		if p.policy.APIStyle == "google-interactions" {
+			// Preserve a bounded diagnostic on the already-dispatched fact
+			// without making it terminal or releasing its reservation. Never
+			// persist a raw provider error body or SDK message.
+			record.ErrorCode = openai.TextOutcomeDiagnosticCode(err)
+			if record.ErrorCode == "" && response != nil {
+				record.ErrorCode = response.OutcomeDiagnostic
+			}
+			if record.ErrorCode == "" {
+				record.ErrorCode = "provider_outcome_unknown"
+			}
+			_ = m.record(ctx, record)
+		}
 		return result, openai.ErrTextOutcomeUnknown
 	}
 	record.FinishedAt = time.Now().UTC()
@@ -388,6 +413,21 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 	result.ContextCitationRefs = citations
 	result.Usage = agent.ObservedUsage{Tokens: int64(record.TotalTokens), CostMicros: record.EstimatedCostMicros, Currency: record.Currency, Known: true}
 	return result, nil
+}
+
+// Provider references are metadata from an untrusted response. Only retain a
+// short, printable identifier; never copy arbitrary provider text into ledger.
+func safeTextProviderReference(value string) string {
+	if value == "" || len(value) > 128 {
+		return ""
+	}
+	for i := 0; i < len(value); i++ {
+		b := value[i]
+		if !(b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '-' || b == '_' || b == '.') {
+			return ""
+		}
+	}
+	return value
 }
 
 func (m *AgentTextModel) notDispatched(ctx context.Context, record aicapability.InvocationRecord, code string) (agent.ModelResult, error) {

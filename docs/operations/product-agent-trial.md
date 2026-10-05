@@ -41,18 +41,22 @@ credential SELECT、invocation SELECT/INSERT/UPDATE；Review 连接需要既有 
 `textPolicies[organizationId]` 字段（只有完整 route、计量证据、定价和付费授权都具备时才启用）：
 
 - `providerID`：真实供应商身份，与兼容协议名分离；`clientName`：当前企业组织凭据名称，例如 `default`。
-- `endpoint`、`apiStyle`、`admittedRoute.modelID`：部署者预定的精确 endpoint、OpenAI 兼容协议形式和模型；企业成员不能从浏览器修改该策略。
+- `endpoint`、`apiStyle`、`admittedRoute.modelID`：部署者预定的精确 endpoint、已准入传输协议和模型；企业成员不能从浏览器修改该策略。
 - `policyVersion`：`title-review-v1`；`pricingVersion`：获准估价策略的版本标识。
 - `currency`：当前策略的三字符货币；`inputMicrosPerMillion` 和
   `outputMicrosPerMillion`：每百万 token 的货币微单位估价，必须显式冻结。
-- `inputWindowTokens`、`outputWindowTokens`：该 route 有证据支持的输入和输出硬上界；
-  `maximumOutputTokens` 和 `outputLimitField`：本次请求输出上限及供应商确实执行的
-  `max_tokens` 或 `max_completion_tokens` 字段。字段支持必须有该 route 的证据。
+- `inputWindowTokens`、`outputWindowTokens`：该 route 实际强制的输入和输出硬上界；
+  `maximumOutputTokens` 和 `outputLimitField`：本次请求输出上限及供应商执行的字段。兼容
+  route 仅用已证明的 `max_tokens` 或 `max_completion_tokens`。Google 原生 Interactions
+  route 必须用 `max_output_tokens`，且 `outputWindowTokens=maximumOutputTokens`；可低于模型
+  65,536 的最大窗口，以较小的实际硬上限报价。
+- `reasoningEffort`：兼容 route 可选，当前只支持空值或 `none`；Google 原生 route 必须留空，
+  另填 `thinkingLevel: "low"`。两种参数均随策略进入报价引用，不能互换。
 - `admittedRoute`：通过当前 Manager 的 `ResolveTextRoute` 在该组织凭据下取得的
   `ProviderID`、`ModelID`、`CredentialReference`、`ConfigurationVersion` 非敏感元数据。
   其中兼容 route 的 Manager `ProviderID` 可能只是 `openai` 协议提示；实际供应商由策略的
   `providerID` 指明。不可猜测 version，也不能把其他组织的结果照搬。
-- `boundEvidence`：已复核的该供应商精确 route 的完整两项 Token 计量、输出上界和无额外收费维度的依据标识；
+- `boundEvidence`：已复核的该供应商精确 route 的完整 Token 计量、输出上界和无额外收费维度的依据标识；Google 原生 route 须包含独立思考量如何并入输出账本的证据；
   别家模型窗口、一般兼容说明或价格页不能自行当成该 route 已被验证的证据。
 - `pointPricing`：沿用 #564 冻结积分计费，显式设置获准 `priceVersion` 和正整数
   `inputPointsPerMillionTokens` / `outputPointsPerMillionTokens`。不默认费率；预留企业积分
@@ -62,6 +66,21 @@ credential SELECT、invocation SELECT/INSERT/UPDATE；Review 连接需要既有 
 便停止，事后仅结算 provider 完整报告的实际 tokens。估价用于预算，不声称是真实账单。
 未知响应/用量保持既有预留，不能通过新请求编号绕过。调整配置或凭据后必须重新核对 route。
 当前只交付受控接线，未提供通用模型/计费配置平台；目标环境的 route 及证明仍需交付者配置。
+
+首条 Google 候选为官方 Gemini Interactions API：`endpoint=https://generativelanguage.googleapis.com`、
+`apiStyle=google-interactions`、`providerID=google`、`model=gemini-3.8-flash`、
+`outputLimitField=max_output_tokens`、`thinkingLevel=low`。请求固定为单次非流式、
+`store=false`、`background=false`，不带历史或工具。完整 usage 的输入量进入原 PromptTokens，
+可见输出和思考量之和进入原 CompletionTokens；任一计数缺失、工具量未明确为零、
+非文本模态、额外收费维度或超界便保持 UNKNOWN。
+原 `gemini-2.5-flash` 兼容候选在当前 Google 新项目返回 404，3.8 兼容探针的完成量超过
+请求 `max_tokens`；不能沿用它们作为准入证据。`admittedRoute` 仍须由目标组织凭据解析，
+不能手填猜测。当前已有隔离实例的合成 Google 标题生成、人工审核和 Product Apply 联调；
+一次浏览器提前关闭留下的 UNKNOWN 仍保留原预留，不能当作成功或自动重发。执行时须保持
+页面打开至请求返回；离开后只用原请求编号读取当前结果。具体运行证据见 Issue #573 / PR #586。
+这不等于正式产品点数费率、真实业务数据处理决定或持续调用授权；正式执行保持关闭，
+不得把合成试用证据直接当作其它组织的 `boundEvidence`。已创建的 Google Free tier Key
+仅限合成数据，不能用来传输真实商品或企业资料。
 
 当前应用没有挂载旧 `listingkit` AI 设置。部署者先在**关闭执行**的私有 manifest 中填入
 企业 allowlist 及预定策略（首次 `admittedRoute.configurationVersion` 暂缺）；另备私有凭据输入，
@@ -114,7 +133,9 @@ Console 设置 `LISTINGKIT_KNOWLEDGE_ENABLED=true` 仅显示选择入口，不�
 
 运行编号会写入 `agent_key` URL 参数；刷新后点击“读取当前结果”。网络超时、运行中断或
 未知结果不会自动重发模型。保留该 URL/编号供运维查询，不反复创建新运行。
-关闭页面/停止等待不能取消已经发出的模型请求。后端未开放或配置缺失时页面明确显示不可用。
+同步执行时应保持页面打开并等待请求返回。关闭页面可能取消后端请求；如果模型已发送，
+运行会保守停在 UNKNOWN，不能据此断言供应商撤销，也不能自动重发。后端未开放或配置缺失
+时页面明确显示不可用。
 
 大份证据会使用明确标出省略字段的标题诊断视图，原始工具结果仍保存在运行记录中。
 被省略的事实保持未知，模型不能据此判断“没有素材”或“发布就绪”；证据不足时需中断。
@@ -123,6 +144,12 @@ Console 设置 `LISTINGKIT_KNOWLEDGE_ENABLED=true` 仅显示选择入口，不�
 运行控制/checkpoint 存在 `product_agent_runs`，安全工具摘要在 `product_agent_tool_calls`；
 模型调用及用量继续由现有 AI invocation/Commercial ledger 保存。Product 和 Review
 保持各自事实 owner。正常停止/重启保留数据库；不把 destroy 或删数据作为停止命令。
+新代码会在 Google 调用已发送但结果仍未知时，把固定的非敏感原因分类写入该调用的
+`ai_invocations.error_code`，例如 `provider_http_429`、`provider_transport_timeout`、
+`provider_response_json` 或 `provider_usage_missing`。只按当前组织和调用编号查询；
+该字段不含上游原始错误、提示词或密钥。分类只帮助定位失败位置，不证明供应商未执行，
+`outcome=dispatched`、未知用量和预留仍保持原样。旧实例及历史 UNKNOWN 没有此字段，
+不能用代码更新倒推其原因。
 
 ## 已验证与待执行
 
@@ -130,8 +157,16 @@ PR #502 的历史开发组合验证覆盖真实 PostgreSQL 的采集发布、显
 错误证据被拒绝并修复、90 tokens 记账、重复请求不增调用，以及原 Review 人工接受/Apply。
 模型服务使用隔离响应，身份和额度为隔离 fixture；这不是已部署的用户实例。
 
-当前任一真实供应商调用、标题执行完整浏览器使用，以及 #47 样本集 Agent vs fixed
-质量/风险/延迟/成本对照为 NOT_RUN。供应商可替换实现的准确代码 SHA、CI 和独立评审维护在 PR #580；
-PR #502 的历史证据不作为新 HEAD 的直接验证。
+2026-10-03 的 24544 本地实例用合成商品和受控本地兼容响应完成正常登录、标题建议、
+Review 接受与显式 Apply；该实例没有 Google Key，也没有真实供应商调用，证据见 Issue #573。
+另一个独立的 25544 本地实例仅用合成数据和 Google Free tier Key 调用 Gemini 3.8 原生接口：
+首笔浏览器提前关闭后的调用仍为 UNKNOWN、保留预留；另获授权的新运行有 3 笔完整用量，
+人工编辑/审核并 Apply 到 Product 版本 2。准确源 HEAD、调用次数与用量见 Issue #573 / PR #586。
+其后更丰富的合成商品试用首笔模型调用成功，第二笔已发送后用量未知；该新运行没有标题
+候选，Review/Apply 未执行。未重发任一 UNKNOWN 编号，也未使用当轮剩余两次调用额度。
+这只证明合成数据的本地接线；真实业务数据处理、正式费率/预算、用户试用，以及 #47 样本集
+Agent vs fixed 质量/风险/延迟/成本对照仍为 NOT_RUN。供应商可替换基础实现及本次 Google
+增量的代码 SHA、CI 和独立评审分别维护在 PR #580 / #586；PR #502 的历史证据不作为
+新 HEAD 的直接验证。
 只有完成目标环境配置、获得对应真实操作授权并实际验证后，才可宣称用户试用通过；
 不得以开发测试替代 #132 的原对照验收，也不自动进入下一阶段。

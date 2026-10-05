@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -64,7 +65,7 @@ func (l *agentTestLedger) RecordInvocation(_ context.Context, r aicapability.Inv
 	return nil
 }
 
-func agentModelFixture(t *testing.T, content, usage string) (*AgentTextModel, context.Context, agent.ModelInput, *agentTestLedger, *atomic.Int32, *atomic.Value) {
+func agentModelFixture(t *testing.T, content, usage string, fixtureTransports ...http.RoundTripper) (*AgentTextModel, context.Context, agent.ModelInput, *agentTestLedger, *atomic.Int32, *atomic.Value) {
 	t.Helper()
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +78,7 @@ func agentModelFixture(t *testing.T, content, usage string) (*AgentTextModel, co
 	identity := authidentity.AuthenticatedIdentity{TenantID: "org", EffectiveOrganizationID: "org", UserID: "actor", EffectiveMemberID: "member", TokenExpiresAt: time.Now().Add(time.Hour)}
 	var fresh atomic.Value
 	fresh.Store(identity)
-	manager := textTestManager(t, srv.URL)
+	manager := textTestManager(t, srv.URL, fixtureTransports...)
 	credentialDB := openTestCredentialDB(t)
 	sqlDB, err := credentialDB.DB()
 	requireNoErrorText(t, err)
@@ -99,17 +100,182 @@ func agentModelFixture(t *testing.T, content, usage string) (*AgentTextModel, co
 	return m, authidentity.WithAuthenticatedIdentity(context.Background(), identity), in, ledger, &calls, &fresh
 }
 
+func TestGoogleInteractionsPolicyRequiresNativeControlsAndExactRoute(t *testing.T) {
+	m, _, _, _, _, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`)
+	p := m.policies["org"]
+	p.ProviderID = "google"
+	p.Endpoint = "https://generativelanguage.googleapis.com"
+	p.APIStyle = "google-interactions"
+	p.AdmittedRoute.ProviderID = "google"
+	p.AdmittedRoute.ModelID = "gemini-3.8-flash"
+	p.OutputLimitField = "max_output_tokens"
+	p.ThinkingLevel = "low"
+	p.ReasoningEffort = ""
+	p.OutputWindowTokens = int64(p.MaximumOutputTokens)
+	if err := p.Validate(); err != nil {
+		t.Fatalf("valid native policy rejected: %v", err)
+	}
+	for _, mutate := range []func(*AgentTextPolicy){
+		func(p *AgentTextPolicy) { p.OutputLimitField = "max_tokens" },
+		func(p *AgentTextPolicy) { p.ReasoningEffort = "none" },
+		func(p *AgentTextPolicy) { p.ThinkingLevel = "high" },
+		func(p *AgentTextPolicy) { p.OutputWindowTokens++ },
+		func(p *AgentTextPolicy) { p.Endpoint = "https://other.example.test" },
+		func(p *AgentTextPolicy) { p.Endpoint = "http://127.0.0.1:8080" },
+		func(p *AgentTextPolicy) { p.AdmittedRoute.ModelID = "gemini-2.5-flash" },
+	} {
+		invalid := p
+		mutate(&invalid)
+		if err := invalid.Validate(); err == nil {
+			t.Fatalf("invalid native policy admitted: %+v", invalid)
+		}
+	}
+}
+
+func TestGoogleInteractionsTitleUsesExistingQuoteLedgerAndReviewAction(t *testing.T) {
+	for _, tc := range []struct{ status, wantOutcome string }{{"completed", string(aicapability.InvocationSucceeded)}, {"incomplete", string(aicapability.InvocationUsageObservedFailed)}} {
+		t.Run(tc.status, func(t *testing.T) {
+			var calls atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"id":"interaction","model":"gemini-3.8-flash","status":"` + tc.status + `","steps":[{"type":"model_output","content":[{"type":"text","text":"{\"Kind\":\"interrupt\"}"}]}],"usage":{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14,"total_tool_use_tokens":0}}`))
+			}))
+			defer srv.Close()
+			m, ctx, in, ledger, _, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`, titleGoogleFixtureTransport(t, srv.URL))
+			credentialDB := openTestCredentialDB(t)
+			sqlDB, err := credentialDB.DB()
+			requireNoErrorText(t, err)
+			sqlDB.SetMaxOpenConns(1)
+			resolver := openai.NewOrganizationOnlyCredentialResolver(credentialDB)
+			requireNoErrorText(t, resolver.SaveCredential(ctx, openai.AIClientCredential{TenantID: "org", ClientName: "text", APIKey: "fixture-key", BaseURL: "https://generativelanguage.googleapis.com", Model: "gemini-3.8-flash", APIStyle: "google-interactions", Enabled: true, TimeoutSecond: 2}))
+			m.manager.SetConfigResolver(resolver)
+			route, err := m.manager.ResolveTextRoute(ctx, "text")
+			requireNoErrorText(t, err)
+			policy := m.policies["org"]
+			policy.ProviderID, policy.APIStyle, policy.Endpoint = "google", "google-interactions", "https://generativelanguage.googleapis.com"
+			policy.OutputLimitField, policy.ThinkingLevel, policy.ReasoningEffort = "max_output_tokens", "low", ""
+			policy.MaximumOutputTokens, policy.AdmittedRoute = 128, route
+			policy.OutputWindowTokens = int64(policy.MaximumOutputTokens)
+			m.policies["org"] = policy
+			if got := m.RouteReadiness(ctx); got != TextRouteAvailable {
+				t.Fatalf("native organization route not ready: %s", got)
+			}
+			quote, err := m.Quote(ctx, in)
+			requireNoErrorText(t, err)
+			in.UpperBound, in.InvocationID = quote, "google-invocation"
+			result, err := m.Decide(ctx, in)
+			requireNoErrorText(t, err)
+			record := ledger.rows[in.InvocationID]
+			if string(record.Outcome) != tc.wantOutcome || record.ProviderID != "google" || record.ModelID != "gemini-3.8-flash" || record.ProviderRequestID != "interaction" || record.PromptTokens != 3 || record.CompletionTokens != 11 || record.TotalTokens != 14 || result.Usage.Tokens != 14 || calls.Load() != 1 {
+				t.Fatalf("record=%+v result=%+v calls=%d", record, result, calls.Load())
+			}
+			if tc.status == "completed" && result.Action.Kind != "interrupt" || tc.status != "completed" && result.Action.Kind != "" {
+				t.Fatalf("unexpected action on status %s: %+v", tc.status, result.Action)
+			}
+		})
+	}
+}
+
+func TestGoogleInteractionsUnknownRecordsOnlySafeReasonWithoutSettling(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`sensitive-provider-body`))
+	}))
+	defer srv.Close()
+	m, ctx, in, ledger, _, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`, titleGoogleFixtureTransport(t, srv.URL))
+	credentialDB := openTestCredentialDB(t)
+	sqlDB, err := credentialDB.DB()
+	requireNoErrorText(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	resolver := openai.NewOrganizationOnlyCredentialResolver(credentialDB)
+	requireNoErrorText(t, resolver.SaveCredential(ctx, openai.AIClientCredential{TenantID: "org", ClientName: "text", APIKey: "fixture-key", BaseURL: "https://generativelanguage.googleapis.com", Model: "gemini-3.8-flash", APIStyle: "google-interactions", Enabled: true, TimeoutSecond: 2}))
+	m.manager.SetConfigResolver(resolver)
+	route, err := m.manager.ResolveTextRoute(ctx, "text")
+	requireNoErrorText(t, err)
+	policy := m.policies["org"]
+	policy.ProviderID, policy.APIStyle, policy.Endpoint = "google", "google-interactions", "https://generativelanguage.googleapis.com"
+	policy.OutputLimitField, policy.ThinkingLevel, policy.ReasoningEffort = "max_output_tokens", "low", ""
+	policy.MaximumOutputTokens, policy.AdmittedRoute = 128, route
+	policy.OutputWindowTokens = int64(policy.MaximumOutputTokens)
+	m.policies["org"] = policy
+	quote, err := m.Quote(ctx, in)
+	requireNoErrorText(t, err)
+	in.UpperBound, in.InvocationID = quote, "unknown-native-invocation"
+	result, err := m.Decide(ctx, in)
+	if !errors.Is(err, openai.ErrTextOutcomeUnknown) || result.Usage.Known || calls.Load() != 1 {
+		t.Fatalf("unexpected outcome: result=%+v err=%v calls=%d", result, err, calls.Load())
+	}
+	record := ledger.rows[in.InvocationID]
+	if record.Outcome != aicapability.InvocationDispatched || record.ErrorCode != "provider_http_429" || record.UsageKnown || !record.FinishedAt.IsZero() || record.EstimatedCostKnown || strings.Contains(record.ErrorCode, "sensitive") {
+		t.Fatalf("unknown invocation was settled or lost its safe diagnostic: %+v", record)
+	}
+	_, _ = m.Decide(ctx, in)
+	if calls.Load() != 1 {
+		t.Fatalf("unknown invocation was redispatched: %d", calls.Load())
+	}
+}
+
+func TestGoogleInteractionsUnknownRetainsOnlySafeReturnedReference(t *testing.T) {
+	for _, tc := range []struct{ id, want string }{{"interaction-usage-missing", "interaction-usage-missing"}, {"unsafe\nreference", ""}} {
+		t.Run(strings.ReplaceAll(tc.id, "\n", "_"), func(t *testing.T) {
+			encodedID, _ := json.Marshal(tc.id)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"id":` + string(encodedID) + `,"model":"gemini-3.8-flash","status":"completed","steps":[{"type":"model_output","content":[{"type":"text","text":"ok"}]}],"usage":{"total_input_tokens":3,"total_output_tokens":4,"total_thought_tokens":7,"total_tokens":14}}`))
+			}))
+			defer srv.Close()
+			m, ctx, in, ledger, _, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`, titleGoogleFixtureTransport(t, srv.URL))
+			credentialDB := openTestCredentialDB(t)
+			sqlDB, err := credentialDB.DB()
+			requireNoErrorText(t, err)
+			sqlDB.SetMaxOpenConns(1)
+			resolver := openai.NewOrganizationOnlyCredentialResolver(credentialDB)
+			requireNoErrorText(t, resolver.SaveCredential(ctx, openai.AIClientCredential{TenantID: "org", ClientName: "text", APIKey: "fixture-key", BaseURL: "https://generativelanguage.googleapis.com", Model: "gemini-3.8-flash", APIStyle: "google-interactions", Enabled: true, TimeoutSecond: 2}))
+			m.manager.SetConfigResolver(resolver)
+			route, err := m.manager.ResolveTextRoute(ctx, "text")
+			requireNoErrorText(t, err)
+			policy := m.policies["org"]
+			policy.ProviderID, policy.APIStyle, policy.Endpoint = "google", "google-interactions", "https://generativelanguage.googleapis.com"
+			policy.OutputLimitField, policy.ThinkingLevel, policy.ReasoningEffort = "max_output_tokens", "low", ""
+			policy.MaximumOutputTokens, policy.AdmittedRoute = 128, route
+			policy.OutputWindowTokens = int64(policy.MaximumOutputTokens)
+			m.policies["org"] = policy
+			quote, err := m.Quote(ctx, in)
+			requireNoErrorText(t, err)
+			in.UpperBound, in.InvocationID = quote, "unknown-reference-invocation"
+			_, err = m.Decide(ctx, in)
+			if !errors.Is(err, openai.ErrTextOutcomeUnknown) {
+				t.Fatalf("missing usage was not kept unknown: %v", err)
+			}
+			record := ledger.rows[in.InvocationID]
+			if record.Outcome != aicapability.InvocationDispatched || record.UsageKnown || record.ProviderRequestID != tc.want {
+				t.Fatalf("unsafe or missing provider reference: %+v", record)
+			}
+		})
+	}
+}
+
 func TestAgentTextModelBindsEachOrganizationToItsOwnProviderAndRoute(t *testing.T) {
-	newProvider := func() (*httptest.Server, *atomic.Int32) {
+	newProvider := func(reasoningEffort string) (*httptest.Server, *atomic.Int32) {
 		calls := &atomic.Int32{}
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			calls.Add(1)
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Error(err)
+			}
+			if _, present := payload["reasoning_effort"]; (reasoningEffort == "" && present) || (reasoningEffort != "" && payload["reasoning_effort"] != reasoningEffort) {
+				t.Errorf("wrong reasoning setting: %#v", payload)
+			}
 			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"Kind\":\"interrupt\"}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}`))
 		}))
 		return server, calls
 	}
-	aServer, aCalls := newProvider()
-	bServer, bCalls := newProvider()
+	aServer, aCalls := newProvider("")
+	bServer, bCalls := newProvider("none")
 	t.Cleanup(aServer.Close)
 	t.Cleanup(bServer.Close)
 	db := openTestCredentialDB(t)
@@ -133,7 +299,11 @@ func TestAgentTextModelBindsEachOrganizationToItsOwnProviderAndRoute(t *testing.
 		identities[item.org] = identity
 		route, routeErr := manager.ResolveTextRoute(authidentity.WithAuthenticatedIdentity(context.Background(), identity), "text")
 		requireNoErrorText(t, routeErr)
-		policies[item.org] = AgentTextPolicy{ProviderID: item.provider, Endpoint: item.endpoint, APIStyle: item.style, ClientName: "text", PolicyVersion: "title-review-v1", PricingVersion: "test-price-v1", BoundEvidence: "isolated-fixture-v1", Currency: "CNY", InputWindowTokens: 1048576, OutputWindowTokens: 65536, MaximumOutputTokens: 8192, OutputLimitField: "max_tokens", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000, PointPricing: &aicapability.ModelPointTariff{PriceVersion: "synthetic-points-v1", InputPointsPerMillionTokens: 1000000, OutputPointsPerMillionTokens: 2000000}, AdmittedRoute: route}
+		policy := AgentTextPolicy{ProviderID: item.provider, Endpoint: item.endpoint, APIStyle: item.style, ClientName: "text", PolicyVersion: "title-review-v1", PricingVersion: "test-price-v1", BoundEvidence: "isolated-fixture-v1", Currency: "CNY", InputWindowTokens: 1048576, OutputWindowTokens: 65536, MaximumOutputTokens: 8192, OutputLimitField: "max_tokens", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000, PointPricing: &aicapability.ModelPointTariff{PriceVersion: "synthetic-points-v1", InputPointsPerMillionTokens: 1000000, OutputPointsPerMillionTokens: 2000000}, AdmittedRoute: route}
+		if item.org == "org-b" {
+			policy.ReasoningEffort = "none"
+		}
+		policies[item.org] = policy
 	}
 	current := &atomic.Value{}
 	current.Store(identities["org-a"])
@@ -149,6 +319,19 @@ func TestAgentTextModelBindsEachOrganizationToItsOwnProviderAndRoute(t *testing.
 	bCtx := authidentity.WithAuthenticatedIdentity(context.Background(), identities["org-b"])
 	bQuote, err := model.Quote(bCtx, in)
 	requireNoErrorText(t, err)
+	changedPolicies := map[string]AgentTextPolicy{"org-a": policies["org-a"], "org-b": policies["org-b"]}
+	changed := changedPolicies["org-b"]
+	changed.ReasoningEffort = ""
+	changedPolicies["org-b"] = changed
+	changedModel, err := NewAgentTextModel(manager, ledger, changedPolicies, []commercetool.ToolRef{{ID: "product.snapshot.read", Version: "v1"}}, func(context.Context) (authidentity.AuthenticatedIdentity, error) {
+		return current.Load().(authidentity.AuthenticatedIdentity), nil
+	})
+	requireNoErrorText(t, err)
+	changedQuote, err := changedModel.Quote(bCtx, in)
+	requireNoErrorText(t, err)
+	if changedQuote.Reference == bQuote.Reference {
+		t.Fatal("reasoning control change reused the previous quote")
+	}
 	if aQuote.Reference == bQuote.Reference {
 		t.Fatal("different organizations share a title quote")
 	}
@@ -278,7 +461,7 @@ func TestAgentTextModelClaimAndObservedInvalidOutput(t *testing.T) {
 			if content[0] == '{' && result.Action.Kind == "interrupt" {
 				want = aicapability.InvocationSucceeded
 			}
-			if ledger.rows[in.InvocationID].Outcome != want {
+			if ledger.rows[in.InvocationID].Outcome != want || ledger.rows[in.InvocationID].ProviderRequestID != "provider-test" {
 				t.Fatalf("ledger %+v", ledger.rows)
 			}
 			_, err = m.Decide(ctx, in)
@@ -443,9 +626,34 @@ func requireNoErrorText(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
-func textTestManager(t *testing.T, base string) *openai.Manager {
+
+type titleGoogleFixtureRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f titleGoogleFixtureRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func titleGoogleFixtureTransport(t *testing.T, endpoint string) http.RoundTripper {
 	t.Helper()
-	m, err := openai.NewManager(&openai.ManagerConfig{Clients: map[string]*openai.ClientConfig{"text": openai.NewClientConfig("test-only", "gemini-2.5-flash", base+"/v1", 2)}})
+	target, err := url.Parse(endpoint)
+	requireNoErrorText(t, err)
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DisableKeepAlives = true
+	t.Cleanup(transport.CloseIdleConnections)
+	return titleGoogleFixtureRoundTripper(func(req *http.Request) (*http.Response, error) {
+		forwarded := req.Clone(req.Context())
+		forwarded.URL.Scheme, forwarded.URL.Host, forwarded.Host = target.Scheme, target.Host, target.Host
+		return transport.RoundTrip(forwarded)
+	})
+}
+
+func textTestManager(t *testing.T, base string, fixtureTransports ...http.RoundTripper) *openai.Manager {
+	t.Helper()
+	config := openai.NewClientConfig("test-only", "gemini-2.5-flash", base+"/v1", 2)
+	if len(fixtureTransports) > 0 {
+		config.GoogleInteractionsFixtureTransport = fixtureTransports[0]
+	}
+	m, err := openai.NewManager(&openai.ManagerConfig{Clients: map[string]*openai.ClientConfig{"text": config}})
 	requireNoErrorText(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 	return m

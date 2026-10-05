@@ -30,6 +30,8 @@ type TextCompletionRequest struct {
 	System, Prompt      string
 	MaximumOutputTokens int
 	OutputLimitField    string
+	ReasoningEffort     string
+	ThinkingLevel       string
 	// BeforeDispatch rechecks the consumer's live authorization after queueing.
 	// It is an in-process callback, never serialized into provider input.
 	BeforeDispatch func() error `json:"-"`
@@ -40,6 +42,24 @@ type TextCompletionRequest struct {
 type TextCompletionResult struct {
 	ChatCompletionResponse
 	UsageKnown bool
+	// OutcomeDiagnostic is a fixed, non-sensitive reason for unpriceable
+	// provider output. It never contains provider body, prompt or credentials.
+	OutcomeDiagnostic string
+}
+
+type textOutcomeDiagnostic struct{ code string }
+
+func (e textOutcomeDiagnostic) Error() string { return ErrTextOutcomeUnknown.Error() }
+func (e textOutcomeDiagnostic) Unwrap() error { return ErrTextOutcomeUnknown }
+
+// TextOutcomeDiagnosticCode extracts only a code constructed by this transport.
+// Raw SDK/provider errors must never cross the invocation ledger boundary.
+func TextOutcomeDiagnosticCode(err error) string {
+	var diagnostic textOutcomeDiagnostic
+	if errors.As(err, &diagnostic) {
+		return diagnostic.code
+	}
+	return ""
 }
 
 // TextRouteDetails exposes only non-secret configuration needed to match the
@@ -99,7 +119,10 @@ func (m *Manager) resolveTextConfiguration(ctx context.Context, name string) (ef
 		return effectiveClientConfiguration{}, err
 	}
 	style := strings.ToLower(strings.TrimSpace(resolved.config.APIStyle))
-	if style != "" && style != "openai" && style != "openai-compatible" && style != "grsai" {
+	if style != "" && style != "openai" && style != "openai-compatible" && style != "grsai" && style != "google-interactions" {
+		return effectiveClientConfiguration{}, ErrClientConfigurationUnsupported
+	}
+	if style == "google-interactions" && !ValidGoogleInteractionsEndpoint(resolved.config.BaseURL) {
 		return effectiveClientConfiguration{}, ErrClientConfigurationUnsupported
 	}
 	if resolved.config.Timeout <= 0 || resolved.config.Timeout > 5*time.Minute {
@@ -123,7 +146,7 @@ func (m *Manager) CompleteText(ctx context.Context, name string, expected Effect
 			resultErr = errors.Join(ErrTextNotDispatched, resultErr)
 		}
 	}()
-	if input.System == "" || input.Prompt == "" || input.MaximumOutputTokens <= 0 || input.MaximumOutputTokens > 65536 || (input.OutputLimitField != "" && input.OutputLimitField != "max_tokens" && input.OutputLimitField != "max_completion_tokens") {
+	if input.System == "" || input.Prompt == "" || input.MaximumOutputTokens <= 0 || input.MaximumOutputTokens > 65536 {
 		return nil, ErrTextInput
 	}
 	wire, err := json.Marshal(input)
@@ -136,6 +159,9 @@ func (m *Manager) CompleteText(ctx context.Context, name string, expected Effect
 	}
 	if expected != resolved.route {
 		return nil, ErrClientConfigurationChanged
+	}
+	if !validTextGenerationControls(resolved.config.APIStyle, input) {
+		return nil, ErrTextInput
 	}
 	ctx, cancel := context.WithTimeout(ctx, resolved.config.Timeout)
 	defer cancel()
@@ -169,7 +195,17 @@ func (m *Manager) CompleteText(ctx context.Context, name string, expected Effect
 		}
 	}
 	handedToTransport = true
+	if current.config.APIStyle == "google-interactions" {
+		return completeGoogleInteractionsOnce(ctx, current.config, input)
+	}
 	return completeTextOnce(ctx, current.config, input)
+}
+
+func validTextGenerationControls(style string, input TextCompletionRequest) bool {
+	if style == "google-interactions" {
+		return input.OutputLimitField == "max_output_tokens" && input.ThinkingLevel == "low" && input.ReasoningEffort == ""
+	}
+	return input.ThinkingLevel == "" && (input.OutputLimitField == "" || input.OutputLimitField == "max_tokens" || input.OutputLimitField == "max_completion_tokens") && (input.ReasoningEffort == "" || input.ReasoningEffort == "none")
 }
 
 func completeTextOnce(ctx context.Context, config *ClientConfig, input TextCompletionRequest) (*TextCompletionResult, error) {
@@ -187,7 +223,8 @@ func completeTextOnce(ctx context.Context, config *ClientConfig, input TextCompl
 	sdk := goopenai.NewClientWithConfig(sdkConfig)
 	request := goopenai.ChatCompletionRequest{
 		Model: config.Model, Stream: false,
-		Messages: []goopenai.ChatCompletionMessage{{Role: "system", Content: input.System}, {Role: "user", Content: input.Prompt}},
+		ReasoningEffort: input.ReasoningEffort,
+		Messages:        []goopenai.ChatCompletionMessage{{Role: "system", Content: input.System}, {Role: "user", Content: input.Prompt}},
 	}
 	if input.OutputLimitField == "max_completion_tokens" {
 		request.MaxCompletionTokens = input.MaximumOutputTokens

@@ -318,6 +318,8 @@ func effectiveProviderID(apiStyle string) (string, bool) {
 		return "gemini", true
 	case "grsai":
 		return "grsai", true
+	case "google-interactions":
+		return "google", true
 	default:
 		return "", false
 	}
