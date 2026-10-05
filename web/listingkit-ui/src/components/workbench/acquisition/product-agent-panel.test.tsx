@@ -101,7 +101,7 @@ it("only admits a validated candidate to existing human review", async () => {
     expect(screen.queryByText("自动应用")).not.toBeInTheDocument();
     fixture.request.mockResolvedValue({ proposalId: op });
     fireEvent.click(screen.getByText("提交人工审核"));
-    expect(await screen.findByRole("link", { name: "打开标题审核" })).toHaveAttribute("href", `/workbench/ai/tasks/pending?proposal_id=${op}`);
+    expect(await screen.findByRole("link", { name: "打开标题审核" })).toHaveAttribute("href", `/workbench/ai/tasks/pending/other?proposal_id=${op}`);
     expect(fixture.request.mock.calls[1][0]).toBe("review");
 });
 

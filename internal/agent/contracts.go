@@ -27,21 +27,22 @@ var ErrUnavailable = errors.New("agent dependency unavailable")
 type StopReason string
 
 const (
-	StopSteps         StopReason = "budget_steps"
-	StopModelCalls    StopReason = "budget_model_calls"
-	StopTokens        StopReason = "budget_tokens"
-	StopCost          StopReason = "budget_cost"
-	StopRuntime       StopReason = "budget_runtime"
-	StopUsageUnknown  StopReason = "usage_unknown"
-	StopRepairLimit   StopReason = "repair_limit"
-	StopCancelled     StopReason = "cancelled"
-	StopUnauthorized  StopReason = "unauthorized"
-	StopInvalidOutput StopReason = "invalid_model_output"
-	StopTool          StopReason = "tool_error"
-	StopAudit         StopReason = "audit_unavailable"
-	StopDependency    StopReason = "dependency_unavailable"
-	StopModelUnknown  StopReason = "model_outcome_unknown"
-	StopTooLarge      StopReason = "state_too_large"
+	StopSteps                   StopReason = "budget_steps"
+	StopModelCalls              StopReason = "budget_model_calls"
+	StopTokens                  StopReason = "budget_tokens"
+	StopCost                    StopReason = "budget_cost"
+	StopRuntime                 StopReason = "budget_runtime"
+	StopUsageUnknown            StopReason = "usage_unknown"
+	StopRepairLimit             StopReason = "repair_limit"
+	StopCancelled               StopReason = "cancelled"
+	StopUnauthorized            StopReason = "unauthorized"
+	StopInvalidOutput           StopReason = "invalid_model_output"
+	StopTool                    StopReason = "tool_error"
+	StopAudit                   StopReason = "audit_unavailable"
+	StopDependency              StopReason = "dependency_unavailable"
+	StopModelUnknown            StopReason = "model_outcome_unknown"
+	StopExecutionOutcomeUnknown StopReason = "execution_outcome_unknown"
+	StopTooLarge                StopReason = "state_too_large"
 )
 
 type Phase string
@@ -79,8 +80,15 @@ type Request struct {
 	ContextSnapshotRef           ContextSnapshotRef       `json:",omitzero"`
 	Key                          string
 	Binding                      Binding
+	GoalSummary                  string
 	PolicyVersion, PromptVersion string
 	Limits                       Limits
+}
+
+// Direct Product Agent requests have no Chat goal. Confirmed Chat requests
+// carry one bounded, immutable objective as data for the title model.
+func ValidGoalSummary(value string) bool {
+	return len(value) <= 512 && utf8.ValidString(value) && strings.TrimSpace(value) == value
 }
 
 // Authorizer freshly resolves current identity/grants AND validates the exact
@@ -134,9 +142,16 @@ type ModelResult struct {
 // terminal writes/releases must not return this error.
 var ErrModelNotDispatched = errors.New("model was not dispatched; reservation resolved")
 
+// ErrModelInvalidOutput means the invocation has a durable terminal record and
+// known observed usage, but its model content cannot be admitted as an Action.
+// The matching result must carry the exact invocation ID and observed usage.
+var ErrModelInvalidOutput = errors.New("model returned invalid output with observed usage")
+
 type ModelInput struct {
-	ContextSnapshotRef                         ContextSnapshotRef `json:",omitzero"`
+	ConfigurationSnapshotRef                   ConfigurationSnapshotRef `json:",omitzero"`
+	ContextSnapshotRef                         ContextSnapshotRef       `json:",omitzero"`
 	Binding                                    Binding
+	GoalSummary                                string
 	PolicyVersion, PromptVersion, InvocationID string
 	History                                    []Observation
 	Validation                                 *Validation
@@ -149,7 +164,9 @@ type ModelInput struct {
 // validation. The caller owns isolation/cloning and all authorization.
 func (s State) ModelInput(definition commercetool.AgentDefinition) ModelInput {
 	return ModelInput{
-		ContextSnapshotRef: s.Request.ContextSnapshotRef, Binding: s.Request.Binding,
+		ConfigurationSnapshotRef: s.Request.ConfigurationSnapshotRef,
+		ContextSnapshotRef:       s.Request.ContextSnapshotRef, Binding: s.Request.Binding,
+		GoalSummary:   s.Request.GoalSummary,
 		PolicyVersion: s.Request.PolicyVersion, PromptVersion: s.Request.PromptVersion,
 		History: s.History, Validation: s.Validation, UserFeedback: s.UserFeedback,
 		AgentRunID: s.RunID, AgentID: definition.ID, AgentVersion: definition.Version, TraceID: s.TraceID,
@@ -226,7 +243,8 @@ type Record struct {
 // Store is a single run/control/checkpoint authority. Claim must atomically
 // enforce (scope, context kind/ID, key) uniqueness and fingerprint equality.
 // expected=0 starts a run (an existing match is read-only); expected>0 may claim
-// exactly that INTERRUPTED revision. It increments Revision and sets Running.
+// exactly that INTERRUPTED revision while its original deadline is live. It
+// increments Revision and sets Running.
 // Commit atomically CAS-writes state AND opaque checkpoint at claimed Revision.
 // Failed/ambiguous writes must not grant execution; Running has no automatic
 // recovery/retry here. Only an admitted durable adapter can enable HTTP/workers.

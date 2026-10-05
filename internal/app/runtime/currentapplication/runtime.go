@@ -23,6 +23,7 @@ type Dependencies struct {
 	NewKnowledge                 func(context.Context, *gorm.DB, *KnowledgeConfig, *logrus.Logger) (*knowledge.Service, *knowledge.Processor, error)
 	OpenStoreCenter              func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenProductAgent             func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenAIWorkbench              func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	IdentityPreflight            func(context.Context, IdentityConfig) error
 	OpenSourceAccount            func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenCommercialOwner          func(context.Context, DatabaseConfig) (*gorm.DB, error)
@@ -51,6 +52,8 @@ type ApplicationFeatures struct {
 	OfficialStoreProtection                              storecenter.OfficialCredentialProtection
 	ProductAgentDB, ProductReviewDB, ProductAgentAssetDB *gorm.DB
 	ProductAgent                                         *ProductAgentConfig
+	AIWorkbenchDB                                        *gorm.DB
+	AIWorkbench                                          *AIWorkbenchConfig
 	CommercialOwnerDB                                    *gorm.DB
 	MoneyOwnerDB                                         *gorm.DB
 	ProductAcquisitionDB                                 *gorm.DB
@@ -124,6 +127,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	if cfg.ProductAgent != nil && (dependencies.OpenProductAgent == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("product agent lifecycle unavailable")
+	}
+	if cfg.AIWorkbench != nil && cfg.AIWorkbench.Enabled && (dependencies.OpenAIWorkbench == nil || dependencies.NewApplicationWithFeatures == nil) {
+		return errors.New("AI Workbench lifecycle unavailable")
 	}
 	if cfg.ImageAgent != nil && (dependencies.OpenImageAgent == nil || dependencies.DialImageAgentWorkflow == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("current image agent owner and organization workflow lifecycle unavailable")
@@ -239,6 +245,14 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			*target.dest = pool
 			defer func(db *gorm.DB) { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(db)) }(pool)
 		}
+	}
+	var workbenchDB *gorm.DB
+	if cfg.AIWorkbench != nil && cfg.AIWorkbench.Enabled {
+		workbenchDB, err = dependencies.OpenAIWorkbench(startupContext, cfg.AIWorkbench.Database)
+		if err != nil || workbenchDB == nil || workbenchDB == agentDB {
+			return errors.New("open existing AI Workbench runtime database failed")
+		}
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(workbenchDB)) }()
 	}
 	var imageDB *gorm.DB
 	var imageWorkflow imageagent.WorkflowClient
@@ -372,7 +386,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreProvider: officialProvider, OfficialStoreProtection: officialProtection, StoreCenterDB: storeDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreProvider: officialProvider, OfficialStoreProtection: officialProtection, StoreCenterDB: storeDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {

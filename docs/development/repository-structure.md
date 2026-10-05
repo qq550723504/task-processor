@@ -83,6 +83,7 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
     - `account-acceptance-fixture`
     - `account-audit-ledger-schema-init`
     - `agent-configuration-schema-init`
+    - `ai-workbench-schema-init`
     - `product-agent-credential-provision`
     - `1688-batch-import`
     - `1688-local-agent`

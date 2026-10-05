@@ -21,7 +21,7 @@ func safe(err error) error {
 	if err == nil {
 		return nil
 	}
-	for _, known := range []error{k.ErrInvalid, k.ErrNotFound, k.ErrConflict, k.ErrInactive, k.ErrSourceLimit, k.ErrRevisionBusy, k.ErrNotReadable, k.ErrLeaseLost, k.ErrIntegrity, k.ErrContextTooLarge, k.ErrForbidden} {
+	for _, known := range []error{k.ErrInvalid, k.ErrNotFound, k.ErrConflict, k.ErrInactive, k.ErrSourceLimit, k.ErrRevisionBusy, k.ErrNotReadable, k.ErrLeaseLost, k.ErrIntegrity, k.ErrContextTooLarge, k.ErrForbidden, k.ErrSelectionChanged} {
 		if errors.Is(err, known) {
 			return known
 		}

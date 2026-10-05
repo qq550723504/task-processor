@@ -87,6 +87,31 @@ func TestTextCompletionUsesOnlyTheAdmittedOutputLimitField(t *testing.T) {
 	}
 }
 
+func TestTextCompletionSendsAdmittedReasoningEffort(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Error(err)
+		}
+		if payload["reasoning_effort"] != "none" || payload["max_tokens"] != float64(128) {
+			t.Errorf("admitted generation controls missing: %#v", payload)
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}`))
+	}))
+	defer srv.Close()
+	manager := textTestManager(t, srv.URL)
+	route, err := manager.ResolveTextRoute(context.Background(), "text")
+	requireNoErrorText(t, err)
+	request := textTestRequest()
+	request.ReasoningEffort = "none"
+	response, err := manager.CompleteText(context.Background(), "text", route, request)
+	if err != nil || response == nil || !response.UsageKnown || calls.Load() != 1 {
+		t.Fatalf("completion = %#v, %v, calls=%d", response, err, calls.Load())
+	}
+}
+
 func TestTextCompletionUsageRequiresEveryProviderCounter(t *testing.T) {
 	for _, tc := range []struct {
 		name, usage string
@@ -304,6 +329,35 @@ func TestTextCompletionChecksConfigurationAgainAfterQueue(t *testing.T) {
 	_, err = m.CompleteText(context.Background(), "text", route, textTestRequest())
 	if !errors.Is(err, ErrClientConfigurationChanged) || calls.Load() != 0 {
 		t.Fatalf("calls=%d err=%v", calls.Load(), err)
+	}
+}
+
+func TestRetiredManagerGoogleTextRouteCannotDispatch(t *testing.T) {
+	m, err := NewManager(&ManagerConfig{Clients: map[string]*ClientConfig{"text": {
+		APIKey: "synthetic-only", Model: "gemini-3.8-flash", APIStyle: "google-interactions",
+		BaseURL: "https://generativelanguage.googleapis.com", Timeout: time.Second,
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Close() })
+	// Generic credential metadata remains available; it grants no text send.
+	route, err := m.ResolveEffectiveClientRoute(context.Background(), "text")
+	if err != nil || route.ProviderID != "google" {
+		t.Fatalf("route=%+v err=%v", route, err)
+	}
+	if _, err := m.ResolveTextRouteDetails(context.Background(), "text"); !errors.Is(err, ErrClientConfigurationUnsupported) {
+		t.Fatalf("retired text facade remained available: %v", err)
+	}
+	var dispatches atomic.Int32
+	input := textTestRequest()
+	input.BeforeDispatch = func() error {
+		dispatches.Add(1)
+		return errors.New("local no-network safety fence")
+	}
+	_, err = m.CompleteText(context.Background(), "text", route, input)
+	if !errors.Is(err, ErrClientConfigurationUnsupported) || !errors.Is(err, ErrTextNotDispatched) || dispatches.Load() != 0 {
+		t.Fatalf("retired route reached dispatch preparation: calls=%d err=%v", dispatches.Load(), err)
 	}
 }
 

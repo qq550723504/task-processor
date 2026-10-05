@@ -30,6 +30,7 @@ type TextCompletionRequest struct {
 	System, Prompt      string
 	MaximumOutputTokens int
 	OutputLimitField    string
+	ReasoningEffort     string
 	// BeforeDispatch rechecks the consumer's live authorization after queueing.
 	// It is an in-process callback, never serialized into provider input.
 	BeforeDispatch func() error `json:"-"`
@@ -123,7 +124,9 @@ func (m *Manager) CompleteText(ctx context.Context, name string, expected Effect
 			resultErr = errors.Join(ErrTextNotDispatched, resultErr)
 		}
 	}()
-	if input.System == "" || input.Prompt == "" || input.MaximumOutputTokens <= 0 || input.MaximumOutputTokens > 65536 || (input.OutputLimitField != "" && input.OutputLimitField != "max_tokens" && input.OutputLimitField != "max_completion_tokens") {
+	if input.System == "" || input.Prompt == "" || input.MaximumOutputTokens <= 0 || input.MaximumOutputTokens > 65536 ||
+		(input.OutputLimitField != "" && input.OutputLimitField != "max_tokens" && input.OutputLimitField != "max_completion_tokens") ||
+		(input.ReasoningEffort != "" && input.ReasoningEffort != "none") {
 		return nil, ErrTextInput
 	}
 	wire, err := json.Marshal(input)
@@ -187,7 +190,8 @@ func completeTextOnce(ctx context.Context, config *ClientConfig, input TextCompl
 	sdk := goopenai.NewClientWithConfig(sdkConfig)
 	request := goopenai.ChatCompletionRequest{
 		Model: config.Model, Stream: false,
-		Messages: []goopenai.ChatCompletionMessage{{Role: "system", Content: input.System}, {Role: "user", Content: input.Prompt}},
+		ReasoningEffort: input.ReasoningEffort,
+		Messages:        []goopenai.ChatCompletionMessage{{Role: "system", Content: input.System}, {Role: "user", Content: input.Prompt}},
 	}
 	if input.OutputLimitField == "max_completion_tokens" {
 		request.MaxCompletionTokens = input.MaximumOutputTokens

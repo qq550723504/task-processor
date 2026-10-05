@@ -98,6 +98,7 @@ func TestKnowledgeContextPostgresLivePermissionCitationAndUnavailableSources(t *
 	require.NoError(t, err)
 	client.roles = []string{"listingkit_viewer"}
 	for _, operation := range []func() error{
+		func() error { _, err := service.ObserveSelection(ctx, f.scope, f.base.ID); return err },
 		func() error { _, err := service.Materialize(ctx, req); return err },
 		func() error {
 			b, err := service.ReadContext(ctx, f.scope, ref)
@@ -188,6 +189,29 @@ func (f *contextFixture) promote(rev k.Revision, text, warning string) {
 }
 func (f *contextFixture) request() k.ContextRequest {
 	return k.ContextRequest{Scope: f.scope, Binding: agent.Binding{ContextKind: "acquisition", ContextID: "operation", ProductKey: "product", CatalogVersion: "1", PublicationID: "publication", TargetPlatform: "shein"}, Key: uuid.NewString(), Selection: "knowledge-base:" + f.base.ID, PolicyVersion: k.ContextPolicyVersion}
+}
+
+func TestKnowledgeSelectionRevisionSetFencesChatMaterialization(t *testing.T) {
+	f := newContextFixture(t)
+	source := f.source("first revision", "")
+	ctx := context.Background()
+	observed, err := f.repo.ObserveSelection(ctx, f.scope, f.base.ID)
+	require.NoError(t, err)
+	require.Equal(t, f.base.ID, observed.BaseID)
+	require.Len(t, observed.Digest, 64)
+	request := f.request()
+	request.ExpectedRevisionSetDigest = observed.Digest
+	_, err = f.repo.Materialize(ctx, request)
+	require.NoError(t, err)
+	created := f.apply(k.Command{Kind: "revision_create", SourceID: source.ID, Version: source.Version, Name: source.Name,
+		Upload: &k.Revision{Filename: "next.txt", ContentType: "text/plain", SizeBytes: 5, SHA256: k.Digest([]byte("newer"))}})
+	f.promote(*created.Revision, "new current revision", "")
+	_, err = f.repo.Materialize(ctx, request)
+	require.ErrorIs(t, err, k.ErrSelectionChanged, "same-key adoption must recheck the observed revision set before T1")
+	changed := f.request()
+	changed.ExpectedRevisionSetDigest = observed.Digest
+	_, err = f.repo.Materialize(ctx, changed)
+	require.ErrorIs(t, err, k.ErrSelectionChanged)
 }
 
 func TestKnowledgeContextPostgresFrozenAdoptionAndContentAdmission(t *testing.T) {

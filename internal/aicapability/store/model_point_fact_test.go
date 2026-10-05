@@ -25,3 +25,35 @@ func TestModelPointSchemaAndScopedCanonicalFact(t *testing.T) {
 	require.Error(t, VerifyModelPointInvocationSchema(context.Background(), db))
 	require.False(t, db.Migrator().HasColumn(&invocationRow{}, "point_price_version"))
 }
+
+func TestPlannerPricedInvocationUsesSameScopedOwnerWithoutFakeAgentRun(t *testing.T) {
+	db := newInvocationLedgerDB(t)
+	r := NewGormInvocationRecorder(db)
+	fact := aicapability.InvocationRecord{
+		InvocationID: "chat-plan-invocation", TenantID: "org", UserID: "actor", MemberID: "member",
+		InputHash: "frozen-profile-and-message", Operation: aicapability.OperationAIWorkbenchChatPlan,
+		Capability: aicapability.CapabilityAIWorkbenchChatPlanning,
+		Outcome:    aicapability.InvocationDispatched, StartedAt: time.Now().UTC(),
+		MaximumPromptTokens: 100, MaximumCompletionTokens: 50,
+		PointTariff: aicapability.ModelPointTariff{PriceVersion: "synthetic", InputPointsPerMillionTokens: 1, OutputPointsPerMillionTokens: 1},
+	}
+	acquired, err := r.ClaimInvocation(context.Background(), fact)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	acquired, err = r.ClaimInvocation(context.Background(), fact)
+	require.NoError(t, err)
+	require.False(t, acquired)
+	got, err := r.ReadModelInvocation(context.Background(), "org", fact.InvocationID)
+	require.NoError(t, err)
+	require.Empty(t, got.AgentRunID)
+	require.Empty(t, got.BusinessTaskID)
+	require.Equal(t, fact.PointTariff, got.PointTariff)
+	foreign := fact
+	foreign.AgentRunID = "invented-run"
+	_, err = r.ClaimInvocation(context.Background(), foreign)
+	require.Error(t, err)
+	foreign = fact
+	foreign.BusinessTaskID = "invented-task"
+	_, err = r.ClaimInvocation(context.Background(), foreign)
+	require.Error(t, err)
+}

@@ -8,17 +8,19 @@ import (
 	"task-processor/internal/aicapability"
 )
 
-// ReadModelInvocation reads the fixed Product Agent owner, never caller usage.
+// ReadModelInvocation reads either admitted priced-text operation from the
+// existing AI invocation owner, never caller-supplied usage.
 func (r *GormInvocationRecorder) ReadModelInvocation(ctx context.Context, org, id string) (aicapability.InvocationRecord, error) {
 	if r == nil || r.db == nil || strings.TrimSpace(org) == "" || strings.TrimSpace(id) == "" {
 		return aicapability.InvocationRecord{}, fmt.Errorf("invalid model fact identity")
 	}
 	var row invocationRow
-	if err := r.db.WithContext(ctx).Where("tenant_id = ? AND invocation_id = ? AND operation = ?", org, id, aicapability.OperationProductAgentDecision).Take(&row).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("tenant_id = ? AND invocation_id = ? AND operation IN ?", org, id,
+		[]aicapability.Operation{aicapability.OperationProductAgentDecision, aicapability.OperationAIWorkbenchChatPlan}).Take(&row).Error; err != nil {
 		return aicapability.InvocationRecord{}, err
 	}
 	fact := invocationRecordFromRow(row)
-	if !fact.PointTariff.Valid() || fact.MaximumPromptTokens <= 0 || fact.MaximumCompletionTokens <= 0 || fact.StartedAt.IsZero() || fact.UserID == "" || fact.MemberID == "" || fact.AgentRunID == "" || fact.InputHash == "" {
+	if !fact.PointTariff.Valid() || fact.MaximumPromptTokens <= 0 || fact.MaximumCompletionTokens <= 0 || fact.StartedAt.IsZero() || fact.UserID == "" || fact.MemberID == "" || fact.InputHash == "" || !validPricedTextOperationIdentity(fact) {
 		return aicapability.InvocationRecord{}, fmt.Errorf("invalid priced model fact")
 	}
 	if err := validateUsage(fact); err != nil {

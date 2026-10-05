@@ -1,5 +1,6 @@
 import { isBrowserCapturePath, isBrowserCaptureRequestURL } from "@/lib/contracts/browser-capture";
 import {agentPath} from "@/lib/contracts/product-agent";
+import { aiWorkbenchPath } from "@/lib/contracts/ai-workbench";
 import { NextRequest } from "next/server";
 
 import { serverAuth } from "@/auth";
@@ -130,7 +131,8 @@ async function handleWorkbenchRequest(
   const abort = () => controller.abort();
   request.signal.addEventListener("abort", abort, { once: true });
   if (request.signal.aborted) abort();
-  const agentRequest=agentPath(new URL(request.url).pathname.split("/").filter(Boolean).slice(2))!==null;
+  const path = new URL(request.url).pathname.split("/").filter(Boolean).slice(2);
+  const agentRequest=agentPath(path)!==null || ["message", "confirm", "task-start", "task-resume", "task-review"].includes(aiWorkbenchPath(request.method, path) ?? "");
   const timeout = setTimeout(abort, agentRequest?125000:dispatchState.acquisitionRequest ? ACQUISITION_TIMEOUT_MS : UPSTREAM_TIMEOUT_MS);
   try {
     const scopedRequest = new NextRequest(request, { signal: controller.signal });
@@ -166,9 +168,12 @@ async function handleWorkbenchRequest(
 export const GET = handleWorkbenchRequest;
 export const PUT = handleWorkbenchRequest;
 export const POST = handleWorkbenchRequest;
+export const PATCH = handleWorkbenchRequest;
 export const DELETE = handleWorkbenchRequest;
 
 function isSourceMutation(method: string, path: string[]) {
+  const workbench = aiWorkbenchPath(method, path);
+  if (workbench && !["conversation-list", "conversation-read", "task-list", "task-read"].includes(workbench)) return true;
   if(method.toUpperCase()==="POST" && agentPath(path)!==null)return true;
   if (method === "POST" && isBrowserCapturePath(method, path)) return true;
   if (method.toUpperCase() === "GET" && path[3] === "by-key" && isBrowserCapturePath(method, path)) return true;
@@ -203,6 +208,7 @@ function isSourceRequestURL(rawURL: string) {
   if (isBrowserCaptureRequestURL("POST", rawURL) || isBrowserCaptureRequestURL("GET", rawURL)) return true;
 
   const path = new URL(rawURL).pathname.split("/").filter(Boolean);
+  if (path[0] === "api" && path[1] === "workbench" && aiWorkbenchPath("GET", path.slice(2))) return true;
   return (
     path[0] === "api" &&
     path[1] === "workbench" &&
@@ -253,5 +259,4 @@ function rejectUnsupportedRequest() {
 }
 
 export const HEAD = rejectUnsupportedRequest;
-export const PATCH = rejectUnsupportedRequest;
 export const OPTIONS = rejectUnsupportedRequest;

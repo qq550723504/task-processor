@@ -225,6 +225,17 @@ ai_workbench
 
 V1 deploys it in the **same logical PostgreSQL database used by ProductAgent RunDB**, but
 through a distinct `ai_workbench_runtime` login and independent bounded pool.
+The Workbench runtime login is standalone: it neither inherits another role nor grants its
+privileges through role membership. Initialization and serving startup reject such membership;
+distinct login names alone do not establish the required SQL privilege isolation.
+They also reject effective DML or sequence privileges on non-`ai_workbench` business relations,
+including direct, PUBLIC and column-level grants. A later grant must fail the serving startup
+check even if the runtime role still has no memberships.
+The initializer and serving startup also check the same bounded in-schema permissions, including
+schema CREATE, table DELETE/TRUNCATE/TRIGGER/REFERENCES and UPDATE outside the specified mutable
+columns; a later grant cannot silently expand the runtime login. Startup also requires schema
+USAGE, the explicitly granted SELECT/INSERT tables and the intended mutable UPDATE columns, so
+a later revoke cannot advertise an unusable Workbench.
 
 Reasons:
 
@@ -329,7 +340,8 @@ PlanningCommand {
   planner_started_at        # database time frozen once
   planner_deadline          # frozen bounded attempt deadline
   state                     READY_TO_DISPATCH | COMPLETE |
-                            FAILED_BEFORE_DISPATCH | PLANNER_UNKNOWN
+                            FAILED_BEFORE_DISPATCH | PLANNER_INVALID_OUTPUT |
+                            PLANNER_UNKNOWN
   assistant_message_id?
   proposal_id?
   committed_at?
@@ -367,8 +379,29 @@ T0 transaction:
 → Workbench terminal CAS:
      known success             => append one ASSISTANT message + optional proposal + COMPLETE
      authoritative no-dispatch => FAILED_BEFORE_DISPATCH
+     terminal observed-invalid => PLANNER_INVALID_OUTPUT; no ASSISTANT/proposal
      unresolved dispatch after bounded deadline/grace => PLANNER_UNKNOWN
 ```
+
+For a claimed invocation, a known-zero AI ledger terminal fact alone does not prove that
+ResourceAIPoint released the reservation. `FAILED_BEFORE_DISPATCH` requires the current
+executor call's successful terminal-and-release result plus the matching scoped no-send fact.
+If release fails after the ledger write, keep the command pending/unknown and never send the
+same invocation again. A rejection before any AI claim is independently no-dispatch.
+
+`PLANNER_INVALID_OUTPUT` is the narrow #588 implementation clarification for a gap in the
+original command-state list: the existing AI invocation owner has durably recorded
+`observed_usage_failed` with structured-output-invalid category and known usage. That ledger
+fact alone does not prove ResourceAIPoint settlement: the ledger writes first. Workbench may
+finalize this state only when the current `Executor.GenerateWithGate` call also returns
+`ErrObservedInvalidSettled` after `RecordInvocation` (including its usage settlement) returned successfully,
+and the scoped ledger fact matches the frozen invocation, member and input hash. A later
+replay cannot infer settlement from the ledger row alone. Workbench only projects this
+proven terminal outcome into its own receipt. It does not copy
+usage, claim a model success, append invented assistant text, or dispatch again. The user can
+see that this attempt failed and may explicitly submit a new message/key after correcting the
+request or route. Missing usage, an uncertain claim, or a failed terminal ledger write still
+follow the existing PENDING/UNKNOWN path.
 
 Important replay rules:
 
@@ -382,8 +415,11 @@ Important replay rules:
   `PLANNER_UNKNOWN`;
 - if the AI invocation becomes terminal but the Workbench assistant/proposal commit was lost,
   Workbench still does **not** redispatch because the AI ledger does not persist provider text.
-  Until the same bounded grace expires it remains PENDING so the original writer can finish;
-  afterwards it becomes `PLANNER_UNKNOWN`;
+  A current call with confirmed settlement and the matching observed-invalid terminal fact
+  can become `PLANNER_INVALID_OUTPUT` immediately, since no assistant/proposal can be
+  committed from invalid text. An unproven ledger row and other terminal facts remain
+  PENDING until the same bounded grace expires so the original writer can finish; afterwards
+  they become `PLANNER_UNKNOWN`;
 - terminal Workbench receipts replay exactly and never call the planner;
 - a user may explicitly send a new message/new key after UNKNOWN; that is a new paid planning
   intent, never a retry of the old invocation.
@@ -527,6 +563,10 @@ Capability projection must consume the same per-capability organization policy a
 readiness check as the executor, preserving #580's `UNAVAILABLE` versus
 `NEEDS_CONFIGURATION` distinction. A route merely resolving is not proof of admission. This
 read-only projection neither probes balances/provider health nor grants execution permission.
+The current-organization context projects title execution readiness separately from new-plan
+readiness. An existing READY proposal's read card also compares its frozen execution profile
+with the currently admitted title profile. These hints disable a stale confirmation control;
+the existing owner preflight remains authoritative at confirmation time.
 
 Existing-owner extensions remain bounded:
 
@@ -730,6 +770,105 @@ Primary upstream references checked for this design (not runtime qualification e
 - [eino-ext component overview](https://github.com/cloudwego/eino-ext): official model implementations.
 - [OpenAI-compatible component](https://github.com/cloudwego/eino-ext/blob/main/components/model/openai/chatmodel.go) and [module](https://github.com/cloudwego/eino-ext/blob/main/components/model/openai/go.mod): component construction and injected HTTP client.
 - [Claude native component](https://github.com/cloudwego/eino-ext/blob/main/components/model/claude/claude.go) and [module](https://github.com/cloudwego/eino-ext/blob/main/components/model/claude/go.mod): separate native adapter/configuration, not a GRSAI requirement.
+
+### 6.7 Google Interactions composition increment
+
+> Increment status: **IMPLEMENTATION_READY** after the 2026-10-05 independent
+> bounded review against production HEAD `43a0365b4` and main `4196132f0`.
+> No design BLOCKER. The existing #586 non-text output mapping must be corrected
+> and tested as IMPLEMENTATION_TEST before this batch can merge; it does not
+> reopen the approved design. The original #576 admission remains valid.
+> Product decision: on 2026-10-05 the user explicitly approved preserving Google
+> and including it in #588 after reviewing the
+> [composition draft](https://github.com/qq550723504/task-processor/issues/588#issuecomment-5996576379).
+> Baselines: #586 merged at `1c436136e199d9c247e7f6600119d6407a6415b9`,
+> current main `4196132f09559302ca8618a5a2bba2a157bff194`.
+
+**Outcome / scope.** Preserve #586's approved official Google `gemini-3.8-flash`
+title route for both direct Product Agent and Chat-confirmed BusinessTask through
+the shared executor required by §6.6. Consume #586's
+[Google contract](https://github.com/qq550723504/task-processor/blob/1c436136e199d9c247e7f6600119d6407a6415b9/docs/architecture/product-agent-google-interactions-v1.md)
+and provider-neutral contract; existing Product/Figma authority, Review and explicit
+Apply remain unchanged. Google Planner routes are **out of scope and rejected at
+configuration/quote admission**, even though title execution uses the shared component
+factory. No automatic provider switching, new UI, credential store, ledger, state
+machine, retry/recovery platform, schema or historical data conversion is introduced.
+Real Google calls, real business data (including the synthetic-only Free tier key),
+pricing/budget activation, deployment, merge and user acceptance remain separately authorized.
+
+**Component qualification.** #586 uses official `google.golang.org/genai v1.72.0`
+Interactions; the already reviewed contract excludes replacing it with GenerateContent.
+This is a bounded exception to the selected eino-ext factory implementation wording
+in §6.2: a thin code-owned `model.BaseChatModel` implements Generate over that pinned
+official SDK. It accepts exactly one system and one user text message, no tool binding,
+options, attachments, streaming or server history; Stream rejects without I/O.
+SDK request construction and the current valid response/usage mapping are EXTRACTed
+from #586 into a stateless `integration/googleinteractions` helper with an injected
+HTTP client. That helper owns no business facts, credentials, dispatch claim or retry.
+The shared Eino component uses `GuardedClient.Client`, not the old Manager. The
+composition CI exposed a forbidden cross-adapter import from the old Manager facade;
+the production call-site audit found no `Manager.CompleteText` consumers. RETIRE
+the Manager Google SDK facade and its private transport/fixture hook. Its native
+text entry rejects before handoff while generic organization credential/route
+metadata remains available. Extract still-valid usage/modality qualification tests
+to this current protocol helper. There is no retained titletext consumer or fallback.
+
+**Contract → implementation → injection → consumer.** Deployment title policy and
+organization-only credential → current `ModelProfile`/`OrganizationRouteResolver`
+→ `integration/agent/einomodel.AgentTextModel` → shared governed `Executor`
+→ thin Google component / official SDK → shared guarded transport → existing
+AI invocation and ResourceAIPoint settlement → existing Agent, Review and human Apply.
+Production composition injects the same resolver/ledger/admission as the two already
+qualified components. Tests alone inject a RoundTripper below official URL admission
+to reach loopback; deployment JSON cannot choose that transport.
+
+**Frozen protocol and admission.** AdapterKind/APIStyle=`google-interactions`,
+ProviderID=`google`, ModelID=`gemini-3.8-flash`,
+AdapterPolicyVersion=`google-interactions-v1`,
+UsageMappingVersion=`google-interactions-usage-v1`. Only the exact official origin
+`https://generativelanguage.googleapis.com` and POST `/v1beta/interactions` are admitted.
+The existing profile digest binds these versions, endpoint/credential identity, prompt,
+output schema, rates/point tariff, byte/token bounds and deadline. Credentials remain
+the enterprise row with empty UserID; current route/version/readiness use the same
+resolver, and rotation/revocation before the actual handoff prevents sends. Google
+profiles permit at most 128 KiB input wire, 256 KiB response wire, 65,536 completion
+tokens and 120 seconds; lower frozen limits win. The existing shared consumer's
+16 KiB visible-text/action limit remains the stricter output bound. No claimed invocation
+or frozen run can switch route/model/pricing to accommodate a failure.
+
+**Dispatch and recovery.** Existing atomic invocation claim → resource reservation
+→ bounded admission → final fresh authorization/exact route/deadline check → current
+Knowledge dispatch permit → actual HTTP handoff. The shared transport validates the
+SDK wire: `store=false`, `background=false`, `stream=false`, `thinking_level=low`,
+exact frozen `max_output_tokens`; no tools, prior interaction ID, agent/environment or
+cache input. Configure retry=none both on the SDK and the call; keep the shared one-send
+guard, no redirect, no connection replay and request/response limits. Failure confirmed
+before network handoff follows the existing terminal-and-release contract. Any uncertain
+handoff, response/usage, ledger write or settlement remains UNKNOWN/reserved and does
+not grant a second send; existing owner recovery is the only recovery authority.
+
+**Usage and metadata.** Reuse #586's pointer/raw-presence validation for input/output/
+thought/total counters, explicit zero tool counter, no unpriced dimensions, text-only
+modality sums and generation cap. Map PromptTokens=input and CompletionTokens=output+thoughts;
+total must match, including the frozen bound. Do not infer absent counters as zero.
+Cache is charged conservatively without a discount. A completed plain-text result passes
+the existing domain validator; incomplete/non-success with valid observed usage is settled
+as existing observed_usage_failed and yields no Action/proposal. Non-text/tool steps or
+unpriceable usage remain UNKNOWN. Thought steps are ignored and never reach consumers.
+Only a validated bounded provider interaction ID is carried in shared TextOutput and
+the existing Invocation.ProviderRequestID field; it cannot trigger a query, resume or send.
+No raw provider error, response, prompt, secret or thought is persisted/exported.
+
+**Legacy / verification.** EXTRACT #586's SDK construction, stateless counter/step mapping
+and synthetic fixtures into the current integration owner; RETIRE replaced titletext code
+and tests of its implementation details. Preserve current product/security behavior tests.
+TDD uses only isolated synthetic transports: official URL/wire and one SDK send; missing,
+inconsistent, non-text or oversized usage; incomplete observed failure settlement; redirect/
+429/5xx/disconnect zero resends; final auth/credential/Knowledge fence; profile/quote and
+readiness/provisioning; both direct and Chat title consumers using the shared executor.
+Existing two-component and unchanged owner evidence can be reused with explicit SHA labels.
+Final CI and targeted increment review bind the actual candidate. This increment does not
+create an extra acceptance tool, live-provider requirement or a product acceptance claim.
 
 ## 7. Immutable ExecutionProposal
 
@@ -1079,6 +1218,10 @@ Agent `StopUsageUnknown` / `StopModelUnknown` remains ERROR with an “outcome u
 contract; Task code does not reinterpret it or dispatch again.
 
 Projection freshness never authorizes execution.
+For an unclaimed Task or an interrupted run, `CanStart` / `CanResume` also requires the
+configuration snapshot's frozen execution profile to match a currently admitted title route.
+If a credential is disabled or rotated, the action is hidden and the server rejects the action
+before claiming or resuming the run. Existing run reconciliation still uses its exact receipt.
 
 ### 9.1 Review correlation
 
@@ -1089,6 +1232,8 @@ existing idempotent Agent review operation identity `agent:<run_id>` to its curr
 one exists. The Product Review owner remains the only interpreter of Review persistence.
 
 No Review schema ownership moves to Workbench.
+The narrow Task state fallback uses the current actor's `workbench.task.read` grant and checks
+the exact Review owner scope. It never grants the Product Review View or mutation permissions.
 
 ## 10. Resume / Review actions
 
@@ -1157,7 +1302,7 @@ POST   /api/v1/workbench/tasks/{task_id}/review
 Rules:
 
 - mutations require canonical UUID Idempotency-Key except pure metadata PATCH, which uses
-  If-Match/ETag CAS and a bounded audit receipt;
+  If-Match/ETag CAS and a bounded audit receipt committed in the same Workbench transaction;
 - strict JSON with unknown fields rejected;
 - GET has no model/provider/quote/reservation side effect;
 - request body <= 16 KiB unless a stricter per-route bound applies;
@@ -1167,6 +1312,18 @@ Rules:
 - no automatic different-key retry after timeout/UNKNOWN/conflict;
 - cross-org/other-user exact lookup is unknown-equivalent where disclosure matters;
 - all responses are private/no-store.
+
+Task Start/Resume/Review use a Workbench-local action receipt for this existing HTTP rule.
+The receipt binds `(Organization, actor, canonical key)` to one Task, action, and bounded
+request fingerprint. A short transaction claims the key before the existing Agent/Review owner
+call; no local transaction spans that call. A completed same-key retry reauthorizes the actor
+and returns the current exact Task projection without dispatching again. A changed payload
+conflicts; a known pre-owner failure replays its bounded error. Agent reports whether its
+Claim was attempted, and Product Review reports whether its Store.Run transaction was
+attempted; authorization/source/candidate failures before those boundaries are known failures.
+An unfinished or outcome-unknown claim never automatically redispatches, and the Task can
+still be read from its canonical owners. This receipt has no mutable Task status or
+Review/Agent authority and creates no background recovery loop.
 
 Stable Workbench errors include:
 
@@ -1181,6 +1338,7 @@ PLANNER_UNAVAILABLE
 PLANNER_OUTCOME_UNKNOWN
 PROPOSAL_STALE
 TASK_START_NOT_CLAIMED
+TASK_OUTCOME_UNKNOWN
 DEPENDENCY_UNAVAILABLE
 ```
 
@@ -1192,21 +1350,29 @@ Candidate tables:
 
 ```text
 ai_workbench.conversations
+ai_workbench.metadata_audit
 ai_workbench.messages
 ai_workbench.commands
 ai_workbench.execution_proposals
 ai_workbench.business_tasks
+ai_workbench.task_action_receipts
 ```
 
 Required identities/constraints:
 
 - conversations: PK UUID; index `(org, owner, lifecycle, updated_at desc, id)`;
+- metadata_audit: append-only `(conversation_id, metadata_revision)` receipt with scoped
+  owner/actor, bounded changed-field mask and timestamp; it contains no title text and commits
+  atomically with the metadata CAS. The Workbench owner writes it, with no new audit owner;
 - messages: unique `(org, owner, conversation_id, sequence)`, unique message UUID;
   indexed latest-USER lookup on `(org, owner, conversation_id, author_kind, sequence desc)`;
 - commands: PK `(org, actor, idempotency_key)`, unique command UUID;
 - proposals: UUID + immutable digest; FK to exact Conversation/user+assistant messages;
 - tasks: UUID; unique `(org, owner,execution_request_key)`; immutable confirmation fingerprint;
   FK proposal/conversation;
+- task_action_receipts: scoped canonical operation key, exact Task/action/request fingerprint,
+  `CLAIMED|COMPLETE|FAILED|UNKNOWN` receipt state, bounded error code and timestamps;
+  FK exact Task/owner;
 - all payload columns have DB byte bounds;
 - every FK includes Organization/owner qualification where it prevents accidental cross-scope
   linkage;
@@ -1261,6 +1427,9 @@ Before a READY proposal can be confirmed, display real current facts:
 - Human Review required before Apply.
 
 Assistant prose is never treated as the execution contract. The typed proposal card is.
+An existing proposal remains readable when planning is unavailable. Its confirmation control
+requires the current title route to be ready and its frozen execution profile to match that
+route; new-plan readiness alone does not decide whether confirmation is offered.
 
 Task detail displays:
 
@@ -1284,6 +1453,8 @@ No fake task count, progress percentage, elapsed estimate, Store association or 
 | crash after USER/command commit but before AI Claim | exact AI invocation absent proves no dispatch; same-key replay may safely claim once with original admissible input/profile/deadline |
 | concurrent planner request loses AI Claim | zero provider send; returns PENDING/terminal replay from same invocation identity |
 | planner no-dispatch failure | durable user message + failure receipt; no assistant/proposal |
+| planner output invalid with matching ledger fact and current successful recorder/settlement return | durable user message + `PLANNER_INVALID_OUTPUT`; no assistant/proposal or automatic re-dispatch; same key replays the terminal receipt |
+| planner output invalid but settlement return lost or failed | no claimed settled terminal result; bounded PENDING then PLANNER_UNKNOWN; no automatic re-dispatch |
 | planner invocation remains dispatched past deadline/grace | durable user message + PLANNER_UNKNOWN; no automatic re-dispatch |
 | terminal AI fact but assistant/proposal commit was lost | bounded PENDING then PLANNER_UNKNOWN; provider output is not fabricated or re-sent |
 | route/model/pricing changes after command or execution proposal preparation | retain exact profile for replay; no automatic substitution; new execution must satisfy current gates or require new confirmation |

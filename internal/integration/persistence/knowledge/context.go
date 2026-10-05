@@ -26,6 +26,89 @@ type storedEntry struct {
 	SourceFenceVersion                                                                int64
 }
 
+type selectedRevision struct {
+	Source        k.Source
+	Revision      k.Revision
+	ContentDigest string
+}
+
+// The observer and materializer use the same Base/Source lifecycle lock order
+// and revision selection. The digest excludes document text while binding its
+// content hash and every current readable source fence.
+func selectRevisionSet(tx *gorm.DB, org, baseID string) (k.Base, []selectedRevision, string, error) {
+	base, err := lockBase(tx, org, baseID, "UPDATE")
+	if err != nil {
+		return k.Base{}, nil, "", err
+	}
+	if base.State != k.Active {
+		return k.Base{}, nil, "", k.ErrInactive
+	}
+	var sources []k.Source
+	if err := tx.Raw("SELECT * FROM public.knowledge_sources WHERE organization_id=? AND base_id=? AND state='ACTIVE' ORDER BY id LIMIT 5 FOR UPDATE", org, base.ID).Scan(&sources).Error; err != nil {
+		return k.Base{}, nil, "", err
+	}
+	if len(sources) == 0 {
+		return k.Base{}, nil, "", k.ErrNotReadable
+	}
+	if len(sources) > k.MaxActiveSources {
+		return k.Base{}, nil, "", k.ErrContextTooLarge
+	}
+	selected := make([]selectedRevision, 0, len(sources))
+	identity := struct {
+		BaseID    string
+		BaseFence int64
+		Sources   []struct {
+			ID                        string
+			Fence                     int64
+			RevisionID, ContentDigest string
+		}
+	}{BaseID: base.ID, BaseFence: base.FenceVersion}
+	for _, source := range sources {
+		if source.CurrentReadableRevisionID == "" {
+			return k.Base{}, nil, "", k.ErrNotReadable
+		}
+		var revision k.Revision
+		if err := one(tx, "SELECT id,text,state,warning FROM public.knowledge_revisions WHERE organization_id=? AND source_id=? AND id=?", &revision,
+			org, source.ID, source.CurrentReadableRevisionID); err != nil {
+			return k.Base{}, nil, "", err
+		}
+		if (revision.State != k.Available && revision.State != k.Partial) || revision.Text == "" {
+			return k.Base{}, nil, "", k.ErrNotReadable
+		}
+		contentDigest := k.Digest([]byte(revision.Text))
+		selected = append(selected, selectedRevision{Source: source, Revision: revision, ContentDigest: contentDigest})
+		identity.Sources = append(identity.Sources, struct {
+			ID                        string
+			Fence                     int64
+			RevisionID, ContentDigest string
+		}{
+			source.ID, source.FenceVersion, revision.ID, contentDigest})
+	}
+	raw, err := json.Marshal(identity)
+	if err != nil {
+		return k.Base{}, nil, "", k.ErrIntegrity
+	}
+	return base, selected, k.Digest(raw), nil
+}
+
+func (r *Repository) ObserveSelection(ctx context.Context, scope k.Scope, baseID string) (k.SelectionRevisionSetRef, error) {
+	if r == nil || r.db == nil || ctx == nil || scope.OrganizationID == "" || scope.ActorID == "" || !k.ValidID(baseID) {
+		return k.SelectionRevisionSetRef{}, k.ErrInvalid
+	}
+	var ref k.SelectionRevisionSetRef
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		_, _, digest, err := selectRevisionSet(tx, scope.OrganizationID, baseID)
+		if err == nil {
+			ref = k.SelectionRevisionSetRef{BaseID: baseID, Digest: digest}
+		}
+		return err
+	})
+	if err != nil {
+		return k.SelectionRevisionSetRef{}, safe(err)
+	}
+	return ref, nil
+}
+
 // No payload, lifecycle lock or write participates in opaque claimed-run replay.
 // Active content use remains guarded by Materialize/ReadContext/dispatch permits.
 func (r *Repository) ValidateMaterializedRequest(ctx context.Context, req k.ContextRequest, ref k.ContextSnapshotRef) error {
@@ -122,6 +205,18 @@ func (r *Repository) Materialize(ctx context.Context, req k.ContextRequest) (k.C
 			if existing.Fingerprint != fingerprint {
 				return k.ErrConflict
 			}
+			if req.ExpectedRevisionSetDigest != "" {
+				// A bundle may outlive the currently readable revision set. A
+				// same-key first-confirm retry must still fence that selection;
+				// a claimed Agent run uses ValidateMaterializedRequest instead.
+				_, _, currentDigest, err := selectRevisionSet(tx, req.Scope.OrganizationID, existing.BaseID)
+				if err != nil {
+					return err
+				}
+				if currentDigest != req.ExpectedRevisionSetDigest {
+					return k.ErrSelectionChanged
+				}
+			}
 			if _, err := lifecycleBundle(tx, existing); err != nil {
 				return err
 			}
@@ -129,36 +224,16 @@ func (r *Repository) Materialize(ctx context.Context, req k.ContextRequest) (k.C
 			return nil
 		}
 		baseID := strings.TrimPrefix(req.Selection, "knowledge-base:")
-		base, err := lockBase(tx, req.Scope.OrganizationID, baseID, "UPDATE")
+		base, selected, revisionSetDigest, err := selectRevisionSet(tx, req.Scope.OrganizationID, baseID)
 		if err != nil {
 			return err
 		}
-		if base.State != k.Active {
-			return k.ErrInactive
+		if req.ExpectedRevisionSetDigest != "" && req.ExpectedRevisionSetDigest != revisionSetDigest {
+			return k.ErrSelectionChanged
 		}
-		var sources []k.Source
-		if err := tx.Raw("SELECT * FROM public.knowledge_sources WHERE organization_id=? AND base_id=? AND state='ACTIVE' ORDER BY id LIMIT 5 FOR UPDATE", req.Scope.OrganizationID, base.ID).Scan(&sources).Error; err != nil {
-			return err
-		}
-		if len(sources) == 0 {
-			return k.ErrNotReadable
-		}
-		if len(sources) > k.MaxActiveSources {
-			return k.ErrContextTooLarge
-		}
-		bundle := k.ContextBundle{BaseID: base.ID, Binding: req.Binding, Entries: make([]k.ContextEntry, 0, len(sources))}
-		for _, s := range sources {
-			if s.CurrentReadableRevisionID == "" {
-				return k.ErrNotReadable
-			}
-			var rev k.Revision
-			if err := one(tx, "SELECT id,text,state,warning FROM public.knowledge_revisions WHERE organization_id=? AND source_id=? AND id=?", &rev, req.Scope.OrganizationID, s.ID, s.CurrentReadableRevisionID); err != nil {
-				return err
-			}
-			if (rev.State != k.Available && rev.State != k.Partial) || rev.Text == "" {
-				return k.ErrNotReadable
-			}
-			digest := k.Digest([]byte(rev.Text))
+		bundle := k.ContextBundle{BaseID: base.ID, Binding: req.Binding, Entries: make([]k.ContextEntry, 0, len(selected))}
+		for _, chosen := range selected {
+			s, rev, digest := chosen.Source, chosen.Revision, chosen.ContentDigest
 			bundle.Entries = append(bundle.Entries, k.ContextEntry{SourceID: s.ID, RevisionID: rev.ID, Name: s.Name, State: rev.State, Warning: rev.Warning, Text: rev.Text, ContentDigest: digest, Citation: k.Citation{ID: uuid.NewString(), BaseID: base.ID, SourceID: s.ID, RevisionID: rev.ID, ContentDigest: digest, Location: "text"}})
 		}
 		payload, err := k.EncodeContextBundle(bundle)
@@ -174,7 +249,7 @@ func (r *Repository) Materialize(ctx context.Context, req k.ContextRequest) (k.C
 			return err
 		}
 		for i, p := range bundle.Entries {
-			e := storedEntry{OrganizationID: req.Scope.OrganizationID, BundleID: row.ID, BaseID: base.ID, SourceID: p.SourceID, RevisionID: p.RevisionID, CitationID: p.Citation.ID, ContentDigest: p.ContentDigest, SourceFenceVersion: sources[i].FenceVersion}
+			e := storedEntry{OrganizationID: req.Scope.OrganizationID, BundleID: row.ID, BaseID: base.ID, SourceID: p.SourceID, RevisionID: p.RevisionID, CitationID: p.Citation.ID, ContentDigest: p.ContentDigest, SourceFenceVersion: selected[i].Source.FenceVersion}
 			if err := tx.Table("public.knowledge_context_bundle_entries").Create(&e).Error; err != nil {
 				return err
 			}

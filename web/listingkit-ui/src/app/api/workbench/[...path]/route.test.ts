@@ -653,6 +653,9 @@ describe("/api/workbench BFF", () => {
         homeOrganizationId: "org-a",
         effectiveOrganizationId: "org-canonical",
         selectionRequired: false,
+        aiWorkbenchAvailable: true,
+        aiWorkbenchPlanningReadiness: "NEEDS_CONFIGURATION",
+        aiWorkbenchTitleReadiness: "AVAILABLE",
         organizations: [
           {
             id: "org-canonical",
@@ -679,6 +682,7 @@ describe("/api/workbench BFF", () => {
     expect(response.headers.get("Set-Cookie")).toContain(
       "shuomi_effective_organization=org-canonical",
     );
+    expect(await response.json()).toMatchObject({ aiWorkbenchAvailable: true, aiWorkbenchPlanningReadiness: "NEEDS_CONFIGURATION", aiWorkbenchTitleReadiness: "AVAILABLE" });
   });
 
   it("preserves a Go body/header mismatch rejection and leaves the cookie unchanged", async () => {
@@ -857,7 +861,7 @@ describe("/api/workbench BFF", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
-  it.each(["HEAD", "PATCH", "OPTIONS"])(
+  it.each(["HEAD", "OPTIONS"])(
     "explicitly rejects %s without contacting upstream",
     async (method) => {
       const fetchMock = vi.fn<typeof fetch>();
@@ -883,4 +887,19 @@ describe("/api/workbench BFF", () => {
       expect(fetchMock).not.toHaveBeenCalled();
     },
   );
+
+  it("rejects an unauthenticated PATCH and never sends an unknown PATCH route upstream", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    const patch = workbenchRoute.PATCH;
+    const request = () => new NextRequest("http://localhost/api/workbench/not-allowlisted", { method: "PATCH" });
+    const denied = await call(patch, request(), ["not-allowlisted"]);
+    expect(denied.status).toBe(401);
+    authState.token = "test-token";
+    authState.identity = { userId: "user-1" };
+    const unknown = await call(patch, request(), ["not-allowlisted"]);
+    expect(unknown.status).toBe(404);
+    await expect(unknown.json()).resolves.toMatchObject({ code: "INVALID_REQUEST" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

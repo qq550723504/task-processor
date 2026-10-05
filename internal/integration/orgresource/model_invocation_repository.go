@@ -69,13 +69,28 @@ func (r *GormModelInvocationRepository) readFact(ctx context.Context, org, id st
 	if err != nil {
 		return fact, err
 	}
-	if fact.TenantID != org || fact.InvocationID != id || fact.Operation != aicapability.OperationProductAgentDecision || fact.MemberID == "" || fact.UserID == "" || fact.InputHash == "" || fact.StartedAt.IsZero() || !fact.PointTariff.Valid() || fact.MaximumPromptTokens <= 0 || fact.MaximumCompletionTokens <= 0 || fact.MaximumPromptTokens > math.MaxInt64-fact.MaximumCompletionTokens {
+	if fact.TenantID != org || fact.InvocationID != id || modelPointBusinessScope(fact) == "" || fact.MemberID == "" || fact.UserID == "" || fact.InputHash == "" || fact.StartedAt.IsZero() || !fact.PointTariff.Valid() || fact.MaximumPromptTokens <= 0 || fact.MaximumCompletionTokens <= 0 || fact.MaximumPromptTokens > math.MaxInt64-fact.MaximumCompletionTokens {
 		return fact, orgresource.ErrInvalidOwnerProof
 	}
 	if _, err := fact.PointTariff.Points(fact.MaximumPromptTokens, fact.MaximumCompletionTokens); err != nil {
 		return fact, orgresource.ErrInvalidOwnerProof
 	}
 	return fact, nil
+}
+
+func modelPointBusinessScope(fact aicapability.InvocationRecord) string {
+	switch fact.Operation {
+	case aicapability.OperationProductAgentDecision:
+		if fact.AgentRunID != "" {
+			return fact.AgentRunID
+		}
+	case aicapability.OperationAIWorkbenchChatPlan:
+		if fact.AgentRunID == "" && fact.BusinessTaskID == "" &&
+			fact.Capability == aicapability.CapabilityAIWorkbenchChatPlanning && fact.InvocationID != "" {
+			return "chat-plan:" + fact.InvocationID
+		}
+	}
+	return ""
 }
 func (r *GormModelInvocationRepository) ReserveAIInvocationUsage(ctx context.Context, org, member, id string, maximumTokens int64, at time.Time) error {
 	fact, err := r.readFact(ctx, org, id)
@@ -143,7 +158,7 @@ func (r *GormModelInvocationRepository) ReserveAIInvocationUsage(ctx context.Con
 			return orgresource.ErrInvalidInput
 		}
 		receipt := modelPointReceipt{ReservationID: uuid.NewString(), MemberID: member, Fingerprint: fingerprint, PriceVersion: fact.PointTariff.PriceVersion, Quantity: quantity, LimitVersion: limit.Version, Month: month}
-		row := organizationResourceReservationRow{OrganizationID: org, ReservationID: receipt.ReservationID, OperationID: op.OperationID, OwnerType: modelPointOwner, OwnerAttemptID: id, BusinessScope: fact.AgentRunID, ResourceType: string(orgresource.ResourceAIPoint), ReservationPurpose: modelPointOwner, Quantity: quantity, State: string(orgresource.ReservationReserved), RequestFingerprint: fingerprint, MemberID: member, MemberMonthStart: &month, MemberLimitVersion: limit.Version, PriceVersion: receipt.PriceVersion, NextCheckAt: &now, ChargeActorID: fact.UserID, CreatedAt: now}
+		row := organizationResourceReservationRow{OrganizationID: org, ReservationID: receipt.ReservationID, OperationID: op.OperationID, OwnerType: modelPointOwner, OwnerAttemptID: id, BusinessScope: modelPointBusinessScope(fact), ResourceType: string(orgresource.ResourceAIPoint), ReservationPurpose: modelPointOwner, Quantity: quantity, State: string(orgresource.ReservationReserved), RequestFingerprint: fingerprint, MemberID: member, MemberMonthStart: &month, MemberLimitVersion: limit.Version, PriceVersion: receipt.PriceVersion, NextCheckAt: &now, ChargeActorID: fact.UserID, CreatedAt: now}
 		if err := tx.Omit("Events").Create(&row).Error; err != nil {
 			return err
 		}
@@ -166,7 +181,7 @@ func (r *GormModelInvocationRepository) ReserveAIInvocationUsage(ctx context.Con
 
 func matchesModelPointReceipt(fact aicapability.InvocationRecord, fingerprint string, quantity int64, receipt modelPointReceipt, row organizationResourceReservationRow) bool {
 	month := orgresource.AIPointMonthStart(fact.StartedAt)
-	return receipt.ReservationID != "" && receipt.MemberID == fact.MemberID && receipt.Fingerprint == fingerprint && receipt.PriceVersion == fact.PointTariff.PriceVersion && receipt.Quantity == quantity && receipt.LimitVersion > 0 && receipt.Month.Equal(month) && row.OrganizationID == fact.TenantID && row.OwnerType == modelPointOwner && row.OwnerAttemptID == fact.InvocationID && row.BusinessScope == fact.AgentRunID && row.ResourceType == string(orgresource.ResourceAIPoint) && row.ReservationPurpose == modelPointOwner && row.Quantity == quantity && row.RequestFingerprint == fingerprint && row.MemberID == receipt.MemberID && row.MemberMonthStart != nil && row.MemberMonthStart.Equal(month) && row.MemberLimitVersion == receipt.LimitVersion && row.PriceVersion == receipt.PriceVersion && row.ChargeActorID == fact.UserID
+	return receipt.ReservationID != "" && receipt.MemberID == fact.MemberID && receipt.Fingerprint == fingerprint && receipt.PriceVersion == fact.PointTariff.PriceVersion && receipt.Quantity == quantity && receipt.LimitVersion > 0 && receipt.Month.Equal(month) && row.OrganizationID == fact.TenantID && row.OwnerType == modelPointOwner && row.OwnerAttemptID == fact.InvocationID && row.BusinessScope == modelPointBusinessScope(fact) && row.ResourceType == string(orgresource.ResourceAIPoint) && row.ReservationPurpose == modelPointOwner && row.Quantity == quantity && row.RequestFingerprint == fingerprint && row.MemberID == receipt.MemberID && row.MemberMonthStart != nil && row.MemberMonthStart.Equal(month) && row.MemberLimitVersion == receipt.LimitVersion && row.PriceVersion == receipt.PriceVersion && row.ChargeActorID == fact.UserID
 }
 
 func modelPointTerminal(fact aicapability.InvocationRecord) (int64, bool, error) {

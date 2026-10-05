@@ -124,7 +124,9 @@ function ScopedAcquisitionPage({ operationId,agentEnabled,knowledgeAvailable, sc
 }
 
 function ProductDetail({ operationId,agentEnabled,knowledgeAvailable, product, busy, error }: { operationId: string;agentEnabled:boolean;knowledgeAvailable:boolean; product: AcquisitionProduct | null; busy: boolean; error: string | null }) {
-  return <ConsolePage title="采集商品" breadcrumbs={findConsoleRoute(`/workbench/supply/acquisition/operation/${operationId}`)?.trail} actions={<Button asChild variant="outline"><Link href="/workbench/supply/acquisition">继续采集</Link></Button>} description="此页按操作回执锁定的 Catalog version 显示，不提供通用商品搜索或编辑。">
+  const context = useWorkbenchContext();
+  const canUseChat = context.effectiveOrganization?.capabilities?.["workbench.chat.use"] === true;
+  return <ConsolePage title="采集商品" breadcrumbs={findConsoleRoute(`/workbench/supply/acquisition/operation/${operationId}`)?.trail} actions={<><Button asChild variant="outline"><Link href="/workbench/supply/acquisition">继续采集</Link></Button>{agentEnabled && context.aiWorkbenchAvailable && context.aiWorkbenchPlanningReadiness === "AVAILABLE" && canUseChat && product && !busy && !error ? <Button asChild><Link href={`/workbench/ai/chat/new?operationId=${encodeURIComponent(operationId)}`} prefetch={false}>在硕米 Chat 讨论标题</Link></Button> : null}</>} description="此页按操作回执锁定的 Catalog version 显示，不提供通用商品搜索或编辑。">
     {busy ? <ConsoleState kind="loading" title="正在读取已发布的商品">正在确认操作、授权和精确 Catalog version。</ConsoleState> : error ? <Failure code={error} /> : product ? <CatalogFacts product={product} /> : <ConsoleState kind="unavailable" title="没有可读取的采集商品">该操作尚未产生已发布的 Catalog 快照。</ConsoleState>}
     {!busy&&!error&&product&&<ProductAgentPanel enabled={agentEnabled} knowledgeAvailable={knowledgeAvailable} operationId={operationId} productKey={product.productKey} catalogVersion={product.catalogVersion}/>}
   </ConsolePage>;

@@ -38,25 +38,25 @@ credential SELECT、invocation SELECT/INSERT/UPDATE；Review 连接需要既有 
 以及 Catalog/SRC 读写权限；Asset 连接只需现有 inventory 读取权限。不要使用数据库 owner
 或测试 fixture 超级用户作为试用角色。已存在业务数据库不执行这里的全新安装步骤。
 
-`textPolicies[organizationId]` 字段（只有完整 route、计量证据、定价和付费授权都具备时才启用）：
+`textPolicies[organizationId]` 现在使用当前 `RoutePolicy`（#588）。其 `Profile` 冻结
+组织凭据名称、真实 provider/模型、`AdapterKind`、Prompt/输出合同版本、输入/输出 token
+和字节上界、deadline、货币估价与 `PointTariff`。`AdmittedCredentialVersion` 和
+`AdmittedEndpointIdentityDigest` 由独立凭据写入命令返回的当前组织行绑定；任何空值或
+失配都不可发送。完整字段以 `internal/integration/aicapability/einomodel/route.go` 与
+`internal/aicapability/governed_text.go` 为准，Chat/Task 配置见
+[Chat 试用说明](ai-workbench-chat-trial.md)。只有精确 route 的计量、定价、付费授权均有
+证据时才启用；不能从兼容协议或别家模型窗口推断。
 
-- `providerID`：真实供应商身份，与兼容协议名分离；`clientName`：当前企业组织凭据名称，例如 `default`。
-- `endpoint`、`apiStyle`、`admittedRoute.modelID`：部署者预定的精确 endpoint、OpenAI 兼容协议形式和模型；企业成员不能从浏览器修改该策略。
-- `policyVersion`：`title-review-v1`；`pricingVersion`：获准估价策略的版本标识。
-- `currency`：当前策略的三字符货币；`inputMicrosPerMillion` 和
-  `outputMicrosPerMillion`：每百万 token 的货币微单位估价，必须显式冻结。
-- `inputWindowTokens`、`outputWindowTokens`：该 route 有证据支持的输入和输出硬上界；
-  `maximumOutputTokens` 和 `outputLimitField`：本次请求输出上限及供应商确实执行的
-  `max_tokens` 或 `max_completion_tokens` 字段。字段支持必须有该 route 的证据。
-- `admittedRoute`：通过当前 Manager 的 `ResolveTextRoute` 在该组织凭据下取得的
-  `ProviderID`、`ModelID`、`CredentialReference`、`ConfigurationVersion` 非敏感元数据。
-  其中兼容 route 的 Manager `ProviderID` 可能只是 `openai` 协议提示；实际供应商由策略的
-  `providerID` 指明。不可猜测 version，也不能把其他组织的结果照搬。
-- `boundEvidence`：已复核的该供应商精确 route 的完整两项 Token 计量、输出上界和无额外收费维度的依据标识；
-  别家模型窗口、一般兼容说明或价格页不能自行当成该 route 已被验证的证据。
-- `pointPricing`：沿用 #564 冻结积分计费，显式设置获准 `priceVersion` 和正整数
-  `inputPointsPerMillionTokens` / `outputPointsPerMillionTokens`。不默认费率；预留企业积分
-  和成员月限额，实际按 provider 观测输入/输出结算，UNKNOWN 保留原预留。
+Google 标题路由按 [#588 组合增量 §6.7](../architecture/ai-workbench-chat-business-task-v1.md#67-google-interactions-composition-increment) 配置同一 `RoutePolicy`：
+`Profile.ProviderID=google`、`AdapterKind=google-interactions`、`ModelID=gemini-3.8-flash`、
+`AdapterPolicyVersion=google-interactions-v1`、`UsageMappingVersion=google-interactions-usage-v1`。
+凭据输入的 `apiStyle` 为 `google-interactions`，`baseURL` 必须精确为
+`https://generativelanguage.googleapis.com`。请求/响应字节上界分别不超过 128 KiB/256 KiB；
+profile 更小的限制仍生效。`MaximumCompletionTokens` 包含可见输出与思考 token，
+最多 65,536；报价、货币估价和点数结算都计入二者。SDK 的 `store/background/stream=false`、
+`thinking_level=low` 和禁重试由该版本协议冻结，不使用旧标题策略的 wire 字段。
+Google 仅用于标题生成；Chat Planner 不接受该 adapter。当前 Free tier 凭据仅获准合成数据探针，
+真实商品/企业数据、点数费率、预算与实际 provider 调用仍需各自授权。
 
 前置报价按该组织策略的输入/输出硬上界保守预留；剩余运行预算或现有成员额度不足
 便停止，事后仅结算 provider 完整报告的实际 tokens。估价用于预算，不声称是真实账单。
@@ -64,10 +64,10 @@ credential SELECT、invocation SELECT/INSERT/UPDATE；Review 连接需要既有 
 当前只交付受控接线，未提供通用模型/计费配置平台；目标环境的 route 及证明仍需交付者配置。
 
 当前应用没有挂载旧 `listingkit` AI 设置。部署者先在**关闭执行**的私有 manifest 中填入
-企业 allowlist 及预定策略（首次 `admittedRoute.configurationVersion` 暂缺）；另备私有凭据输入，
+企业 allowlist 及预定策略（首次 `AdmittedCredentialVersion` 暂缺）；另备私有凭据输入，
 用独立的 `title_credential_writer` 角色连接同一 `productAgent.database`。该角色仅获既有
 `ai_client_credentials` 的 SELECT/INSERT/UPDATE 和必要序列权限；应用运行角色仍只读。
-输入 JSON 包含 `action: "upsert"`、`organizationId`、`clientName`、`apiKey`、`baseURL`、
+输入 JSON 包含 `action: "upsert"`、`consumer: "title"`、`organizationId`、`clientName`、`apiKey`、`baseURL`、
 `model`、`apiStyle`、`timeoutSecond` 和 `writerDatabase`（同一 host/port/database、独立用户/密码）。
 私有文件应采用与 manifest 相同的受限访问权限，不把密钥放命令行或仓库。
 
@@ -75,8 +75,9 @@ credential SELECT、invocation SELECT/INSERT/UPDATE；Review 连接需要既有 
 go run ./cmd/product-agent-credential-provision -config C:\private\current-application.json -input C:\private\title-credential.json
 ```
 
-命令只输出非敏感的组织、真实供应商及当前 route 配置版本。部署者将完整 `admittedRoute`
-写入策略，补齐 `boundEvidence`、价格、点数费率和预算，经单独付费授权后才启用 runtime。
+命令只输出非敏感的组织、真实供应商、凭据版本和 endpoint 摘要。部署者把返回值
+分别填入策略的 `AdmittedCredentialVersion` 与 `AdmittedEndpointIdentityDigest`，
+核对价格、点数费率和预算，经单独付费授权后才启用 runtime。
 轮换凭据会产生新版本，旧报价不能发送；停用时同一命令的私有输入使用 `action: "disable"`、
 组织 ID、clientName 和 writerDatabase，不携带旧 API Key。未完成任一步时仍保持执行关闭。
 

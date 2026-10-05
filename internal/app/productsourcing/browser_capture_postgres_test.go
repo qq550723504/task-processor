@@ -50,13 +50,13 @@ func TestBrowserCaptureBusinessChainExactVersionsReplayAndAuth(t *testing.T) {
 		}
 		return []string{"listingkit_operator"}, nil
 	})
-	_, err = NewBrowserAcquisition(context.Background(), db, live, permissions, newTestResourceChargePort(t, db))
+	_, err = NewBrowserAcquisition(context.Background(), db, live, permissions)
 	require.Error(t, err)
 	var tables int64
 	require.NoError(t, db.Raw("SELECT count(*) FROM information_schema.tables WHERE table_schema='public'").Scan(&tables).Error)
 	require.Zero(t, tables)
 	require.NoError(t, InstallAcquisitionSchema(db))
-	service, err := NewBrowserAcquisition(context.Background(), db, live, permissions, newTestResourceChargePort(t, db))
+	service, err := NewBrowserAcquisition(context.Background(), db, live, permissions)
 	require.NoError(t, err)
 	require.Nil(t, service.core.provider)
 	body, _, _ := browserApplicationFixture(t)
@@ -72,6 +72,9 @@ func TestBrowserCaptureBusinessChainExactVersionsReplayAndAuth(t *testing.T) {
 	require.Equal(t, first.Operation.CaptureSHA256, first.Publication.Envelope.RawReference.Metadata["capture_sha256"])
 	require.Equal(t, "browser_capture", first.Publication.Envelope.RawReference.Metadata["channel"])
 	require.NotEmpty(t, first.Publication.Envelope.MissingFacts)
+	var chargeIntents int64
+	require.NoError(t, db.Table("product_acquisition_charge_intents").Count(&chargeIntents).Error)
+	require.Zero(t, chargeIntents, "browser capture must publish with zero data-row charge intents")
 	provider, fetches, _ := acquisitionFixture(t)
 	public, err := NewPublicAcquisition(context.Background(), db, live, permissions, provider, newTestResourceChargePort(t, db))
 	require.NoError(t, err)
@@ -82,6 +85,8 @@ func TestBrowserCaptureBusinessChainExactVersionsReplayAndAuth(t *testing.T) {
 	second, err := public.Acquire(ctx, publicKey, "981645030344")
 	require.NoError(t, err)
 	require.EqualValues(t, 2, second.Publication.Receipt.CatalogVersion)
+	require.NoError(t, db.Table("product_acquisition_charge_intents").Count(&chargeIntents).Error)
+	require.EqualValues(t, 1, chargeIntents, "only the server operation must reserve a data row")
 	_, err = service.Capture(ctx, publicKey, body)
 	require.ErrorIs(t, err, sourcing.ErrAcquisitionConflict)
 	replayed, err := service.Capture(ctx, key, body)
@@ -109,13 +114,39 @@ func TestBrowserCaptureBusinessChainExactVersionsReplayAndAuth(t *testing.T) {
 	}
 }
 
+func TestBrowserCaptureCannotPublishAnOperationWithExistingChargeIntent(t *testing.T) {
+	db := acquisitionDatabase(t)
+	require.NoError(t, InstallAcquisitionSchema(db))
+	permissions, err := authz.NewListingKitAuthorizer(nil, nil)
+	require.NoError(t, err)
+	live := liveRolesFunc(func(context.Context, string, string) ([]string, error) { return []string{"listingkit_operator"}, nil })
+	service, err := NewBrowserAcquisition(context.Background(), db, live, permissions)
+	require.NoError(t, err)
+	_, request, _ := browserApplicationFixture(t)
+	ctx := acquisitionIdentity(request.Scope.OrganizationID, request.Scope.ActorID)
+	command := *request.Command
+	request.Command = nil
+	prepared, ok := service.core.operations.(sourcing.PreparedAcquisitionOperationStore)
+	require.True(t, ok)
+	op, claim, err := prepared.StartPrepared(ctx, request, command)
+	require.NoError(t, err)
+	require.True(t, claim)
+	require.NoError(t, db.Exec(`INSERT INTO product_acquisition_charge_intents (organization_id,actor_id,operation_id,member_id,funding) VALUES (?,?,?,?,?)`, op.Scope.OrganizationID, op.Scope.ActorID, op.ID, "original-member", "member_allocated").Error)
+
+	_, err = service.ByKey(ctx, op.Key)
+	require.Error(t, err)
+	var published int64
+	require.NoError(t, db.Table("product_source_publications").Count(&published).Error)
+	require.Zero(t, published, "a free publication may not reinterpret an existing paid operation")
+}
+
 func TestBrowserCaptureBusinessChainLostResponseReadOnlyRecovery(t *testing.T) {
 	db := acquisitionDatabase(t)
 	require.NoError(t, InstallAcquisitionSchema(db))
 	permissions, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
 	live := liveRolesFunc(func(context.Context, string, string) ([]string, error) { return []string{"listingkit_operator"}, nil })
-	service, err := NewBrowserAcquisition(context.Background(), db, live, permissions, newTestResourceChargePort(t, db))
+	service, err := NewBrowserAcquisition(context.Background(), db, live, permissions)
 	require.NoError(t, err)
 	lost := &acquisitionLostPublicationResponse{AcquisitionPublisher: service.core.publisher}
 	service.core.publisher = lost
@@ -131,7 +162,7 @@ func TestBrowserCaptureBusinessChainLostResponseReadOnlyRecovery(t *testing.T) {
 	original, err := json.Marshal(op.Command)
 	require.NoError(t, err)
 	require.Equal(t, lost.command, original)
-	recovery, err := NewBrowserAcquisition(context.Background(), browserReadOnlyDatabase(t, db), live, permissions, newTestResourceChargePort(t, browserReadOnlyDatabase(t, db)))
+	recovery, err := NewBrowserAcquisition(context.Background(), browserReadOnlyDatabase(t, db), live, permissions)
 	require.NoError(t, err)
 	for _, read := range []func() (sourcing.AcquisitionResult, error){
 		func() (sourcing.AcquisitionResult, error) { return recovery.Verify(ctx, key, body) },
@@ -161,7 +192,7 @@ func TestBrowserCaptureBusinessChainReadOnlyUnknownStates(t *testing.T) {
 			permissions, err := authz.NewListingKitAuthorizer(nil, nil)
 			require.NoError(t, err)
 			live := liveRolesFunc(func(context.Context, string, string) ([]string, error) { return []string{"listingkit_operator"}, nil })
-			service, err := NewBrowserAcquisition(context.Background(), db, live, permissions, newTestResourceChargePort(t, db))
+			service, err := NewBrowserAcquisition(context.Background(), db, live, permissions)
 			require.NoError(t, err)
 			body, request, _ := browserApplicationFixture(t)
 			command := *request.Command
@@ -177,7 +208,7 @@ func TestBrowserCaptureBusinessChainReadOnlyUnknownStates(t *testing.T) {
 			if state == sourcing.AcquisitionFailed {
 				require.NoError(t, service.core.operations.Finish(ctx, op, state, "INVALID_SOURCE"))
 			}
-			recovery, err := NewBrowserAcquisition(context.Background(), browserReadOnlyDatabase(t, db), live, permissions, newTestResourceChargePort(t, browserReadOnlyDatabase(t, db)))
+			recovery, err := NewBrowserAcquisition(context.Background(), browserReadOnlyDatabase(t, db), live, permissions)
 			require.NoError(t, err)
 			_, err = recovery.Verify(ctx, op.Key, body)
 			if state == sourcing.AcquisitionFailed {
@@ -211,7 +242,7 @@ func TestBrowserCaptureBusinessChainConcurrentSinglePublication(t *testing.T) {
 	permissions, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
 	live := liveRolesFunc(func(context.Context, string, string) ([]string, error) { return []string{"listingkit_operator"}, nil })
-	service, err := NewBrowserAcquisition(context.Background(), db, live, permissions, newTestResourceChargePort(t, db))
+	service, err := NewBrowserAcquisition(context.Background(), db, live, permissions)
 	require.NoError(t, err)
 	counter := &browserPublicationCounter{AcquisitionPublisher: service.core.publisher}
 	service.core.publisher = counter
@@ -252,7 +283,7 @@ func TestBrowserCaptureBusinessChainCanceledAndInvalidInputsDoNotAdmit(t *testin
 	permissions, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
 	live := liveRolesFunc(func(context.Context, string, string) ([]string, error) { return []string{"listingkit_operator"}, nil })
-	service, err := NewBrowserAcquisition(context.Background(), db, live, permissions, newTestResourceChargePort(t, db))
+	service, err := NewBrowserAcquisition(context.Background(), db, live, permissions)
 	require.NoError(t, err)
 	body, _, _ := browserApplicationFixture(t)
 	ctx := acquisitionIdentity("browser-invalid", "actor")
