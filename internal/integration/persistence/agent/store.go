@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -114,7 +115,8 @@ func (s *Store) ClaimInTransaction(ctx context.Context, tx *gorm.DB, initial age
 			result = stored
 			return nil
 		}
-		if stored.State.Phase != agent.Interrupted || stored.State.Revision != expected || len(stored.Checkpoint) == 0 {
+		if stored.State.Phase != agent.Interrupted || stored.State.Revision != expected || len(stored.Checkpoint) == 0 ||
+			!time.Now().Before(stored.State.Deadline) {
 			return agent.ErrConflict
 		}
 		stored.State.Phase = agent.Running

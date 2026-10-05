@@ -41,6 +41,13 @@ OpenAI 官方 [Chat Completions API](https://developers.openai.com/api/reference
 
 ## 3. Owner、合同与接线
 
+2026-10-05 当前 owner 更新：#588 已按 [#576/#578 共享执行合同](ai-workbench-chat-business-task-v1.md)
+及其 **IMPLEMENTATION_READY** 的 §6.7 Google 组合增量，统一直接标题和 Chat Task 的执行路径。
+下文 `AgentTextPolicy`、`titletext` 与 Manager 消费者接线属于历史实现，当前使用 `RoutePolicy`、
+组织凭据解析器、共享 `einomodel.Executor` 及受控 Eino 组件；Google 原生 Interactions 只用于标题。
+旧标题执行器 RETIRE，无状态 Google SDK/用量映射 EXTRACT 到 `integration/googleinteractions`。
+原有组织限定凭据、唯一发送、费用预留、UNKNOWN 与人工 Apply 不变量继续适用。
+
 ```text
 existing organization credential + operator-controlled text admission profiles
     -> existing Manager resolves effective route and scoped credential

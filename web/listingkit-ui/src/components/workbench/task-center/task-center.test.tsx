@@ -1,6 +1,9 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
+
+const context = vi.hoisted(() => ({ aiWorkbenchAvailable: true, aiWorkbenchPlanningReadiness: "AVAILABLE", effectiveOrganization: { capabilities: { "workbench.chat.use": true } } }));
+vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => context }));
 import { TaskCenterLayout } from "./task-center-layout";
 import { CompletedWorkResults, WorkResultDetail } from "./completed-work-results";
 
@@ -25,15 +28,40 @@ const entries = fixture.items.map((item) => ({
     <a href={item.result.href}>查看诊断</a>
   </WorkResultDetail>,
 }));
-afterEach(cleanup);
+afterEach(() => { cleanup(); context.aiWorkbenchAvailable = true; context.aiWorkbenchPlanningReadiness = "AVAILABLE"; context.effectiveOrganization.capabilities["workbench.chat.use"] = true; });
 
-it("projects pending titles under the existing task center without completed-only coverage", () => {
+it("keeps independent Review readable without a new Chat entry when planning needs configuration", () => {
+  context.aiWorkbenchPlanningReadiness = "NEEDS_CONFIGURATION";
+  render(<TaskCenterLayout pendingReview><p>独立标题审核</p></TaskCenterLayout>);
+  expect(screen.getByText("独立标题审核")).toBeVisible();
+  expect(screen.queryByRole("link", { name: "向硕米发起任务" })).not.toBeInTheDocument();
+});
+
+it("keeps independent Review readable but hides the Chat creation link for viewers", () => {
+  context.effectiveOrganization.capabilities["workbench.chat.use"] = false;
+  render(<TaskCenterLayout pendingReview><p>独立标题审核</p></TaskCenterLayout>);
+  expect(screen.getByText("独立标题审核")).toBeVisible();
+  expect(screen.queryByRole("link", { name: "向硕米发起任务" })).not.toBeInTheDocument();
+});
+
+it("does not link legacy Review or history pages to an unmounted AI Workbench", () => {
+  context.aiWorkbenchAvailable = false;
+  render(<TaskCenterLayout pendingReview><p>独立标题审核</p></TaskCenterLayout>);
+  expect(screen.getByText("独立标题审核")).toBeVisible();
+  expect(screen.queryByRole("link", { name: "返回业务任务" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "向硕米发起任务" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("navigation", { name: "任务状态" })).not.toBeInTheDocument();
+});
+
+it("labels the Review owner list as including Task-linked and direct proposals", () => {
   render(<TaskCenterLayout pendingReview><p>提案区域</p></TaskCenterLayout>);
   expect(screen.getByRole("navigation", { name: "任务状态" }).querySelector('[aria-current="page"]')).toHaveTextContent("待确认");
   expect(screen.getByRole("link", { name: "全部" })).not.toHaveAttribute("aria-current");
+  expect(screen.getByRole("link", { name: "执行中" })).toHaveAttribute("href", "/workbench/ai/tasks/running");
+  expect(screen.getByRole("link", { name: "异常任务" })).toHaveAttribute("href", "/workbench/ai/tasks/errors");
   expect(screen.getByText("当前页面按已授权的当前企业展示已接入工作记录")).toBeVisible();
   expect(screen.queryByText(/已完成记录按条目标注所属店铺/)).not.toBeInTheDocument();
-  expect(screen.getByText(/仅覆盖标准商品标题提案/)).toBeVisible();
+  expect(screen.getByText(/包括 BusinessTask 关联的提案与直接提交的提案/)).toBeVisible();
   expect(screen.queryByText(/仅覆盖本地资料准备完成记录/)).not.toBeInTheDocument();
   expect(screen.getAllByText("统计暂未接入")).toHaveLength(3);
 });
@@ -54,8 +82,9 @@ it("states bounded coverage and does not fabricate global metrics or lifecycle a
   expect(screen.getByRole("heading", { name: "当前企业" })).toBeVisible();
   expect(screen.getByText("已完成记录按条目标注所属店铺 · 店铺筛选暂未接入")).toBeVisible();
   expect(screen.queryByText("通用业务")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /搜索任务/ })).toBeDisabled();
-  expect(screen.getByRole("button", { name: /向硕米发起任务/ })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: /搜索任务/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "向硕米发起任务" })).toHaveAttribute("href", "/workbench/ai/chat/new");
+  expect(screen.getByRole("link", { name: "返回业务任务" })).toHaveAttribute("href", "/workbench/ai/tasks");
   expect(screen.queryByText(/3 \/ 5|5 \/ 5/)).not.toBeInTheDocument();
 });
 

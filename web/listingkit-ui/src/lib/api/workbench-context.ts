@@ -23,7 +23,7 @@ const organizationSchema = z
     id: safeIdSchema,
     name: safeDisplayNameSchema,
     roles: z.array(roleSchema).max(128),
-    capabilities: z.object({ "workbench.source_account.manage": z.boolean() }).strict().optional(),
+    capabilities: z.object({ "workbench.source_account.manage": z.boolean(), "workbench.chat.use": z.boolean() }).strict().optional(),
   })
   .strict();
 
@@ -33,6 +33,9 @@ const workbenchContextSchema = z
     homeOrganizationId: safeIdSchema,
     effectiveOrganizationId: safeIdSchema.nullable(),
     selectionRequired: z.boolean(),
+    aiWorkbenchAvailable: z.boolean().optional(),
+    aiWorkbenchPlanningReadiness: z.enum(["AVAILABLE", "NEEDS_CONFIGURATION", "UNAVAILABLE"]).optional(),
+    aiWorkbenchTitleReadiness: z.enum(["AVAILABLE", "NEEDS_CONFIGURATION", "UNAVAILABLE"]).optional(),
     organizations: z.array(organizationSchema).max(1000),
   })
   .strict()

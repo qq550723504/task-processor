@@ -156,6 +156,6 @@ function ScopedAgentPanel({ userId, organizationId, operationId, productKey, cat
    {result.phase === "interrupted" && <><label htmlFor="agent-feedback">补充说明</label><Input id="agent-feedback" value={feedback} onChange={e => setFeedback(e.target.value)} disabled={busy}/><Button disabled={busy || !feedback.trim()} onClick={() => void execute("resume")}>继续本次诊断</Button></>}
    {result.canSubmitReview && !proposal && <Button disabled={busy} onClick={() => void execute("review")}>提交人工审核</Button>}
   </div>}
-  {proposal && <Button asChild variant="outline"><Link href={`/workbench/ai/tasks/pending?proposal_id=${proposal}`}>打开标题审核</Link></Button>}
+  {proposal && <Button asChild variant="outline"><Link href={`/workbench/ai/tasks/pending/other?proposal_id=${proposal}`}>打开标题审核</Link></Button>}
  </Card>;
 }

@@ -1,4 +1,4 @@
-package titletext
+package einomodel
 
 import (
 	"encoding/json"

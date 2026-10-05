@@ -41,6 +41,7 @@ func (e *execution) model(ctx context.Context, s *flowState) {
 	s.State.History = append(s.State.History, agent.Observation{Step: s.State.Usage.Steps, CallID: in.InvocationID, InvocationID: in.InvocationID})
 	s.State.PendingInvocationID = in.InvocationID
 	result, err := e.runtime.config.Model.Decide(ctx, clone(in))
+	observedInvalid := errors.Is(err, agent.ErrModelInvalidOutput) && result.Usage.Known
 	if errors.Is(err, agent.ErrModelNotDispatched) && result.InvocationID == in.InvocationID &&
 		result.Usage.Known && result.Usage.Tokens == 0 && result.Usage.CostMicros == 0 && result.Usage.Currency == quote.Currency {
 		// Only an authoritative no-send AND resolved-reservation result can undo
@@ -54,7 +55,7 @@ func (e *execution) model(ctx context.Context, s *flowState) {
 		s.stop(agent.StopDependency)
 		return
 	}
-	if err != nil || result.InvocationID != in.InvocationID {
+	if err != nil && !observedInvalid || result.InvocationID != in.InvocationID {
 		s.stop(agent.StopModelUnknown)
 		return
 	}
@@ -71,6 +72,10 @@ func (e *execution) model(ctx context.Context, s *flowState) {
 		return
 	}
 	if !e.guard(ctx, s) {
+		return
+	}
+	if observedInvalid {
+		s.stop(agent.StopInvalidOutput)
 		return
 	}
 	raw, err := json.Marshal(result.Action)

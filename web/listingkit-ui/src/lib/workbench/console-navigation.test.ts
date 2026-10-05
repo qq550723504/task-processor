@@ -89,10 +89,10 @@ describe("Figma Console navigation contract", () => {
   });
   it("distinguishes unimplemented functions from a live page whose BFF still authorizes", () => {
     expect(findConsoleRoute("/workbench/account")?.node.availability).toBe("connected");
-    expect(findConsoleRoute("/workbench/ai/chat")?.node.availability).toBe("unavailable");
+    expect(findConsoleRoute("/workbench/ai/chat")?.node.availability).toBe("connected");
     expect(findConsoleRoute("/workbench/stores")?.node.availability).toBe("connected");
     expect(findConsoleRoute("/workbench/store-products")?.node.availability).toBe("unavailable");
     expect(findConsoleRoute("/workbench/ai/tasks/completed")?.node.availability).toBe("connected");
-    expect(findConsoleRoute("/workbench/ai/tasks/running")?.node.availability).toBe("unavailable");
+    expect(findConsoleRoute("/workbench/ai/tasks/running")?.node.availability).toBe("connected");
   });
 });

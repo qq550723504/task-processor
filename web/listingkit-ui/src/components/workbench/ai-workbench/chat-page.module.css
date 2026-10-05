@@ -1,0 +1,41 @@
+.summary { margin: 1rem 0 1.25rem; padding: .9rem 1rem; background: #06111e; border: 1px solid #1a3345; color: #bdcddd; font-size: .85rem; }
+.landingGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; margin: 1rem 0; }
+.landingCard { min-height: 20rem; padding: 1.2rem; background: linear-gradient(135deg, #071521, #102238); border: 1px solid #244568; color: #eaf2ff; }
+.landingCard h2 { font-size: 1.15rem; font-weight: 700; margin-top: .65rem; }
+.landingCard h3 { color: #5eead4; font-size: .78rem; margin-top: .2rem; }
+.landingCard p { color: #bacbda; font-size: .87rem; line-height: 1.6; margin: 1rem 0 1.5rem; min-height: 7rem; }
+.landingCard a, .landingCard button { color: #49e9dd; }
+.newCard { background: linear-gradient(135deg, #062529, #0a1c2e 70%); border-color: #146e73; }
+.recentCard { background: linear-gradient(135deg, #0b1833, #102238 70%); border-color: #315789; }
+.savedCard { background: linear-gradient(135deg, #1b1030, #0d1e31 70%); border-color: #69449d; }
+.savedCard h3, .savedCard a { color: #d89bff; }
+.accent { display: block; width: 2.2rem; height: .2rem; background: #39dfcc; }
+.recentCard .accent { background: #5c9bff; }
+.savedCard .accent { background: #bd6dff; }
+.toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; margin: 1rem 0; color: #a9bbce; font-size: .83rem; }
+.list { display: grid; gap: .65rem; }
+.conversationLink { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.2rem; border-radius: .55rem; background: #0c1b2c; border: 1px solid #1c3653; color: #cce7f7; }
+.conversationLink:hover, .conversationLink:focus-visible { border-color: #2dd6ce; }
+.conversationLink strong, .conversationLink small { display: block; }
+.conversationLink small { color: #93aac0; margin-top: .3rem; }
+.detail { display: grid; gap: 1rem; }
+.messages { display: grid; gap: .7rem; max-height: 30rem; overflow-y: auto; padding: .2rem; }
+.userMessage, .assistantMessage { padding: .8rem 1rem; max-width: min(90%, 44rem); background: #10253c; border-color: #204761; color: #edf6ff; }
+.userMessage { justify-self: end; background: #123838; border-color: #267b78; }
+.messages small { color: #9bb6cb; }
+.messages p { margin-top: .45rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.composer, .proposal { padding: 1rem 1.2rem; background: #0a1b2d; border: 1px solid #265171; color: #e3f0ff; }
+.composer h2 { font-size: 1.1rem; font-weight: 700; }
+.composer p { color: #a9bbce; font-size: .83rem; margin: .35rem 0 1rem; }
+.formGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.formGrid label, .promptLabel { display: grid; gap: .3rem; font-size: .82rem; color: #b8cee2; }
+.formGrid input, .formGrid select, .promptLabel textarea { width: 100%; border: 1px solid #31506d; border-radius: .4rem; background: #061424; padding: .65rem .8rem; color: #eaf8ff; }
+.formGrid input:focus-visible, .formGrid select:focus-visible, .promptLabel textarea:focus-visible { outline: 2px solid #2dd6ce; }
+.promptLabel { margin-top: .75rem; }
+.proposal { border-color: #27998b; background: linear-gradient(135deg, #08292d, #0e1d30); }
+.proposalHead { display: flex; justify-content: space-between; color: #6eede0; font-size: .85rem; }
+.proposal p { font-size: 1rem; font-weight: 600; margin: .8rem 0; }
+.proposal dl { display: grid; grid-template-columns: 8rem 1fr; gap: .45rem 1rem; margin-bottom: 1rem; font-size: .84rem; }
+.proposal dt { color: #9eb7c8; }
+.proposal dd { overflow-wrap: anywhere; }
+@media (max-width: 850px) { .landingGrid { grid-template-columns: 1fr; } .landingCard { min-height: 0; } .landingCard p { min-height: 0; } .formGrid { grid-template-columns: 1fr; } .proposal dl { grid-template-columns: 6rem 1fr; } }

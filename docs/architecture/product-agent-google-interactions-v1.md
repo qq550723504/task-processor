@@ -18,6 +18,21 @@
 
 ## Owner 与调用接线
 
+### 2026-10-05 当前 #588 组合依据
+
+用户已批准在 #588 保留本 Google 标题能力；当前接线以已独立复核为 **IMPLEMENTATION_READY** 的
+[#576/#578 合同 §6.7](ai-workbench-chat-business-task-v1.md#67-google-interactions-composition-increment) 为准。
+下文 #586 的 `titletext`/`Manager.CompleteText` 消费者接线保留为历史实施依据，已由共享
+`integration/aicapability/einomodel.Executor` 与受控 Eino `BaseChatModel` 取代。
+官方 SDK 和无状态 wire/usage 映射 EXTRACT 到 `integration/googleinteractions`；旧标题模型 RETIRE，
+不提供 fallback。凭据、Invocation、Commercial、Knowledge、Product/Review owner 保持原归属。
+组合调用核验确认旧 `Manager.CompleteText` 无生产消费者；其 Google SDK facade、专属 transport
+及 fixture hook 一并 RETIRE，原入口在网络交接前明确拒绝原生 Google route。
+组织凭据及非敏感 route metadata 保留，有效用量/模态测试提取到当前协议包；不增加 adapter 横向依赖。
+直接标题入口与 Chat 确认后的标题 Task 消费同一执行器，Google Planner 不准入。
+非文本/工具输出保持 UNKNOWN 与原预留；完整文本的 incomplete 响应按已观察用量结算失败。
+组合实现不授权真实 provider 调用、数据发送、部署或合并。
+
 ```text
 fresh organization identity -> immutable OrganizationID -> AgentTextPolicy
   -> ProductAgentDB organization-only credential + exact effective route

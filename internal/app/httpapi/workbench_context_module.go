@@ -21,6 +21,7 @@ const workbenchAuthorizationContractVersion = "zitadel-authorization-v2"
 type workbenchContextBuildResult struct {
 	module           kernelmodule.Module
 	authDependencies *routeAuthDependencies
+	handler          *workbenchcontexthttpapi.Handler
 }
 
 type workbenchContextModuleBuilder func(*config.Config, *logrus.Logger) (workbenchContextBuildResult, error)
@@ -102,5 +103,5 @@ func buildWorkbenchContextModule(cfg *config.Config, logger *logrus.Logger, fact
 	} else {
 		authDependencies.auditRecorder = workbenchcontext.NewStructuredAuditRecorder(logger)
 	}
-	return workbenchContextBuildResult{module: module, authDependencies: &authDependencies}, nil
+	return workbenchContextBuildResult{module: module, authDependencies: &authDependencies, handler: handler}, nil
 }

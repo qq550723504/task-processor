@@ -35,7 +35,7 @@ describe("diagnostic page request lifecycle (contract fixture)", () => {
     render(tree());
     expect(await screen.findByText("发现需要处理的问题")).toBeVisible();
   expect(screen.queryByRole("link", { name: "返回本地资料列表" })).not.toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "返回任务中心" })).toHaveAttribute("href", "/workbench/ai/tasks/completed");
+  expect(screen.getByRole("link", { name: "返回历史工作记录" })).toHaveAttribute("href", "/workbench/ai/tasks/completed/history");
     expect(state.fetch.mock.calls[0][0]).toMatchObject({ recordId, organizationId: "org-a", action: "publish" });
     expect(state.fetch.mock.calls[0][0].expectedDigest).toBeUndefined();
     await user.click(screen.getByRole("button", { name: "重新检查" }));

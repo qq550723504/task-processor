@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"net/http"
 	"reflect"
 	"strconv"
 	"time"
@@ -17,7 +18,8 @@ import (
 	"task-processor/internal/commercetool"
 	"task-processor/internal/httproute"
 	einoruntime "task-processor/internal/integration/agent/eino"
-	"task-processor/internal/integration/agent/titletext"
+	texteino "task-processor/internal/integration/agent/einomodel"
+	governed "task-processor/internal/integration/aicapability/einomodel"
 	"task-processor/internal/integration/commercetoolauth"
 	"task-processor/internal/integration/knowledgeauth"
 	"task-processor/internal/integration/openai"
@@ -48,37 +50,42 @@ type ProductAgentDependencies struct {
 	Knowledge                *knowledge.Service
 	RunDB, AssetDB, ReviewDB *gorm.DB
 	PointAccountingDB        *gorm.DB
-	Manager                  *openai.Manager
 	Ledger                   ProductAgentInvocationLedger
-	TextPolicies             map[string]titletext.AgentTextPolicy
+	TextPolicies             map[string]governed.RoutePolicy
 	Enabled                  bool
 	AllowedOrganizationIDs   []string
 	Limits                   agent.Limits
+	// Code-owned transport injection for isolated protocol fixtures; never
+	// populated by the deployment manifest or browser input.
+	TextTransport http.RoundTripper `json:"-"`
 }
 
 type ProductAgentInvocationLedger interface {
-	titletext.AgentInvocationLedger
+	governed.InvocationLedger
 	orgresourceadapter.ModelInvocationFactReader
 	SetUsageSettler(aicapability.InvocationUsageSettler)
 }
 
 type productAgentApplication struct {
-	configuration *configstore.Store
-	model         *titletext.AgentTextModel
-	definition    commercetool.AgentDefinition
-	context       *knowledge.ContextService
-	runtime       *einoruntime.Runtime
-	store         *agentstore.Store
-	reviews       *review.Service
-	receipts      sourcing.PublishedAcquisitionReader
-	resolver      organizationIdentityResolver
-	authorizer    *authz.ListingKitAuthorizer
-	config        ProductAgentDependencies
-	canonical     *canonicalinspect.Invoker
-	sources       *sourceevidenceinspect.Invoker
-	assets        *assetinspect.Invoker
-	readiness     *readinessinspect.Invoker
-	points        *orgresourceadapter.GormModelInvocationRepository
+	configuration      *configstore.Store
+	model              *texteino.AgentTextModel
+	selectTitleProfile func(context.Context, string) (aicapability.ModelProfile, error)
+	titleRoutes        *governed.OrganizationRouteResolver
+	definition         commercetool.AgentDefinition
+	context            *knowledge.ContextService
+	runtime            *einoruntime.Runtime
+	store              *agentstore.Store
+	reviews            *review.Service
+	receipts           sourcing.PublishedAcquisitionReader
+	resolver           organizationIdentityResolver
+	authorizer         *authz.ListingKitAuthorizer
+	config             ProductAgentDependencies
+	canonical          *canonicalinspect.Invoker
+	sources            *sourceevidenceinspect.Invoker
+	assets             *assetinspect.Invoker
+	readiness          *readinessinspect.Invoker
+	points             *orgresourceadapter.GormModelInvocationRepository
+	textAdmission      *governed.BoundedAdmission
 }
 
 func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, receipts sourcing.PublishedAcquisitionReader, resolver organizationIdentityResolver, auth *authz.ListingKitAuthorizer, cfg ProductAgentDependencies) (*productAgentApplication, error) {
@@ -93,8 +100,9 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 		allowedOrganizations[organizationID] = true
 	}
 	for organizationID, policy := range cfg.TextPolicies {
-		tokens, costMicros, err := policy.UpperBound()
-		if !allowedOrganizations[organizationID] || policy.Currency != cfg.Limits.Currency || err != nil || tokens > cfg.Limits.Tokens || costMicros > cfg.Limits.CostMicros {
+		profile := policy.ShapeProfile()
+		costMicros, err := profile.MaximumCost()
+		if !allowedOrganizations[organizationID] || !governed.ValidRouteProfile(profile, aicapability.OperationProductAgentDecision) || profile.Currency != cfg.Limits.Currency || err != nil || profile.MaximumPromptTokens+profile.MaximumCompletionTokens > cfg.Limits.Tokens || costMicros > cfg.Limits.CostMicros {
 			return nil, agent.ErrUnavailable
 		}
 	}
@@ -114,16 +122,12 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 	}
 	a := &productAgentApplication{receipts: receipts, resolver: resolver, authorizer: auth, config: cfg}
 	a.config.AllowedOrganizationIDs = append([]string(nil), cfg.AllowedOrganizationIDs...)
-	a.config.TextPolicies = make(map[string]titletext.AgentTextPolicy, len(cfg.TextPolicies))
+	a.config.TextPolicies = make(map[string]governed.RoutePolicy, len(cfg.TextPolicies))
 	for organizationID, policy := range cfg.TextPolicies {
-		if policy.PointPricing != nil {
-			frozenTariff := *policy.PointPricing
-			policy.PointPricing = &frozenTariff
-		}
 		a.config.TextPolicies[organizationID] = policy
 	}
 	var err error
-	var contexts []titletext.KnowledgeContext
+	var contexts []texteino.KnowledgeContext
 	if cfg.Knowledge != nil {
 		knowledgeAuth, authErr := knowledgeauth.NewAuthorizer(resolver, auth)
 		if authErr != nil {
@@ -201,7 +205,32 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 	if err != nil {
 		return nil, err
 	}
-	model, err := titletext.NewAgentTextModel(cfg.Manager, cfg.Ledger, a.config.TextPolicies, definition.AllowedTools, a.freshIdentity, contexts...)
+	routes := make(map[governed.RouteKey]governed.RoutePolicy, len(a.config.TextPolicies))
+	for organizationID, policy := range a.config.TextPolicies {
+		routes[governed.RouteKey{OrganizationID: organizationID, Operation: aicapability.OperationProductAgentDecision}] = policy
+	}
+	routeResolver, err := governed.NewOrganizationRouteResolver(openai.NewGormCredentialResolver(cfg.RunDB), routes)
+	if err != nil {
+		return nil, err
+	}
+	a.titleRoutes = routeResolver
+	a.selectTitleProfile = func(ctx context.Context, organizationID string) (aicapability.ModelProfile, error) {
+		route, routeErr := routeResolver.Resolve(ctx, aicapability.TextInputIdentity{OrganizationID: organizationID, Operation: aicapability.OperationProductAgentDecision})
+		return route.Profile, routeErr
+	}
+	a.textAdmission = governed.NewBoundedAdmission()
+	executor := &governed.Executor{Ledger: cfg.Ledger, Admission: a.textAdmission, Resolve: routeResolver.Resolve, BaseTransport: cfg.TextTransport, Authorize: func(ctx context.Context, in aicapability.TextInputIdentity) error {
+		i, e := a.freshIdentity(ctx)
+		if e != nil || i.TenantID != in.OrganizationID || i.UserID != in.ActorID || i.EffectiveMemberID != in.MemberID {
+			return review.ErrForbidden
+		}
+		return nil
+	}}
+	model, err := texteino.NewAgentTextModel(executor, a.configuration, a.selectTitleProfile,
+		func(ctx context.Context, org string) texteino.TextRouteReadiness {
+			return texteino.TextRouteReadiness(routeResolver.Readiness(ctx, aicapability.TextInputIdentity{
+				OrganizationID: org, Operation: aicapability.OperationProductAgentDecision}))
+		}, definition.AllowedTools, a.freshIdentity, contexts...)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +252,13 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 }
 
 func (a *productAgentApplication) AuthorizeModelInvocation(ctx context.Context, fact aicapability.InvocationRecord) error {
-	i, err := a.freshIdentity(ctx)
+	var i authidentity.AuthenticatedIdentity
+	var err error
+	if fact.Operation == aicapability.OperationAIWorkbenchChatPlan {
+		i, err = a.freshChatIdentity(ctx)
+	} else {
+		i, err = a.freshIdentity(ctx)
+	}
 	if err != nil {
 		return err
 	}
@@ -231,6 +266,36 @@ func (a *productAgentApplication) AuthorizeModelInvocation(ctx context.Context, 
 		return review.ErrForbidden
 	}
 	return nil
+}
+
+func (a *productAgentApplication) freshChatIdentity(ctx context.Context) (authidentity.AuthenticatedIdentity, error) {
+	return a.freshWorkbenchIdentity(ctx, authz.PermissionWorkbenchChatUse)
+}
+
+func (a *productAgentApplication) freshWorkbenchIdentity(ctx context.Context, permission string) (authidentity.AuthenticatedIdentity, error) {
+	original, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+	capability, bound := ctx.Value(productReviewCapabilityContextKey{}).(productReviewRequestCapability)
+	if !ok || !bound || capability.actorID != original.UserID || capability.effectiveOrganizationID != original.EffectiveOrganizationID ||
+		original.TenantID != original.EffectiveOrganizationID || !capability.tokenExpiresAt.After(time.Now()) {
+		return authidentity.AuthenticatedIdentity{}, review.ErrForbidden
+	}
+	identity, err := a.resolver.Resolve(ctx, httproute.OrganizationAccessPolicyLiveWrite,
+		workbenchcontext.ResolveInput{Identity: authidentity.AuthenticatedIdentity{UserID: capability.actorID,
+			HomeOrganizationID: capability.homeOrganizationID, TokenExpiresAt: capability.tokenExpiresAt},
+			BearerToken: capability.bearerToken, RequestedOrganizationID: capability.effectiveOrganizationID})
+	if err != nil || identity.UserID != original.UserID || identity.TenantID != original.TenantID ||
+		identity.EffectiveOrganizationID != original.TenantID || !agent.ValidID(identity.EffectiveMemberID) ||
+		!a.authorizer.Authorize(identity.UserID, identity.Roles, permission) {
+		return authidentity.AuthenticatedIdentity{}, review.ErrForbidden
+	}
+	allowed := false
+	for _, org := range a.config.AllowedOrganizationIDs {
+		allowed = allowed || org == identity.TenantID
+	}
+	if !allowed {
+		return authidentity.AuthenticatedIdentity{}, agent.ErrUnavailable
+	}
+	return identity, nil
 }
 
 func (a *productAgentApplication) freshIdentity(ctx context.Context) (authidentity.AuthenticatedIdentity, error) {
@@ -266,6 +331,13 @@ func (a *productAgentApplication) binding(ctx context.Context, operationID, targ
 	i, err := a.freshIdentity(ctx)
 	if err != nil {
 		return agent.Binding{}, err
+	}
+	return a.bindingForIdentity(ctx, i, operationID, targetPlatform)
+}
+
+func (a *productAgentApplication) bindingForIdentity(ctx context.Context, i authidentity.AuthenticatedIdentity, operationID, targetPlatform string) (agent.Binding, error) {
+	if !validAgentTargetPlatform(targetPlatform) {
+		return agent.Binding{}, agent.ErrInvalid
 	}
 	p, err := a.receipts.ReadPublished(authidentity.WithAuthenticatedIdentity(ctx, i), operationID)
 	if err != nil {

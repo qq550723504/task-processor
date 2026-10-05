@@ -11,6 +11,9 @@ import (
 const (
 	PermissionWorkbenchKnowledgeRead            = "workbench.knowledge.read"
 	PermissionWorkbenchKnowledgeManage          = "workbench.knowledge.manage"
+	PermissionWorkbenchChatRead                 = "workbench.chat.read"
+	PermissionWorkbenchChatUse                  = "workbench.chat.use"
+	PermissionWorkbenchTaskRead                 = "workbench.task.read"
 	PermissionListingKitAdminRead               = "listingkit.admin.read"
 	PermissionListingKitAdminWrite              = "listingkit.admin.write"
 	PermissionListingKitPromptWrite             = "listingkit.prompt.write"
@@ -46,6 +49,8 @@ var workbenchStorePermissions = []string{
 
 var workbenchKnowledgePermissions = []string{PermissionWorkbenchKnowledgeRead, PermissionWorkbenchKnowledgeManage}
 
+var workbenchChatPermissions = []string{PermissionWorkbenchChatRead, PermissionWorkbenchChatUse, PermissionWorkbenchTaskRead}
+
 var workbenchSourceAccountPermissions = []string{
 	PermissionWorkbenchSourceAccountRead,
 	PermissionWorkbenchSourceAccountManage,
@@ -65,7 +70,7 @@ var workbenchCommercialPermissions = []string{
 // WorkbenchPermissions is a bounded display contract, never a policy source.
 func WorkbenchPermissions() []string {
 	result := []string{PermissionProductSourcingWrite, PermissionLocalAgentWrite, PermissionImageAgentRead, PermissionImageAgentWrite, PermissionWorkbenchAgentRead, PermissionWorkbenchAgentUse, PermissionWorkbenchAgentConfigure}
-	for _, group := range [][]string{workbenchKnowledgePermissions, workbenchStorePermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
+	for _, group := range [][]string{workbenchChatPermissions, workbenchKnowledgePermissions, workbenchStorePermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
 		result = append(result, group...)
 	}
 	return result
@@ -108,6 +113,17 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 	}
 
 	for _, policy := range [][]string{
+		{"listingkit_viewer", PermissionWorkbenchChatRead},
+		{"listingkit_viewer", PermissionWorkbenchTaskRead},
+		{"listingkit_operator", PermissionWorkbenchChatRead},
+		{"listingkit_operator", PermissionWorkbenchChatUse},
+		{"listingkit_operator", PermissionWorkbenchTaskRead},
+		{"listingkit_admin", PermissionWorkbenchChatRead},
+		{"listingkit_admin", PermissionWorkbenchChatUse},
+		{"listingkit_admin", PermissionWorkbenchTaskRead},
+		{"platform_admin", PermissionWorkbenchChatRead},
+		{"platform_admin", PermissionWorkbenchChatUse},
+		{"platform_admin", PermissionWorkbenchTaskRead},
 		{"listingkit_viewer", PermissionWorkbenchAgentRead},
 		{"listingkit_operator", PermissionWorkbenchAgentRead},
 		{"listingkit_operator", PermissionWorkbenchAgentUse},
@@ -191,6 +207,18 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 	}
 
 	for _, role := range normalizeUnique(platformAdminRoles) {
+		for _, permission := range workbenchChatPermissions {
+			if _, err := enforcer.AddPolicy(role, permission); err != nil {
+				return nil, err
+			}
+		}
+		// A configured platform-admin role with Chat use must pass the same
+		// existing Product Agent gates as the built-in platform_admin role.
+		for _, permission := range []string{PermissionWorkbenchAgentUse, PermissionListingKitAdminWrite} {
+			if _, err := enforcer.AddPolicy(role, permission); err != nil {
+				return nil, err
+			}
+		}
 		for _, permission := range workbenchKnowledgePermissions {
 			if _, err := enforcer.AddPolicy(role, permission); err != nil {
 				return nil, err
@@ -240,6 +268,16 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 	}
 	for _, userID := range normalizeUnique(platformAdminUsers) {
 		subject := userSubject(userID)
+		for _, permission := range workbenchChatPermissions {
+			if _, err := enforcer.AddPolicy(subject, permission); err != nil {
+				return nil, err
+			}
+		}
+		for _, permission := range []string{PermissionWorkbenchAgentUse, PermissionListingKitAdminWrite} {
+			if _, err := enforcer.AddPolicy(subject, permission); err != nil {
+				return nil, err
+			}
+		}
 		for _, permission := range workbenchKnowledgePermissions {
 			if _, err := enforcer.AddPolicy(subject, permission); err != nil {
 				return nil, err
