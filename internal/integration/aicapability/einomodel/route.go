@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"task-processor/internal/aicapability"
+	"task-processor/internal/integration/googleinteractions"
 	"task-processor/internal/integration/openai"
 )
 
@@ -76,7 +77,7 @@ func NewOrganizationRouteResolver(credentials OrganizationCredentialReader, poli
 			policy.AdmittedEndpointIdentityDigest == "" {
 			return nil, ErrInvalid
 		}
-		if policy.ShapeProfile().Validate() != nil {
+		if !ValidRouteProfile(policy.ShapeProfile(), key.Operation) {
 			return nil, ErrInvalid
 		}
 		frozen[key] = policy
@@ -132,6 +133,10 @@ func (r *OrganizationRouteResolver) resolve(ctx context.Context, input aicapabil
 		if style != "claude-native" {
 			return QualifiedRoute{}, RouteNeedsConfiguration, ErrNotDispatched
 		}
+	case AdapterGoogleInteractions:
+		if style != "google-interactions" || !googleinteractions.ValidEndpoint(row.BaseURL) {
+			return QualifiedRoute{}, RouteNeedsConfiguration, ErrNotDispatched
+		}
 	default:
 		return QualifiedRoute{}, RouteUnavailable, ErrNotDispatched
 	}
@@ -140,6 +145,20 @@ func (r *OrganizationRouteResolver) resolve(ctx context.Context, input aicapabil
 		return QualifiedRoute{}, RouteUnavailable, ErrNotDispatched
 	}
 	return route, RouteAvailable, nil
+}
+
+// ValidRouteProfile is static protocol qualification, never user permission.
+// Google is qualified only for the current title operation and fixed versions.
+func ValidRouteProfile(p aicapability.ModelProfile, operation aicapability.Operation) bool {
+	if p.Validate() != nil {
+		return false
+	}
+	if AdapterKind(p.AdapterKind) != AdapterGoogleInteractions {
+		return true
+	}
+	return operation == aicapability.OperationProductAgentDecision && p.ProviderID == "google" && p.ModelID == googleinteractions.Model &&
+		p.AdapterPolicyVersion == googleinteractions.AdapterPolicyVersion && p.UsageMappingVersion == googleinteractions.UsageMappingVersion &&
+		p.MaximumInputBytes <= 128<<10 && p.MaximumOutputBytes <= 256<<10
 }
 
 var _ interface {

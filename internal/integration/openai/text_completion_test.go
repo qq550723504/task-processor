@@ -87,6 +87,31 @@ func TestTextCompletionUsesOnlyTheAdmittedOutputLimitField(t *testing.T) {
 	}
 }
 
+func TestTextCompletionSendsAdmittedReasoningEffort(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Error(err)
+		}
+		if payload["reasoning_effort"] != "none" || payload["max_tokens"] != float64(128) {
+			t.Errorf("admitted generation controls missing: %#v", payload)
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}`))
+	}))
+	defer srv.Close()
+	manager := textTestManager(t, srv.URL)
+	route, err := manager.ResolveTextRoute(context.Background(), "text")
+	requireNoErrorText(t, err)
+	request := textTestRequest()
+	request.ReasoningEffort = "none"
+	response, err := manager.CompleteText(context.Background(), "text", route, request)
+	if err != nil || response == nil || !response.UsageKnown || calls.Load() != 1 {
+		t.Fatalf("completion = %#v, %v, calls=%d", response, err, calls.Load())
+	}
+}
+
 func TestTextCompletionUsageRequiresEveryProviderCounter(t *testing.T) {
 	for _, tc := range []struct {
 		name, usage string

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"task-processor/internal/agent"
+	"task-processor/internal/aicapability"
 	governed "task-processor/internal/integration/aicapability/einomodel"
 )
 
@@ -68,7 +69,7 @@ func (p *ProductAgentConfig) validate(cfg *Config) error {
 		profile := policy.ShapeProfile()
 		costMicros, err := profile.MaximumCost()
 		if !seen[organizationID] || profile.PromptVersion != "product-title-agent-v1" || profile.OutputSchemaVersion != "product-title-action-v1" ||
-			profile.Currency != p.Currency || profile.Validate() != nil || err != nil ||
+			profile.Currency != p.Currency || !governed.ValidRouteProfile(profile, aicapability.OperationProductAgentDecision) || err != nil ||
 			profile.MaximumPromptTokens+profile.MaximumCompletionTokens > p.Tokens || costMicros > p.CostMicros {
 			return errors.New("product agent organization text policy invalid")
 		}

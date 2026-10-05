@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"net/http"
 	"reflect"
 	"strconv"
 	"time"
@@ -54,6 +55,9 @@ type ProductAgentDependencies struct {
 	Enabled                  bool
 	AllowedOrganizationIDs   []string
 	Limits                   agent.Limits
+	// Code-owned transport injection for isolated protocol fixtures; never
+	// populated by the deployment manifest or browser input.
+	TextTransport http.RoundTripper `json:"-"`
 }
 
 type ProductAgentInvocationLedger interface {
@@ -98,7 +102,7 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 	for organizationID, policy := range cfg.TextPolicies {
 		profile := policy.ShapeProfile()
 		costMicros, err := profile.MaximumCost()
-		if !allowedOrganizations[organizationID] || profile.Validate() != nil || profile.Currency != cfg.Limits.Currency || err != nil || profile.MaximumPromptTokens+profile.MaximumCompletionTokens > cfg.Limits.Tokens || costMicros > cfg.Limits.CostMicros {
+		if !allowedOrganizations[organizationID] || !governed.ValidRouteProfile(profile, aicapability.OperationProductAgentDecision) || profile.Currency != cfg.Limits.Currency || err != nil || profile.MaximumPromptTokens+profile.MaximumCompletionTokens > cfg.Limits.Tokens || costMicros > cfg.Limits.CostMicros {
 			return nil, agent.ErrUnavailable
 		}
 	}
@@ -215,7 +219,7 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 		return route.Profile, routeErr
 	}
 	a.textAdmission = governed.NewBoundedAdmission()
-	executor := &governed.Executor{Ledger: cfg.Ledger, Admission: a.textAdmission, Resolve: routeResolver.Resolve, Authorize: func(ctx context.Context, in aicapability.TextInputIdentity) error {
+	executor := &governed.Executor{Ledger: cfg.Ledger, Admission: a.textAdmission, Resolve: routeResolver.Resolve, BaseTransport: cfg.TextTransport, Authorize: func(ctx context.Context, in aicapability.TextInputIdentity) error {
 		i, e := a.freshIdentity(ctx)
 		if e != nil || i.TenantID != in.OrganizationID || i.UserID != in.ActorID || i.EffectiveMemberID != in.MemberID {
 			return review.ErrForbidden

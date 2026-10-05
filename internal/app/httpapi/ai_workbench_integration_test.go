@@ -28,6 +28,7 @@ import (
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	governed "task-processor/internal/integration/aicapability/einomodel"
+	"task-processor/internal/integration/googleinteractions"
 	"task-processor/internal/integration/openai"
 	resourceadapter "task-processor/internal/integration/orgresource"
 	agentstore "task-processor/internal/integration/persistence/agent"
@@ -104,11 +105,12 @@ func (g *taskViewerGrants) Load(ctx context.Context, source workbenchcontext.Gra
 func (g *taskViewerGrants) Invalidate(actor, project string) { g.base.Invalidate(actor, project) }
 
 func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
-	t.Run("withoutKnowledge", func(t *testing.T) { testAIWorkbenchOwners(t, false) })
-	t.Run("withKnowledge", func(t *testing.T) { testAIWorkbenchOwners(t, true) })
+	t.Run("withoutKnowledge", func(t *testing.T) { testAIWorkbenchOwners(t, false, false) })
+	t.Run("withKnowledge", func(t *testing.T) { testAIWorkbenchOwners(t, true, false) })
+	t.Run("googleWithKnowledge", func(t *testing.T) { testAIWorkbenchOwners(t, true, true) })
 }
 
-func testAIWorkbenchOwners(t *testing.T, withKnowledge bool) {
+func testAIWorkbenchOwners(t *testing.T, withKnowledge, googleTitle bool) {
 	f := newAcquisitionHTTPFixture(t)
 	var kf *consumerKnowledgeFixture
 	if withKnowledge {
@@ -164,6 +166,7 @@ func testAIWorkbenchOwners(t *testing.T, withKnowledge bool) {
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
 			Model    string `json:"model"`
+			Input    string `json:"input"`
 			Messages []struct {
 				Content json.RawMessage `json:"content"`
 			} `json:"messages"`
@@ -179,6 +182,15 @@ func testAIWorkbenchOwners(t *testing.T, withKnowledge bool) {
 			}
 		} else {
 			var citationID string
+			if googleTitle {
+				var prompt struct{ Knowledge *knowledge.ContextBundle }
+				if json.Unmarshal([]byte(request.Input), &prompt) == nil && prompt.Knowledge != nil {
+					citationID = prompt.Knowledge.Entries[0].Citation.ID
+				}
+				if strings.Contains(request.Input, approvedGoal) {
+					titleGoalSeen.Store(true)
+				}
+			}
 			for _, message := range request.Messages {
 				var text string
 				if json.Unmarshal(message.Content, &text) == nil && strings.Contains(text, approvedGoal) {
@@ -205,14 +217,22 @@ func testAIWorkbenchOwners(t *testing.T, withKnowledge bool) {
 				content = strings.TrimSuffix(content, "}") + `,"ContextCitationIDs":["` + citationID + `"]}`
 			}
 		}
+		if googleTitle && request.Model != "chat-fixture" {
+			googleTitleFixtureReply(t, w, content)
+			return
+		}
 		encoded, _ := json.Marshal(content)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"isolated-workbench","choices":[{"message":{"content":` + string(encoded) + `},"finish_reason":"stop"}],"usage":{"prompt_tokens":20,"completion_tokens":10,"total_tokens":30}}`))
 	}))
 	defer provider.Close()
 	credentials := openai.NewOrganizationOnlyCredentialResolver(f.owner)
+	titleCredential := openai.AIClientCredential{TenantID: "B", ClientName: "title", APIKey: "isolated-fixture-key", BaseURL: provider.URL + "/v1", Model: "title-fixture", APIStyle: "openai", Enabled: true, TimeoutSecond: 3}
+	if googleTitle {
+		titleCredential.BaseURL, titleCredential.Model, titleCredential.APIStyle = googleinteractions.Origin, googleinteractions.Model, "google-interactions"
+	}
 	for _, row := range []openai.AIClientCredential{
-		{TenantID: "B", ClientName: "title", APIKey: "isolated-fixture-key", BaseURL: provider.URL + "/v1", Model: "title-fixture", APIStyle: "openai", Enabled: true, TimeoutSecond: 3},
+		titleCredential,
 		{TenantID: "B", ClientName: "chat", APIKey: "isolated-fixture-key", BaseURL: provider.URL + "/v1", Model: "chat-fixture", APIStyle: "openai", Enabled: true, TimeoutSecond: 3},
 	} {
 		require.NoError(t, credentials.SaveCredential(context.Background(), row))
@@ -245,6 +265,14 @@ func testAIWorkbenchOwners(t *testing.T, withKnowledge bool) {
 		Limits: agent.Limits{Steps: 12, ModelCalls: 6, Tokens: 5000000, CostMicros: 5000000, Currency: "CNY", Runtime: time.Minute}}
 	if kf != nil {
 		settings.Knowledge = kf.service
+	}
+	if googleTitle {
+		p := settings.TextPolicies["B"]
+		p.Profile.ProviderID, p.Profile.AdapterKind, p.Profile.ModelID = "google", "google-interactions", googleinteractions.Model
+		p.Profile.AdapterPolicyVersion, p.Profile.UsageMappingVersion = googleinteractions.AdapterPolicyVersion, googleinteractions.UsageMappingVersion
+		p.Profile.MaximumInputBytes = 128 << 10
+		settings.TextPolicies["B"] = p
+		settings.TextTransport = isolatedGoogleTitleTransport(t, provider.URL)
 	}
 	agentModule, err := buildProductAgentModule(context.Background(), f.db, deps, auth, settings, nil)
 	require.NoError(t, err)

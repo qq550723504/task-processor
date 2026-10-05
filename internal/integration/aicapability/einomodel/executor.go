@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"task-processor/internal/aicapability"
+	"task-processor/internal/integration/googleinteractions"
 )
 
 // QualifiedRoute is returned only by the current organization credential and
@@ -61,6 +62,9 @@ func (e *Executor) admitted(ctx context.Context, input aicapability.TextInputIde
 	}
 	if err := e.Authorize(ctx, input); err != nil {
 		return QualifiedRoute{}, errors.Join(ErrNotDispatched, err)
+	}
+	if !ValidRouteProfile(input.Profile, input.Operation) {
+		return QualifiedRoute{}, ErrNotDispatched
 	}
 	route, err := e.Resolve(ctx, input)
 	if err != nil || !sameRoute(route, QualifiedRoute{Profile: input.Profile, Endpoint: route.Endpoint, APIKey: route.APIKey}) {
@@ -207,6 +211,7 @@ func (e *Executor) GenerateWithGate(ctx context.Context, input aicapability.Text
 		return TextOutput{}, ErrOutcomeUnknown
 	}
 	record.FinishedAt = time.Now().UTC()
+	record.ProviderRequestID = googleinteractions.SafeRequestID(output.ProviderRequestID)
 	record.LatencyMilliseconds = record.FinishedAt.Sub(now).Milliseconds()
 	record.PromptTokens, record.CompletionTokens, record.TotalTokens = output.Usage.PromptTokens, output.Usage.CompletionTokens, output.Usage.TotalTokens
 	record.UsageKnown, record.EstimatedCostKnown = true, true

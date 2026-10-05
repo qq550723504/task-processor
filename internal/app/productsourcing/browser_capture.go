@@ -9,7 +9,6 @@ import (
 	acquisitionpersistence "task-processor/internal/integration/persistence/product/acquisition"
 	catalogpersistence "task-processor/internal/integration/persistence/product/catalog"
 	sourcingpersistence "task-processor/internal/integration/persistence/product/sourcing"
-	"task-processor/internal/ledger/orgresource"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/sourcing"
 )
@@ -18,8 +17,8 @@ import (
 // It has no provider: receiving or recovering a capture never fetches a page.
 type BrowserCaptureService struct{ core *AcquisitionService }
 
-func NewBrowserCaptureService(store sourcing.AcquisitionOperationStore, publisher sourcing.AcquisitionPublisher, reader catalog.CompleteSnapshotReader, authorizer sourcing.PublicationAuthorizer, charges AcquisitionCharges) (*BrowserCaptureService, error) {
-	core, err := NewAcquisitionService(store, nil, publisher, reader, authorizer, charges)
+func NewBrowserCaptureService(store sourcing.AcquisitionOperationStore, publisher sourcing.AcquisitionPublisher, reader catalog.CompleteSnapshotReader, authorizer sourcing.PublicationAuthorizer) (*BrowserCaptureService, error) {
+	core, err := NewAcquisitionService(store, nil, publisher, reader, authorizer, freeAcquisitionCharges{})
 	if err != nil {
 		return nil, err
 	}
@@ -28,7 +27,7 @@ func NewBrowserCaptureService(store sourcing.AcquisitionOperationStore, publishe
 
 // NewBrowserAcquisition admits the approved Browser descriptor through existing
 // SRC-1/Catalog constructors. It performs no schema installation or provider IO.
-func NewBrowserAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer, charges orgresource.ConsumerChargePort) (*BrowserCaptureService, error) {
+func NewBrowserAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer) (*BrowserCaptureService, error) {
 	if ctx == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
@@ -52,11 +51,7 @@ func NewBrowserAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveO
 	if err != nil {
 		return nil, err
 	}
-	coordinator, err := newAcquisitionChargeCoordinator(operations, charges, permissions, live)
-	if err != nil {
-		return nil, err
-	}
-	return NewBrowserCaptureService(operations, producer, reader, authorizer, coordinator)
+	return NewBrowserCaptureService(operations, producer, reader, authorizer)
 }
 
 func (s *BrowserCaptureService) request(ctx context.Context, key string, body []byte) (sourcing.AcquisitionOperation, sourcing.AcquisitionEvidence, error) {
@@ -125,6 +120,9 @@ func (s *BrowserCaptureService) Capture(ctx context.Context, key string, body []
 	if op.CaptureSHA256 != request.CaptureSHA256 {
 		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionConflict
 	}
+	if err := browserCaptureOperation(request.Scope, op); err != nil {
+		return sourcing.AcquisitionResult{}, err
+	}
 	replayed := !claim
 	if op.State == sourcing.AcquisitionAcquiring {
 		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown
@@ -134,9 +132,6 @@ func (s *BrowserCaptureService) Capture(ctx context.Context, key string, body []
 	}
 	publishClaim := false
 	if op.State == sourcing.AcquisitionPrepared {
-		if err := s.core.admitCharge(ctx, op); err != nil {
-			return sourcing.AcquisitionResult{}, err
-		}
 		if err := s.core.authorizeScope(ctx, op.Scope); err != nil {
 			return sourcing.AcquisitionResult{}, err
 		}
@@ -185,11 +180,11 @@ func (s *BrowserCaptureService) ByKey(ctx context.Context, key string) (sourcing
 	if op.Key != key {
 		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnavailable
 	}
+	if err := browserCaptureOperation(scope, op); err != nil {
+		return sourcing.AcquisitionResult{}, err
+	}
 	if op.State == sourcing.AcquisitionPrepared {
 		if err := s.core.authorizeScope(ctx, scope); err != nil {
-			return sourcing.AcquisitionResult{}, err
-		}
-		if err := s.core.admitCharge(ctx, op); err != nil {
 			return sourcing.AcquisitionResult{}, err
 		}
 		claimed, claim, err := s.core.operations.Claim(ctx, op)
@@ -228,12 +223,8 @@ func (s *BrowserCaptureService) Read(ctx context.Context, operationID string) (s
 }
 
 func (s *BrowserCaptureService) resolveReadOnly(ctx context.Context, scope sourcing.PublicationScope, op sourcing.AcquisitionOperation) (sourcing.AcquisitionResult, error) {
-	if op.Scope != scope || !canonicalAcquisitionKey(op.Key) || op.ID != acquisitionOperation(scope, op.Key, op.Source).ID {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnavailable
-	}
-	fingerprint, err := sourcing.BrowserAcquisitionFingerprint(op.Source, op.CaptureSHA256)
-	if err != nil || fingerprint != op.Fingerprint {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionConflict
+	if err := browserCaptureOperation(scope, op); err != nil {
+		return sourcing.AcquisitionResult{}, err
 	}
 	if op.State == sourcing.AcquisitionFailed {
 		return sourcing.AcquisitionResult{Operation: op, Replayed: true}, nil
@@ -242,10 +233,6 @@ func (s *BrowserCaptureService) resolveReadOnly(ctx context.Context, scope sourc
 		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown
 	}
 	if op.State != sourcing.AcquisitionPrepared && op.State != sourcing.AcquisitionPublishing && op.State != sourcing.AcquisitionPublished {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnavailable
-	}
-	metadata := op.Command.Envelope.RawReference.Metadata
-	if op.Command.Producer != (sourcing.ProducerDescriptor{Kind: sourcing.BrowserAcquisitionProducerKind, Version: "v1"}) || metadata["capture_sha256"] != op.CaptureSHA256 || metadata["channel"] != "browser_capture" || metadata["parser_version"] != sourcing.BrowserCaptureParserVersion || metadata["contract_version"] != sourcing.AcquisitionContractVersion {
 		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnavailable
 	}
 	if err := s.core.authorizeScope(ctx, scope); err != nil {
@@ -271,4 +258,24 @@ func (s *BrowserCaptureService) resolveReadOnly(ctx context.Context, scope sourc
 	// This is a response projection of a verified receipt, not a staging update.
 	op.State = sourcing.AcquisitionPublished
 	return sourcing.AcquisitionResult{Operation: op, Replayed: true, Publication: &persisted}, nil
+}
+
+func browserCaptureOperation(scope sourcing.PublicationScope, op sourcing.AcquisitionOperation) error {
+	if op.Scope != scope || !canonicalAcquisitionKey(op.Key) || op.ID != acquisitionOperation(scope, op.Key, op.Source).ID {
+		return sourcing.ErrAcquisitionUnavailable
+	}
+	fingerprint, err := sourcing.BrowserAcquisitionFingerprint(op.Source, op.CaptureSHA256)
+	if err != nil || fingerprint != op.Fingerprint {
+		return sourcing.ErrAcquisitionConflict
+	}
+	if op.Command == nil && op.State != sourcing.AcquisitionAcquiring && op.State != sourcing.AcquisitionFailed {
+		return sourcing.ErrAcquisitionUnavailable
+	}
+	if op.Command != nil {
+		metadata := op.Command.Envelope.RawReference.Metadata
+		if op.Command.Producer != (sourcing.ProducerDescriptor{Kind: sourcing.BrowserAcquisitionProducerKind, Version: "v1"}) || metadata["capture_sha256"] != op.CaptureSHA256 || metadata["channel"] != "browser_capture" || metadata["parser_version"] != sourcing.BrowserCaptureParserVersion || metadata["contract_version"] != sourcing.AcquisitionContractVersion {
+			return sourcing.ErrAcquisitionUnavailable
+		}
+	}
+	return nil
 }

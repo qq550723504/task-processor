@@ -16,6 +16,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"task-processor/internal/agent"
+	"task-processor/internal/aicapability"
 	coreconfig "task-processor/internal/core/config"
 	governed "task-processor/internal/integration/aicapability/einomodel"
 	"task-processor/internal/integration/openai"
@@ -119,7 +120,7 @@ func ValidateTitleCredentialProvision(cfg *Config, input TitleCredentialProvisio
 		return errors.New("title credential action is unsupported")
 	}
 	endpointDigest := governed.EndpointIdentityDigest(input.BaseURL)
-	if !governed.ValidEndpoint(input.BaseURL) ||
+	if !governed.ValidAdapterEndpoint(governed.AdapterKind(policy.Profile.AdapterKind), input.BaseURL) ||
 		(policy.AdmittedEndpointIdentityDigest != "" && endpointDigest != policy.AdmittedEndpointIdentityDigest) ||
 		!validProvisionPolicy(cfg, input.Consumer, policy, endpointDigest) || input.Model != policy.Profile.ModelID ||
 		(input.APIStyle != policy.Profile.AdapterKind && !(policy.Profile.AdapterKind == "openai-compatible" && (input.APIStyle == "openai" || input.APIStyle == "grsai"))) ||
@@ -133,7 +134,11 @@ func ValidateTitleCredentialProvision(cfg *Config, input TitleCredentialProvisio
 func validProvisionPolicy(cfg *Config, consumer string, policy governed.RoutePolicy, endpointDigest string) bool {
 	profile := policy.ShapeProfile()
 	profile.EndpointIdentityDigest = endpointDigest
-	if profile.Validate() != nil || profile.Currency != cfg.ProductAgent.Currency ||
+	operation := aicapability.OperationProductAgentDecision
+	if consumer == "planning" {
+		operation = aicapability.OperationAIWorkbenchChatPlan
+	}
+	if !governed.ValidRouteProfile(profile, operation) || profile.Currency != cfg.ProductAgent.Currency ||
 		profile.MaximumPromptTokens+profile.MaximumCompletionTokens > cfg.ProductAgent.Tokens {
 		return false
 	}

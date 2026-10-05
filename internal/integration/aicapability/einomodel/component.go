@@ -22,13 +22,15 @@ import (
 	openaimodel "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+	"task-processor/internal/integration/googleinteractions"
 )
 
 type AdapterKind string
 
 const (
-	AdapterOpenAICompatible AdapterKind = "openai-compatible"
-	AdapterClaudeNative     AdapterKind = "claude-native"
+	AdapterOpenAICompatible   AdapterKind = "openai-compatible"
+	AdapterClaudeNative       AdapterKind = "claude-native"
+	AdapterGoogleInteractions AdapterKind = "google-interactions"
 )
 
 var (
@@ -57,13 +59,18 @@ type ComponentConfig struct {
 func NewComponent(ctx context.Context, cfg ComponentConfig, guard *GuardedClient) (model.BaseChatModel, error) {
 	if ctx == nil || guard == nil || guard.Client == nil || cfg.APIKey == "" || cfg.ModelID == "" ||
 		cfg.MaximumOutputTokens < 1 || cfg.MaximumOutputTokens > 65536 ||
-		!validEndpoint(cfg.Endpoint) || cfg.Adapter != guard.cfg.Adapter ||
+		!ValidAdapterEndpoint(cfg.Adapter, cfg.Endpoint) || cfg.Adapter != guard.cfg.Adapter ||
 		cfg.Endpoint != guard.cfg.Endpoint || cfg.ModelID != guard.cfg.ModelID ||
 		cfg.MaximumOutputTokens != guard.cfg.MaximumOutputTokens {
 		return nil, ErrInvalid
 	}
 	maxTokens := cfg.MaximumOutputTokens
 	switch cfg.Adapter {
+	case AdapterGoogleInteractions:
+		if cfg.ModelID != googleinteractions.Model {
+			return nil, ErrInvalid
+		}
+		return &googleComponent{config: cfg, guard: guard}, nil
 	case AdapterOpenAICompatible:
 		return openaimodel.NewChatModel(ctx, &openaimodel.ChatModelConfig{
 			APIKey: cfg.APIKey, BaseURL: cfg.Endpoint, Model: cfg.ModelID,
@@ -98,15 +105,16 @@ type ObservedUsage struct {
 }
 
 type GuardedClient struct {
-	Client    *http.Client
-	cfg       GuardConfig
-	endpoint  *url.URL
-	base      http.RoundTripper
-	finalGate func(context.Context) error
-	sent      atomic.Bool
-	sendMu    sync.Mutex
-	mu        sync.Mutex
-	usage     ObservedUsage
+	Client            *http.Client
+	cfg               GuardConfig
+	endpoint          *url.URL
+	base              http.RoundTripper
+	finalGate         func(context.Context) error
+	sent              atomic.Bool
+	sendMu            sync.Mutex
+	mu                sync.Mutex
+	usage             ObservedUsage
+	providerRequestID string
 }
 
 func validEndpoint(raw string) bool {
@@ -128,16 +136,26 @@ func validEndpoint(raw string) bool {
 // ValidEndpoint uses the same endpoint admission rule as the final transport.
 func ValidEndpoint(raw string) bool { return validEndpoint(raw) }
 
+func ValidAdapterEndpoint(adapter AdapterKind, raw string) bool {
+	if adapter == AdapterGoogleInteractions {
+		return googleinteractions.ValidEndpoint(raw)
+	}
+	return validEndpoint(raw)
+}
+
 // NewGuardedClient creates a per-invocation transport. Even if an SDK retries,
 // follows a redirect, or Generate is called twice, only one underlying model
 // RoundTrip can occur. finalGate runs at the actual HTTP handoff.
 func NewGuardedClient(cfg GuardConfig, base http.RoundTripper, finalGate func(context.Context) error) (*GuardedClient, error) {
-	if (cfg.Adapter != AdapterOpenAICompatible && cfg.Adapter != AdapterClaudeNative) ||
-		!validEndpoint(cfg.Endpoint) || cfg.ModelID == "" || cfg.MaximumOutputTokens < 1 ||
+	if (cfg.Adapter != AdapterOpenAICompatible && cfg.Adapter != AdapterClaudeNative && cfg.Adapter != AdapterGoogleInteractions) ||
+		!ValidAdapterEndpoint(cfg.Adapter, cfg.Endpoint) || cfg.ModelID == "" || cfg.MaximumOutputTokens < 1 ||
 		cfg.MaximumOutputTokens > 65536 || cfg.MaximumRequestBytes < 1 ||
 		cfg.MaximumRequestBytes > 1<<20 || cfg.MaximumResponseBytes < 1 ||
 		cfg.MaximumResponseBytes > 1<<20 || cfg.Timeout <= 0 || cfg.Timeout > 2*time.Minute ||
 		finalGate == nil {
+		return nil, ErrInvalid
+	}
+	if cfg.Adapter == AdapterGoogleInteractions && (cfg.ModelID != googleinteractions.Model || cfg.MaximumRequestBytes > 128<<10 || cfg.MaximumResponseBytes > 256<<10) {
 		return nil, ErrInvalid
 	}
 	endpoint, _ := url.Parse(cfg.Endpoint)
@@ -169,11 +187,21 @@ func (g *GuardedClient) Usage() ObservedUsage {
 	return g.usage
 }
 
+func (g *GuardedClient) ProviderRequestID() string {
+	if g == nil {
+		return ""
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.providerRequestID
+}
+
 func (g *GuardedClient) RoundTrip(req *http.Request) (*http.Response, error) {
 	if g == nil || req == nil || req.URL == nil || req.Method != http.MethodPost ||
 		req.URL.Scheme != g.endpoint.Scheme || !strings.EqualFold(req.URL.Host, g.endpoint.Host) ||
 		!strings.HasPrefix(req.URL.EscapedPath(), strings.TrimSuffix(g.endpoint.EscapedPath(), "/")+"/") ||
-		req.URL.RawQuery != "" || req.Body == nil {
+		req.URL.RawQuery != "" || req.URL.Fragment != "" || req.Body == nil ||
+		g.cfg.Adapter == AdapterGoogleInteractions && req.URL.EscapedPath() != "/v1beta/interactions" {
 		return nil, ErrNotDispatched
 	}
 	body, err := io.ReadAll(io.LimitReader(req.Body, g.cfg.MaximumRequestBytes+1))
@@ -205,6 +233,10 @@ func (g *GuardedClient) RoundTrip(req *http.Request) (*http.Response, error) {
 	if response == nil || response.Body == nil {
 		return nil, ErrOutcomeUnknown
 	}
+	if g.cfg.Adapter == AdapterGoogleInteractions && (response.StatusCode != http.StatusOK || !strings.HasPrefix(response.Header.Get("Content-Type"), "application/json")) {
+		_ = response.Body.Close()
+		return nil, ErrOutcomeUnknown
+	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, g.cfg.MaximumResponseBytes+1))
 	_ = response.Body.Close()
 	if err != nil || int64(len(raw)) > g.cfg.MaximumResponseBytes {
@@ -212,8 +244,15 @@ func (g *GuardedClient) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
 		usage := observeUsage(raw, g.cfg.Adapter)
+		var providerID string
+		if g.cfg.Adapter == AdapterGoogleInteractions {
+			parsed := googleinteractions.Observe(raw, g.cfg.MaximumOutputTokens)
+			usage = ObservedUsage{PromptTokens: parsed.PromptTokens, CompletionTokens: parsed.CompletionTokens, TotalTokens: parsed.TotalTokens, Known: parsed.UsageKnown}
+			providerID = parsed.ID
+		}
 		g.mu.Lock()
 		g.usage = usage
+		g.providerRequestID = providerID
 		g.mu.Unlock()
 	}
 	response.Body = io.NopCloser(bytes.NewReader(raw))
@@ -229,6 +268,26 @@ func validWire(raw []byte, cfg GuardConfig) bool {
 	var modelID string
 	if json.Unmarshal(envelope["model"], &modelID) != nil || modelID != cfg.ModelID {
 		return false
+	}
+	if cfg.Adapter == AdapterGoogleInteractions {
+		for _, key := range []string{"store", "background", "stream"} {
+			if !bytes.Equal(bytes.TrimSpace(envelope[key]), []byte("false")) {
+				return false
+			}
+		}
+		for _, key := range []string{"tools", "tool_choice", "previous_interaction_id", "agent", "environment", "cached_content"} {
+			if _, found := envelope[key]; found {
+				return false
+			}
+		}
+		var input, system string
+		var generation struct {
+			Max      int    `json:"max_output_tokens"`
+			Thinking string `json:"thinking_level"`
+		}
+		return json.Unmarshal(envelope["input"], &input) == nil && input != "" &&
+			json.Unmarshal(envelope["system_instruction"], &system) == nil && system != "" &&
+			json.Unmarshal(envelope["generation_config"], &generation) == nil && generation.Thinking == "low" && generation.Max == cfg.MaximumOutputTokens
 	}
 	if _, found := envelope["tools"]; found {
 		return false
@@ -297,9 +356,10 @@ func observeUsage(raw []byte, adapter AdapterKind) ObservedUsage {
 }
 
 type TextOutput struct {
-	Content      string
-	FinishReason string
-	Usage        ObservedUsage
+	Content           string
+	FinishReason      string
+	Usage             ObservedUsage
+	ProviderRequestID string
 }
 
 // GenerateText makes one non-streaming, no-tool call. Raw counter presence is
@@ -314,9 +374,9 @@ func GenerateText(ctx context.Context, component model.BaseChatModel, system, pr
 		if guard.NetworkSends() == 0 {
 			return TextOutput{}, errors.Join(ErrNotDispatched, err)
 		}
-		return TextOutput{Usage: usage}, ErrOutcomeUnknown
+		return TextOutput{Usage: usage, ProviderRequestID: guard.ProviderRequestID()}, ErrOutcomeUnknown
 	}
-	output := TextOutput{Usage: usage}
+	output := TextOutput{Usage: usage, ProviderRequestID: guard.ProviderRequestID()}
 	if message != nil && message.ResponseMeta != nil {
 		output.Content = message.Content
 		output.FinishReason = message.ResponseMeta.FinishReason

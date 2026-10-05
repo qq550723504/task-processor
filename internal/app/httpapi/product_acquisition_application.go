@@ -60,7 +60,7 @@ func NewCurrentApplicationWithAcquisition(ctx context.Context, sourceAccountDB, 
 
 // Browser construction stays in the existing admitted Product composition owner.
 // Its routes and transport DTO validation live in the Browser-specific file.
-func buildBrowserCaptureModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer, charges orgresource.ConsumerChargePort) (kernelmodule.Module, error) {
+func buildBrowserCaptureModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 	if dependencies.organizationResolver == nil || authorizer == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
@@ -68,7 +68,7 @@ func buildBrowserCaptureModule(ctx context.Context, db *gorm.DB, dependencies ro
 		return nil, err
 	}
 	live := &productReviewLiveOrganizationAccess{resolver: dependencies.organizationResolver, now: time.Now}
-	service, err := productsourcing.NewBrowserAcquisition(ctx, db, live, authorizer, charges)
+	service, err := productsourcing.NewBrowserAcquisition(ctx, db, live, authorizer)
 	if err != nil {
 		return nil, err
 	}

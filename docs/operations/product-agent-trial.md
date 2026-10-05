@@ -47,6 +47,17 @@ credential SELECT、invocation SELECT/INSERT/UPDATE；Review 连接需要既有 
 [Chat 试用说明](ai-workbench-chat-trial.md)。只有精确 route 的计量、定价、付费授权均有
 证据时才启用；不能从兼容协议或别家模型窗口推断。
 
+Google 标题路由按 [#588 组合增量 §6.7](../architecture/ai-workbench-chat-business-task-v1.md#67-google-interactions-composition-increment) 配置同一 `RoutePolicy`：
+`Profile.ProviderID=google`、`AdapterKind=google-interactions`、`ModelID=gemini-3.8-flash`、
+`AdapterPolicyVersion=google-interactions-v1`、`UsageMappingVersion=google-interactions-usage-v1`。
+凭据输入的 `apiStyle` 为 `google-interactions`，`baseURL` 必须精确为
+`https://generativelanguage.googleapis.com`。请求/响应字节上界分别不超过 128 KiB/256 KiB；
+profile 更小的限制仍生效。`MaximumCompletionTokens` 包含可见输出与思考 token，
+最多 65,536；报价、货币估价和点数结算都计入二者。SDK 的 `store/background/stream=false`、
+`thinking_level=low` 和禁重试由该版本协议冻结，不使用旧标题策略的 wire 字段。
+Google 仅用于标题生成；Chat Planner 不接受该 adapter。当前 Free tier 凭据仅获准合成数据探针，
+真实商品/企业数据、点数费率、预算与实际 provider 调用仍需各自授权。
+
 前置报价按该组织策略的输入/输出硬上界保守预留；剩余运行预算或现有成员额度不足
 便停止，事后仅结算 provider 完整报告的实际 tokens。估价用于预算，不声称是真实账单。
 未知响应/用量保持既有预留，不能通过新请求编号绕过。调整配置或凭据后必须重新核对 route。

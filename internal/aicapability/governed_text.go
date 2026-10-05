@@ -64,7 +64,7 @@ func (p ModelProfile) Validate() error {
 			return ErrTextProfile
 		}
 	}
-	if p.AdapterKind != "openai-compatible" && p.AdapterKind != "claude-native" {
+	if p.AdapterKind != "openai-compatible" && p.AdapterKind != "claude-native" && p.AdapterKind != "google-interactions" {
 		return ErrTextProfile
 	}
 	if len(p.Currency) != 3 || !p.PointTariff.Valid() ||
@@ -156,7 +156,7 @@ func QuoteText(input TextInputIdentity) (TextQuote, error) {
 		return TextQuote{}, ErrTextEnvelope
 	}
 	if input.Operation == OperationAIWorkbenchChatPlan {
-		if input.AgentRunID != "" || input.BusinessTaskID != "" {
+		if input.AgentRunID != "" || input.BusinessTaskID != "" || input.Profile.AdapterKind == "google-interactions" {
 			return TextQuote{}, ErrTextEnvelope
 		}
 	} else if !validTextFact(input.AgentRunID, 128) {

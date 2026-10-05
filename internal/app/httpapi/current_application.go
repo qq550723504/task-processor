@@ -364,7 +364,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		browserDB := supplied.productAcquisitionDB
 		factories.buildBrowserCapture = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer, consumerCharges)
+			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer)
 		}
 	}
 	if supplied.imageAgents > 0 {

@@ -2,6 +2,7 @@ package currentapplication
 
 import (
 	"errors"
+	"task-processor/internal/aicapability"
 
 	governed "task-processor/internal/integration/aicapability/einomodel"
 )
@@ -35,7 +36,7 @@ func (w *AIWorkbenchConfig) validate(cfg *Config) error {
 	}
 	for org, policy := range w.PlanningTextPolicies {
 		profile := policy.ShapeProfile()
-		if !allowed[org] || profile.Validate() != nil || profile.PromptVersion != "ai-workbench-chat-plan-v1" ||
+		if !allowed[org] || !governed.ValidRouteProfile(profile, aicapability.OperationAIWorkbenchChatPlan) || profile.PromptVersion != "ai-workbench-chat-plan-v1" ||
 			profile.OutputSchemaVersion != "ai-workbench-plan-decision-v1" ||
 			profile.Currency != cfg.ProductAgent.Currency ||
 			profile.MaximumPromptTokens+profile.MaximumCompletionTokens > cfg.ProductAgent.Tokens ||

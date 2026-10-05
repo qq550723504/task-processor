@@ -20,6 +20,7 @@ import (
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	governed "task-processor/internal/integration/aicapability/einomodel"
+	"task-processor/internal/integration/googleinteractions"
 	"task-processor/internal/integration/openai"
 	resourceadapter "task-processor/internal/integration/orgresource"
 	agentstore "task-processor/internal/integration/persistence/agent"
@@ -83,9 +84,10 @@ func TestProductAgentAcquisitionToReviewUsesRealOwners(t *testing.T) {
 
 func testProductAgentOwners(t *testing.T, mode string) {
 	f := newAcquisitionHTTPFixture(t)
-	canonicalMode := mode == "observed canonical" || mode == "configuration" || mode == "knowledge"
+	googleTitle := mode == "google knowledge"
+	canonicalMode := mode == "observed canonical" || mode == "configuration" || mode == "knowledge" || googleTitle
 	var kf *consumerKnowledgeFixture
-	if mode == "knowledge" {
+	if mode == "knowledge" || googleTitle {
 		kf = newConsumerKnowledgeFixture(t, f.owner)
 	}
 	acquisitionServer := f.server(t)
@@ -122,11 +124,19 @@ func testProductAgentOwners(t *testing.T, mode string) {
 		var citationID string
 		if kf != nil {
 			var request struct {
+				Input    string `json:"input"`
 				Messages []struct {
 					Content string `json:"content"`
 				} `json:"messages"`
 			}
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+			if googleTitle {
+				var prompt struct{ Knowledge *knowledge.ContextBundle }
+				if json.Unmarshal([]byte(request.Input), &prompt) == nil && prompt.Knowledge != nil {
+					require.Len(t, prompt.Knowledge.Entries, 1)
+					citationID = prompt.Knowledge.Entries[0].Citation.ID
+				}
+			}
 			for _, message := range request.Messages {
 				var prompt struct{ Knowledge *knowledge.ContextBundle }
 				if json.Unmarshal([]byte(message.Content), &prompt) == nil && prompt.Knowledge != nil {
@@ -158,13 +168,21 @@ func testProductAgentOwners(t *testing.T, mode string) {
 		if kf != nil && step >= 3 {
 			content = strings.TrimSuffix(content, "}") + `,"ContextCitationIDs":["` + citationID + `"]}`
 		}
+		if googleTitle {
+			googleTitleFixtureReply(t, w, content)
+			return
+		}
 		encoded, _ := json.Marshal(content)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"isolated-grsai","choices":[{"message":{"content":` + string(encoded) + `},"finish_reason":"stop"}],"usage":{"prompt_tokens":20,"completion_tokens":10,"total_tokens":30}}`))
 	}))
 	defer provider.Close()
 	credentials := openai.NewOrganizationOnlyCredentialResolver(f.owner)
-	require.NoError(t, credentials.SaveCredential(context.Background(), openai.AIClientCredential{TenantID: "B", ClientName: "default", APIKey: "isolated-fixture-key", BaseURL: provider.URL + "/v1", Model: "gemini-2.5-flash", APIStyle: "grsai", Enabled: true, TimeoutSecond: 3}))
+	credential := openai.AIClientCredential{TenantID: "B", ClientName: "default", APIKey: "isolated-fixture-key", BaseURL: provider.URL + "/v1", Model: "gemini-2.5-flash", APIStyle: "grsai", Enabled: true, TimeoutSecond: 3}
+	if googleTitle {
+		credential.BaseURL, credential.Model, credential.APIStyle = googleinteractions.Origin, googleinteractions.Model, "google-interactions"
+	}
+	require.NoError(t, credentials.SaveCredential(context.Background(), credential))
 	row, err := credentials.GetCredential(context.Background(), "B", "", "default")
 	require.NoError(t, err)
 	require.NotNil(t, row)
@@ -180,6 +198,14 @@ func testProductAgentOwners(t *testing.T, mode string) {
 	settings := ProductAgentDependencies{Enabled: true, AllowedOrganizationIDs: []string{"B"}, RunDB: f.owner, PointAccountingDB: f.owner, AssetDB: f.owner, ReviewDB: f.owner, Ledger: ledger, TextPolicies: map[string]governed.RoutePolicy{"B": {AdmittedCredentialVersion: governed.CredentialVersion(*row), AdmittedEndpointIdentityDigest: governed.EndpointIdentityDigest(provider.URL + "/v1"), Profile: aicapability.ModelProfile{ClientName: "default", ProviderID: "grsai", AdapterKind: "openai-compatible", ModelID: "gemini-2.5-flash", RoutingPolicyVersion: "route-v1", AdapterPolicyVersion: "adapter-v1", PromptVersion: "product-title-agent-v1", OutputSchemaVersion: "product-title-action-v1", UsageMappingVersion: "usage-v1", CostPricingVersion: "fixture-v1", PointTariff: aicapability.ModelPointTariff{PriceVersion: "synthetic-points-v1", InputPointsPerMillionTokens: 1000000, OutputPointsPerMillionTokens: 2000000}, Currency: "CNY", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000, MaximumPromptTokens: 1048576, MaximumCompletionTokens: 8192, MaximumInputBytes: 64 << 10, MaximumOutputBytes: 16 << 10, DeadlineBound: 3 * time.Second}}}, Limits: agent.Limits{Steps: 12, ModelCalls: 6, Tokens: 5000000, CostMicros: 5000000, Currency: "CNY", Runtime: time.Minute}}
 	if kf != nil {
 		settings.Knowledge = kf.service
+	}
+	if googleTitle {
+		p := settings.TextPolicies["B"]
+		p.AdmittedEndpointIdentityDigest = governed.EndpointIdentityDigest(googleinteractions.Origin)
+		p.Profile.ProviderID, p.Profile.AdapterKind, p.Profile.ModelID = "google", "google-interactions", googleinteractions.Model
+		p.Profile.AdapterPolicyVersion, p.Profile.UsageMappingVersion = googleinteractions.AdapterPolicyVersion, googleinteractions.UsageMappingVersion
+		settings.TextPolicies["B"] = p
+		settings.TextTransport = isolatedGoogleTitleTransport(t, provider.URL)
 	}
 	if mode == "revoked before dispatch" || mode == "release failed" {
 		if mode == "release failed" {
@@ -380,7 +406,11 @@ func testProductAgentOwners(t *testing.T, mode string) {
 	}
 	require.Equal(t, agent.HumanReviewRequired, result.Phase, string(raw))
 	require.True(t, result.CanSubmitReview)
-	require.EqualValues(t, 120, result.Tokens)
+	if googleTitle {
+		require.EqualValues(t, 136, result.Tokens)
+	} else {
+		require.EqualValues(t, 120, result.Tokens)
+	}
 	require.EqualValues(t, 4, calls.Load())
 	// Replaying Start and reading after reconstructing its HTTP handler never
 	// cause an extra model call. The same candidate enters existing Review.
@@ -509,7 +539,12 @@ func testProductAgentOwners(t *testing.T, mode string) {
 	require.EqualValues(t, 2, callsCount)
 	var usage struct{ Quantity int64 }
 	require.NoError(t, f.owner.Table("saas_organization_resource_events").Select("SUM(consumed_delta) AS quantity").Where("source_type = ?", "model_invocation_v1").Scan(&usage).Error)
-	require.EqualValues(t, 160, usage.Quantity)
+	if googleTitle {
+		// Four calls: 20 input + 2*(10 visible + 4 thought) output points each.
+		require.EqualValues(t, 192, usage.Quantity)
+	} else {
+		require.EqualValues(t, 160, usage.Quantity)
+	}
 	// The human, using the original Review endpoint, decides and applies.
 	accepted := titleCall(t, server, "POST", titleBasePath+"/"+view.ID+"/decisions", "admin", "B", uuid.NewString(), `{"action":"accept","expected_revision":1}`, 200)
 	_ = accepted
