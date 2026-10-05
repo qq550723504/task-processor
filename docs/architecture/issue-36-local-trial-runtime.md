@@ -18,7 +18,7 @@ PR #579 只完成严格 v2 投影并已合并；它不提供试用运行源。�
 
 本片决定：**显式 opt-in 的本机试用组合**复用 `cmd/current-application`、现有 ZITADEL/Login V2、Auth.js/BFF、Product Review/Catalog 与 Listing Record 路由/服务；不得包裹旧 Task-first Service 或新建第二套事实源。试用配置缺失时，Review/Listing 路由一律不装配。试用配置只允许全新项目、loopback HTTPS、独立 Compose project/volumes；运行时不得执行 DDL、隐式授权或用超级用户连接。实现时从现有独立构造器抽取可复用的当前模块装配，保持原中间件、授权、deadline 和服务逻辑。当前应用中的 Review 准入须与 `productAgent.enabled` 解耦，用已有 `review.NewCandidateService` 装配无 generator 服务，只批准 GET list/detail 与 POST decision/apply；`productReviewRoutes` 中的 POST create 必须从本片路由集合中排除。不因打开审核而启用 Agent、模型、预算或提案生成入口。
 
-这不是把 `productAcquisitionDatabase` 指向任意现有库，也不是修改全局默认应用。#590 正在修改同一 current-application/任务中心路径。其 33550ae 候选把旧审核和历史完成记录分别移至 `/workbench/ai/tasks/pending/other`、`/workbench/ai/tasks/completed/history`，并从待确认/已完成页提供直达入口；在 #590 合入前，当前 main 的直接入口仍是 `/workbench/ai/tasks/pending`、`/workbench/ai/tasks/completed`。本片 Writer 等 #590 稳定后只同步一次实际 main，以最终代码确定导航和试用脚本路径；必须保留两条 owner 路径可由任务中心到达，不在其活跃共享写路径并行落生产代码。
+这不是把 `productAcquisitionDatabase` 指向任意现有库，也不是修改全局默认应用。#590 已于 2026-10-05 合入 main（`a90826ce`）；本片已同步该合并基线。最终任务中心从 `/workbench/ai/tasks/pending`、`/workbench/ai/tasks/completed` 分别进入 `/workbench/ai/tasks/pending/other`、`/workbench/ai/tasks/completed/history`，再到原 Review/Listing owner 页面。本片保留这两条可达路径，不重复建设 BusinessTask 事实或试用入口。
 
 ## 事实、数据库和调用链
 

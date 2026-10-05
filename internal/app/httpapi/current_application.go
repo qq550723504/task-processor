@@ -29,6 +29,7 @@ import (
 	"task-processor/internal/ledger/orgresource"
 	"task-processor/internal/storecenter"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
+	"task-processor/internal/workbenchcontext"
 )
 
 type currentApplicationRoute struct {
@@ -86,6 +87,7 @@ var currentCommercialBillingApplicationRoutes = []currentApplicationRoute{
 
 type currentApplicationFactories struct {
 	buildStoreCenter         func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, storecenter.OfficialConnectionProvider, storecenter.OfficialCredentialProtection) (kernelmodule.Module, error)
+	buildLocalTrial          func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildResourceCharges     func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (*orgresource.ConsumerChargeService, error)
 	buildCommercialResources func(context.Context, *gorm.DB) (kernelmodule.Module, error)
 	buildWorkbench           workbenchContextModuleBuilder
@@ -111,6 +113,8 @@ type currentApplicationOptions struct {
 	knowledge               *knowledge.Service
 	storeCenters            int
 	storeCenterDB           *gorm.DB
+	localTrials             int
+	localTrialDB            *gorm.DB
 	officialStoreProvider   storecenter.OfficialConnectionProvider
 	officialStoreProtection storecenter.OfficialCredentialProtection
 	officialStoreConfigs    int
@@ -204,6 +208,13 @@ func defaultCurrentApplicationFactories(ctx context.Context, projectIDs ...strin
 	return currentApplicationFactories{
 		buildWorkbench:   buildDefaultWorkbenchContextModule,
 		buildStoreCenter: buildCurrentStoreCenterModule,
+		buildLocalTrial: func(ctx context.Context, db *gorm.DB, authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
+			resolver, ok := dependencies.organizationResolver.(*workbenchcontext.Resolver)
+			if !ok || resolver == nil {
+				return nil, errors.New("#36 local trial requires current workbench resolver")
+			}
+			return buildIssue36TrialModule(ctx, db, resolver, authorizer)
+		},
 		buildSourceAccount: func(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			if err := sourceaccountstore.VerifyRuntimePermissions(ctx, db); err != nil {
 				return nil, err
@@ -262,8 +273,18 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		option(&supplied)
 	}
-	if supplied.storeCenters > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 || supplied.accountAuditSources > 1 {
+	if supplied.storeCenters > 1 || supplied.localTrials > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 || supplied.accountAuditSources > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
+	}
+	if supplied.localTrials > 0 {
+		if supplied.localTrialDB == nil || supplied.storeCenters != 1 || supplied.storeCenterDB == nil || factories.buildLocalTrial == nil || supplied.productAcquisitionDB != nil || supplied.productAgent != nil || supplied.aiWorkbench != nil || supplied.imageAgentDB != nil {
+			return nil, errors.New("local trial requires its Store Center and excludes provider execution")
+		}
+		for _, other := range []*gorm.DB{sourceAccountDB, supplied.storeCenterDB, supplied.commercialOwnerDB, supplied.moneyOwnerDB, supplied.referralDB, supplied.accountAuditImageDB, supplied.accountAuditProductDB} {
+			if supplied.localTrialDB == other {
+				return nil, errors.New("local trial requires an independent narrow pool")
+			}
+		}
 	}
 	if supplied.accountAuditSources > 0 && (supplied.accountAuditImageDB == nil || supplied.accountAuditProductDB == nil || supplied.accountAuditImageDB == supplied.accountAuditProductDB || supplied.imageAgentDB != nil || supplied.productAgent != nil) {
 		return nil, errors.New("account audit requires two independent read-only sources without Agent execution")
@@ -422,6 +443,16 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 			return nil, errors.New("current store center unavailable")
 		}
 		modules = append(modules, stores)
+	}
+	if supplied.localTrials > 0 {
+		trial, err := factories.buildLocalTrial(ctx, supplied.localTrialDB, authorizer, *workbench.authDependencies)
+		if err != nil {
+			return nil, fmt.Errorf("build #36 local trial: %w", err)
+		}
+		if trial == nil {
+			return nil, errors.New("#36 local trial unavailable")
+		}
+		modules = append(modules, trial)
 	}
 	sms, err := buildZitadelSMSModule(ctx)
 	if err != nil {
@@ -642,6 +673,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	routeFeatures := currentApplicationOptionalRoutes{
 		ZitadelSMS:          true,
 		StoreCenter:         supplied.storeCenters > 0,
+		LocalTrial:          supplied.localTrials > 0,
 		Knowledge:           supplied.knowledgeServices > 0,
 		AcquisitionImage:    factories.buildAcquisitionImage != nil,
 		ProductAgent:        supplied.productAgent != nil,
@@ -730,6 +762,7 @@ type currentApplicationOptionalRoutes struct {
 	AgentConfiguration  bool
 	Knowledge           bool
 	StoreCenter         bool
+	LocalTrial          bool
 	Resources           bool
 	ZitadelSMS          bool
 	SubjectVerification bool
@@ -755,6 +788,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	if optional.StoreCenter {
 		for _, r := range currentStoreCenterRoutes {
 			admitted = append(admitted, currentApplicationRoute{Method: r.method, Path: r.path})
+		}
+	}
+	if optional.LocalTrial {
+		for _, descriptor := range trialRouteDescriptorsForAdmission() {
+			admitted = append(admitted, currentApplicationRoute{Method: descriptor.Method, Path: descriptor.Path})
 		}
 	}
 	if optional.ZitadelSMS {
@@ -862,6 +900,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {
+		if optional.LocalTrial && isIssue36TrialRoute(descriptor.Method, descriptor.Path) {
+			if !validIssue36TrialDescriptor(descriptor) {
+				return errors.New("#36 local trial route loses admitted permission or deadline")
+			}
+		}
 		if strings.HasPrefix(descriptor.Path, confighttp.Base+"/") {
 			if !optional.AgentConfiguration {
 				return errors.New("agent configuration not admitted")
