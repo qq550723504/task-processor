@@ -18,7 +18,7 @@ go run ./cmd/ai-workbench-schema-init --runtime-role ai_workbench_runtime
 Remove-Item Env:AI_WORKBENCH_SCHEMA_DSN
 ```
 
-命令在一个事务中安装 `ai_workbench` schema 并授予 runtime 对五张表的限定 SELECT/INSERT/列级 UPDATE；该 runtime 不能 DELETE/TRUNCATE/DDL。应用启动只验证 schema，不自动安装或迁移。这里的连接与私有 manifest 不提交到仓库。运行前按现有 PostgreSQL 备份/恢复规程覆盖新增 schema；正常 stop/restart 保留 Conversation、PlanningCommand、Proposal、BusinessTask，销毁数据库不是停止操作。
+命令在一个事务中安装 `ai_workbench` schema 并授予 runtime 对其表的限定 SELECT/INSERT/列级 UPDATE；该 runtime 不能 DELETE/TRUNCATE/DDL。应用启动只验证 schema，不自动安装或迁移。这里的连接与私有 manifest 不提交到仓库。运行前按现有 PostgreSQL 备份/恢复规程覆盖新增 schema；正常 stop/restart 保留 Conversation、PlanningCommand、Proposal、BusinessTask，销毁数据库不是停止操作。
 
 首次配置时，先保持 `productAgent.enabled: false`、`aiWorkbench.enabled: false`，在获准企业的 title/planning 策略中留下空的 `AdmittedCredentialVersion` 和 `AdmittedEndpointIdentityDigest`。通过现有 `cmd/product-agent-credential-provision` 给规划 route 写独立的组织凭据：私有输入 `consumer: "planning"`，其他字段及独立 writer 角色要求与标题凭据相同；标题使用 `consumer: "title"`。该命令验证策略形状及输入 endpoint 后，只返回非敏感的 `credentialVersion` 与 `endpointIdentityDigest`；将两者填入对应策略，再启用服务。轮换或停用会改变准入状态，不会自动改用其他企业、成员或默认凭据。OpenAI 兼容与 Claude 原生组件均需为精确 route 核实计量与计价，不能由协议兼容性推断付费可用。
 
@@ -32,6 +32,7 @@ Console 使用原 `LISTINGKIT_API_BASE` 指向当前 application，并保持现�
 
 1. 正常登录、选择获准企业，在 1688 采集详情获取已保存商品的 `operation_id`。Chat 新建会话后输入该 ID、目标平台与标题目标，可选当前可读的模板或 KnowledgeBase。Chat 仅保存本人/当前企业会话。
 2. 查看模型回复；只有 `READY` 才显示由服务器当前 Product、AgentConfig、Knowledge 和模型准入事实形成的方案。核对商品、平台、模板、知识、模型与最大额度，再显式确认。新消息或归档会使旧方案不再可首次确认。
+   Chat 规划权限与标题执行权限分别检查；确认须具备当前企业的执行角色。仅配置为全局管理员不能替代该角色，缺少权限时保留规划和历史读取，禁用确认并显示权限提示。人工 Review / Apply 继续要求其现有企业角色。
    若标题执行路由未就绪，或方案冻结的标题模型配置已不再匹配当前准入配置，确认按钮会禁用；可保留历史阅读，配置恢复后刷新，模型配置变更时重新提出方案。即使按钮可点，服务器仍在确认时重新验证当前事实。
 3. 从任务中心打开确认生成的 BusinessTask。若执行在 Agent Claim 前中断，用“启动原任务”沿原请求继续；需要反馈时在原运行上继续。结果未知时不要创建新任务试图重发。
 4. 候选通过校验后提交现有人工 Review；由有权人员接受/编辑并显式应用。任务状态来自 Product Agent 与 Review 的当前事实，不能把模型建议当成已应用结果。

@@ -228,6 +228,7 @@ type workbenchProposalCard struct {
 	HumanReviewRequired bool   `json:"humanReviewRequired"`
 	DetailsAvailable    bool   `json:"detailsAvailable"`
 	TitleProfileReady   bool   `json:"titleProfileReady"`
+	ExecutionAuthorized bool   `json:"executionAuthorized"`
 }
 
 func (a *aiWorkbenchApplication) proposalCard(ctx context.Context, p aiworkbench.ExecutionProposal) workbenchProposalCard {
@@ -242,6 +243,8 @@ func (a *aiWorkbenchApplication) proposalCard(ctx context.Context, p aiworkbench
 		return card
 	}
 	card.DetailsAvailable = true
+	_, executionErr := a.agent.freshIdentity(ctx)
+	card.ExecutionAuthorized = executionErr == nil
 	card.OperationID, card.ProductKey, card.TargetPlatform = p.OperationID, p.ProductKey, p.TargetPlatform
 	card.TemplateID, card.TemplateRevision, card.KnowledgeBaseID = p.TemplateID, p.TemplateRevision, p.KnowledgeBaseID
 	var profile aicapability.ModelProfile

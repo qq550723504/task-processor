@@ -205,7 +205,7 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	deps.workbenchVerifier = titleVerifier{}
 	taskGrants := &taskViewerGrants{base: f.grants}
 	deps.organizationResolver = workbenchcontext.NewResolver(taskGrants, "project", "v1", nil)
-	auth, err := authz.NewListingKitAuthorizer(nil, nil)
+	auth, err := authz.NewListingKitAuthorizer([]string{"operator"}, nil)
 	require.NoError(t, err)
 	deps.authorizer = auth
 	settings := ProductAgentDependencies{Enabled: true, AllowedOrganizationIDs: []string{"B"}, RunDB: f.owner, PointAccountingDB: f.owner, AssetDB: f.owner,
@@ -213,6 +213,12 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 		Limits: agent.Limits{Steps: 12, ModelCalls: 6, Tokens: 5000000, CostMicros: 5000000, Currency: "CNY", Runtime: time.Minute}}
 	agentModule, err := buildProductAgentModule(context.Background(), f.db, deps, auth, settings, nil)
 	require.NoError(t, err)
+	readinessIdentity := authidentity.AuthenticatedIdentity{TenantID: "B", EffectiveOrganizationID: "B", UserID: "operator", TokenExpiresAt: time.Now().Add(time.Hour)}
+	readinessCtx := authidentity.WithAuthenticatedIdentity(context.Background(), readinessIdentity)
+	require.EqualValues(t, "AVAILABLE", agentModule.(productAgentModule).application.model.RouteReadinessForVerifiedOrganization(readinessCtx, "B"))
+	readinessIdentity.TenantID, readinessIdentity.EffectiveOrganizationID = "A", "A"
+	readinessCtx = authidentity.WithAuthenticatedIdentity(context.Background(), readinessIdentity)
+	require.EqualValues(t, "UNAVAILABLE", agentModule.(productAgentModule).application.model.RouteReadinessForVerifiedOrganization(readinessCtx, "A"))
 	workbenchModule, err := buildAIWorkbenchModule(context.Background(), AIWorkbenchDependencies{DB: workbenchDB,
 		PlanningTextPolicies: map[string]governed.RoutePolicy{"B": policy(chatRow, profile("chat", "chat-fixture", "ai-workbench-chat-plan-v1", "ai-workbench-plan-decision-v1"))}}, agentModule.(productAgentModule).application)
 	require.NoError(t, err)
@@ -282,8 +288,9 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.Zero(t, titleCalls.Load())
 	var proposalView struct {
 		Proposals []struct {
-			ID                string `json:"id"`
-			TitleProfileReady bool   `json:"titleProfileReady"`
+			ID                  string `json:"id"`
+			TitleProfileReady   bool   `json:"titleProfileReady"`
+			ExecutionAuthorized bool   `json:"executionAuthorized"`
 		} `json:"proposals"`
 	}
 	code, raw, err = acquisitionHTTPRequest(server, "GET", workbenchChatBase+"/"+created.Conversation.ID, "operator", "B", "", "")
@@ -292,6 +299,20 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &proposalView))
 	require.Len(t, proposalView.Proposals, 1)
 	require.True(t, proposalView.Proposals[0].TitleProfileReady, "the frozen title profile is currently admitted")
+	require.True(t, proposalView.Proposals[0].ExecutionAuthorized)
+	taskGrants.viewer.Store(true)
+	code, raw, err = acquisitionHTTPRequest(server, "GET", workbenchChatBase+"/"+created.Conversation.ID, "operator", "B", "", "")
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.NoError(t, json.Unmarshal(raw, &proposalView))
+	require.True(t, proposalView.Proposals[0].TitleProfileReady)
+	require.False(t, proposalView.Proposals[0].ExecutionAuthorized, "a configured global user grant cannot replace the effective organization's execution role")
+	code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchChatBase+"/"+created.Conversation.ID+"/proposals/"+planned.ProposalID+"/confirm",
+		"operator", "B", uuid.NewString(), "")
+	require.NoError(t, err)
+	require.Equal(t, 403, code, string(raw))
+	require.Zero(t, titleCalls.Load(), "the global user grant does not authorize title dispatch")
+	taskGrants.viewer.Store(false)
 	code, raw, err = acquisitionHTTPRequest(server, "GET", workbenchChatBase+"?limit=1", "operator", "B", "", "")
 	require.NoError(t, err)
 	require.Equal(t, 200, code, string(raw))

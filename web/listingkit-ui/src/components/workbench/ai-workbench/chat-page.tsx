@@ -285,7 +285,8 @@ function ProposalCard({ proposal, scope, canUse, titleReadiness, disabled, confi
       <dt>结果处理</dt><dd>必须人工审核，再由授权人员应用</dd></dl>
     {!confirmedTaskId && canUse && proposal.detailsAvailable && titleReadiness !== "AVAILABLE" ? <p>标题执行模型需要配置；当前方案暂不能确认。</p> : null}
     {!confirmedTaskId && canUse && proposal.detailsAvailable && titleReadiness === "AVAILABLE" && !proposal.titleProfileReady ? <p>提案的标题模型配置已变化，请重新提出方案。</p> : null}
+    {!confirmedTaskId && canUse && proposal.detailsAvailable && !proposal.executionAuthorized ? <p>需要当前企业的标题执行权限；已有方案仍可查看。</p> : null}
     {confirmedTaskId ? <Button asChild><Link href={`/workbench/ai/tasks/${confirmedTaskId}`} prefetch={false}>查看已确认任务</Link></Button> :
-      canUse ? <Button disabled={disabled || !proposal.detailsAvailable || titleReadiness !== "AVAILABLE" || !proposal.titleProfileReady} onClick={onConfirm}>确认并创建任务</Button> : null}
+      canUse ? <Button disabled={disabled || !proposal.detailsAvailable || titleReadiness !== "AVAILABLE" || !proposal.titleProfileReady || !proposal.executionAuthorized} onClick={onConfirm}>确认并创建任务</Button> : null}
   </Card>;
 }

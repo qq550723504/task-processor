@@ -84,6 +84,7 @@ func TestTitleAdapterUsesFrozenProfileAndSharedEinoExecutor(t *testing.T) {
 		}}
 	model, err := NewAgentTextModel(executor, testSnapshotReader{snapshot},
 		func(context.Context, string) (aicapability.ModelProfile, error) { return profile, nil },
+		func(context.Context, string) TextRouteReadiness { return TextRouteAvailable },
 		[]commercetool.ToolRef{{ID: "product.snapshot.read", Version: "v1"}},
 		func(context.Context) (authidentity.AuthenticatedIdentity, error) { return identity, nil })
 	require.NoError(t, err)

@@ -222,7 +222,11 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 		}
 		return nil
 	}}
-	model, err := texteino.NewAgentTextModel(executor, a.configuration, a.selectTitleProfile, definition.AllowedTools, a.freshIdentity, contexts...)
+	model, err := texteino.NewAgentTextModel(executor, a.configuration, a.selectTitleProfile,
+		func(ctx context.Context, org string) texteino.TextRouteReadiness {
+			return texteino.TextRouteReadiness(routeResolver.Readiness(ctx, aicapability.TextInputIdentity{
+				OrganizationID: org, Operation: aicapability.OperationProductAgentDecision}))
+		}, definition.AllowedTools, a.freshIdentity, contexts...)
 	if err != nil {
 		return nil, err
 	}

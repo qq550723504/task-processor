@@ -41,22 +41,24 @@ const (
 )
 
 type AgentTextModel struct {
-	knowledge     KnowledgeContext
-	executor      TextExecutor
-	snapshots     SnapshotReader
-	selectProfile func(context.Context, string) (aicapability.ModelProfile, error)
-	tools         []commercetool.ToolRef
-	freshIdentity func(context.Context) (authidentity.AuthenticatedIdentity, error)
+	knowledge      KnowledgeContext
+	executor       TextExecutor
+	snapshots      SnapshotReader
+	selectProfile  func(context.Context, string) (aicapability.ModelProfile, error)
+	routeReadiness func(context.Context, string) TextRouteReadiness
+	tools          []commercetool.ToolRef
+	freshIdentity  func(context.Context) (authidentity.AuthenticatedIdentity, error)
 }
 
 func NewAgentTextModel(executor TextExecutor, snapshots SnapshotReader,
 	selectProfile func(context.Context, string) (aicapability.ModelProfile, error),
+	routeReadiness func(context.Context, string) TextRouteReadiness,
 	tools []commercetool.ToolRef, freshIdentity func(context.Context) (authidentity.AuthenticatedIdentity, error),
 	contexts ...KnowledgeContext) (*AgentTextModel, error) {
-	if executor == nil || snapshots == nil || selectProfile == nil || freshIdentity == nil || len(tools) == 0 || len(contexts) > 1 {
+	if executor == nil || snapshots == nil || selectProfile == nil || routeReadiness == nil || freshIdentity == nil || len(tools) == 0 || len(contexts) > 1 {
 		return nil, agent.ErrUnavailable
 	}
-	model := &AgentTextModel{executor: executor, snapshots: snapshots, selectProfile: selectProfile,
+	model := &AgentTextModel{executor: executor, snapshots: snapshots, selectProfile: selectProfile, routeReadiness: routeReadiness,
 		tools: append([]commercetool.ToolRef(nil), tools...), freshIdentity: freshIdentity}
 	if len(contexts) == 1 {
 		if contexts[0] == nil || reflect.ValueOf(contexts[0]).Kind() == reflect.Pointer && reflect.ValueOf(contexts[0]).IsNil() {
@@ -91,21 +93,20 @@ func agentTextHash(raw []byte) string {
 }
 
 func (m *AgentTextModel) RouteReadinessForVerifiedOrganization(ctx context.Context, organizationID string) TextRouteReadiness {
-	if m == nil || ctx == nil || ctx.Err() != nil {
+	if m == nil || m.routeReadiness == nil || ctx == nil || ctx.Err() != nil {
 		return TextRouteUnavailable
 	}
 	i, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
 	if !ok || i.TenantID != organizationID || i.EffectiveOrganizationID != organizationID || !i.TokenExpiresAt.After(time.Now()) {
 		return TextRouteUnavailable
 	}
-	profile, err := m.selectProfile(ctx, organizationID)
-	if err != nil {
-		return TextRouteNeedsConfiguration
-	}
-	if profile.Validate() != nil {
+	status := m.routeReadiness(ctx, organizationID)
+	switch status {
+	case TextRouteAvailable, TextRouteNeedsConfiguration:
+		return status
+	default:
 		return TextRouteUnavailable
 	}
-	return TextRouteAvailable
 }
 
 func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (preparedAgentText, error) {
