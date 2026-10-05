@@ -122,12 +122,14 @@ func (a *aiWorkbenchApplication) taskView(ctx context.Context, scope aiworkbench
 		view.CanResume = projection.CanResume && view.ProductDetailsAvailable && titleReady
 		view.CanReview = projection.CanReview && view.ProductDetailsAvailable && found && agentRunReviewable(run.State)
 	}
-	if found && view.ProductDetailsAvailable {
-		if includeKnowledge {
-			if provenance, err := agentContextProvenance(run.State); err == nil {
-				view.Knowledge = a.agent.projectKnowledge(ctx, provenance)
-			}
+	// Knowledge is an independently protected owner projection. Loss of a
+	// Product binding must neither hide readable citations nor authorize them.
+	if found && includeKnowledge {
+		if provenance, err := agentContextProvenance(run.State); err == nil {
+			view.Knowledge = a.agent.projectKnowledge(ctx, provenance)
 		}
+	}
+	if found && view.ProductDetailsAvailable {
 		if snapshot, err := a.agent.configuration.LoadSnapshot(ctx, run.State.Scope, run.State.Request.ConfigurationSnapshotRef); err == nil {
 			view.ProviderID, view.ModelID = snapshot.ExecutionModelProfile.ProviderID, snapshot.ExecutionModelProfile.ModelID
 		}

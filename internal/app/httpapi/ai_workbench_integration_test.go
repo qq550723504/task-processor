@@ -543,20 +543,22 @@ func testAIWorkbenchOwners(t *testing.T, withKnowledge bool) {
 	require.True(t, titleGoalSeen.Load(), "the confirmed Chat goal must reach the actual title model input")
 	require.Equal(t, "WAITING_CONFIRMATION", confirmed.Task.State)
 	if kf != nil {
-		readKnowledge := func(status string) {
+		readKnowledge := func(status string, productReadable bool) {
 			t.Helper()
 			code, raw, err := acquisitionHTTPRequest(server, "GET", workbenchTaskBase+"/"+confirmed.Task.ID, "operator", "B", "", "")
 			require.NoError(t, err)
 			require.Equal(t, 200, code, string(raw))
 			var response struct {
 				Task struct {
-					Knowledge *productKnowledgeDTO `json:"knowledge"`
-					State     string               `json:"state"`
+					Knowledge               *productKnowledgeDTO `json:"knowledge"`
+					State                   string               `json:"state"`
+					ProductDetailsAvailable bool                 `json:"productDetailsAvailable"`
 				} `json:"task"`
 			}
 			require.NoError(t, json.Unmarshal(raw, &response))
 			require.NotNil(t, response.Task.Knowledge)
 			require.Equal(t, status, response.Task.Knowledge.Status)
+			require.Equal(t, productReadable, response.Task.ProductDetailsAvailable)
 			require.Equal(t, "WAITING_CONFIRMATION", response.Task.State)
 			if status == "available" {
 				require.Len(t, response.Task.Knowledge.Citations, 1)
@@ -568,11 +570,16 @@ func testAIWorkbenchOwners(t *testing.T, withKnowledge bool) {
 				require.NotContains(t, string(raw), "Brand wording")
 			}
 		}
-		readKnowledge("available")
+		readKnowledge("available", true)
+		agentApplication := agentModule.(productAgentModule).application
+		publishedReader := agentApplication.receipts
+		agentApplication.receipts = unavailablePublishedReceipt{}
+		readKnowledge("available", false)
 		_, err := kf.service.Mutate(context.Background(), knowledge.Command{Scope: knowledge.Scope{OrganizationID: "B", ActorID: "operator"},
 			Kind: "source_disable", SourceID: kf.source.ID, Version: kf.source.Version, Key: uuid.NewString()})
 		require.NoError(t, err)
-		readKnowledge("unavailable")
+		readKnowledge("unavailable", false)
+		agentApplication.receipts = publishedReader
 		require.EqualValues(t, 4, titleCalls.Load(), "fresh protected projection never dispatches")
 		return
 	}
