@@ -48,7 +48,7 @@ function savedResumeFeedback(scope: AIScope, taskId: string): string {
   return "";
 }
 
-export function BusinessTaskPage({ mode = "all", taskId }: { mode?: TaskMode; taskId?: string }) {
+export function BusinessTaskPage({ mode = "all", taskId, productReviewAvailable = false, sheinRecordsAvailable = false }: { mode?: TaskMode; taskId?: string; productReviewAvailable?: boolean; sheinRecordsAvailable?: boolean }) {
   const context = useWorkbenchContext();
   const scope = context.user && context.effectiveOrganization && !context.selectionRequired && !context.isSwitching && !context.error && !context.blockingError
     ? { userId: context.user.id, organizationId: context.effectiveOrganization.id } : null;
@@ -56,11 +56,21 @@ export function BusinessTaskPage({ mode = "all", taskId }: { mode?: TaskMode; ta
   const canUseChat = context.effectiveOrganization?.capabilities?.["workbench.chat.use"] === true && context.aiWorkbenchPlanningReadiness === "AVAILABLE";
   const path = taskId ? "/workbench/ai/tasks" : filters.find(item => item.mode === mode)?.href ?? "/workbench/ai/tasks";
   return <ConsolePage title={taskId ? "任务详情" : "任务中心"} breadcrumbs={findConsoleRoute(path)?.trail}
-    description="查看已确认的业务任务及其当前执行和审核状态。状态来自 Product Agent 与 Review 的实时投影。">
+    description={context.aiWorkbenchAvailable ? "查看已确认的业务任务及其当前执行和审核状态。状态来自 Product Agent 与 Review 的实时投影。" : productReviewAvailable || sheinRecordsAvailable ? "查看当前应用已接入的标题审核与历史工作记录。" : "当前应用未启用业务任务。"}>
     {!scope ? <ConsoleState kind={context.isLoading || context.isSwitching ? "loading" : "unavailable"} title="企业上下文不可用">请选择可访问的企业并登录。</ConsoleState> :
-      !context.aiWorkbenchAvailable ? <ConsoleState kind="unavailable" title="暂未启用">当前应用未启用硕米 Chat 与业务任务。</ConsoleState> :
+      !context.aiWorkbenchAvailable ? <IndependentTaskEntries mode={mode} taskId={taskId} productReviewAvailable={productReviewAvailable} sheinRecordsAvailable={sheinRecordsAvailable} /> :
       <ScopedTasks key={`${scope.userId}:${scope.organizationId}:${authorizationKey}`} scope={scope} authorizationKey={authorizationKey} canUseChat={canUseChat} mode={mode} taskId={taskId} />}
   </ConsolePage>;
+}
+
+function IndependentTaskEntries({ mode, taskId, productReviewAvailable, sheinRecordsAvailable }: { mode: TaskMode; taskId?: string; productReviewAvailable: boolean; sheinRecordsAvailable: boolean }) {
+  const review = !taskId && productReviewAvailable && (mode === "all" || mode === "pending");
+  const history = !taskId && sheinRecordsAvailable && (mode === "all" || mode === "completed");
+  if (!review && !history) return <ConsoleState kind="unavailable" title="暂未启用">当前应用未启用硕米 Chat 与业务任务。</ConsoleState>;
+  return <>
+    {review ? <Card className={styles.secondary}><h2>标准商品标题审核</h2><p>查看当前 Product Review 的标题提案。接受或编辑后仍需单独应用。</p><Button asChild variant="outline"><Link href="/workbench/ai/tasks/pending/other" prefetch={false}>打开标题审核</Link></Button></Card> : null}
+    {history ? <Card className={styles.secondary}><h2>历史已完成工作记录</h2><p>查看本地资料准备记录和离线诊断，不代表平台发布。</p><Button asChild variant="outline"><Link href="/workbench/ai/tasks/completed/history" prefetch={false}>查看历史记录</Link></Button></Card> : null}
+  </>;
 }
 
 function ScopedTasks({ scope, authorizationKey, canUseChat, mode, taskId }: { scope: AIScope; authorizationKey: string; canUseChat: boolean; mode: TaskMode; taskId?: string }) {

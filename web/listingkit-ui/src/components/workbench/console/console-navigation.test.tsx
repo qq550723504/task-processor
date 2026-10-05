@@ -19,9 +19,28 @@ it("keeps independently available Review and history pages discoverable without 
   render(<ConsoleNavigation pathname="/workbench" ariaLabel="主导航" aiWorkbenchAvailable={false} productReviewAvailable sheinRecordsAvailable />);
   await userEvent.click(screen.getByRole("button", { name: "展开AI工作台" }));
   expect(screen.queryByRole("link", { name: "硕米Chat" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "任务中心" })).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "任务中心" })).toHaveAttribute("href", "/workbench/ai/tasks");
+  await userEvent.click(screen.getByRole("button", { name: "展开任务中心" }));
+  expect(screen.getByRole("link", { name: "待确认" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "已完成" })).toBeVisible();
+  expect(screen.queryByRole("link", { name: "进行中" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "异常任务" })).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: "标题审核" })).toHaveAttribute("href", "/workbench/ai/tasks/pending/other");
   expect(screen.getByRole("link", { name: "历史工作记录" })).toHaveAttribute("href", "/workbench/ai/tasks/completed/history");
+});
+
+it("shows only the configured Task Center branch without AI Workbench", async () => {
+  for (const item of [
+    { productReviewAvailable: true, sheinRecordsAvailable: false, visible: "待确认", hidden: "已完成" },
+    { productReviewAvailable: false, sheinRecordsAvailable: true, visible: "已完成", hidden: "待确认" },
+  ]) {
+    const view = render(<ConsoleNavigation pathname="/workbench" ariaLabel="主导航" aiWorkbenchAvailable={false} productReviewAvailable={item.productReviewAvailable} sheinRecordsAvailable={item.sheinRecordsAvailable} />);
+    await userEvent.click(screen.getByRole("button", { name: "展开AI工作台" }));
+    await userEvent.click(screen.getByRole("button", { name: "展开任务中心" }));
+    expect(screen.getByRole("link", { name: item.visible })).toBeVisible();
+    expect(screen.queryByRole("link", { name: item.hidden })).not.toBeInTheDocument();
+    view.unmount();
+  }
 });
 
 it("hides the acquisition entry unless the serving deployment enables it", async () => {

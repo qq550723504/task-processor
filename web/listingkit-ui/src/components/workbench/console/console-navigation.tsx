@@ -10,11 +10,15 @@ export function ConsoleNavigation({ pathname, ariaLabel, onNavigate, productAcqu
   const independentAIEntries: ConsoleNavNode[] = [];
   if (productReviewAvailable) independentAIEntries.push({ label: "标题审核", href: "/workbench/ai/tasks/pending/other", availability: "connected" });
   if (sheinRecordsAvailable) independentAIEntries.push({ label: "历史工作记录", href: "/workbench/ai/tasks/completed/history", availability: "connected" });
+  const independentTaskAvailable = productReviewAvailable || sheinRecordsAvailable;
   const nodes = navigation.map(node => {
     if (node.href !== "/workbench/ai") return node;
     const children = (node.children ?? [])
-      .filter(child => aiWorkbenchAvailable || child.href !== "/workbench/ai/chat" && child.href !== "/workbench/ai/tasks")
-      .map(child => child.href === "/workbench/ai/knowledge" && knowledgeAvailable ? { ...child, availability: "connected" as const } : child);
+      .filter(child => aiWorkbenchAvailable || child.href !== "/workbench/ai/chat" && (child.href !== "/workbench/ai/tasks" || independentTaskAvailable))
+      .map(child => child.href === "/workbench/ai/tasks" && !aiWorkbenchAvailable ? {
+        ...child,
+        children: child.children?.filter(entry => entry.href === "/workbench/ai/tasks/pending" && productReviewAvailable || entry.href === "/workbench/ai/tasks/completed" && sheinRecordsAvailable),
+      } : child.href === "/workbench/ai/knowledge" && knowledgeAvailable ? { ...child, availability: "connected" as const } : child);
     return { ...node, children: [...children, ...independentAIEntries] };
   });
   return <nav aria-label={ariaLabel} className="console-nav"><ul>{nodes.map(node => <NavBranch key={`${pathname}:${node.href}`} node={node} pathname={pathname} trail={trail.map((item) => item.href)} depth={1} onNavigate={onNavigate} />)}</ul></nav>;

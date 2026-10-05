@@ -110,6 +110,28 @@ it("does not request BusinessTask data when AI Workbench is not mounted", () => 
   client.clear();
 });
 
+it("opens only configured Review and history entries from Task Center without AI Workbench", () => {
+  fixture.context.aiWorkbenchAvailable = false;
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const all = render(<QueryClientProvider client={client}><BusinessTaskPage productReviewAvailable sheinRecordsAvailable /></QueryClientProvider>);
+  expect(screen.getByRole("link", { name: "打开标题审核" })).toHaveAttribute("href", "/workbench/ai/tasks/pending/other");
+  expect(screen.getByRole("link", { name: "查看历史记录" })).toHaveAttribute("href", "/workbench/ai/tasks/completed/history");
+  expect(screen.queryByText("已加载")).not.toBeInTheDocument();
+  expect(fixture.request).not.toHaveBeenCalled();
+  all.unmount();
+
+  const pending = render(<QueryClientProvider client={client}><BusinessTaskPage mode="pending" productReviewAvailable /></QueryClientProvider>);
+  expect(screen.getByRole("link", { name: "打开标题审核" })).toBeVisible();
+  expect(screen.queryByRole("link", { name: "查看历史记录" })).not.toBeInTheDocument();
+  pending.unmount();
+
+  render(<QueryClientProvider client={client}><BusinessTaskPage mode="completed" sheinRecordsAvailable /></QueryClientProvider>);
+  expect(screen.getByRole("link", { name: "查看历史记录" })).toBeVisible();
+  expect(screen.queryByRole("link", { name: "打开标题审核" })).not.toBeInTheDocument();
+  expect(fixture.request).not.toHaveBeenCalled();
+  client.clear();
+});
+
 it("offers reconciliation, without a restart claim, for an expired running execution", async () => {
   const taskId = "550e8400-e29b-41d4-a716-446655440000";
   const item = { id: taskId, conversationId: taskId, proposalId: taskId, title: "标题任务", goalSummary: "优化标题",
