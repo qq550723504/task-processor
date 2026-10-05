@@ -3,6 +3,7 @@ package acquisition
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -188,11 +189,13 @@ func markChargeFailure(tx *gorm.DB, op sourcing.AcquisitionOperation, code strin
 }
 
 // The guard borrows SRC/Catalog's existing Product transaction. Its lock must
-// precede SRC and Catalog locks; Complete writes proof in that same transaction.
+// precede SRC and Catalog locks. Server acquisition completes a charge proof;
+// Browser Capture completes only the Product operation in that transaction.
 type PublicationChargeGuard struct {
 	tx          *gorm.DB
 	op          sourcing.AcquisitionOperation
 	charge      chargeRecord
+	free        bool
 	publication sourcing.AtomicPublication
 }
 
@@ -217,11 +220,32 @@ func (g *PublicationChargeGuard) Lock(ctx context.Context, publication sourcing.
 	if op.State != sourcing.AcquisitionPublishing && op.State != sourcing.AcquisitionPublished {
 		return sourcing.ErrAcquisitionFence
 	}
-	row, err := readCharge(g.tx.WithContext(ctx), publication.OrganizationID, operation, true)
-	if err != nil {
-		return err
+	if op.Command == nil || !validCommand(op, *op.Command) {
+		return sourcing.ErrAcquisitionFence
 	}
-	if row.ReservationID == nil || row.TerminalKind == "failed_fenced" || op.Command == nil {
+	var row chargeRecord
+	switch publication.Producer.Kind {
+	case sourcing.AcquisitionProducerKind:
+		row, err = readCharge(g.tx.WithContext(ctx), publication.OrganizationID, operation, true)
+		if err != nil {
+			return err
+		}
+		if op.CaptureSHA256 != "" || row.ReservationID == nil || row.TerminalKind == "failed_fenced" {
+			return sourcing.ErrAcquisitionFence
+		}
+	case sourcing.BrowserAcquisitionProducerKind:
+		if op.CaptureSHA256 == "" {
+			return sourcing.ErrAcquisitionFence
+		}
+		_, err = readCharge(g.tx.WithContext(ctx), publication.OrganizationID, operation, true)
+		if err == nil {
+			return sourcing.ErrAcquisitionFence
+		}
+		if !errors.Is(err, sourcing.ErrAcquisitionUnknown) {
+			return err
+		}
+		g.free = true
+	default:
 		return sourcing.ErrAcquisitionFence
 	}
 	command := *op.Command
@@ -237,8 +261,24 @@ func (g *PublicationChargeGuard) Lock(ctx context.Context, publication sourcing.
 	return nil
 }
 func (g *PublicationChargeGuard) Complete(ctx context.Context, receipt sourcing.PublicationReceipt) error {
-	if g.charge.ReservationID == nil || receipt.OrganizationID != g.op.Scope.OrganizationID || receipt.ActorID != g.op.Scope.ActorID || receipt.PublicationID != g.publication.PublicationID || receipt.InputHash != g.publication.InputHash || receipt.ProductKey != g.publication.ProductKey || receipt.CatalogVersion == 0 {
+	if receipt.OrganizationID != g.op.Scope.OrganizationID || receipt.ActorID != g.op.Scope.ActorID || receipt.PublicationID != g.publication.PublicationID || receipt.InputHash != g.publication.InputHash || receipt.ProductKey != g.publication.ProductKey || receipt.CatalogVersion == 0 {
 		return sourcing.ErrAcquisitionConflict
+	}
+	if g.free {
+		if g.op.State == sourcing.AcquisitionPublished {
+			return nil
+		}
+		updated := g.tx.WithContext(ctx).Exec("UPDATE "+table+" SET state='published' WHERE organization_id=? AND actor_id=? AND operation_id=? AND state='publishing' AND fence=?", g.op.Scope.OrganizationID, g.op.Scope.ActorID, g.op.ID, g.op.Fence)
+		if updated.Error != nil {
+			return sourcing.ErrAcquisitionUnavailable
+		}
+		if updated.RowsAffected != 1 {
+			return sourcing.ErrAcquisitionFence
+		}
+		return nil
+	}
+	if g.charge.ReservationID == nil {
+		return sourcing.ErrAcquisitionFence
 	}
 	snapshotHash := digest(g.publication.SnapshotJSON)
 	if g.charge.TerminalKind == "succeeded" {

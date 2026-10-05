@@ -123,35 +123,31 @@ func TestAcquisitionAdmissionRecoveryPreservesOriginalReservation(t *testing.T) 
 	}
 }
 
-func TestBrowserCaptureByKeyRecoversChargeBeforeClaim(t *testing.T) {
+func TestBrowserCaptureByKeyRecoversWithoutResourceCharge(t *testing.T) {
 	db := acquisitionDatabase(t)
 	require.NoError(t, InstallAcquisitionSchema(db))
-	charges, positions := acquisitionRecoveryResource(t, db)
-	interrupted := &interruptedAcquisitionReserve{ConsumerChargePort: charges, fail: true, receiptLost: true}
 	permissions, live := acquisitionPermissionDependencies(t)
-	service, err := NewBrowserAcquisition(context.Background(), db, live, permissions, interrupted)
+	service, err := NewBrowserAcquisition(context.Background(), db, live, permissions)
 	require.NoError(t, err)
-	body, _, _ := browserApplicationFixture(t)
-	ctx := acquisitionIdentity("org-charge", "actor")
-	key := uuid.NewString()
-	_, err = service.Capture(ctx, key, body)
-	require.ErrorIs(t, err, orgresource.ErrConsumerChargeUnknown)
-	_, err = service.ByKey(ctx, key)
-	require.ErrorIs(t, err, orgresource.ErrConsumerChargeUnknown)
-	op, err := service.core.operations.ByKey(ctx, sourcing.PublicationScope{OrganizationID: "org-charge", ActorID: "actor"}, key)
+	_, request, _ := browserApplicationFixture(t)
+	ctx := acquisitionIdentity(request.Scope.OrganizationID, request.Scope.ActorID)
+	command := *request.Command
+	request.Command = nil
+	prepared, ok := service.core.operations.(sourcing.PreparedAcquisitionOperationStore)
+	require.True(t, ok)
+	op, claimed, err := prepared.StartPrepared(ctx, request, command)
 	require.NoError(t, err)
-	require.Equal(t, sourcing.AcquisitionPrepared, op.State, "failed admission must not consume the publication claim")
-	restarted, err := NewBrowserAcquisition(context.Background(), db, live, permissions, charges)
+	require.True(t, claimed)
+	require.Equal(t, sourcing.AcquisitionPrepared, op.State)
+	restarted, err := NewBrowserAcquisition(context.Background(), db, live, permissions)
 	require.NoError(t, err)
-	result, err := restarted.ByKey(ctx, key)
+	result, err := restarted.ByKey(ctx, request.Key)
 	require.NoError(t, err)
 	require.True(t, result.Replayed)
 	require.NotNil(t, result.Publication)
-	_, err = restarted.ByKey(ctx, key)
+	_, err = restarted.ByKey(ctx, request.Key)
 	require.NoError(t, err)
-	position, err := positions.ReadPosition(ctx, "org-charge", "membership:actor", orgresource.ResourceDataRow)
-	require.NoError(t, err)
-	require.EqualValues(t, 1, position.Free)
-	require.EqualValues(t, 1, position.Consumed)
-	require.Zero(t, position.Reserved)
+	var chargeIntents int64
+	require.NoError(t, db.Table("product_acquisition_charge_intents").Count(&chargeIntents).Error)
+	require.Zero(t, chargeIntents, "browser recovery must not create a data-row intent")
 }
