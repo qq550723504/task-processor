@@ -1219,9 +1219,11 @@ The receipt binds `(Organization, actor, canonical key)` to one Task, action, an
 request fingerprint. A short transaction claims the key before the existing Agent/Review owner
 call; no local transaction spans that call. A completed same-key retry reauthorizes the actor
 and returns the current exact Task projection without dispatching again. A changed payload
-conflicts; a known pre-owner revision failure replays its bounded error; an unfinished or
-outcome-unknown claim never automatically redispatches, and the
-Task can still be read from its canonical owners. This receipt has no mutable Task status or
+conflicts; a known pre-owner failure replays its bounded error. Agent reports whether its
+Claim was attempted, and Product Review reports whether its Store.Run transaction was
+attempted; authorization/source/candidate failures before those boundaries are known failures.
+An unfinished or outcome-unknown claim never automatically redispatches, and the Task can
+still be read from its canonical owners. This receipt has no mutable Task status or
 Review/Agent authority and creates no background recovery loop.
 
 Stable Workbench errors include:

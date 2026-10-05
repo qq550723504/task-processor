@@ -69,28 +69,37 @@ func (s *Service) Create(ctx context.Context, key string, in CreateInput) (View,
 	if s == nil || s.proposer == nil {
 		return View{}, ErrUnavailable
 	}
-	return s.create(ctx, key, in, nil)
+	view, _, err := s.create(ctx, key, in, nil)
+	return view, err
 }
 
 // CreateFromCandidate admits an already-generated candidate into the existing
 // pending review state. It cannot regenerate, approve, Apply or publish it.
 func (s *Service) CreateFromCandidate(ctx context.Context, key string, in CandidateInput) (View, error) {
+	view, _, err := s.CreateFromCandidateWithTransactionAttempt(ctx, key, in)
+	return view, err
+}
+
+// TransactionAttempt is true once Store.Run is called, including an ambiguous
+// transaction result. Authorization, validation and read-only preflight never
+// grant this signal. Callers must not infer a safe retry from a transaction error.
+func (s *Service) CreateFromCandidateWithTransactionAttempt(ctx context.Context, key string, in CandidateInput) (View, bool, error) {
 	if !in.ContextProvenance.Valid() {
-		return View{}, ErrInvalid
+		return View{}, false, ErrInvalid
 	}
 	if ctx == nil || !ValidKey(in.PublicationID) || in.PolicyVersion != "title-review-v1" {
-		return View{}, ErrInvalid
+		return View{}, false, ErrInvalid
 	}
 	raw, err := json.Marshal(in)
 	if err != nil {
-		return View{}, ErrInvalid
+		return View{}, false, ErrInvalid
 	}
 	if len(raw) > MaxRecordBytes {
-		return View{}, ErrTooLarge
+		return View{}, false, ErrTooLarge
 	}
 	var isolated CandidateInput
 	if err := json.Unmarshal(raw, &isolated); err != nil {
-		return View{}, ErrInvalid
+		return View{}, false, ErrInvalid
 	}
 	return s.create(ctx, key, isolated.Base, &isolated)
 }
@@ -130,15 +139,15 @@ func (s *Service) ValidateCandidate(ctx context.Context, in CandidateInput) (enr
 	return proposal, nil
 }
 
-func (s *Service) create(ctx context.Context, key string, in CreateInput, supplied *CandidateInput) (View, error) {
+func (s *Service) create(ctx context.Context, key string, in CreateInput, supplied *CandidateInput) (View, bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
 	a, err := s.authorize(ctx, true, false)
 	if err != nil {
-		return View{}, err
+		return View{}, false, err
 	}
 	if !ValidKey(in.ProductKey) || in.BaseVersion == 0 || in.BaseVersion > 1<<63-1 {
-		return View{}, ErrInvalid
+		return View{}, false, ErrInvalid
 	}
 	kind, payload := "create", any(in)
 	if supplied != nil {
@@ -146,17 +155,17 @@ func (s *Service) create(ctx context.Context, key string, in CreateInput, suppli
 	}
 	op, err := operation(a, key, kind, "", payload)
 	if err != nil {
-		return View{}, err
+		return View{}, false, err
 	}
 	if v, found, e := s.store.Preflight(ctx, op); e != nil || found {
-		return v, e
+		return v, false, e
 	}
 	base, source, err := s.source(ctx, s.reader, s.sourceReader, a.Org, in)
 	if err != nil {
-		return View{}, err
+		return View{}, false, err
 	}
 	if supplied != nil && supplied.PublicationID != base.PublicationID {
-		return View{}, ErrConflict
+		return View{}, false, ErrConflict
 	}
 	policy := enrichment.PolicySnapshot{Version: "title-review-v1", AllowedFields: []string{"title"}, RequiredFields: []string{"title"}}
 	request := enrichment.Request{Snapshot: base.Snapshot, Source: source, Policy: policy}
@@ -167,23 +176,23 @@ func (s *Service) create(ctx context.Context, key string, in CreateInput, suppli
 		proposal, err = s.proposer.Propose(ctx, request)
 	}
 	if err != nil {
-		return View{}, err
+		return View{}, false, err
 	}
 	if len(proposal.Changes) != 1 || proposal.Changes[0].Field != "title" || !proposal.Validation.Valid {
-		return View{}, ErrInvalid
+		return View{}, false, ErrInvalid
 	}
 	if err = ValidateTitle(proposal.Changes[0].Value); err != nil {
-		return View{}, err
+		return View{}, false, err
 	}
 	ctx, err = s.sourceReader.AuthorizeRead(ctx)
 	if err != nil {
-		return View{}, mapSourceReadError(err)
+		return View{}, false, mapSourceReadError(err)
 	}
 	r := Record{ID: uuid.NewString(), Org: a.Org, Owner: a.Actor, Input: in, BasePublicationID: base.PublicationID, Policy: policy.Version, Before: base.Snapshot.Title, Title: proposal.Changes[0].Value, State: "pending", Revision: 1, Original: proposal}
 	if supplied != nil {
 		r.ContextProvenance = supplied.ContextProvenance.clone()
 	}
-	return s.store.Run(ctx, op, func(tx Tx) (View, error) {
+	view, err := s.store.Run(ctx, op, func(tx Tx) (View, error) {
 		if v, found, e := tx.Replay(); e != nil || found {
 			return v, e
 		}
@@ -201,6 +210,7 @@ func (s *Service) create(ctx context.Context, key string, in CreateInput, suppli
 		v := r.View()
 		return v, tx.Complete(v)
 	})
+	return view, true, err
 }
 func validID(id string) bool {
 	parsed, err := uuid.Parse(id)

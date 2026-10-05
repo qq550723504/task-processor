@@ -341,6 +341,6 @@ func (a *aiWorkbenchApplication) performTaskAction(ctx context.Context, scope ai
 	if err != nil {
 		return false, err
 	}
-	_, err = a.agent.reviews.CreateFromCandidate(ctx, "agent:"+run.State.RunID, reviewInput)
-	return true, err
+	_, transactionAttempted, err := a.agent.reviews.CreateFromCandidateWithTransactionAttempt(ctx, "agent:"+run.State.RunID, reviewInput)
+	return transactionAttempted, err
 }

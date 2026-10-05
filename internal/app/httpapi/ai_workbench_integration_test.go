@@ -24,6 +24,7 @@ import (
 	"task-processor/internal/aicapability"
 	aistore "task-processor/internal/aicapability/store"
 	"task-processor/internal/aiworkbench"
+	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	governed "task-processor/internal/integration/aicapability/einomodel"
@@ -33,14 +34,20 @@ import (
 	configstore "task-processor/internal/integration/persistence/agentconfig"
 	workstore "task-processor/internal/integration/persistence/aiworkbench"
 	assetstore "task-processor/internal/integration/persistence/product/asset"
+	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	reviewstore "task-processor/internal/integration/persistence/product/review"
 	"task-processor/internal/ledger/orgresource"
 	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/review"
 	"task-processor/internal/product/sourcing"
 	"task-processor/internal/workbenchcontext"
 )
 
 type unavailablePublishedReceipt struct{}
+
+type deniedCandidateReviewAuthorizer struct{ review.Authorizer }
+
+func (deniedCandidateReviewAuthorizer) Authorize(string, []string, string) bool { return false }
 
 type failedWorkbenchSettlement struct {
 	aicapability.InvocationUsageSettler
@@ -538,6 +545,35 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 		require.JSONEq(t, `{"code":"REVISION_MISMATCH"}`, string(raw))
 	}
 	require.Equal(t, titleBefore, titleCalls.Load(), "stale Task action and its receipt replay never dispatch a model")
+	// A fresh Review authorization rejection happens before its transaction.
+	// The Task receipt must report a known failure, including after access is restored.
+	normalReviews := agentApplication.reviews
+	reviewReader, err := catalogstore.NewBoundedSnapshotReader(f.db, 1<<20)
+	require.NoError(t, err)
+	reviewSources, err := productsourcing.NewInternalProducer(f.db,
+		&productReviewLiveOrganizationAccess{resolver: agentApplication.resolver, now: time.Now}, auth)
+	require.NoError(t, err)
+	reviewRepo, err := reviewstore.NewRepository(f.db, func(tx *gorm.DB) (review.SourcePublicationReader, error) {
+		return productsourcing.NewTransactionReader(tx)
+	})
+	require.NoError(t, err)
+	agentApplication.reviews, err = review.NewCandidateService(reviewReader, reviewSources, reviewRepo, deniedCandidateReviewAuthorizer{auth})
+	require.NoError(t, err)
+	deniedReviewKey := uuid.NewString()
+	var reviewsBefore int64
+	require.NoError(t, f.owner.Table("product_title_proposals").Count(&reviewsBefore).Error)
+	for attempt := 0; attempt < 2; attempt++ {
+		code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchTaskBase+"/"+confirmed.Task.ID+"/review",
+			"operator", "B", deniedReviewKey, "")
+		require.NoError(t, err)
+		require.Equal(t, 503, code, string(raw))
+		require.JSONEq(t, `{"code":"DEPENDENCY_UNAVAILABLE"}`, string(raw))
+		agentApplication.reviews = normalReviews
+	}
+	var reviewsAfter int64
+	require.NoError(t, f.owner.Table("product_title_proposals").Count(&reviewsAfter).Error)
+	require.Equal(t, reviewsBefore, reviewsAfter, "pre-transaction rejection and replay do not create a Review")
+	require.Equal(t, titleBefore, titleCalls.Load())
 	reviewKey := uuid.NewString()
 	code, raw, err = acquisitionHTTPRequest(server, "POST", workbenchTaskBase+"/"+confirmed.Task.ID+"/review", "operator", "B", reviewKey, "")
 	require.NoError(t, err)
