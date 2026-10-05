@@ -332,6 +332,35 @@ func TestTextCompletionChecksConfigurationAgainAfterQueue(t *testing.T) {
 	}
 }
 
+func TestRetiredManagerGoogleTextRouteCannotDispatch(t *testing.T) {
+	m, err := NewManager(&ManagerConfig{Clients: map[string]*ClientConfig{"text": {
+		APIKey: "synthetic-only", Model: "gemini-3.8-flash", APIStyle: "google-interactions",
+		BaseURL: "https://generativelanguage.googleapis.com", Timeout: time.Second,
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Close() })
+	// Generic credential metadata remains available; it grants no text send.
+	route, err := m.ResolveEffectiveClientRoute(context.Background(), "text")
+	if err != nil || route.ProviderID != "google" {
+		t.Fatalf("route=%+v err=%v", route, err)
+	}
+	if _, err := m.ResolveTextRouteDetails(context.Background(), "text"); !errors.Is(err, ErrClientConfigurationUnsupported) {
+		t.Fatalf("retired text facade remained available: %v", err)
+	}
+	var dispatches atomic.Int32
+	input := textTestRequest()
+	input.BeforeDispatch = func() error {
+		dispatches.Add(1)
+		return errors.New("local no-network safety fence")
+	}
+	_, err = m.CompleteText(context.Background(), "text", route, input)
+	if !errors.Is(err, ErrClientConfigurationUnsupported) || !errors.Is(err, ErrTextNotDispatched) || dispatches.Load() != 0 {
+		t.Fatalf("retired route reached dispatch preparation: calls=%d err=%v", dispatches.Load(), err)
+	}
+}
+
 func TestTextCompletionRejectsUnboundedInputBeforeDispatch(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1) }))

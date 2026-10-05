@@ -101,6 +101,10 @@ func mapInteraction(source *interaction.Interaction, maxTokens int) Result {
 		result.Diagnostic = "provider_model_mismatch"
 		return result
 	}
+	if source.OutputImage != nil || source.OutputAudio != nil || source.OutputVideo != nil {
+		result.Diagnostic = "provider_step_unexpected"
+		return result
+	}
 	if source.Usage == nil || source.Usage.TotalInputTokens == nil || source.Usage.TotalOutputTokens == nil ||
 		source.Usage.TotalThoughtTokens == nil || source.Usage.TotalTokens == nil || source.Usage.TotalToolUseTokens == nil {
 		result.Diagnostic = "provider_usage_missing"

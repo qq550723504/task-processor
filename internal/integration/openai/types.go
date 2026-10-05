@@ -43,9 +43,6 @@ type ClientConfig struct {
 	// tests and controlled in-process callers. Production defaults to the
 	// SSRF-safe transport in images.go.
 	ImageReferenceHTTPClient *http.Client `json:"-"`
-	// GoogleInteractionsFixtureTransport lets in-process tests route the fixed
-	// official Google URL to a local response fixture. Runtime JSON cannot set it.
-	GoogleInteractionsFixtureTransport http.RoundTripper `json:"-"`
 	// MaxReferenceMaterializedBytes bounds reference image bytes retained until
 	// the multipart request completes.
 	MaxReferenceMaterializedBytes int64 `json:"max_reference_materialized_bytes,omitempty"`

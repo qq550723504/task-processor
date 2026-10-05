@@ -55,13 +55,17 @@ func TestGoogleSharedExecutorPreservesThoughtUsageAndUnknown(t *testing.T) {
 		name, status, steps, usage string
 		known                      bool
 		outcome                    aicapability.InvocationOutcome
+		media                      string
 	}{
-		{"completed", "completed", text, googleTestUsage, true, aicapability.InvocationSucceeded},
-		{"incomplete", "incomplete", text, googleTestUsage, true, aicapability.InvocationUsageObservedFailed},
-		{"non text", "completed", `[{"type":"model_output","content":[{"type":"image","uri":"https://example.test/x.png","mime_type":"image/png"}]}]`, googleTestUsage, false, ""},
-		{"tool step", "completed", `[{"type":"function_call","name":"unknown","arguments":{}},{"type":"model_output","content":[{"type":"text","text":"hello"}]}]`, googleTestUsage, false, ""},
-		{"missing thoughts", "completed", text, `{"total_input_tokens":3,"total_output_tokens":4,"total_tokens":7,"total_tool_use_tokens":0}`, false, ""},
-		{"unknown dimension", "completed", text, strings.TrimSuffix(googleTestUsage, "}") + `,"total_other_tokens":1}`, false, ""},
+		{"completed", "completed", text, googleTestUsage, true, aicapability.InvocationSucceeded, ""},
+		{"incomplete", "incomplete", text, googleTestUsage, true, aicapability.InvocationUsageObservedFailed, ""},
+		{"non text", "completed", `[{"type":"model_output","content":[{"type":"image","uri":"https://example.test/x.png","mime_type":"image/png"}]}]`, googleTestUsage, false, "", ""},
+		{"tool step", "completed", `[{"type":"function_call","name":"unknown","arguments":{}},{"type":"model_output","content":[{"type":"text","text":"hello"}]}]`, googleTestUsage, false, "", ""},
+		{"missing thoughts", "completed", text, `{"total_input_tokens":3,"total_output_tokens":4,"total_tokens":7,"total_tool_use_tokens":0}`, false, "", ""},
+		{"unknown dimension", "completed", text, strings.TrimSuffix(googleTestUsage, "}") + `,"total_other_tokens":1}`, false, "", ""},
+		{"top-level image", "completed", text, googleTestUsage, false, "", "output_image"},
+		{"top-level audio", "completed", text, googleTestUsage, false, "", "output_audio"},
+		{"top-level video", "completed", text, googleTestUsage, false, "", "output_video"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var sends atomic.Int32
@@ -79,7 +83,11 @@ func TestGoogleSharedExecutorPreservesThoughtUsageAndUnknown(t *testing.T) {
 				require.Equal(t, "low", generation["thinking_level"])
 				require.Equal(t, float64(64), generation["max_output_tokens"])
 				w.Header().Set("Content-Type", "application/json")
-				_, _ = fmt.Fprint(w, googleTestResponse(tc.status, tc.steps, tc.usage))
+				raw := googleTestResponse(tc.status, tc.steps, tc.usage)
+				if tc.media != "" {
+					raw = strings.TrimSuffix(raw, "}") + `,"` + tc.media + `":{"uri":"https://example.test/media"}}`
+				}
+				_, _ = fmt.Fprint(w, raw)
 			}))
 			defer server.Close()
 			profile := googleTestProfile()
@@ -125,13 +133,24 @@ func TestGoogleSharedTransportRejectsRetryRedirectAndPlanner(t *testing.T) {
 		System: "system", Prompt: "prompt", Profile: profile}
 	_, err := aicapability.QuoteText(planning)
 	require.Error(t, err, "Google Planner is not admitted")
-	for _, status := range []int{307, 429, 500} {
-		t.Run(http.StatusText(status), func(t *testing.T) {
+	for _, status := range []int{0, 307, 429, 500} {
+		name := http.StatusText(status)
+		if status == 0 {
+			name = "lost response"
+		}
+		t.Run(name, func(t *testing.T) {
 			var sends atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				sends.Add(1)
+				if status == 0 {
+					conn, _, err := w.(http.Hijacker).Hijack()
+					require.NoError(t, err)
+					_ = conn.Close()
+					return
+				}
 				w.Header().Set("Location", googleTestOrigin+"/redirected")
 				w.WriteHeader(status)
+				_, _ = fmt.Fprint(w, `{"error":"sensitive-provider-body"}`)
 			}))
 			defer server.Close()
 			guard, err := NewGuardedClient(GuardConfig{Adapter: AdapterKind("google-interactions"), Endpoint: googleTestOrigin, ModelID: "gemini-3.8-flash",
@@ -141,6 +160,7 @@ func TestGoogleSharedTransportRejectsRetryRedirectAndPlanner(t *testing.T) {
 			require.NoError(t, err)
 			_, err = GenerateText(context.Background(), component, "system", "prompt", guard)
 			require.ErrorIs(t, err, ErrOutcomeUnknown)
+			require.NotContains(t, err.Error(), "sensitive-provider-body")
 			require.EqualValues(t, 1, sends.Load())
 		})
 	}

@@ -805,9 +805,13 @@ options, attachments, streaming or server history; Stream rejects without I/O.
 SDK request construction and the current valid response/usage mapping are EXTRACTed
 from #586 into a stateless `integration/googleinteractions` helper with an injected
 HTTP client. That helper owns no business facts, credentials, dispatch claim or retry.
-The shared Eino component uses `GuardedClient.Client`, not the old Manager. Remaining
-generic Manager API callers, if any, may reuse the same stateless protocol helper;
-there is no retained Product Agent titletext consumer or fallback.
+The shared Eino component uses `GuardedClient.Client`, not the old Manager. The
+composition CI exposed a forbidden cross-adapter import from the old Manager facade;
+the production call-site audit found no `Manager.CompleteText` consumers. RETIRE
+the Manager Google SDK facade and its private transport/fixture hook. Its native
+text entry rejects before handoff while generic organization credential/route
+metadata remains available. Extract still-valid usage/modality qualification tests
+to this current protocol helper. There is no retained titletext consumer or fallback.
 
 **Contract → implementation → injection → consumer.** Deployment title policy and
 organization-only credential → current `ModelProfile`/`OrganizationRouteResolver`
