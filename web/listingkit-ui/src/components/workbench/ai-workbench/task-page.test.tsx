@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { AIWorkbenchError } from "@/lib/api/ai-workbench";
+import { parseAIWorkbenchResponse } from "@/lib/contracts/ai-workbench";
 
 import { BusinessTaskPage } from "./task-page";
 
@@ -14,6 +15,27 @@ vi.mock("@/lib/api/ai-workbench", async original => ({ ...await original<typeof 
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => fixture.context }));
 
 afterEach(() => { cleanup(); sessionStorage.clear(); fixture.request.mockReset(); fixture.context.aiWorkbenchAvailable = true; fixture.context.aiWorkbenchPlanningReadiness = "AVAILABLE"; fixture.context.effectiveOrganization.capabilities["workbench.chat.use"] = true; });
+
+it("shows freshly projected Knowledge and removes protected text after refresh", async () => {
+  const taskId = "550e8400-e29b-41d4-a716-446655440000";
+  const knowledge = { status: "available", originAgentRunId: taskId,
+    citations: [{ id: taskId, sourceId: taskId, revisionId: taskId, name: "品牌用语", location: "document", excerpt: "受保护的品牌摘录", state: "PARTIAL" }] };
+  const item = { id: taskId, conversationId: taskId, proposalId: taskId, title: "标题任务", goalSummary: "优化标题",
+    createdAt: "2026-10-03T00:00:00Z", projectionAvailable: true, state: "WAITING_CONFIRMATION",
+    canStart: false, canReconcile: false, canResume: false, canReview: false, productDetailsAvailable: true, knowledge };
+  fixture.request.mockResolvedValue(parseAIWorkbenchResponse("task-read", 200, { task: item }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><BusinessTaskPage taskId={taskId} /></QueryClientProvider>);
+  expect(await screen.findByText("受保护的品牌摘录")).toBeInTheDocument();
+  expect(screen.getByText(/品牌用语/)).toBeInTheDocument();
+  fixture.request.mockResolvedValue(parseAIWorkbenchResponse("task-read", 200, { task: { ...item,
+    knowledge: { status: "unavailable", originAgentRunId: taskId, citations: [] } } }));
+  fireEvent.click(screen.getByRole("button", { name: "刷新状态" }));
+  await screen.findByText(/名称与摘录已隐藏/);
+  expect(screen.queryByText("受保护的品牌摘录")).not.toBeInTheDocument();
+  expect(screen.queryByText(/品牌用语/)).not.toBeInTheDocument();
+  client.clear();
+});
 
 it("keeps the exact Task action key after an unknown response and page reload", async () => {
   const taskId = "550e8400-e29b-41d4-a716-446655440000";

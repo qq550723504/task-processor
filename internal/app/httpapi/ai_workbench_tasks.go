@@ -45,6 +45,7 @@ type workbenchTaskView struct {
 	UsageStatus             string                `json:"usageStatus,omitempty"`
 	ReviewID                string                `json:"reviewId,omitempty"`
 	ReviewState             string                `json:"reviewState,omitempty"`
+	Knowledge               *productKnowledgeDTO  `json:"knowledge,omitempty"`
 }
 
 // A Task may execute only with the title route frozen at T1. Route resolution
@@ -61,7 +62,7 @@ func (a *productAgentApplication) frozenTitleProfileReady(ctx context.Context, s
 	return err == nil && current.Validate() == nil && current == snapshot.ExecutionModelProfile
 }
 
-func (a *aiWorkbenchApplication) taskView(ctx context.Context, scope aiworkbench.Scope, task aiworkbench.BusinessTask) (workbenchTaskView, error) {
+func (a *aiWorkbenchApplication) taskView(ctx context.Context, scope aiworkbench.Scope, task aiworkbench.BusinessTask, includeKnowledge bool) (workbenchTaskView, error) {
 	view := workbenchTaskView{ID: task.ID, ConversationID: task.ConversationID, ProposalID: task.ProposalID,
 		Title: task.Title, GoalSummary: task.GoalSummary, CreatedAt: task.CreatedAt}
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
@@ -122,6 +123,11 @@ func (a *aiWorkbenchApplication) taskView(ctx context.Context, scope aiworkbench
 		view.CanReview = projection.CanReview && view.ProductDetailsAvailable && found && agentRunReviewable(run.State)
 	}
 	if found && view.ProductDetailsAvailable {
+		if includeKnowledge {
+			if provenance, err := agentContextProvenance(run.State); err == nil {
+				view.Knowledge = a.agent.projectKnowledge(ctx, provenance)
+			}
+		}
 		if snapshot, err := a.agent.configuration.LoadSnapshot(ctx, run.State.Scope, run.State.Request.ConfigurationSnapshotRef); err == nil {
 			view.ProviderID, view.ModelID = snapshot.ExecutionModelProfile.ProviderID, snapshot.ExecutionModelProfile.ModelID
 		}
@@ -154,7 +160,7 @@ func (a *aiWorkbenchApplication) listTasks(c *gin.Context, ctx context.Context, 
 	}
 	views := make([]workbenchTaskView, 0, len(tasks))
 	for _, task := range tasks {
-		view, err := a.taskView(ctx, scope, task)
+		view, err := a.taskView(ctx, scope, task, false)
 		if err != nil {
 			writeAIWorkbenchError(c, err)
 			return
@@ -175,7 +181,7 @@ func (a *aiWorkbenchApplication) getTask(c *gin.Context, ctx context.Context, sc
 		writeAIWorkbenchError(c, err)
 		return
 	}
-	view, err := a.taskView(ctx, scope, task)
+	view, err := a.taskView(ctx, scope, task, true)
 	if err != nil {
 		writeAIWorkbenchError(c, err)
 		return
@@ -242,7 +248,7 @@ func (a *aiWorkbenchApplication) taskAction(c *gin.Context, ctx context.Context,
 	if replay {
 		switch receipt.State {
 		case aiworkbench.TaskActionComplete:
-			view, viewErr := a.taskView(ctx, scope, task)
+			view, viewErr := a.taskView(ctx, scope, task, false)
 			if viewErr != nil {
 				writeAIWorkbenchError(c, aiworkbench.ErrTaskOutcomeUnknown)
 				return
@@ -289,7 +295,7 @@ func (a *aiWorkbenchApplication) taskAction(c *gin.Context, ctx context.Context,
 		writeAIWorkbenchError(c, actionErr)
 		return
 	}
-	view, err := a.taskView(ctx, scope, task)
+	view, err := a.taskView(ctx, scope, task, false)
 	if err != nil {
 		writeAIWorkbenchError(c, aiworkbench.ErrTaskOutcomeUnknown)
 		return

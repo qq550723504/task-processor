@@ -10,6 +10,7 @@ import { ConsolePage, ConsoleState } from "../console/console-page";
 import { requestAIWorkbench, AIWorkbenchError, type AIScope } from "@/lib/api/ai-workbench";
 import type { AITask } from "@/lib/contracts/ai-workbench";
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
+import { KnowledgeCitations } from "../task-center/knowledge-citations";
 import styles from "./task-page.module.css";
 
 type TaskMode = "all" | "running" | "pending" | "completed" | "errors";
@@ -169,6 +170,7 @@ function TaskDetail({ scope, authorizationKey, taskId }: { scope: AIScope; autho
         <dt>用量</dt><dd>{item.usageStatus === "unknown_reserved" ? "结果未知，额度仍保留" : item.usageStatus === "observed" ? `${item.tokens ?? 0} tokens · ${item.estimatedCostMicros ?? 0} μ${item.currency ?? ""}` : "尚无可用用量"}</dd>
         <dt>审核</dt><dd>{item.reviewState || "尚未生成"}</dd>
         <dt>创建时间</dt><dd>{new Date(item.createdAt).toLocaleString("zh-CN")}</dd></dl>
+      <KnowledgeCitations knowledge={item.knowledge} />
       {item.productDetailsAvailable && item.operationId ? <Button asChild variant="outline"><Link href={`/workbench/supply/acquisition/operation/${item.operationId}`} prefetch={false}>查看来源商品</Link></Button> : null}
     </Card>
     {error ? <ConsoleState kind="error" title="操作未完成">{error}。请刷新原任务查看状态，不要新建任务。</ConsoleState> : null}

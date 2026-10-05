@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isAcquisitionUUID } from "./product-acquisition";
+import { productKnowledgeSchema } from "./product-knowledge";
 
 const id = z.string().refine(isAcquisitionUUID);
 const timestamp = z.string().datetime({ offset: true });
@@ -31,6 +32,7 @@ const task = z.object({
   agentRevision: z.string().optional(), providerId: z.string().optional(), modelId: z.string().optional(),
   tokens: z.number().int().optional(), estimatedCostMicros: z.number().int().optional(), currency: z.string().optional(),
   usageStatus: z.string().optional(), reviewId: z.string().optional(), reviewState: z.string().optional(),
+  knowledge: productKnowledgeSchema.optional(),
 });
 export const aiCreateBody = z.strictObject({ favorite: z.boolean().optional() });
 export const aiMessageBody = z.strictObject({

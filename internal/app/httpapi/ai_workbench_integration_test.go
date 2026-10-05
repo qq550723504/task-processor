@@ -36,6 +36,7 @@ import (
 	assetstore "task-processor/internal/integration/persistence/product/asset"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	reviewstore "task-processor/internal/integration/persistence/product/review"
+	"task-processor/internal/knowledge"
 	"task-processor/internal/ledger/orgresource"
 	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/review"
@@ -44,6 +45,18 @@ import (
 )
 
 type unavailablePublishedReceipt struct{}
+
+type rollbackWorkbenchClaim struct {
+	ProductAgentInvocationLedger
+	rollback atomic.Bool
+}
+
+func (l *rollbackWorkbenchClaim) ClaimInvocation(ctx context.Context, record aicapability.InvocationRecord) (bool, error) {
+	if l.rollback.Swap(false) {
+		return false, errors.New("synthetic invocation claim rolled back")
+	}
+	return l.ProductAgentInvocationLedger.ClaimInvocation(ctx, record)
+}
 
 type deniedCandidateReviewAuthorizer struct{ review.Authorizer }
 
@@ -91,7 +104,16 @@ func (g *taskViewerGrants) Load(ctx context.Context, source workbenchcontext.Gra
 func (g *taskViewerGrants) Invalidate(actor, project string) { g.base.Invalidate(actor, project) }
 
 func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
+	t.Run("withoutKnowledge", func(t *testing.T) { testAIWorkbenchOwners(t, false) })
+	t.Run("withKnowledge", func(t *testing.T) { testAIWorkbenchOwners(t, true) })
+}
+
+func testAIWorkbenchOwners(t *testing.T, withKnowledge bool) {
 	f := newAcquisitionHTTPFixture(t)
+	var kf *consumerKnowledgeFixture
+	if withKnowledge {
+		kf = newConsumerKnowledgeFixture(t, f.owner)
+	}
 	op := acquisitionHTTPCall(t, f.server(t), "POST", productAcquisitionBase, "operator", "B", uuid.NewString(),
 		`{"source":"https://detail.1688.com/offer/981645030344.html"}`, 200)
 	require.NoError(t, reviewstore.InstallSchema(f.owner))
@@ -156,10 +178,15 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 				content = "invalid planner JSON"
 			}
 		} else {
+			var citationID string
 			for _, message := range request.Messages {
 				var text string
 				if json.Unmarshal(message.Content, &text) == nil && strings.Contains(text, approvedGoal) {
 					titleGoalSeen.Store(true)
+				}
+				var prompt struct{ Knowledge *knowledge.ContextBundle }
+				if json.Unmarshal(message.Content, &text) == nil && json.Unmarshal([]byte(text), &prompt) == nil && prompt.Knowledge != nil {
+					citationID = prompt.Knowledge.Entries[0].Citation.ID
 				}
 			}
 			step := titleCalls.Add(1)
@@ -172,6 +199,10 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 				content = `{"Kind":"propose","Candidate":{"Changes":[{"Field":"title","Value":"Reviewed bottle title","EvidenceIDs":["invented"]}]}}`
 			default:
 				content = `{"Kind":"propose","Candidate":{"Changes":[{"Field":"title","Value":"Reviewed bottle title","EvidenceIDs":["981645030344"]}]},"Confidence":[{"Field":"title","Value":0.8,"Known":true}]}`
+			}
+			if withKnowledge && step >= 3 {
+				require.NotEmpty(t, citationID)
+				content = strings.TrimSuffix(content, "}") + `,"ContextCitationIDs":["` + citationID + `"]}`
 			}
 		}
 		encoded, _ := json.Marshal(content)
@@ -201,6 +232,7 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 		return governed.RoutePolicy{Profile: p, AdmittedCredentialVersion: governed.CredentialVersion(*row), AdmittedEndpointIdentityDigest: governed.EndpointIdentityDigest(row.BaseURL)}
 	}
 	ledger := aistore.NewGormInvocationRecorder(f.owner)
+	claimLedger := &rollbackWorkbenchClaim{ProductAgentInvocationLedger: ledger}
 	deps := newRouteAuthDependencies()
 	deps.workbenchVerifier = titleVerifier{}
 	taskGrants := &taskViewerGrants{base: f.grants}
@@ -209,8 +241,11 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.NoError(t, err)
 	deps.authorizer = auth
 	settings := ProductAgentDependencies{Enabled: true, AllowedOrganizationIDs: []string{"B"}, RunDB: f.owner, PointAccountingDB: f.owner, AssetDB: f.owner,
-		ReviewDB: f.owner, Ledger: ledger, TextPolicies: map[string]governed.RoutePolicy{"B": policy(titleRow, profile("title", "title-fixture", "product-title-agent-v1", "product-title-action-v1"))},
+		ReviewDB: f.owner, Ledger: claimLedger, TextPolicies: map[string]governed.RoutePolicy{"B": policy(titleRow, profile("title", "title-fixture", "product-title-agent-v1", "product-title-action-v1"))},
 		Limits: agent.Limits{Steps: 12, ModelCalls: 6, Tokens: 5000000, CostMicros: 5000000, Currency: "CNY", Runtime: time.Minute}}
+	if kf != nil {
+		settings.Knowledge = kf.service
+	}
 	agentModule, err := buildProductAgentModule(context.Background(), f.db, deps, auth, settings, nil)
 	require.NoError(t, err)
 	readinessIdentity := authidentity.AuthenticatedIdentity{TenantID: "B", EffectiveOrganizationID: "B", UserID: "operator", TokenExpiresAt: time.Now().Add(time.Hour)}
@@ -273,7 +308,21 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.Empty(t, savedPage.Next)
 	messageKey := uuid.NewString()
 	messageBody := `{"content":"请优化这个商品在 SHEIN 的标题","operationId":"` + op.OperationID + `","targetPlatform":"shein"}`
+	if kf != nil {
+		messageBody = strings.TrimSuffix(messageBody, "}") + `,"knowledgeBaseId":"` + kf.base.ID + `"}`
+	}
 	messagePath := workbenchChatBase + "/" + created.Conversation.ID + "/messages"
+	claimLedger.rollback.Store(true)
+	code, raw, err = acquisitionHTTPRequest(server, "POST", messagePath, "operator", "B", messageKey, messageBody)
+	require.NoError(t, err)
+	require.Equal(t, 202, code, string(raw))
+	require.Contains(t, string(raw), `"state":"READY_TO_DISPATCH"`)
+	require.Zero(t, plannerCalls.Load(), "a rolled-back claim cannot dispatch")
+	frozenCommand, err := workbenchModule.(aiWorkbenchModule).application.store.GetCommand(context.Background(),
+		aiworkbench.Scope{OrganizationID: "B", ActorID: "operator"}, messageKey)
+	require.NoError(t, err)
+	_, err = ledger.ReadModelInvocation(context.Background(), "B", frozenCommand.PlannerInvocationID)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
 	code, raw, err = acquisitionHTTPRequest(server, "POST", messagePath, "operator", "B", messageKey, messageBody)
 	require.NoError(t, err)
 	require.Equal(t, 200, code, string(raw))
@@ -283,6 +332,13 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(raw, &planned))
 	require.Equal(t, "COMPLETE", planned.State)
+	completedCommand, err := workbenchModule.(aiWorkbenchModule).application.store.GetCommand(context.Background(),
+		aiworkbench.Scope{OrganizationID: "B", ActorID: "operator"}, messageKey)
+	require.NoError(t, err)
+	require.Equal(t, frozenCommand.PlannerInvocationID, completedCommand.PlannerInvocationID)
+	require.Equal(t, frozenCommand.InputHash, completedCommand.InputHash)
+	require.Equal(t, frozenCommand.ModelProfile, completedCommand.ModelProfile)
+	require.Equal(t, frozenCommand.Deadline, completedCommand.Deadline)
 	require.NotEmpty(t, planned.ProposalID)
 	require.EqualValues(t, 1, plannerCalls.Load())
 	require.Zero(t, titleCalls.Load())
@@ -486,6 +542,40 @@ func TestAIWorkbenchChatProposalToBusinessTaskUsesOwners(t *testing.T) {
 	require.EqualValues(t, 4, titleCalls.Load(), "confirmation starts the existing Product Agent exactly once")
 	require.True(t, titleGoalSeen.Load(), "the confirmed Chat goal must reach the actual title model input")
 	require.Equal(t, "WAITING_CONFIRMATION", confirmed.Task.State)
+	if kf != nil {
+		readKnowledge := func(status string) {
+			t.Helper()
+			code, raw, err := acquisitionHTTPRequest(server, "GET", workbenchTaskBase+"/"+confirmed.Task.ID, "operator", "B", "", "")
+			require.NoError(t, err)
+			require.Equal(t, 200, code, string(raw))
+			var response struct {
+				Task struct {
+					Knowledge *productKnowledgeDTO `json:"knowledge"`
+					State     string               `json:"state"`
+				} `json:"task"`
+			}
+			require.NoError(t, json.Unmarshal(raw, &response))
+			require.NotNil(t, response.Task.Knowledge)
+			require.Equal(t, status, response.Task.Knowledge.Status)
+			require.Equal(t, "WAITING_CONFIRMATION", response.Task.State)
+			if status == "available" {
+				require.Len(t, response.Task.Knowledge.Citations, 1)
+				require.Equal(t, "Frozen brand text", response.Task.Knowledge.Citations[0].Excerpt)
+				require.Equal(t, kf.source.CurrentReadableRevision.ID, response.Task.Knowledge.Citations[0].RevisionID)
+			} else {
+				require.Empty(t, response.Task.Knowledge.Citations)
+				require.NotContains(t, string(raw), "Frozen brand text")
+				require.NotContains(t, string(raw), "Brand wording")
+			}
+		}
+		readKnowledge("available")
+		_, err := kf.service.Mutate(context.Background(), knowledge.Command{Scope: knowledge.Scope{OrganizationID: "B", ActorID: "operator"},
+			Kind: "source_disable", SourceID: kf.source.ID, Version: kf.source.Version, Key: uuid.NewString()})
+		require.NoError(t, err)
+		readKnowledge("unavailable")
+		require.EqualValues(t, 4, titleCalls.Load(), "fresh protected projection never dispatches")
+		return
+	}
 	// The durable Agent run must be adopted by its frozen request even when
 	// the current acquisition binding cannot be read during reconciliation.
 	agentApplication := agentModule.(productAgentModule).application

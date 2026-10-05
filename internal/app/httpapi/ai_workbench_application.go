@@ -271,6 +271,12 @@ func (p *workbenchPlanner) FailureState(ctx context.Context, c aiworkbench.Plann
 		if errors.Is(callErr, governed.ErrNotDispatched) && !errors.Is(callErr, governed.ErrOutcomeUnknown) {
 			return aiworkbench.PlanningFailedBeforeDispatch
 		}
+		// An authoritative absent fact permits re-claiming this same frozen
+		// invocation. The executor's atomic claim still elects one caller;
+		// the original deadline and final authorization gate still apply.
+		if time.Now().Before(c.Deadline) {
+			return aiworkbench.PlanningReadyToDispatch
+		}
 		return aiworkbench.PlanningUnknown
 	}
 	if errors.Is(callErr, governed.ErrNoDispatchReleased) && err == nil &&

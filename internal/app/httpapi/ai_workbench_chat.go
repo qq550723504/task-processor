@@ -223,7 +223,7 @@ func (a *aiWorkbenchApplication) confirmProposal(c *gin.Context, ctx context.Con
 		writeAIWorkbenchError(c, err)
 		return
 	}
-	view, viewErr := a.taskView(ctx, scope, task)
+	view, viewErr := a.taskView(ctx, scope, task, false)
 	if viewErr != nil {
 		writeAIWorkbenchError(c, viewErr)
 		return
