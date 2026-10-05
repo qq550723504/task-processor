@@ -1,6 +1,6 @@
 # #36 可保留的本机隔离试用运行边界
 
-> 状态：**IMPLEMENTATION_READY，仅限本机隔离试用装配**。2026-10-03 独立 Architecture Review 对设计候选 `fe1fb146` 未发现 BLOCKER；Review-only 路由、共同数据库权限、#590 最终入口与持久样本列为 `IMPLEMENTATION_TEST`，必须在试用交付前收敛。本准入不代表运行验收、合并或生产开放。
+> 状态：**IMPLEMENTATION_READY，仅限本机隔离试用装配与下述任务中心入口修正**。2026-10-03 独立 Architecture Review 对设计候选 `fe1fb146` 未发现 BLOCKER；2026-10-06 针对 `e3476c83b` 的任务中心入口增量独立复核也未发现新 BLOCKER。Review-only 路由、共同数据库权限、入口实际显示与持久样本列为 `IMPLEMENTATION_TEST`，必须在试用交付前收敛。本准入不代表运行验收、合并或生产开放。
 
 ## 用户结果、权威与范围
 
@@ -19,6 +19,8 @@ PR #579 只完成严格 v2 投影并已合并；它不提供试用运行源。�
 本片决定：**显式 opt-in 的本机试用组合**复用 `cmd/current-application`、现有 ZITADEL/Login V2、Auth.js/BFF、Product Review/Catalog 与 Listing Record 路由/服务；不得包裹旧 Task-first Service 或新建第二套事实源。试用配置缺失时，Review/Listing 路由一律不装配。试用配置只允许全新项目、loopback HTTPS、独立 Compose project/volumes；运行时不得执行 DDL、隐式授权或用超级用户连接。实现时从现有独立构造器抽取可复用的当前模块装配，保持原中间件、授权、deadline 和服务逻辑。当前应用中的 Review 准入须与 `productAgent.enabled` 解耦，用已有 `review.NewCandidateService` 装配无 generator 服务，只批准 GET list/detail 与 POST decision/apply；`productReviewRoutes` 中的 POST create 必须从本片路由集合中排除。不因打开审核而启用 Agent、模型、预算或提案生成入口。
 
 这不是把 `productAcquisitionDatabase` 指向任意现有库，也不是修改全局默认应用。#590 已于 2026-10-05 合入 main（`a90826ce`）；本片已同步该合并基线。最终任务中心从 `/workbench/ai/tasks/pending`、`/workbench/ai/tasks/completed` 分别进入 `/workbench/ai/tasks/pending/other`、`/workbench/ai/tasks/completed/history`，再到原 Review/Listing owner 页面。本片保留这两条可达路径，不重复建设 BusinessTask 事实或试用入口。
+
+最终交付检查发现一个实际入口 Blocker：#590 的任务中心仅在 `aiWorkbenchAvailable` 时显示内容和侧栏入口，而本试用必须关闭 AI Workbench/Agent/provider。前端已从服务器配置取得独立的 `productReviewAvailable` 与 `sheinRecordsAvailable`，并用它们显示原 owner 的侧栏直达入口。本片只复用这两个显式可用性信号：无 AI Workbench 时，任务中心首页只显示已配置的 Review/历史记录入口；待确认页只显示 Review，已完成页只显示历史记录；侧栏任务中心仅在至少一个独立入口配置时可见，且只列出相应子页。不得为试用伪造 BusinessTask 列表、数量、执行状态或启用 Chat/Agent；两项均未配置时保持原“暂未启用”。实际访问仍经原 BFF/owner 的身份和组织授权，配置可见不代表用户有权读取。
 
 ## 事实、数据库和调用链
 
