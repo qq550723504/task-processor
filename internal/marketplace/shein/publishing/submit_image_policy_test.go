@@ -19,11 +19,13 @@ func TestFinalSubmitImagesRequireSKCSkipsSaveDraftOnly(t *testing.T) {
 	}
 }
 
-func TestFinalSubmitImagesReadyHandlesLegacyAndRequiredImages(t *testing.T) {
+func TestFinalSubmitImagesReadyRequiresFinalDraftAndImages(t *testing.T) {
 	t.Parallel()
 
-	if ready, _ := FinalSubmitImagesReady("publish", FinalSubmitImageReadinessInput{}); !ready {
-		t.Fatal("legacy final draft readiness = false, want true")
+	for _, action := range []string{"publish", "save_draft"} {
+		if ready, message := FinalSubmitImagesReady(action, FinalSubmitImageReadinessInput{}); ready || message != "缺少最终图片草稿，无法确认主图和图库" {
+			t.Fatalf("%s without final draft = (%v, %q), want blocker", action, ready, message)
+		}
 	}
 	if ready, message := FinalSubmitImagesReady("publish", FinalSubmitImageReadinessInput{HasFinalDraft: true}); ready || message == "" {
 		t.Fatalf("missing main image = (%v, %q), want blocker", ready, message)

@@ -2,11 +2,20 @@
 
 ## Content-bound diagnostics (Issue #318)
 
-The v1 API and strict Snapshot checks remain unchanged. The opt-in SHEIN
+The typed API and strict Snapshot checks remain unchanged. The opt-in SHEIN
 `DiagnosticValidator.Validate(BoundRequest[[]byte])` uses rule version
-`shein.offline_package.v2` and binding version `shein.persisted-input.go-json.v1`.
+`shein.offline_package.v2.1` and binding version `shein.persisted-input.go-json.v1`.
 It accepts persisted JSON, not an in-memory Package with private resolver state.
 Both versions call one shared evaluator; neither retries the other version.
+
+Issue #36 retires the missing-final-draft compatibility pass: `final_images` is
+blocking when the final image draft is absent, for both publish and save_draft.
+The typed rule revision is `shein.offline_package.v1.1`; the persisted revision
+above binds the same correction into the content digest. Former rule revisions
+are unsupported. Input contracts and binding encoding do not change. Draft's
+separate policy still allows readiness blockers and does not turn them into ready.
+Listing diagnostic reads re-evaluate retained package bytes with the current rule;
+historical creation reports remain stored unchanged, without reseeding or migration.
 
 `publishing/shein.DecodePersistedPackageStrict` creates the exclusive normalized
 copy used for both SHA-256 identity and rule evaluation. Raw input, normalized

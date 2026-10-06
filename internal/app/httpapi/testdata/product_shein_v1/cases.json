@@ -128,7 +128,8 @@
           "attributes/missing_required_attribute",
           "attribute_review/missing_required_attribute",
           "sale_attributes/missing_sale_attribute",
-          "images/image_upload_failed"
+          "images/image_upload_failed",
+          "final_images/image_upload_failed"
         ],
         "warnings": [],
         "exact": false,
@@ -142,7 +143,8 @@
           "attributes/missing_required_attribute",
           "attribute_review/missing_required_attribute",
           "sale_attributes/missing_sale_attribute",
-          "images/image_upload_failed"
+          "images/image_upload_failed",
+          "final_images/image_upload_failed"
         ],
         "warnings": [],
         "exact": false,
@@ -281,7 +283,8 @@
           "attributes/missing_required_attribute",
           "attribute_review/missing_required_attribute",
           "sale_attributes/missing_sale_attribute",
-          "images/image_upload_failed"
+          "images/image_upload_failed",
+          "final_images/image_upload_failed"
         ],
         "warnings": [],
         "exact": false,
@@ -295,7 +298,8 @@
           "attributes/missing_required_attribute",
           "attribute_review/missing_required_attribute",
           "sale_attributes/missing_sale_attribute",
-          "images/image_upload_failed"
+          "images/image_upload_failed",
+          "final_images/image_upload_failed"
         ],
         "warnings": [],
         "exact": false,
@@ -462,7 +466,8 @@
           "attributes/missing_required_attribute",
           "attribute_review/missing_required_attribute",
           "sale_attributes/missing_sale_attribute",
-          "images/image_upload_failed"
+          "images/image_upload_failed",
+          "final_images/image_upload_failed"
         ],
         "warnings": [],
         "exact": false,
@@ -476,7 +481,8 @@
           "attributes/missing_required_attribute",
           "attribute_review/missing_required_attribute",
           "sale_attributes/missing_sale_attribute",
-          "images/image_upload_failed"
+          "images/image_upload_failed",
+          "final_images/image_upload_failed"
         ],
         "warnings": [],
         "exact": false,
@@ -804,7 +810,8 @@
           "attributes/missing_required_attribute",
           "attribute_review/missing_required_attribute",
           "sale_attributes/missing_sale_attribute",
-          "images/image_upload_failed"
+          "images/image_upload_failed",
+          "final_images/image_upload_failed"
         ],
         "warnings": [],
         "exact": false,
@@ -812,7 +819,7 @@
       }
     ],
     "binding": {
-      "digest": "sha256:5040e66f7fef34038805993a390b33bee3d409e1e07dd652402bdfebc483b6d1",
+      "digest": "sha256:fcc2aaeb1c7bda2d707d423cbc296d9a2793a77f5e7c1275cabc08604f8e79fa",
       "equivalent": {
         "review_notes": []
       },
@@ -834,7 +841,7 @@
         "external_package_freshness"
       ],
       "evidence": {
-        "subject_digest": "sha256:5040e66f7fef34038805993a390b33bee3d409e1e07dd652402bdfebc483b6d1",
+        "subject_digest": "sha256:fcc2aaeb1c7bda2d707d423cbc296d9a2793a77f5e7c1275cabc08604f8e79fa",
         "policy_version": "synthetic-owner.v1",
         "source": "isolated-oracle",
         "observed_at": "2026-09-05T23:00:00Z",

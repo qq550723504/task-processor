@@ -18,6 +18,63 @@ func diagnosticRequest(raw string) contract.BoundRequest[[]byte] {
 	return contract.BoundRequest[[]byte]{Input: []byte(raw), Target: contract.Target{Marketplace: "shein"}, Action: contract.Publish, RuleVersion: DiagnosticRuleVersion, BindingVersion: BindingVersion, ReadAt: now, EvaluatedAt: now, Freshness: contract.ExternalFreshness{Status: contract.NotEvaluated}}
 }
 
+func TestMissingFinalDraftBlocksBothInputContractsAndActions(t *testing.T) {
+	for _, action := range []contract.Action{contract.Publish, contract.SaveDraft} {
+		t.Run(string(action), func(t *testing.T) {
+			pkg := readyPackage()
+			pkg.FinalSubmissionDraft = nil
+			raw, err := json.Marshal(pkg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			typedRequest := request(pkg)
+			typedRequest.Action = action
+			typed, err := (Validator{}).Validate(typedRequest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			boundRequest := diagnosticRequest(string(raw))
+			boundRequest.Action = action
+			bound, err := (DiagnosticValidator{}).Validate(boundRequest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !hasRule(typed.Blockers, "final_images") || !hasRule(bound.OfflineChecks.Blockers, "final_images") {
+				t.Fatalf("missing final draft was not blocked: typed=%+v bound=%+v", typed.Blockers, bound.OfflineChecks.Blockers)
+			}
+			if !reflect.DeepEqual(typed.Checks, bound.OfflineChecks.Checks) || !bound.DiagnosticOnly || typed.Ready || typed.Status != contract.Blocked || bound.OfflineChecks.Status != contract.Blocked {
+				t.Fatal("input contracts lost diagnostic rule parity")
+			}
+			if typed.ReadinessBlockersAllowed != (action == contract.SaveDraft) || bound.ActionPolicy.ReadinessBlockersAllowed != (action == contract.SaveDraft) {
+				t.Fatal("image blocker changed the action policy")
+			}
+			after, err := json.Marshal(pkg)
+			if err != nil || string(after) != string(raw) {
+				t.Fatal("diagnostic changed the package facts", err)
+			}
+		})
+	}
+}
+
+func TestCorrectedImageRuleVersionsRejectFormerRevisions(t *testing.T) {
+	if RuleVersion != "shein.offline_package.v1.1" || DiagnosticRuleVersion != "shein.offline_package.v2.1" || BindingVersion != "shein.persisted-input.go-json.v1" {
+		t.Fatal("corrected rule versions or unchanged binding version drifted")
+	}
+	typedRequest := request(readyPackage())
+	typedRequest.RuleVersion = "shein.offline_package.v1"
+	_, err := (Validator{}).Validate(typedRequest)
+	var typedError *contract.Error
+	if !errors.As(err, &typedError) || typedError.Code != contract.UnsupportedVersion {
+		t.Fatalf("former typed revision accepted: %v", err)
+	}
+	boundRequest := diagnosticRequest(`{}`)
+	boundRequest.RuleVersion = "shein.offline_package.v2"
+	_, err = (DiagnosticValidator{}).Validate(boundRequest)
+	if !errors.As(err, &typedError) || typedError.Code != contract.UnsupportedVersion {
+		t.Fatalf("former persisted revision accepted: %v", err)
+	}
+}
+
 func TestExactApprovedAssetValidatorDischargesOnlyExactAssetConcern(t *testing.T) {
 	request := diagnosticRequest(`{"spu_name":"controlled"}`)
 	want, err := (ExactApprovedAssetValidator{}).Validate(request)
@@ -56,7 +113,7 @@ func TestDiagnosticFixedEncodingVectors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		const emptyDigest = "sha256:5040e66f7fef34038805993a390b33bee3d409e1e07dd652402bdfebc483b6d1"
+		const emptyDigest = "sha256:fcc2aaeb1c7bda2d707d423cbc296d9a2793a77f5e7c1275cabc08604f8e79fa"
 		if got.Input.Digest != emptyDigest {
 			t.Errorf("empty normalized vector: %s", got.Input.Digest)
 		}
@@ -66,7 +123,7 @@ func TestDiagnosticFixedEncodingVectors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		const sdkDigest = "sha256:86e32324068a6515b6d6e22d17e00f090ee3a0a2def733d2bbcd3517f3b3e701"
+		const sdkDigest = "sha256:f5318507e79ca0f9f79488cd1c7af8698717b950bfb9a7a50473ad42cfb650ea"
 		if got.Input.Digest != sdkDigest {
 			t.Errorf("SDK alias vector: %s", got.Input.Digest)
 		}
