@@ -72,6 +72,7 @@ func TestSheinPublishActivityHostValidateReadinessReturnsBlockedError(t *testing
 
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
+	task.Result.Shein.FinalSubmissionDraft.Confirmed = false
 	task.Result.Shein.SaleAttributeResolution.Status = "partial"
 	task.Result.Shein.SaleAttributeResolution.SKCAttributes = nil
 	task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute = nil

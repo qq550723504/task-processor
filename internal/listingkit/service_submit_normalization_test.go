@@ -266,6 +266,10 @@ func TestSubmitTaskNormalizesSheinPublishOnlyFields(t *testing.T) {
 
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
+	task.Result.Shein.FinalSubmissionDraft.MainImageURL = "https://cdn.example.com/main.jpg"
+	task.Result.Shein.FinalSubmissionDraft.ImageRoleOverrides = map[string]string{"https://cdn.example.com/gallery-3.jpg": "swatch"}
+	task.Result.Shein.RequestDraft.ImageInfo.MainImage = "https://cdn.example.com/main.jpg"
+	task.Result.Shein.SkcList[0].MainImageURL = "https://cdn.example.com/main.jpg"
 	task.Result.Shein.PreviewProduct.SiteList = nil
 	task.Result.Shein.PreviewProduct.ImageInfo = sheinImageInfo([]string{
 		"https://cdn.example.com/main.jpg",
@@ -346,8 +350,8 @@ func TestSubmitTaskNormalizesSheinPublishOnlyFields(t *testing.T) {
 	if submitted.SupplierCode == "" {
 		t.Fatal("supplier_code is empty, want non-empty top-level publish lookup code")
 	}
-	if len(submitted.SKCList[0].ImageInfo.ImageInfoList) != 6 {
-		t.Fatalf("skc image count = %d, want 6", len(submitted.SKCList[0].ImageInfo.ImageInfoList))
+	if len(submitted.SKCList[0].ImageInfo.ImageInfoList) != 5 {
+		t.Fatalf("skc image count = %d, want 3 gallery images plus square and explicit swatch", len(submitted.SKCList[0].ImageInfo.ImageInfoList))
 	}
 	if submitted.SKCList[0].SupplierCode != nil {
 		t.Fatalf("skc supplier_code = %#v, want nil to match shein-listing direct publish payload", submitted.SKCList[0].SupplierCode)
@@ -370,11 +374,14 @@ func TestSubmitTaskNormalizesSheinPublishOnlyFields(t *testing.T) {
 	if submitted.SKCList[0].SKCScopeAttributeList == nil {
 		t.Fatal("skc_scope_attribute_list = nil, want empty array to match shein-listing direct publish payload")
 	}
-	if submitted.SKCList[0].ImageInfo.ImageInfoList[4].ImageType != 5 {
-		t.Fatalf("skc square image type = %d, want 5", submitted.SKCList[0].ImageInfo.ImageInfoList[4].ImageType)
+	if submitted.SKCList[0].ImageInfo.ImageInfoList[3].ImageType != 5 {
+		t.Fatalf("skc square image type = %d, want 5", submitted.SKCList[0].ImageInfo.ImageInfoList[3].ImageType)
 	}
-	if submitted.SKCList[0].ImageInfo.ImageInfoList[5].ImageType != 6 {
-		t.Fatalf("skc color block image type = %d, want 6", submitted.SKCList[0].ImageInfo.ImageInfoList[5].ImageType)
+	if submitted.SKCList[0].ImageInfo.ImageInfoList[4].ImageType != 6 {
+		t.Fatalf("skc color block image type = %d, want 6", submitted.SKCList[0].ImageInfo.ImageInfoList[4].ImageType)
+	}
+	if submitted.SKCList[0].ImageInfo.ImageInfoList[4].ImageURL != "https://img.shein.com/uploaded/cdn.example.com/gallery-3.jpg" {
+		t.Fatalf("swatch URL = %q, want explicitly selected uploaded gallery-3", submitted.SKCList[0].ImageInfo.ImageInfoList[4].ImageURL)
 	}
 	if submitted.SKCList[0].SKUS[0].ImageInfo == nil || len(submitted.SKCList[0].SKUS[0].ImageInfo.ImageInfoList) != 1 {
 		t.Fatalf("sku image_info = %+v, want preserved SKU image for publish payload", submitted.SKCList[0].SKUS[0].ImageInfo)

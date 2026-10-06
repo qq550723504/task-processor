@@ -279,10 +279,11 @@ func makeTemporalReadySheinTask() *listingkit.Task {
 		Result: &listingkit.ListingKitResult{
 			TaskID: "submit-task-1",
 			Shein: &listingkit.SheinPackage{
-				CategoryID:     3221,
-				CategoryIDList: []int{1, 2, 3221},
-				ProductTypeID:  &productTypeID,
-				TopCategoryID:  1,
+				FinalSubmissionDraft: &sheinpub.FinalDraft{Confirmed: true, SubmitMode: "publish", MainImageURL: "https://img.shein.com/uploaded/default-main.jpg"},
+				CategoryID:           3221,
+				CategoryIDList:       []int{1, 2, 3221},
+				ProductTypeID:        &productTypeID,
+				TopCategoryID:        1,
 				CategoryResolution: &listingkit.SheinCategoryResolution{
 					Status:         "resolved",
 					Source:         "target_category_hint",
@@ -336,7 +337,7 @@ func makeTemporalReadySheinTask() *listingkit.Task {
 					SkcName:      "Black",
 					SaleName:     "Black",
 					SupplierCode: "SKC-1",
-					MainImageURL: "https://cdn.example.com/main.jpg",
+					MainImageURL: "https://img.shein.com/uploaded/default-main.jpg",
 					SKUs: []common.Variant{{
 						SKU: "SKU-1",
 						Attributes: map[string]string{
@@ -346,9 +347,10 @@ func makeTemporalReadySheinTask() *listingkit.Task {
 					}},
 				}},
 				Images: &listingkit.PlatformImageSet{
-					MainImage: "https://cdn.example.com/main.jpg",
+					MainImage: "https://img.shein.com/uploaded/default-main.jpg",
 				},
 				RequestDraft: &listingkit.SheinRequestDraft{
+					ImageInfo: &listingkit.SheinImageDraft{MainImage: "https://img.shein.com/uploaded/default-main.jpg"},
 					SKCList: []listingkit.SheinSKCRequestDraft{{
 						SupplierCode: "SKC-1",
 						SaleAttribute: &listingkit.SheinResolvedSaleAttribute{
