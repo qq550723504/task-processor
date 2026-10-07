@@ -1,3 +1,9 @@
+import type { ReactNode } from "react";
+
+// Motion is checked in the browser; component tests exercise content and interaction.
+vi.mock("@/components/marketing/marketing-motion", () => ({
+  MotionLayer: ({ children, className, nodeId }: { children: ReactNode; className?: string; nodeId: string }) => <div className={className} data-node-id={nodeId}>{children}</div>,
+}));
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
@@ -13,7 +19,7 @@ describe("MarketingHomepage", () => {
 
     const banner = screen.getByRole("banner");
     expect(within(banner).getByRole("link", { name: "硕米智能引擎首页" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("让智能，成为电商经营的默认能力");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("硕米智能引擎新一代AI电商智能操作系统");
     expect(screen.queryByText("ListingKit", { exact: true })).not.toBeInTheDocument();
   });
 
@@ -22,9 +28,13 @@ describe("MarketingHomepage", () => {
 
     const nav = screen.getByRole("navigation", { name: "官网导航" });
     const expectedLinks = [
-      ["产品架构", "#architecture"],
-      ["能力中心", "#agents"],
-      ["场景方案", "#solutions"],
+      ["首页", "#home"],
+      ["电商智能体", "#agents"],
+      ["供应链与数据", "#supply-chain"],
+      ["解决方案", "#solutions"],
+      ["服务生态", "#services"],
+      ["应用实践", "#practices"],
+      ["价格与服务", "#pricing"],
     ];
 
     for (const [name, href] of expectedLinks) {
@@ -32,44 +42,30 @@ describe("MarketingHomepage", () => {
     }
 
     expect(within(nav).queryByRole("link", { name: "开发者" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "进入系统" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "进入硕米" })).toHaveAttribute(
       "href",
       "/login?returnTo=%2Fworkbench",
     );
     const hero = document.getElementById("home");
     expect(hero).not.toBeNull();
-    expect(within(hero!).getByRole("link", { name: /进入硕米 OS/ })).toHaveAttribute(
+    expect(within(hero!).getByRole("link", { name: /了解平台能力/ })).toHaveAttribute(
       "href",
-      "/login?returnTo=%2Fworkbench",
+      "#agents",
     );
-    expect(within(hero!).getByRole("link", { name: "查看系统架构" })).toHaveAttribute(
+    expect(within(hero!).getByRole("link", { name: "查看解决方案" })).toHaveAttribute(
       "href",
-      "#architecture",
+      "#solutions",
     );
   });
 
-  it("renders the staged hero motion as an accessible commerce architecture visual", () => {
+  it("presents four capability categories without inventing runtime status", () => {
     render(<MarketingHomepage />);
-
-    const architecture = screen.getByRole("group", { name: "硕米 AI 电商能力架构" });
-    expect(architecture).toHaveAttribute(
-      "data-motion-sequence",
-      "boot-reveal-active-pulse",
-    );
-    expect(within(architecture).getByText("模型与调用治理")).toBeInTheDocument();
-    expect(within(architecture).getByText("平台连接器")).toBeInTheDocument();
-  });
-
-  it("uses dedicated responsive layouts instead of shrinking the orbit into overlapping mobile nodes", () => {
-    const styles = readFileSync("src/components/marketing/marketing-hero.module.css", "utf8");
-
-    expect(styles).toMatch(
-      /@media \(max-width: 1180px\) \{[\s\S]*?\.heroInner \{[^}]*?grid-template-columns:/,
-    );
-    expect(styles).toMatch(/@media \(max-width: 980px\) \{[\s\S]*?\.nav \{[^}]*?display: none;/);
-    expect(styles).toMatch(
-      /@media \(max-width: 620px\) \{[\s\S]*?\.systemVisual \{[^}]*?display: grid;[^}]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[\s\S]*?\.capabilityCard \{[^}]*?position: relative;/,
-    );
+    const network = screen.getByRole("group", { name: "全球商业智能网络能力示意" });
+    expect(within(network).getAllByRole("listitem")).toHaveLength(4);
+    for (const label of ["AI智能体", "全球商品数据", "供应链货盘", "生态服务"]) {
+      expect(within(network).getByRole("link", { name: new RegExp(label) })).toBeInTheDocument();
+    }
+    expect(screen.queryByText(/能力已连接|SYSTEM ONLINE/)).not.toBeInTheDocument();
   });
 
   it("keeps anchored sections below the sticky site header", () => {
@@ -86,7 +82,12 @@ describe("MarketingHomepage", () => {
     expect(screen.getByText("连接商品、货盘与工厂，让好产品快速进入市场")).toBeInTheDocument();
     expect(screen.getByText("不同的业务起点，同一套 AI 增长能力")).toBeInTheDocument();
     expect(screen.getByText("价格与服务方案")).toBeInTheDocument();
-    expect(screen.queryByText("让每个人，都拥有一支智能电商团队")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "让每个人，都拥有一支智能电商团队" })).toBeInTheDocument();
+    expect(screen.getByText("消费需求分析")).toBeInTheDocument();
+    expect(screen.getByText("AI自动优化策略")).toBeInTheDocument();
+    const footer = screen.getByRole("navigation", { name: "页尾导航" });
+    expect(within(footer).getByRole("link", { name: "人工智能员工" })).toHaveAttribute("href", "#agents");
+    expect(within(footer).getByRole("link", { name: "工厂产品出海" })).toHaveAttribute("href", "#solutions");
     expect(document.getElementById("contact")).toBeNull();
   });
 
@@ -94,7 +95,7 @@ describe("MarketingHomepage", () => {
     const user = userEvent.setup();
     render(<MarketingHomepage />);
 
-    expect(screen.queryByRole("link", { name: "联系我们" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "联系我们" })).toBeInTheDocument();
     expect(screen.queryAllByRole("link", { name: /咨询方案/ })).toHaveLength(0);
 
     await user.click(screen.getByRole("button", { name: "联系硕米" }));
@@ -181,14 +182,6 @@ describe("MarketingHomepage", () => {
     expect(styles).toMatch(/\.contactPanel \{[^}]*max-height: calc\(100dvh - 40px\);[^}]*overflow-y: auto;/);
   });
 
-  it("uses a mobile-specific team layout instead of shrinking the desktop diagram into overlapping nodes", () => {
-    const styles = readFileSync("src/components/marketing/marketing-homepage.module.css", "utf8");
-
-    expect(styles).toMatch(
-      /@media \(max-width: 620px\) \{[\s\S]*?\.teamStage \{[^}]*?width: 100%;[^}]*?transform: none;[^}]*?\}[\s\S]*?\.teamNodeOne \{ top: 20px; left: 0; \}/,
-    );
-  });
-
   it("switches the role solution panel when a user selects a different role", async () => {
     const user = userEvent.setup();
     render(<MarketingHomepage />);
@@ -252,4 +245,14 @@ describe("MarketingHomepage", () => {
     expect(starter).toHaveAttribute("aria-selected", "true");
   });
 
+});
+
+it("opens the existing contact dialog from the footer and restores focus to its trigger", async () => {
+  const user = userEvent.setup();
+  render(<MarketingHomepage />);
+  const trigger = screen.getByRole("button", { name: "联系我们" });
+  await user.click(trigger);
+  expect(screen.getByRole("dialog", { name: "联系我们" })).toBeInTheDocument();
+  await user.keyboard("{Escape}");
+  expect(trigger).toHaveFocus();
 });

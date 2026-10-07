@@ -9,11 +9,12 @@ import styles from "./marketing-homepage.module.css";
 
 type SubmissionState = "idle" | "submitting" | "success" | "error";
 
-export function ContactPanel() {
+export function ContactPanel({ inlineTrigger = false }: { inlineTrigger?: boolean }) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<SubmissionState>("idle");
   const [message, setMessage] = useState("");
   const launcherRef = useRef<HTMLButtonElement>(null);
+  const activeLauncherRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const requestControllerRef = useRef<AbortController | null>(null);
   const submissionIdRef = useRef(0);
@@ -25,7 +26,7 @@ export function ContactPanel() {
     setOpen(false);
     setState("idle");
     setMessage("");
-    launcherRef.current?.focus();
+    (activeLauncherRef.current ?? launcherRef.current)?.focus();
   }, []);
 
   useEffect(() => {
@@ -95,7 +96,8 @@ export function ContactPanel() {
   }
 
   return <>
-    <button ref={launcherRef} className={styles.floatingContact} type="button" aria-haspopup="dialog" aria-expanded={open} aria-label="联系硕米" onClick={() => setOpen(true)}>
+    {inlineTrigger ? <button className={styles.footerContact} type="button" aria-haspopup="dialog" aria-expanded={open} onClick={event => { activeLauncherRef.current = event.currentTarget; setOpen(true); }}>联系我们</button> : null}
+    <button id="contact-launcher" ref={launcherRef} className={styles.floatingContact} type="button" aria-haspopup="dialog" aria-expanded={open} aria-label="联系硕米" onClick={event => { activeLauncherRef.current = event.currentTarget; setOpen(true); }}>
       <Phone size={18} /><span>联系</span>
     </button>
     {open ? <div className={styles.contactOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
