@@ -3,7 +3,7 @@
 Refs #335 / #47 / #44. This is the first bounded repository regression slice,
 not production source collection, remote publishing, human approval or Agent eval.
 
-`manifest.json` identifies dataset `product-shein-shared`, version `1.0.0`, the
+`manifest.json` identifies dataset `product-shein-shared`, version `1.0.1`, the
 SHA-256 of the **exact UTF-8 bytes of cases.json including its final LF**, fixed
 semantic time, rule and binding versions. Local attributes pin JSON to LF on
 Windows and Linux. The digest excludes the manifest itself and this README.
@@ -55,7 +55,7 @@ evaluation/receipt/report comparisons are **additional consistency assertions**,
 not substitutes for the shared manual oracle.
 
 Synthetic complete packages use exact blocker/warning sets. Real incomplete
-packages assert five mandatory template/image blocker rule+code pairs; other
+packages assert six mandatory template/image blocker rule+code pairs; other
 current assembler findings remain visible and are not required to be absent.
 This deliberately does not claim a complete golden for unstable presentation
 text or every downstream rule. All returned blocker/warning entries must also
@@ -70,6 +70,14 @@ When changing data/expected, explain the changed contract and case IDs, obtain
 independent review, bump the dataset version, update the exact cases hash and
 loader's pinned version/count if necessary. Rule/binding changes need their
 owner's version decision. Do not modify Catalog/Validator rules to fit fixtures.
+
+Revision 1.0.1 (Issue #36) adds `final_images/image_upload_failed` to PS-001,
+PS-002, PS-003 and PS-008: no final image draft means a blocker in both actions.
+PS-005 through PS-007 retain their exact complete-draft outcomes. Rule revision
+`shein.offline_package.v2.1` changes the PS-008 content-binding vector and PS-009
+subject digest; binding encoding and expiry expectations remain unchanged. The
+fixed empty/SDK envelopes were hashed independently with Python, first matching
+the former vectors and then changing only the rule revision.
 
 ## Execution and environment evidence
 

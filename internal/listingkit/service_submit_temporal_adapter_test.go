@@ -72,6 +72,7 @@ func TestSheinPublishActivityHostValidateReadinessReturnsBlockedError(t *testing
 
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
+	task.Result.Shein.FinalSubmissionDraft.Confirmed = false
 	task.Result.Shein.SaleAttributeResolution.Status = "partial"
 	task.Result.Shein.SaleAttributeResolution.SKCAttributes = nil
 	task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute = nil
@@ -109,8 +110,8 @@ func TestSheinPublishActivityHostValidateReadinessReturnsBlockedError(t *testing
 	if err != nil {
 		t.Fatalf("get task: %v", err)
 	}
-	if saved.Result.Shein.FinalDraft != nil && saved.Result.Shein.FinalDraft.Confirmed {
-		t.Fatalf("final draft = %+v, want unchanged without ConfirmedFinal", saved.Result.Shein.FinalDraft)
+	if saved.Result.Shein.FinalSubmissionDraft != nil && saved.Result.Shein.FinalSubmissionDraft.Confirmed {
+		t.Fatalf("final draft = %+v, want unchanged without ConfirmedFinal", saved.Result.Shein.FinalSubmissionDraft)
 	}
 }
 
@@ -119,6 +120,7 @@ func TestSheinPublishActivityHostValidateReadinessPersistsConfirmedFinalOnBlocke
 
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
+	task.Result.Shein.FinalSubmissionDraft.Confirmed = false
 	task.Result.Shein.SaleAttributeResolution.Status = "partial"
 	task.Result.Shein.SaleAttributeResolution.SKCAttributes = nil
 	task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute = nil
@@ -157,8 +159,8 @@ func TestSheinPublishActivityHostValidateReadinessPersistsConfirmedFinalOnBlocke
 	if err != nil {
 		t.Fatalf("get task: %v", err)
 	}
-	if saved.Result.Shein.FinalDraft == nil || !saved.Result.Shein.FinalDraft.Confirmed {
-		t.Fatalf("final draft = %+v, want confirmed final draft persisted", saved.Result.Shein.FinalDraft)
+	if saved.Result.Shein.FinalSubmissionDraft == nil || !saved.Result.Shein.FinalSubmissionDraft.Confirmed {
+		t.Fatalf("final draft = %+v, want confirmed final draft persisted", saved.Result.Shein.FinalSubmissionDraft)
 	}
 }
 

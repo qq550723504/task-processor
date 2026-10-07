@@ -240,7 +240,7 @@ func TestBuildSheinSubmitReadinessSaveDraftDoesNotRequireFinalConfirmation(t *te
 	t.Parallel()
 
 	task := makeReadySheinTask()
-	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+	task.Result.Shein.FinalSubmissionDraft = &sheinpub.FinalDraft{
 		Confirmed:       false,
 		MainImageURL:    "https://cdn.example.com/main.jpg",
 		FinalImageOrder: []string{"https://cdn.example.com/main.jpg"},
@@ -275,9 +275,10 @@ func TestBuildSheinSubmitReadinessReadyWithWarningsAfterManualNotes(t *testing.T
 	productTypeID := 901
 	colorValueID := 9001
 	readiness := buildSheinSubmitReadiness(&SheinPackage{
-		CategoryID:    3001,
-		CategoryPath:  []string{"Home", "Kitchen", "Bottle"},
-		ProductTypeID: &productTypeID,
+		FinalSubmissionDraft: &sheinpub.FinalDraft{Confirmed: true, MainImageURL: "https://cdn.example.com/main.jpg"},
+		CategoryID:           3001,
+		CategoryPath:         []string{"Home", "Kitchen", "Bottle"},
+		ProductTypeID:        &productTypeID,
 		Images: &PlatformImageSet{
 			MainImage: "https://cdn.example.com/main.jpg",
 		},
@@ -298,6 +299,7 @@ func TestBuildSheinSubmitReadinessReadyWithWarningsAfterManualNotes(t *testing.T
 			PrimaryAttributeID: 501,
 		},
 		RequestDraft: &SheinRequestDraft{
+			ImageInfo: &SheinImageDraft{MainImage: "https://cdn.example.com/main.jpg"},
 			ResolvedAttributes: []SheinResolvedAttribute{{
 				Name:        "material",
 				AttributeID: 7001,
@@ -994,9 +996,10 @@ func TestBuildSheinSubmitReadinessDoesNotBlockWhenOnlyImportantDisplayAttributes
 	productTypeID := 901
 	colorValueID := 9001
 	readiness := buildSheinSubmitReadiness(&SheinPackage{
-		CategoryID:    3001,
-		CategoryPath:  []string{"Home", "Decor", "Clocks"},
-		ProductTypeID: &productTypeID,
+		FinalSubmissionDraft: &sheinpub.FinalDraft{Confirmed: true, MainImageURL: "https://cdn.example.com/main.jpg"},
+		CategoryID:           3001,
+		CategoryPath:         []string{"Home", "Decor", "Clocks"},
+		ProductTypeID:        &productTypeID,
 		Images: &PlatformImageSet{
 			MainImage: "https://cdn.example.com/main.jpg",
 		},
@@ -1022,6 +1025,7 @@ func TestBuildSheinSubmitReadinessDoesNotBlockWhenOnlyImportantDisplayAttributes
 			PrimaryAttributeID: 27,
 		},
 		RequestDraft: &SheinRequestDraft{
+			ImageInfo: &SheinImageDraft{MainImage: "https://cdn.example.com/main.jpg"},
 			ResolvedAttributes: []SheinResolvedAttribute{{
 				Name:        "Type",
 				AttributeID: 109,

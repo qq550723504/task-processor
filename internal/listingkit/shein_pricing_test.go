@@ -366,7 +366,7 @@ func TestSubmitTaskUsesFinalDraftManualOverrideWhenReadyPricingExists(t *testing
 		}},
 		ManualOverrides: map[string]float64{currentSKU: 99.99},
 	}
-	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+	task.Result.Shein.FinalSubmissionDraft = &sheinpub.FinalDraft{
 		Confirmed:            true,
 		MainImageURL:         "https://oss.shuomiai.com/listingkit/pricing-main.png",
 		FinalImageOrder:      []string{"https://oss.shuomiai.com/listingkit/pricing-main.png"},

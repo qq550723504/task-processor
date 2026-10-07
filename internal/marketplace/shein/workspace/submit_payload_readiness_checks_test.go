@@ -15,6 +15,7 @@ func TestBuildSubmitPayloadReadinessChecksReportsMissingPayloadParts(t *testing.
 	assertReadinessCheck(t, checks, "request_draft", false)
 	assertReadinessCheck(t, checks, "preview_product", false)
 	assertReadinessCheck(t, checks, "images", false)
+	assertReadinessCheck(t, checks, "final_images", false)
 	assertReadinessCheck(t, checks, "variants", false)
 }
 

@@ -22,6 +22,7 @@ type Dependencies struct {
 	OpenKnowledge                func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	NewKnowledge                 func(context.Context, *gorm.DB, *KnowledgeConfig, *logrus.Logger) (*knowledge.Service, *knowledge.Processor, error)
 	OpenStoreCenter              func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenLocalTrial               func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenProductAgent             func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenAIWorkbench              func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	IdentityPreflight            func(context.Context, IdentityConfig) error
@@ -48,6 +49,7 @@ type Dependencies struct {
 type ApplicationFeatures struct {
 	Knowledge                                            *knowledge.Service
 	StoreCenterDB                                        *gorm.DB
+	LocalTrialDB                                         *gorm.DB
 	OfficialStoreProvider                                storecenter.OfficialConnectionProvider
 	OfficialStoreProtection                              storecenter.OfficialCredentialProtection
 	ProductAgentDB, ProductReviewDB, ProductAgentAssetDB *gorm.DB
@@ -121,6 +123,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	if cfg.StoreCenter != nil && cfg.StoreCenter.Enabled && (dependencies.OpenStoreCenter == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("store center runtime lifecycle unavailable")
+	}
+	if cfg.LocalTrial != nil && (dependencies.OpenLocalTrial == nil || dependencies.NewApplicationWithFeatures == nil) {
+		return errors.New("local trial runtime lifecycle unavailable")
 	}
 	if cfg.Knowledge != nil && cfg.Knowledge.Enabled && (dependencies.OpenKnowledge == nil || dependencies.NewKnowledge == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("knowledge runtime lifecycle unavailable")
@@ -360,6 +365,22 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			}
 		}
 	}
+	var trialDB *gorm.DB
+	if cfg.LocalTrial != nil {
+		trialDB, err = dependencies.OpenLocalTrial(startupContext, cfg.LocalTrial.Database)
+		if err != nil {
+			return fmt.Errorf("open isolated local trial database: %w", err)
+		}
+		if trialDB == nil {
+			return errors.New("isolated local trial database unavailable")
+		}
+		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB} {
+			if trialDB == existing {
+				return errors.New("local trial requires its dedicated runtime pool")
+			}
+		}
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(trialDB)) }()
+	}
 	if dependencies.Listen == nil {
 		return errors.New("current application serving lifecycle unavailable")
 	}
@@ -386,7 +407,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreProvider: officialProvider, OfficialStoreProtection: officialProtection, StoreCenterDB: storeDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreProvider: officialProvider, OfficialStoreProtection: officialProtection, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {

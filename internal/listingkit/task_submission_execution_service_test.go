@@ -291,6 +291,7 @@ func TestTaskSubmissionExecutionServiceNormalizeSheinSubmitPackageMarksConfirmed
 	})
 	task := makeReadySheinTask()
 	pkg := task.Result.Shein
+	pkg.FinalSubmissionDraft.Confirmed = false
 
 	exec.normalizeSheinSubmitPackage(task, pkg, &SubmitTaskRequest{
 		ConfirmedFinal: true,

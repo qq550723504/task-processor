@@ -23,6 +23,7 @@ func maintainedOperationalCommands() map[string]struct{} {
 		"commercial-owner-schema-migrate":     {},
 		"fingerprint-browser-installer":       {},
 		"knowledge-schema-init":               {},
+		"issue36-local-trial-init":            {},
 		"listing-scheduler":                   {},
 		"listingkit-identity-preflight":       {},
 		"listingkit-owner-scope-dry-run":      {},

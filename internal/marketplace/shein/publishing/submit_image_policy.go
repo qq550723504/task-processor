@@ -40,7 +40,7 @@ type FinalDraftImageInput struct {
 // FinalSubmitImagesReady reports whether final submit images satisfy action-specific readiness.
 func FinalSubmitImagesReady(action string, input FinalSubmitImageReadinessInput) (bool, string) {
 	if !input.HasFinalDraft {
-		return true, "旧任务未启用最终图片确认，按兼容路径处理"
+		return false, "缺少最终图片草稿，无法确认主图和图库"
 	}
 	if !input.HasMainImage {
 		return false, "最终确认页还没有设置主图"

@@ -11,7 +11,7 @@ import (
 
 // RuleVersion pins this composition and the transitive existing rules it calls.
 // Changes to those rules require re-evaluating and bumping this version.
-const RuleVersion = "shein.offline_package.v1"
+const RuleVersion = "shein.offline_package.v1.1"
 
 type Validator struct{}
 

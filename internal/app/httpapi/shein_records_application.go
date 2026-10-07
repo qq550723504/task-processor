@@ -7,6 +7,7 @@ import (
 	recordstore "task-processor/internal/app/listingrecordstore"
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
+	"task-processor/internal/httproute"
 	assetstore "task-processor/internal/integration/persistence/product/asset"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	"task-processor/internal/listing/record"
@@ -28,6 +29,32 @@ import (
 // separate rollout decision. Both domains share this single database boundary.
 func NewSheinRecordApplication(currentProductDB *gorm.DB, verifier zitadelruntime.Verifier, resolver *workbenchcontext.Resolver, authorizer *authz.ListingKitAuthorizer) (*http.Server, record.Reader, error) {
 	if currentProductDB == nil || verifier == nil || resolver == nil || authorizer == nil {
+		return nil, nil, record.ErrUnavailable
+	}
+	routes, repository, err := buildLocalTrialListingRoutes(currentProductDB, authorizer)
+	if err != nil {
+		return nil, nil, err
+	}
+	server := buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, routes, routeAuthDependencies{workbenchVerifier: verifier, organizationResolver: resolver, authorizer: authorizer})
+	server.ReadTimeout = record.Timeout
+	// The transport deadline starts before the application deadline. Reserve
+	// bounded headroom so an expired operation can still return its HTTP 504.
+	server.WriteTimeout = record.Timeout + 2*time.Second
+	handler := server.Handler
+	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set the protected-metadata response policy before auth and organization
+		// middleware so their early failures cannot be cached or content-sniffed.
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		ctx, cancel := context.WithTimeout(r.Context(), record.Timeout)
+		defer cancel()
+		handler.ServeHTTP(w, r.WithContext(ctx))
+	})
+	return server, repository, nil
+}
+
+func buildLocalTrialListingRoutes(currentProductDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) ([]httproute.Descriptor, record.Reader, error) {
+	if currentProductDB == nil || authorizer == nil {
 		return nil, nil, record.ErrUnavailable
 	}
 	source, err := catalogstore.NewBoundedSnapshotReader(currentProductDB, record.MaxPayloadBytes)
@@ -64,22 +91,10 @@ func NewSheinRecordApplication(currentProductDB *gorm.DB, verifier zitadelruntim
 	}
 	routes := append(sheinRecordRoutes(service), sheinRecordCollectionRoutes(collection)...)
 	routes = append(routes, sheinDiagnosticRoutes(diagnostic)...)
-	server := buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, routes, routeAuthDependencies{workbenchVerifier: verifier, organizationResolver: resolver, authorizer: authorizer})
-	server.ReadTimeout = record.Timeout
-	// The transport deadline starts before the application deadline. Reserve
-	// bounded headroom so an expired operation can still return its HTTP 504.
-	server.WriteTimeout = record.Timeout + 2*time.Second
-	handler := server.Handler
-	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Set the protected-metadata response policy before auth and organization
-		// middleware so their early failures cannot be cached or content-sniffed.
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		ctx, cancel := context.WithTimeout(r.Context(), record.Timeout)
-		defer cancel()
-		handler.ServeHTTP(w, r.WithContext(ctx))
-	})
-	return server, repository, nil
+	for i := range routes {
+		routes[i].RequestTimeout = record.Timeout + 2*time.Second
+	}
+	return routes, repository, nil
 }
 
 type sheinRecordStoreReader struct{ repository storecenter.Repository }

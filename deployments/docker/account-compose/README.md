@@ -498,6 +498,67 @@ The three public ports and the project name are configurable in `.env`; choose
 values not used by either retained trial. The application and identity services
 remain private to the Compose network except for those loopback endpoints.
 
+## Issue #36 retained local trial
+
+Use this opt-in path only for a **new, empty, isolated loopback project**. It
+starts the normal local ZITADEL/Auth.js application with synthetic Product
+Review and completed Listing records. Do not add the overlay to an existing
+account-compose project. From this directory in PowerShell, choose unused ports
+and start with **both** Compose files:
+
+```powershell
+Copy-Item .env.example .env
+$project = "task-processor-issue36-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+$identityPort = 24443
+$applicationPort = 24444
+$mailPort = 24425
+$publicPorts = @($identityPort, $applicationPort, $mailPort)
+if (($publicPorts | Sort-Object -Unique).Count -ne $publicPorts.Count) { throw "Public ports must be distinct" }
+$fixedInternalPorts = @(1025, 3000, 3001, 5432, 5433, 7233, 8025, 8080, 8085, 9000, 18080)
+if (@($identityPort, $applicationPort) | Where-Object { $fixedInternalPorts -contains $_ }) { throw "Identity/application port collides with a fixed Compose-internal port" }
+foreach ($port in $publicPorts) { if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { throw "Host port is already in use: $port" } }
+"COMPOSE_PROJECT_NAME=$project`nACCOUNT_IDENTITY_PORT=$identityPort`nACCOUNT_APPLICATION_PORT=$applicationPort`nACCOUNT_MAIL_PORT=$mailPort" | Set-Content -LiteralPath .env -Encoding ascii
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.issue36-trial.yml up -d --build --wait
+```
+
+Keep that `.env`, project name, checkout and both Compose files for every
+restart. Extract credentials and synthetic sample IDs into a private local
+handoff directory without printing their contents:
+
+```powershell
+$handoff = Join-Path $env:LOCALAPPDATA "ListingKit\issue36-trial\$project\handoff"
+New-Item -ItemType Directory -Force -Path $handoff | Out-Null
+docker run --rm -v "${project}-trusted-ca:/source:ro" -v "${handoff}:/out" alpine:3.22 sh -c 'cp /source/root-ca.pem /out/root-ca.pem'
+docker run --rm --mount "type=volume,src=${project}-tofu-inputs,dst=/source,readonly" --mount "type=bind,src=$handoff,dst=/out" alpine:3.22 sh -ec 'cp /source/operator-password /out/operator-password.txt; cp /source/viewer-password /out/viewer-password.txt; cp /source/insufficient-password /out/insufficient-password.txt'
+docker run --rm --mount "type=volume,src=${project}-runtime-secrets,dst=/source,readonly" --mount "type=bind,src=$handoff,dst=/out" alpine:3.22 sh -ec 'cp /source/issue36-sample.json /out/issue36-sample.json'
+icacls $handoff /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)(F)" "SYSTEM:(OI)(CI)(F)" "Administrators:(OI)(CI)(F)" | Out-Null
+Write-Output "Private handoff directory: $handoff"
+```
+
+Open `https://localhost:<applicationPort>` and sign in as
+`local-bootstrap-operator@localhost` with `operator-password.txt`. In the
+current enterprise, use `/workbench/ai/tasks/pending/other` for the seeded
+Review proposal: decide or edit it, then invoke Apply separately. Use
+`/workbench/ai/tasks/completed/history` for the seeded local Listing record,
+historical Store ID, local action and diagnostic. `issue36-sample.json` contains
+the synthetic IDs. `publish` describes a local preparation action, not a
+platform publish. The viewer and insufficient-role password files are for
+permission checks. Trusting `root-ca.pem` for the current Windows user is a
+user decision; do not bypass browser certificate warnings.
+
+Retain the project and named volumes by stopping and restarting with the same
+overlay. The base-only commands in **Operate and retain** below are for the
+ordinary account-center instance and must not be used for an Issue #36 trial:
+
+```powershell
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.issue36-trial.yml stop
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.issue36-trial.yml up -d --no-build --wait
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.issue36-trial.yml ps
+```
+
+Do not run `down -v`: it deletes the retained identity and business data.
+This isolated path does not connect real providers or platform publication.
+
 ## Start
 
 From this directory, copy the example environment, choose a new lowercase

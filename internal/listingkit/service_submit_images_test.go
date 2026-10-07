@@ -36,6 +36,9 @@ func TestSubmitTaskPublishesSDSRenderedImages(t *testing.T) {
 		Gallery:      append([]string(nil), rendered[1:]...),
 		SourceImages: []string{sourceImage},
 	}
+	task.Result.Shein.FinalSubmissionDraft.MainImageURL = rendered[0]
+	task.Result.Shein.FinalSubmissionDraft.ImageRoleOverrides = map[string]string{rendered[len(rendered)-1]: "swatch"}
+	task.Result.Shein.SkcList[0].MainImageURL = rendered[0]
 	task.Result.Shein.RequestDraft.ImageInfo = &SheinImageDraft{
 		MainImage: rendered[0],
 		Gallery:   append([]string(nil), rendered[1:]...),
@@ -94,7 +97,9 @@ func TestSubmitTaskPublishesSDSRenderedImages(t *testing.T) {
 	if submitted == nil {
 		t.Fatal("expected publish payload to be captured")
 	}
-	expectedSPUImages := append([]string(nil), uploaded...)
+	// The final draft explicitly assigns the last rendered image as the swatch.
+	// SPU gallery excludes that role; SKC retains it after the square image.
+	expectedSPUImages := append([]string(nil), uploaded[:len(uploaded)-1]...)
 	expectedSPUImages = append(expectedSPUImages, uploaded[0])
 	if submitted.ImageInfo == nil || len(submitted.ImageInfo.ImageInfoList) != len(expectedSPUImages) {
 		t.Fatalf("submitted SPU image info = %+v, want normalized uploaded SPU images", submitted.ImageInfo)
@@ -114,9 +119,9 @@ func TestSubmitTaskPublishesSDSRenderedImages(t *testing.T) {
 			t.Fatalf("submitted SPU image %d type = %d, want %d", index, image.ImageType, wantType)
 		}
 	}
-	expectedSKCImages := append([]string(nil), uploaded...)
+	expectedSKCImages := append([]string(nil), uploaded[:len(uploaded)-1]...)
 	expectedSKCImages = append(expectedSKCImages, uploaded[0])
-	expectedSKCImages = append(expectedSKCImages, uploaded[0])
+	expectedSKCImages = append(expectedSKCImages, uploaded[len(uploaded)-1])
 	if len(submitted.SKCList) != 1 || len(submitted.SKCList[0].ImageInfo.ImageInfoList) != len(expectedSKCImages) {
 		t.Fatalf("submitted SKC image info = %+v", submitted.SKCList)
 	}
@@ -201,6 +206,10 @@ func TestSubmitTaskBlocksPublishWhenSheinImageUploadFails(t *testing.T) {
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	rendered := []string{"https://cdn.sdspod.com/out/0/202604/rendered-main.jpg"}
+	task.Result.Shein.FinalSubmissionDraft.MainImageURL = rendered[0]
+	task.Result.Shein.Images.MainImage = rendered[0]
+	task.Result.Shein.SkcList[0].MainImageURL = rendered[0]
+	task.Result.Shein.RequestDraft.ImageInfo = &SheinImageDraft{MainImage: rendered[0]}
 	task.Result.Shein.PreviewProduct.ImageInfo = sheinImageInfo(rendered)
 	task.Result.Shein.PreviewProduct.SKCList[0].ImageInfo = *sheinImageInfo(rendered)
 	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].ImageInfo = sheinImageInfo(rendered)
@@ -301,7 +310,7 @@ func TestSubmitTaskSaveDraftAllowsMissingStrictPublishImageRoles(t *testing.T) {
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	sourceImage := "https://oss.shuomiai.com/listingkit/source-main.png"
-	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+	task.Result.Shein.FinalSubmissionDraft = &sheinpub.FinalDraft{
 		Confirmed:       true,
 		MainImageURL:    sourceImage,
 		FinalImageOrder: []string{sourceImage},
@@ -341,7 +350,7 @@ func TestSubmitTaskSaveDraftDoesNotRequireFinalConfirmation(t *testing.T) {
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	sourceImage := "https://oss.shuomiai.com/listingkit/source-main.png"
-	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+	task.Result.Shein.FinalSubmissionDraft = &sheinpub.FinalDraft{
 		Confirmed:       false,
 		MainImageURL:    sourceImage,
 		FinalImageOrder: []string{sourceImage},
@@ -380,7 +389,7 @@ func TestSubmitTaskPublishAllowsMissingSizeMapRole(t *testing.T) {
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	sourceImage := "https://oss.shuomiai.com/listingkit/source-main.png"
-	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+	task.Result.Shein.FinalSubmissionDraft = &sheinpub.FinalDraft{
 		Confirmed:       true,
 		MainImageURL:    sourceImage,
 		FinalImageOrder: []string{sourceImage},
@@ -448,7 +457,7 @@ func TestSubmitTaskPublishRepairsMissingSKCImagesFromFinalDraft(t *testing.T) {
 	task := makeReadySheinTask()
 	sourceImage := "https://oss.shuomiai.com/listingkit/source-main.png"
 	sizeImage := "https://oss.shuomiai.com/listingkit/source-size.png"
-	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+	task.Result.Shein.FinalSubmissionDraft = &sheinpub.FinalDraft{
 		Confirmed:       true,
 		MainImageURL:    sourceImage,
 		FinalImageOrder: []string{sourceImage, sizeImage},
@@ -617,7 +626,7 @@ func TestSubmitReadinessDerivesSwatchFromSKCImage(t *testing.T) {
 	task := makeReadySheinTask()
 	mainImage := "https://oss.shuomiai.com/listingkit/main.png"
 	sizeImage := "https://oss.shuomiai.com/listingkit/size.png"
-	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+	task.Result.Shein.FinalSubmissionDraft = &sheinpub.FinalDraft{
 		Confirmed:       true,
 		MainImageURL:    mainImage,
 		FinalImageOrder: []string{mainImage, sizeImage},

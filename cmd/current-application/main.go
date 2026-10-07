@@ -61,6 +61,9 @@ func execute() error {
 		OpenStoreCenter: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
+		OpenLocalTrial: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
 
 		OpenSourceAccount: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
@@ -123,6 +126,9 @@ func execute() error {
 				if features.OfficialStoreProvider != nil || features.OfficialStoreProtection != nil {
 					options = append(options, httpapi.WithStoreOfficialConnection(features.OfficialStoreProvider, features.OfficialStoreProtection))
 				}
+			}
+			if features.LocalTrialDB != nil {
+				options = append(options, httpapi.WithIssue36Trial(features.LocalTrialDB))
 			}
 			if features.MoneyOwnerDB != nil {
 				options = append(options, httpapi.WithMoneyOwnerDatabase(features.MoneyOwnerDB))

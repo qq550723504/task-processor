@@ -9,7 +9,7 @@ export function diagnosticFixture(action: "publish" | "save_draft" = "publish") 
     scope: "shein.offline_package" as const,
     target: { marketplace: "shein" as const, site: "" as const },
     action,
-    rule_version: "shein.offline_package.v2" as const,
+    rule_version: "shein.offline_package.v2.1" as const,
     input: { actual_digest: `sha256:${"a".repeat(64)}`, binding_version: "shein.persisted-input.go-json.v1" as const, read_at: "2026-09-06T04:00:00Z", evaluated_at: "2026-09-06T04:00:01Z" },
     external_freshness: { status: "not_evaluated" as const, coverage: [] as string[] },
     not_evaluated: ["external_package_freshness", "online_template_freshness", "store_authorization", "cookie", "pod", "human_review", "approved_asset_provenance_and_consent", "submission_gate"],

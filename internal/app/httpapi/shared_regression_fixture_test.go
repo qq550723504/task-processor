@@ -75,7 +75,7 @@ func loadSharedRegression(t *testing.T, layer string) (sharedManifest, []sharedC
 	var manifest sharedManifest
 	sharedDecode(t, raw, &manifest)
 	require.Equal(t, "product-shein-shared", manifest.DatasetID)
-	require.Equal(t, "1.0.0", manifest.Version)
+	require.Equal(t, "1.0.1", manifest.Version)
 	require.False(t, manifest.SemanticTime.IsZero())
 	raw, err = os.ReadFile(sharedRegressionRoot + "cases.json")
 	require.NoError(t, err)

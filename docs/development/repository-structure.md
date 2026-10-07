@@ -90,6 +90,7 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
     - `commercial-owner-schema-migrate`
     - `fingerprint-browser-installer`
     - `knowledge-schema-init`
+    - `issue36-local-trial-init`
     - `listing-scheduler`
     - `listingkit-identity-preflight`
     - `listingkit-owner-scope-dry-run`
@@ -123,6 +124,7 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
   - `account-acceptance-fixture` 由 `deployments/docker/account-compose` 的 `acceptance` profile 维护，只通过官方 ZITADEL API 创建并回读隔离验收组织与角色授权，写入项目私有的脱敏 manifest；不提供生产路由、不写业务事实表。
   - `account-audit-ledger-schema-init` 由 `deployments/docker/account-compose` 维护，仅为全新隔离 Account Compose 的 image/product owner 初始化现有 AI 调用账本并授予审计只读角色查询权限；不启用 Agent 执行或迁移旧实例。依据 #587 / [账户审计用量只读源架构](../architecture/account-audit-usage-readers-v1.md)。
   - `product-acquisition-init` 由 `scripts/product-acquisition-init.ps1` 显式委托，要求私有配置路径和精确空库名称确认；只初始化 #398 当前 Product 采集的五张表及 runtime grants，不创建数据库或角色，不自动执行，不迁移旧数据。准入见 #398 评论 5643032970。
+  - `issue36-local-trial-init` 仅由 `deployments/docker/account-compose` 的显式 #36 本机试用 overlay 在新项目中调用：以私有 Store Center owner 配置安装当前 Review/Asset schema 并准备固定合成样本；不作为默认应用入口，不访问共享或生产数据。
   - `referral-schema-init` 由 `scripts/referral-schema-init.ps1` 维护，通过显式 DSN 文件初始化当前推广注册空库 schema；执行范围和验证要求见 [推广注册运维说明](../engineering/referral-registration.md)。
   - 历史爬虫、订阅、兼容 API、地址复制、一次性迁移或调试入口不得回流到 `cmd/`；确需保留时放到 `hack/`、`tools/` 或业务模块内。
   - 不放本地 `logs`、`tmp`、`__debug_bin*` 等运行态产物；这类文件统一放到仓库根 `.local/`。
