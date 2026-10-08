@@ -936,7 +936,7 @@ export async function buildWorkbenchUpstreamRequest(
       cache: "no-store",
     },
     responseContract: route.responseContract,
-    expectedStoreId: expectedCollectionMedia ??
+    expectedStoreId: expectedCollectionMedia ?? (
       (route.requestContract==="supply-target"||route.requestContract==="supply-publication") ? `${path[2]}:${path[4]}` :
       ["supply-source","supply-preparation","supply-record","supply-operation","supply-ensure","supply-cancel"].includes(route.requestContract) ? (route.requestContract==="supply-preparation"?path[1]:path[2]) :
       route.requestContract === "collection-detail" ? path[2] :
@@ -950,7 +950,7 @@ export async function buildWorkbenchUpstreamRequest(
       route.responseContract === "source-account-detail" ||
       route.responseContract === "source-account-mutation"
         ? path[1]
-        : undefined,
+        : undefined),
     requestId,
     sourceMutation:
       (supplyContract && supplyMutates(route.requestContract.slice(7) as SupplyRoute)) ||

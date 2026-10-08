@@ -3,6 +3,7 @@ package collectionpersistence
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
@@ -172,13 +173,17 @@ func (r *Repository) Execute(ctx context.Context, command collection.Command) (c
 			}
 			batchID := input.BatchID
 			if batchID == "" {
-				batchID = collection.StableID(scope.OrganizationID, scope.ActorID, "default", source.Kind, source.OperationID)
-				name := "自有商品库"
-				if source.Kind == "acquisition" {
-					name = now.Format("01/02 15:04") + " · 1688商品采集"
-				}
-				if err := insertBatch(tx, scope, batchID, name, source.Kind, now); err != nil {
-					return err
+				if source.Kind == "own" {
+					selectedID, err := ownDefaultBatch(tx, scope, source.OperationID, now)
+					if err != nil {
+						return err
+					}
+					batchID = selectedID
+				} else {
+					batchID = collection.StableID(scope.OrganizationID, scope.ActorID, "default", source.Kind, source.OperationID)
+					if err := insertBatch(tx, scope, batchID, now.Format("01/02 15:04")+" · 1688商品采集", source.Kind, now); err != nil {
+						return err
+					}
 				}
 			}
 			if _, err := lockBatch(tx, scope, batchID, 0); err != nil {
@@ -234,6 +239,33 @@ func (r *Repository) write(ctx context.Context, body func(*gorm.DB) error) (err 
 }
 func insertBatch(tx *gorm.DB, scope collection.Scope, id, name, kind string, now time.Time) error {
 	return tx.Exec("INSERT INTO product_collection_batches(organization_id,actor_id,member_id,id,name,kind,revision,created_at) VALUES(?,?,?,?,?,?,1,?) ON CONFLICT DO NOTHING", scope.OrganizationID, scope.ActorID, scope.MemberID, id, name, kind, now).Error
+}
+
+// Continue the automatic own library after archival without restoring old
+// members or choosing an unrelated imported batch. Locked durable revisions
+// give concurrent new commands the same next identity in the existing UoW.
+func ownDefaultBatch(tx *gorm.DB, scope collection.Scope, operationID string, now time.Time) (string, error) {
+	id := collection.StableID(scope.OrganizationID, scope.ActorID, "default", "own", operationID)
+	for {
+		var batch collection.Batch
+		row := tx.Raw("SELECT id,name,kind,revision,created_at,archived_at FROM product_collection_batches WHERE organization_id=? AND actor_id=? AND id=? FOR UPDATE", scope.OrganizationID, scope.ActorID, id).Scan(&batch)
+		if row.Error != nil {
+			return "", row.Error
+		}
+		if row.RowsAffected == 0 {
+			if err := insertBatch(tx, scope, id, "自有商品库", "own", now); err != nil {
+				return "", err
+			}
+			continue
+		}
+		if batch.Kind != "own" || batch.Revision < 1 {
+			return "", collection.ErrConflict
+		}
+		if batch.ArchivedAt == nil {
+			return id, nil
+		}
+		id = collection.StableID(scope.OrganizationID, scope.ActorID, "own-default-after-archive", batch.ID, strconv.FormatInt(batch.Revision, 10))
+	}
 }
 func lockBatch(tx *gorm.DB, scope collection.Scope, id string, expected int64) (collection.Batch, error) {
 	var batch collection.Batch

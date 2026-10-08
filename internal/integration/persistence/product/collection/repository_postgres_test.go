@@ -159,6 +159,68 @@ func TestPostgresCollectionAtomicReplayOwnershipMoveAndCommitUnknown(t *testing.
 	importCmd.InputHash = collection.Digest("changed spreadsheet")
 	_, err = repository.Execute(ctx, importCmd)
 	require.ErrorIs(t, err, collection.ErrConflict)
+	t.Run("archive default library preserves old sources and allows new products", func(t *testing.T) {
+		owner := collection.Scope{"org-a", "archive-actor", "archive-member"}
+		create := func(title string) collection.Command {
+			return testCommand(owner, uuid.NewString(), collection.Mutation{Action: "create_product", Product: &collection.OwnProduct{Title: title}})
+		}
+		firstCommand := create("归档前商品")
+		first, err := repository.Execute(ctx, firstCommand)
+		require.NoError(t, err)
+		archive := func(id string) {
+			batch, err := repository.ReadBatch(ctx, owner, id)
+			require.NoError(t, err)
+			_, err = repository.Execute(ctx, testCommand(owner, uuid.NewString(), collection.Mutation{Action: "archive_batch", BatchID: id, ExpectedRevision: batch.Revision}))
+			require.NoError(t, err)
+		}
+		archive(first.BatchID)
+		second, err := repository.Execute(ctx, create("归档后商品"))
+		require.NoError(t, err)
+		require.NotEqual(t, first.BatchID, second.BatchID)
+		replay, err := repository.Execute(ctx, firstCommand)
+		require.NoError(t, err)
+		require.True(t, replay.Replayed)
+		require.Equal(t, first.BatchID, replay.BatchID)
+		_, err = repository.ReadBatch(ctx, owner, first.BatchID)
+		require.ErrorIs(t, err, collection.ErrNotFound)
+		batch, err := repository.ReadBatch(ctx, owner, second.BatchID)
+		require.NoError(t, err)
+		_, err = repository.Execute(ctx, testCommand(owner, uuid.NewString(), collection.Mutation{Action: "rename_batch", BatchID: batch.ID, ExpectedRevision: batch.Revision, Name: "保留更名"}))
+		require.NoError(t, err)
+		third, err := repository.Execute(ctx, create("仍在更名库"))
+		require.NoError(t, err)
+		require.Equal(t, second.BatchID, third.BatchID)
+		archive(second.BatchID)
+		imported, err := repository.Execute(ctx, testCommand(owner, uuid.NewString(), collection.Mutation{Action: "import_products", Name: "独立Excel批次", Products: []collection.OwnProduct{{Title: "Excel商品"}}}))
+		require.NoError(t, err)
+		type result struct {
+			receipt collection.Receipt
+			err     error
+		}
+		results := make(chan result, 4)
+		for range 4 {
+			command := create("并发新商品")
+			go func() { receipt, err := repository.Execute(ctx, command); results <- result{receipt, err} }()
+		}
+		current := ""
+		for range 4 {
+			result := <-results
+			require.NoError(t, result.err)
+			require.NotEqual(t, imported.BatchID, result.receipt.BatchID)
+			if current == "" {
+				current = result.receipt.BatchID
+			}
+			require.Equal(t, current, result.receipt.BatchID)
+		}
+		own, err := repository.ListItems(ctx, owner, "", collection.Query{Limit: 100})
+		require.NoError(t, err)
+		require.Equal(t, int64(5), own.Total, "only the new default and independent Excel products remain visible")
+		var old int64
+		require.NoError(t, db.Raw("SELECT count(*) FROM product_collection_items WHERE organization_id=? AND actor_id=? AND batch_id IN (?,?)", owner.OrganizationID, owner.ActorID, first.BatchID, second.BatchID).Scan(&old).Error)
+		require.Equal(t, int64(3), old, "archived sources are retained without restoration")
+		_, err = repository.Execute(ctx, testCommand(owner, uuid.NewString(), collection.Mutation{Action: "create_product", BatchID: first.BatchID, Product: &collection.OwnProduct{Title: "明确选归档库"}}))
+		require.ErrorIs(t, err, collection.ErrNotFound)
+	})
 	// A same-count FK aimed at the wrong ownership relation is not readiness.
 	require.NoError(t, db.Exec("ALTER TABLE product_collection_items DROP CONSTRAINT product_collection_items_organization_id_actor_id_batch_id_fkey").Error)
 	require.NoError(t, db.Exec("DELETE FROM product_collection_items").Error)

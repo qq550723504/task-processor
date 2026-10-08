@@ -246,6 +246,15 @@ func TestOfficialMissingConfigurationLeavesReadsUsableAndDoesNotCreateConsent(t 
 	if _, err := app.Begin(context.Background(), storecenter.OfficialConnectionCommand{OrganizationID: "org-a", StoreID: stored.ID(), AttemptID: uuid.NewString(), ExpectedStoreVersion: stored.Version(), ApplicationID: "test-app"}); !errors.Is(err, storecenter.ErrOfficialConnectionUnavailable) {
 		t.Fatalf("missing setup admitted consent: %v", err)
 	}
+	if choices, err := app.Applications(context.Background(), "org-a", stored.ID()); err != nil || len(choices) != 0 {
+		t.Fatalf("unconfigured registry must return no available choices: %+v %v", choices, err)
+	}
+	if _, err := app.ResumeQuery(context.Background(), "org-a", stored.ID(), uuid.NewString()); !errors.Is(err, storecenter.ErrNotFound) {
+		t.Fatalf("unconfigured query must safely reject an absent original attempt: %v", err)
+	}
+	if _, err := app.Complete(context.Background(), storecenter.CompleteOfficialConnection{OrganizationID: "org-a", StoreID: stored.ID(), AttemptID: uuid.NewString(), AppID: "test-app", State: "state"}); !errors.Is(err, storecenter.ErrNotFound) {
+		t.Fatalf("unconfigured callback must safely reject an absent original attempt: %v", err)
+	}
 	var count int64
 	if err := db.Table("workbench_store_connection_attempts").Count(&count).Error; err != nil || count != 0 {
 		t.Fatalf("missing setup wrote consent: %d %v", count, err)

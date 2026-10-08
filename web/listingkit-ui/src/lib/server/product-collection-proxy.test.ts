@@ -60,4 +60,20 @@ describe("private product collection proxy", () => {
     const over=await buildWorkbenchUpstreamRequest(new Request("http://localhost/api/workbench/collections/media",{method:"POST",headers:{...scope,Origin:"http://localhost","Content-Type":"application/octet-stream","X-Content-SHA256":"a".repeat(64)},body:new Uint8Array(3*1024*1024+1)}),["collections","media"],"server-token","actor-a");
     expect(over).toBeInstanceOf(Response);if(over instanceof Response)expect(over.status).toBe(413);
   });
+  it("preserves the original media hash and byte count through upload and refresh verification",async()=>{
+    const hash="a".repeat(64),bytes=new Uint8Array([255,216,255,217]);
+    const image={hash,bytes:bytes.length,url:"https://images.example.org/product.jpg",mediaType:"image/jpeg",width:900,height:900};
+    for(const method of ["POST","GET"]){
+      const path=method==="POST"?["collections","media"]:["collections","media",hash];
+      const suffix=method==="POST"?"media":`media/${hash}?bytes=${bytes.length}`;
+      const headers=method==="POST"?{...scope,Origin:"http://localhost","Content-Type":"application/octet-stream","X-Content-SHA256":hash}:scope;
+      const mapped=await buildWorkbenchUpstreamRequest(new Request(`http://localhost/api/workbench/collections/${suffix}`,{method,headers,...method==="POST"?{body:bytes}:{}}),path,"server-token","actor-a");
+      expect(mapped).not.toBeInstanceOf(Response);if(mapped instanceof Response)continue;
+      expect(mapped.expectedStoreId).toBe(`${hash}:${bytes.length}`);
+      const result=await buildWorkbenchBrowserResponse(Response.json(image),mapped.responseContract,mapped.expectedStoreId,{sourceMutation:mapped.sourceMutation});
+      expect(result.status).toBe(200);expect(await result.json()).toEqual(image);
+      const wrong=await buildWorkbenchBrowserResponse(Response.json({...image,bytes:bytes.length+1}),mapped.responseContract,mapped.expectedStoreId,{sourceMutation:mapped.sourceMutation});
+      expect(wrong.status).toBe(method==="POST"?503:502);
+    }
+  });
 });
