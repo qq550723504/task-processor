@@ -139,7 +139,7 @@ func NewMerchantOnboarding(r MerchantRepository, p MerchantOnboardingPort, f *Fi
 	}
 	return &MerchantOnboarding{r, p, f, secrets, a}, nil
 }
-func validDocument(d IdentityDocument, beneficiary bool) bool {
+func validDocumentAt(d IdentityDocument, beneficiary bool, now time.Time) bool {
 	switch d.Type {
 	case "IDENTIFICATION_TYPE_MAINLAND_IDCARD", "IDENTIFICATION_TYPE_OVERSEA_PASSPORT", "IDENTIFICATION_TYPE_HONGKONG", "IDENTIFICATION_TYPE_MACAO", "IDENTIFICATION_TYPE_TAIWAN", "IDENTIFICATION_TYPE_FOREIGN_RESIDENT", "IDENTIFICATION_TYPE_HONGKONG_MACAO_RESIDENT", "IDENTIFICATION_TYPE_TAIWAN_RESIDENT":
 	default:
@@ -149,19 +149,21 @@ func validDocument(d IdentityDocument, beneficiary bool) bool {
 		return false
 	}
 	start, err := time.Parse("2006-01-02", d.ValidFrom)
-	if err != nil || start.Year() < 1900 || !start.Before(time.Now()) {
+	today := now.In(time.FixedZone("Asia/Shanghai", 8*60*60)).Format("2006-01-02")
+	if err != nil || start.Year() < 1900 || start.Format("2006-01-02") >= today {
 		return false
 	}
 	if d.ValidUntil != "长期" {
 		end, err := time.Parse("2006-01-02", d.ValidUntil)
-		if err != nil || !end.After(start) || !end.After(time.Now().Add(-24*time.Hour)) {
+		if err != nil || !end.After(start) || end.Format("2006-01-02") < today {
 			return false
 		}
 	}
 	return true
 }
 func ValidateMerchantDetails(d MerchantDetails) ([]string, error) {
-	if !ValidID(d.LicenseFileID) || !validDocument(d.Legal, false) || len(d.Beneficiaries) > 4 || d.SoleLegalBeneficiary && len(d.Beneficiaries) != 0 || !d.SoleLegalBeneficiary && len(d.Beneficiaries) == 0 || !validText(d.ContactMobile, 32) || !validText(d.AccountBank, 128) || !validText(d.AccountNumber, 64) || !validText(d.MerchantShortName, 64) || !validText(d.StoreName, 128) || len(d.BankBranchName) > 128 {
+	now := time.Now()
+	if !ValidID(d.LicenseFileID) || !validDocumentAt(d.Legal, false, now) || len(d.Beneficiaries) > 4 || d.SoleLegalBeneficiary && len(d.Beneficiaries) != 0 || !d.SoleLegalBeneficiary && len(d.Beneficiaries) == 0 || !validText(d.ContactMobile, 32) || !validText(d.AccountBank, 128) || !validText(d.AccountNumber, 64) || !validText(d.MerchantShortName, 64) || !validText(d.StoreName, 128) || len(d.BankBranchName) > 128 {
 		return nil, ErrInvalid
 	}
 	u, err := url.Parse(d.StoreURL)
@@ -173,7 +175,7 @@ func ValidateMerchantDetails(d MerchantDetails) ([]string, error) {
 		files = append(files, d.Legal.BackFileID)
 	}
 	for _, b := range d.Beneficiaries {
-		if !validDocument(b, true) {
+		if !validDocumentAt(b, true, now) {
 			return nil, ErrInvalid
 		}
 		files = append(files, b.FrontFileID)
