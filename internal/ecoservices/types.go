@@ -182,11 +182,12 @@ type Query struct {
 	From, To                *time.Time
 }
 type Page struct {
-	Applications []Application    `json:"applications,omitempty"`
-	Listings     []Listing        `json:"listings,omitempty"`
-	Requests     []Request        `json:"requests,omitempty"`
-	Total        int64            `json:"total,string"`
-	Counts       map[string]int64 `json:"counts,omitempty"`
+	ProviderQualified *bool            `json:"providerQualified,omitempty"`
+	Applications      []Application    `json:"applications,omitempty"`
+	Listings          []Listing        `json:"listings,omitempty"`
+	Requests          []Request        `json:"requests,omitempty"`
+	Total             int64            `json:"total,string"`
+	Counts            map[string]int64 `json:"counts,omitempty"`
 }
 type Repository interface {
 	ReadMutationResult(context.Context, Command) (Result, bool, error)

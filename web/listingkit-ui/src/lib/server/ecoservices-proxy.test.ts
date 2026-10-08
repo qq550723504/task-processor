@@ -47,6 +47,14 @@ it("forwards only the server token and selected organization and rejects private
  expect((await proxyEcoservices(request,"server-token","actor")).status).toBe(200);const sent=new Headers(fetch.mock.calls[0][1].headers);expect(sent.get("Authorization")).toBe("Bearer server-token");expect(sent.get("X-Requested-Organization-ID")).toBe("org");expect(sent.has("cookie")).toBe(false);
  fetch.mockResolvedValueOnce(Response.json({listings:[],total:"0",privateKey:"private"}));expect((await proxyEcoservices(new Request(request.url,{headers}),"server-token","actor")).status).toBe(502);
 });
+it("forwards the same-org managed qualification boolean without disclosing join-only application data",async()=>{
+ configure();const fetch=vi.fn();vi.stubGlobal("fetch",fetch);
+ const request=()=>new Request("http://localhost:3000/api/ecoservices/provider/listings?page=1&pageSize=20",{headers});
+ for(const providerQualified of [true,false]){fetch.mockResolvedValueOnce(Response.json({providerQualified,listings:[],total:"0"}));const result=await proxyEcoservices(request(),"server-token","actor");expect(result.status).toBe(200);expect(await result.json()).toEqual({providerQualified,listings:[],total:"0"})}
+ fetch.mockResolvedValueOnce(Response.json({providerQualified:"true",listings:[],total:"0"}));expect((await proxyEcoservices(request(),"server-token","actor")).status).toBe(502);
+ fetch.mockResolvedValueOnce(Response.json({providerQualified:true,listings:[],total:"0",merchantId:"private-sub"}));expect((await proxyEcoservices(request(),"server-token","actor")).status).toBe(502);
+ expect(new Headers(fetch.mock.calls[0][1].headers).get("X-Requested-Organization-ID")).toBe("org");
+});
 it("keeps global platform scope neutral and preserves unknown mutation identity",async()=>{
  configure();const fetch=vi.fn().mockResolvedValue(Response.json({applications:[],total:"0"}));vi.stubGlobal("fetch",fetch);
  expect((await proxyEcoservices(new Request("http://localhost:3000/api/admin/ecoservices/applications",{headers:{"X-Expected-User-ID":"actor"}}),"server-token","actor")).status).toBe(200);

@@ -359,3 +359,16 @@ PR #604 原 finding 4221847970 分类 IMPLEMENTATION_TEST：已持久提交但�
 - 验证复用既有 Vitest/React Query/BFF：真实先 RED 的新 client/remount 后原 key/body/CAS 留存；零 mount 自动写；同 scope hook/窗口互斥；用户/org 切换不读取另一命令且 stale context 零请求；持久失败/损坏/超界零派发；5xx/invalid response/撤权不清除；确定结果只清精确命令；有效最长当前请求仍可提交，商户 PII/FormData不进入 localStorage，原资源默认消费者回归。真实浏览器恢复/用户验收保持 NOT_RUN。
 
 Design Basis：原 Independent Architecture 的有界浏览器消费者恢复边界增量。2026-10-09，现有独立 Reviewer ecoservices_architecture_review 检查本增量，确认 IMPLEMENTATION_READY，无设计 BLOCKER。实施测试落实：锁获得后实际 fetch 前再次核实 live scope；409身份/组织变化及403/5xx/错误schema不泛化清除；精确重试、最长有效输入界限与原资源默认不变。正式实现可以按此边界开始，实际浏览器/用户验收仍NOT_RUN；其余冻结协议不重审。Legacy decision：复用当前合格叶能力，无 Legacy migration/fallback。
+
+
+### 12.3 仅管理权限的服务发布消费者增量（2026-10-09，IMPLEMENTATION_READY）
+
+原 finding 4222304477 分类 IMPLEMENTATION_TEST：当前 listingkit_operator 有 read/manage 无 join；Console 服务管理依赖 join-only application ACTIVE，导致已准入企业的运营人员无法新增、编辑和发布服务。当前 §11.7 provider listings 已批准 manage + 原企业/准入状态，不允许因 UI 依赖而给操作员扩展 join/资质文件/商户PII读取权限。
+
+- 只在原 E `provider_listings` Page 增加 optional `providerQualified` boolean，原 manage-authorized GET 同时读取当前 scope 原 enterprise 的 canonical application 是否满足现行 listing mutation guard：state ACTIVE 且 merchant_id 非空。无申请、尚未准入/冻结状态为 false；SQL 读取异常返回 error，不能伪造 true。其他 Page 不产生该字段；不返回 application/file IDs、merchant ID、身份/银行资料、签约URL，不新增表、owner、缓存、权限或 endpoint。
+- Bool 是当前用户管理列表中的有界读取投影，不是授权或准入事实。Create/update/publish 仍在原 E 事务中核实 live 原企业资格、当前权限/版本；不能凭 browser bool、先前 listing 存在或 join-only snapshot 放行。无新的资格/恢复状态机，不改商户 FINISH/ACTIVE/撤权语义。
+- Console 保持原 Figma 申请加入/服务发布布局。join-only 申请/协议/商户文件路径仍只在有 join 权限时查询；manage用户复用原列表查询及原scoped key/cache读取该bool，管理列表可查看，新增/编辑/发布须当前成功列表结果的 bool===true。未读、missing/false/error、权限/用户/org切换均不能显示可提交成功状态或启用发布；定期回读已有列表，所有实际mutation继续原 live guard。操作员不能由此进入商户/协议/私有资质路径。
+- contract→实现：E Page typed bool → E repository same scope canonical EXISTS → 原HTTP manage descriptor → 既有BFF/shared ecoPageSchema → Join服务发布consumer。复用现有当前资源和成熟GORM/React Query，不造qualification API/新菜单/角色/权限平台；Legacy无兼容/迁移。
+- TDD验证：read/manage无join + qualified true正常新建/编辑/发布入口；false/missing/error零放行、identity/org/permissions key隔离、无 applications/merchant/files查询。E真实repository无申请/已准入空目录/其它企业/冻结投影，非provider Page不泄露；原无资格mutations拒绝且跨企业/CAS保留；BFF严格bool传递。仅相关现有Go/UI/BFF测试，真实浏览器新版和用户验收NOT_RUN。
+
+Design Basis：原 Independent Architecture 的有界读取投影增量；2026-10-09现有独立Reviewer检查本新增typed响应字段/消费者边界，无设计BLOCKER，确认IMPLEMENTATION_READY，先于正式代码修改。实施验证包括权限/scope变化后的旧缓存、已打开表单fail closed；其余冻结协议不重审。产品已授权运营人员按manage管理原企业服务，无新增产品决定；退款#19仍用户待决，未修改。

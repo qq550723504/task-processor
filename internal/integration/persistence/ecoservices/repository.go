@@ -549,6 +549,14 @@ func (r *Repository) Read(ctx context.Context, q e.Query) (e.Page, error) {
 			query = query.Where("state=?", "PUBLISHED").Where("EXISTS (SELECT 1 FROM ecoservices_applications a WHERE a.organization_id=ecoservices_listings.provider_organization_id AND a.state=? AND a.merchant_id<>'')", "ACTIVE")
 		} else {
 			query = query.Where("provider_organization_id=?", q.Scope.OrganizationID)
+			// Only the qualification projection belongs to this manage read;
+			// application/private merchant evidence remains behind join.
+			var qualified int64
+			if err := db.Model(&applicationRow{}).Where("organization_id=? AND state=? AND merchant_id<>''", q.Scope.OrganizationID, "ACTIVE").Count(&qualified).Error; err != nil {
+				return out, err
+			}
+			allowed := qualified > 0
+			out.ProviderQualified = &allowed
 		}
 		if q.ID != "" {
 			query = query.Where("id=?", q.ID)

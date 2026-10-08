@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"strings"
 	e "task-processor/internal/ecoservices"
 	"testing"
 	"time"
@@ -231,5 +232,87 @@ func TestVerifiedPaymentBehindTwentyWaitingOrdersStillRecovers(t *testing.T) {
 	req, _ := requestFact(row)
 	if req.State != "PAID_READY" || req.PaymentReceiptID != "verified-original-payment" {
 		t.Fatalf("a paid order starved behind 20 waiting original commands: state=%s receipt=%s", req.State, req.PaymentReceiptID)
+	}
+}
+
+func TestProviderManagementQualificationIsScopedCanonicalProjection(t *testing.T) {
+	r, service := fixture(t)
+	ctx := context.Background()
+	scope := e.Scope{OrganizationID: "operator-org", ActorID: "operator"}
+	read := func(want bool) {
+		t.Helper()
+		page, err := service.Read(ctx, e.Query{Scope: scope, Kind: "provider_listings", Page: 1, PageSize: 20})
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := json.Marshal(page)
+		var result map[string]any
+		if err != nil || json.Unmarshal(raw, &result) != nil || result["providerQualified"] != want {
+			t.Fatal("manage-only qualification absent or wrong", string(raw), err)
+		}
+		for _, secret := range []string{"applications", "fileIds", "merchantId", "private-registration", "private-company"} {
+			if strings.Contains(string(raw), secret) {
+				t.Fatal("private join data exposed", secret)
+			}
+		}
+	}
+	// Another enterprise's qualified fact cannot qualify an empty original org.
+	foreign := e.Application{ID: uuid.NewString(), OrganizationID: "foreign", State: "ACTIVE", Version: 1, MerchantID: "foreign-merchant"}
+	if err := r.db.Create(applicationRecord(foreign)).Error; err != nil {
+		t.Fatal(err)
+	}
+	read(false)
+	app := e.Application{ID: uuid.NewString(), OrganizationID: scope.OrganizationID, CompanyName: "private-company", RegistrationNumber: "private-registration", State: "APPROVED", Version: 1, MerchantID: "", OnboardingState: "AUDITING"}
+	if err := r.db.Create(applicationRecord(app)).Error; err != nil {
+		t.Fatal(err)
+	}
+	read(false)
+	app.State = "ACTIVE"
+	r.db.Save(applicationRecord(app))
+	read(false)
+	app.MerchantID = "original-merchant"
+	r.db.Save(applicationRecord(app))
+	read(true)
+	// Qualification does not depend on any listing existing or its page.
+	page, err := service.Read(ctx, e.Query{Scope: scope, Kind: "catalog", Page: 1, PageSize: 20})
+	raw, _ := json.Marshal(page)
+	if err != nil || strings.Contains(string(raw), "providerQualified") {
+		t.Fatal("non-provider projection leaked qualification", string(raw), err)
+	}
+	app.State = "APPROVED"
+	app.OnboardingState = "FROZEN"
+	r.db.Save(applicationRecord(app))
+	read(false)
+	if err := r.db.Migrator().DropTable(&applicationRow{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Read(ctx, e.Query{Scope: scope, Kind: "provider_listings", Page: 1, PageSize: 20}); err == nil {
+		t.Fatal("qualification database error fabricated usable page")
+	}
+}
+
+func TestCurrentProviderQualificationStillGuardsAllListingMutations(t *testing.T) {
+	r, s := fixture(t)
+	ctx := context.Background()
+	scope := e.Scope{OrganizationID: "provider", ActorID: "operator"}
+	app := e.Application{ID: uuid.NewString(), OrganizationID: scope.OrganizationID, State: "ACTIVE", Version: 1, MerchantID: "original-merchant"}
+	if err := r.db.Create(applicationRecord(app)).Error; err != nil {
+		t.Fatal(err)
+	}
+	listing := e.Listing{Category: e.CompanyRegistration, Title: "原服务", Description: "原说明", Items: []string{"企业登记"}, Regions: []string{"上海"}, PriceMinor: 100, DeliveryDays: 7}
+	original, err := s.Mutate(ctx, e.Command{Scope: scope, Kind: "listing_create", Key: uuid.NewString(), Listing: &listing})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.State = "APPROVED"
+	app.OnboardingState = "FROZEN"
+	if err := r.db.Save(applicationRecord(app)).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"listing_create", "listing_update", "listing_publish"} {
+		_, err := s.Mutate(ctx, e.Command{Scope: scope, Kind: kind, Key: uuid.NewString(), ID: original.Listing.ID, Version: original.Listing.Version, Listing: &listing})
+		if !errors.Is(err, e.ErrNotQualified) {
+			t.Fatal("cached manage qualification bypassed live guard", kind, err)
+		}
 	}
 }
