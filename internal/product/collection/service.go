@@ -165,6 +165,10 @@ func (s *Service) ReadItem(ctx context.Context, itemID string) (ItemDetail, erro
 	if !ValidID(itemID) {
 		return ItemDetail{}, ErrInvalid
 	}
+	return s.readItem(ctx, scope, itemID)
+}
+
+func (s *Service) readItem(ctx context.Context, scope Scope, itemID string) (ItemDetail, error) {
 	item, err := s.store.ReadItem(ctx, scope, itemID)
 	if err != nil {
 		return ItemDetail{}, err

@@ -46,6 +46,10 @@ func TestSourceApprovalDoesNotInventAgentIdentityAndBindsEffectiveVersion(t *tes
 	require.Zero(t, approved.Attempt)
 	require.EqualValues(t, 1, approved.SourceApproval.OriginalSnapshotVersion)
 	require.Equal(t, "actor-a", approved.SourceApproval.ActorID)
+	duplicated := asset.CloneApprovalCommit(asset.ApprovalCommit{TenantID: "org-a", ProductKey: "product-a", TargetPlatform: "shein", SourceSnapshotVersion: 2, ActionID: "direct-duplicate", Assets: []asset.ApprovedAsset{approved, approved}})
+	duplicated.Assets[1].ID = "another-id"
+	duplicated.Assets[1].Role = asset.RoleGallery
+	require.ErrorIs(t, asset.ValidateApprovalCommit(duplicated), asset.ErrInvalidApproval, "the persistence contract must also reject a source image selected twice")
 	duplicate := input
 	duplicate.ActionID = "duplicate-source-image"
 	duplicate.Images = append([]asset.SourceImageChoice{{ID: "image-a", Role: asset.RoleGallery}}, input.Images...)

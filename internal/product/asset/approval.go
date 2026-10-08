@@ -44,6 +44,7 @@ func ValidateApprovalCommit(commit ApprovalCommit) error {
 
 	assetIDs := make(map[string]struct{}, len(commit.Assets))
 	identities := make(map[approvalIdentity]struct{}, len(commit.Assets))
+	sourceIDs := make(map[string]bool, len(commit.Assets))
 	for index, approved := range commit.Assets {
 		if err := validateApprovedAsset(approved); err != nil {
 			return fmt.Errorf("%w: asset %d: %v", ErrInvalidApproval, index, err)
@@ -52,6 +53,12 @@ func ValidateApprovalCommit(commit ApprovalCommit) error {
 			return fmt.Errorf("%w: duplicate asset id %q", ErrInvalidApproval, approved.ID)
 		}
 		assetIDs[approved.ID] = struct{}{}
+		if approved.SourceApproval != nil {
+			if sourceIDs[approved.SourceAssetID] {
+				return fmt.Errorf("%w: source image selected more than once", ErrInvalidApproval)
+			}
+			sourceIDs[approved.SourceAssetID] = true
+		}
 		identity := identityFor(commit.ActionID, approved)
 		if _, exists := identities[identity]; exists {
 			return fmt.Errorf("%w: duplicate typed approval identity", ErrInvalidApproval)
