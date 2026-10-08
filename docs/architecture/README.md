@@ -122,6 +122,11 @@ source of truth for long-lived rules.
 
 ## Supporting Context
 
+- [`notification-center-v1.md`](./notification-center-v1.md)
+  - #608 notification-center design and current-business source mapping. Admission
+    is stated in that document and the execution Issue; a draft is not permission
+    to implement or a claim that notification sources have been delivered.
+
 - [`issue-36-local-trial-runtime.md`](./issue-36-local-trial-runtime.md)
   - IMPLEMENTATION_READY #36 durable loopback runtime and independently reviewed
     post-#590 Task Center entry correction for existing Review/Apply and Listing
