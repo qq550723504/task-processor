@@ -38,6 +38,9 @@ func TestOfficialDraftUsesExactMerchantRulesAndNeverInventsRemoteImageEvidence(t
 	observations := []OfficialImageObservation{}
 	for index, item := range inventory.Assets {
 		observations = append(observations, OfficialImageObservation{AssetID: item.ID, SourceURL: item.URL, Width: item.Width, Height: item.Height, Type: input.Images[index].Type, RemoteURL: "https://img.shein.com/" + item.ID + ".jpg", ResponseHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
+		observations[len(observations)-1].ContentHash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		observations[len(observations)-1].Bytes = 1000
+		observations[len(observations)-1].MediaType = "image/jpeg"
 	}
 	result = BuildOfficial(input, rules, inventory, observations)
 	require.Empty(t, result.Issues)
@@ -152,6 +155,15 @@ func TestOfficialDraftOnlyPublishesSupplierCodesInMerchantChosenDimension(t *tes
 	result = BuildOfficial(input, rules, inventory, nil)
 	require.Equal(t, "source-product", result.Product.SupplierCode)
 	require.Empty(t, result.Product.SKCs[0].SupplierCode)
+}
+
+func TestOfficialWirePayloadRequiresActualBoundedImageBytesAndValidEvidenceHashes(t *testing.T) {
+	input, rules, inventory := officialFixture()
+	observations := []OfficialImageObservation{}
+	for i, item := range inventory.Assets {
+		observations = append(observations, OfficialImageObservation{AssetID: item.ID, SourceURL: item.URL, Width: item.Width, Height: item.Height, Type: input.Images[i].Type, RemoteURL: "https://img.shein.com/" + item.ID + ".jpg", ResponseHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
+	}
+	require.Empty(t, BuildOfficial(input, rules, inventory, observations).SubmissionPayload, "remote URL alone never proves valid image bytes")
 }
 
 func TestOfficialDraftAppliesAssociatedRangesOnlyToTheirExactSKUCombination(t *testing.T) {

@@ -29,6 +29,7 @@ var (
 	ErrExecutionNotFound          = errors.New("submission execution not found")
 	ErrExecutionIntentConflict    = errors.New("submission execution intent conflict")
 	ErrExecutionTargetClaimed     = errors.New("submission target already claimed")
+	ErrExecutionTargetSucceeded   = errors.New("official target already succeeded; retain its original channel receipt")
 	ErrExecutionClaimRejected     = errors.New("submission execution claim rejected")
 	ErrExecutionInvalidTransition = errors.New("invalid submission execution transition")
 	ErrExecutionEvidenceRequired  = errors.New("submission execution evidence required")

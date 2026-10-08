@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"task-processor/internal/integration/httpimage"
+	"task-processor/internal/marketplace/shein/goods"
 	sheinmodel "task-processor/internal/marketplace/shein/model"
 	"task-processor/internal/storecenter"
 	"time"
@@ -229,31 +230,11 @@ func (c *OfficialClient) PublishProduct(ctx context.Context, credential storecen
 			return sheinmodel.PublishResult{}, ErrGoodsOutcomeUnknown
 		}
 	}
-	seenSKUs, seenCodes, seenSKCs, seenGroups := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[int]bool{}
-	for _, skc := range response.Info.SKCs {
-		if !boundedParameter(skc.SKCName, 128) || seenSKCs[skc.SKCName] || len(skc.SKUs) == 0 || len(skc.SKUs) > 400 {
-			return sheinmodel.PublishResult{}, ErrGoodsOutcomeUnknown
-		}
-		seenSKCs[skc.SKCName] = true
-		group := -1
-		for _, sku := range skc.SKUs {
-			index, exists := expected[sku.SupplierSKU]
-			if !exists || seenSKUs[sku.SupplierSKU] || !boundedParameter(sku.SKUCode, 128) || seenCodes[sku.SKUCode] || group >= 0 && group != index {
-				return sheinmodel.PublishResult{}, ErrGoodsOutcomeUnknown
-			}
-			group = index
-			seenSKUs[sku.SupplierSKU] = true
-			seenCodes[sku.SKUCode] = true
-		}
-		if seenGroups[group] || len(skc.SKUs) != len(input.SKCs[group].SKUs) {
-			return sheinmodel.PublishResult{}, ErrGoodsOutcomeUnknown
-		}
-		seenGroups[group] = true
-	}
-	if len(seenSKUs) != len(expected) || response.Info.Version != "" && !boundedParameter(response.Info.Version, 128) || response.TraceID != "" && !boundedParameter(response.TraceID, 128) {
+	result := sheinmodel.PublishResult{SPUName: response.Info.SPUName, SKCs: response.Info.SKCs, Version: response.Info.Version, TraceID: response.TraceID, ResponseHash: goodsHash(raw)}
+	if !goods.CorrelatesPublishedMembership(input, result) {
 		return sheinmodel.PublishResult{}, ErrGoodsOutcomeUnknown
 	}
-	return sheinmodel.PublishResult{SPUName: response.Info.SPUName, SKCs: response.Info.SKCs, Version: response.Info.Version, TraceID: response.TraceID, ResponseHash: goodsHash(raw)}, nil
+	return result, nil
 }
 
 func (c *OfficialClient) TransformProductImage(ctx context.Context, credential storecenter.OfficialMerchantCredential, input sheinmodel.TransformImage) (sheinmodel.TransformedImage, error) {

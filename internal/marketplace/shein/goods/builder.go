@@ -45,6 +45,9 @@ type OfficialImageObservation struct {
 	Type         int    `json:"type"`
 	RemoteURL    string `json:"remote_url,omitempty"`
 	ResponseHash string `json:"response_hash,omitempty"`
+	ContentHash  string `json:"content_hash"`
+	Bytes        int64  `json:"bytes"`
+	MediaType    string `json:"media_type"`
 }
 type OfficialIssue struct {
 	Field   string `json:"field"`

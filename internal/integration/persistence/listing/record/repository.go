@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"task-processor/internal/listing/record"
+	record "task-processor/internal/listing/record/target"
 	"task-processor/internal/product/collection"
 )
 
@@ -145,6 +145,16 @@ func (r *Repository) ReadTargetHead(ctx context.Context, scope collection.Scope,
 		return record.TargetRecord{}, record.ErrUnavailable
 	}
 	return value, nil
+}
+
+func (r *Repository) ReadTargetRecord(ctx context.Context, scope collection.Scope, id string) (record.TargetRecord, error) {
+	if ctx == nil || scope.Validate() != nil || !collection.ValidID(id) {
+		return record.TargetRecord{}, record.ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, record.Timeout)
+	defer cancel()
+	_, value, err := readRecord(r.db.WithContext(ctx), scope, id)
+	return value, err
 }
 func (r *Repository) SaveTarget(ctx context.Context, proof record.TargetPrepared) (record.TargetReceipt, error) {
 	scope, key, hash, value, err := proof.Read(ctx)

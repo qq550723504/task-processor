@@ -3,7 +3,7 @@ package recordpersistence
 import (
 	"context"
 	"gorm.io/gorm"
-	"task-processor/internal/listing/record"
+	record "task-processor/internal/listing/record/target"
 )
 
 var Tables = []string{"listing_target_records", "listing_preparation_targets", "listing_target_record_commands"}

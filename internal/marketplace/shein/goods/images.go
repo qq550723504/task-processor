@@ -1,6 +1,7 @@
 package goods
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	"sort"
@@ -8,6 +9,13 @@ import (
 	model "task-processor/internal/marketplace/shein/model"
 	"task-processor/internal/product/asset"
 )
+
+const MaxOfficialImageBytes int64 = 3 << 20
+
+func ValidImageObservation(value OfficialImageObservation) bool {
+	hash, err := hex.DecodeString(value.ContentHash)
+	return err == nil && len(hash) == 32 && value.Bytes > 0 && value.Bytes <= MaxOfficialImageBytes && (value.MediaType == "image/jpeg" || value.MediaType == "image/png") && value.Width > 0 && value.Height > 0
+}
 
 func (b *officialBuild) pictures() map[string]bool {
 	rules := map[string]bool{}
@@ -20,7 +28,7 @@ func (b *officialBuild) pictures() map[string]bool {
 	}
 	return rules
 }
-func officialImageReference(raw string) bool {
+func IsOfficialImageReference(raw string) bool {
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Fragment != "" || parsed.Port() != "" && parsed.Port() != "443" || len(raw) > 2048 {
 		return false
@@ -120,7 +128,8 @@ func (b *officialBuild) images(slots []OfficialImageSlot, observations []Officia
 				if observation.Width > 0 && observation.Height > 0 {
 					width, height = observation.Width, observation.Height
 				}
-				if observation.RemoteURL != "" && officialImageReference(observation.RemoteURL) && len(observation.ResponseHash) == 64 {
+				responseHash, err := hex.DecodeString(observation.ResponseHash)
+				if observation.RemoteURL != "" && IsOfficialImageReference(observation.RemoteURL) && err == nil && len(responseHash) == 32 && ValidImageObservation(observation) {
 					imageURL = observation.RemoteURL
 					remoteMatched = true
 				}

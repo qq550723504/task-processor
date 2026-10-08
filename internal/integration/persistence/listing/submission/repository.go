@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -22,9 +23,45 @@ const (
 )
 
 type Repository struct {
-	db    *gorm.DB
-	fault func(string) error
-	now   func() time.Time
+	db                       *gorm.DB
+	fault                    func(string) error
+	now                      func() time.Time
+	transactionFinalizer     bool
+	immutableOfficialEffects bool
+}
+
+func NewOfficialEffectsRepository(db *gorm.DB) (*Repository, error) {
+	repository, err := NewRepository(db)
+	if err != nil {
+		return nil, err
+	}
+	repository.immutableOfficialEffects = true
+	return repository, nil
+}
+
+// NewTransactionFinalizer joins an already-open Product owner transaction for
+// correlated provider-result persistence. It never commits or acquires a send
+// permit; normal Acquire retains its independent committed authorization.
+func NewTransactionFinalizer(ctx context.Context, tx *gorm.DB) (*Repository, error) {
+	if ctx == nil || tx == nil || tx.Dialector.Name() != "postgres" || tx.Statement == nil {
+		return nil, submission.ErrExecutionUnavailable
+	}
+	if _, open := tx.Statement.ConnPool.(gorm.TxCommitter); !open {
+		return nil, submission.ErrExecutionUnavailable
+	}
+	var searchPath string
+	if err := tx.WithContext(ctx).Raw("SHOW search_path").Row().Scan(&searchPath); err != nil {
+		return nil, submission.ErrExecutionUnavailable
+	}
+	if err := verifySchema(ctx, tx); err != nil {
+		return nil, submission.ErrExecutionUnavailable
+	}
+	// Schema verification narrows search_path locally. Restore the caller's
+	// transaction setting before its other Product owner writes continue.
+	if err := tx.WithContext(ctx).Exec("SELECT pg_catalog.set_config('search_path', ?, true)", searchPath).Error; err != nil {
+		return nil, submission.ErrExecutionUnavailable
+	}
+	return &Repository{db: tx, now: time.Now, transactionFinalizer: true}, nil
 }
 
 func NewRepository(db *gorm.DB) (*Repository, error) {
@@ -40,7 +77,7 @@ func NewRepository(db *gorm.DB) (*Repository, error) {
 }
 
 func (r *Repository) Acquire(ctx context.Context, reservation submission.ExecutionReservation) (submission.ExecutionAttempt, bool, error) {
-	if r == nil || r.db == nil {
+	if r == nil || r.db == nil || r.transactionFinalizer {
 		return submission.ExecutionAttempt{}, false, submission.ErrExecutionUnavailable
 	}
 	if existing, found, err := r.findByIntent(ctx, r.db, reservation.Attempt.OrganizationID, reservation.Attempt.IntentKey, false); err != nil {
@@ -101,6 +138,10 @@ func (r *Repository) Acquire(ctx context.Context, reservation submission.Executi
 		if found && (fence.CurrentStatus == string(submission.ExecutionClaimed) || fence.CurrentStatus == string(submission.ExecutionOutcomeUnknown)) {
 			return mutation{}, submission.ErrExecutionTargetClaimed
 		}
+		if found && fence.CurrentStatus == string(submission.ExecutionSucceeded) && r.immutableOfficialEffects && attempt.Target.Platform == "shein" &&
+			(attempt.Action == submission.OfficialPublishAction && strings.HasPrefix(attempt.Target.SubjectID, "product-us-") || attempt.Action == submission.OfficialImageAction && strings.HasPrefix(attempt.Target.SubjectID, "image-us-")) {
+			return mutation{}, submission.ErrExecutionTargetSucceeded
+		}
 		if found {
 			if fence.Epoch <= 0 || fence.CurrentAttemptID == "" {
 				return mutation{}, submission.ErrExecutionUnavailable
@@ -145,6 +186,20 @@ func (r *Repository) Acquire(ctx context.Context, reservation submission.Executi
 		return mutation{attempt: attempt}, nil
 	})
 	return result, acquired, err
+}
+
+func (r *Repository) ReadIntent(ctx context.Context, scope submission.ExecutionScope, key string) (submission.ExecutionAttempt, error) {
+	if r == nil || r.db == nil {
+		return submission.ExecutionAttempt{}, submission.ErrExecutionUnavailable
+	}
+	attempt, found, err := r.findByIntent(ctx, r.db, scope.OrganizationID, key, false)
+	if err != nil {
+		return submission.ExecutionAttempt{}, err
+	}
+	if !found {
+		return submission.ExecutionAttempt{}, submission.ErrExecutionNotFound
+	}
+	return attempt, nil
 }
 
 func (r *Repository) activeAttemptMatchesTarget(ctx context.Context, db *gorm.DB, attempt submission.ExecutionAttempt) (bool, error) {
@@ -374,6 +429,17 @@ type mutation struct {
 func (r *Repository) write(ctx context.Context, fn func(*gorm.DB) (mutation, error)) (submission.ExecutionAttempt, error) {
 	if r == nil || r.db == nil || fn == nil {
 		return submission.ExecutionAttempt{}, submission.ErrExecutionUnavailable
+	}
+	if r.transactionFinalizer {
+		tx := r.db.WithContext(ctx)
+		if err := tx.Exec("SET LOCAL synchronous_commit = on").Error; err != nil {
+			return submission.ExecutionAttempt{}, mapError(ctx, err)
+		}
+		result, err := fn(tx)
+		if err != nil {
+			return submission.ExecutionAttempt{}, mapError(ctx, err)
+		}
+		return result.attempt, result.afterCommitErr
 	}
 	tx := r.db.WithContext(ctx).Begin(&sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if tx.Error != nil {
@@ -670,7 +736,7 @@ func mapError(ctx context.Context, err error) error {
 	}
 	for _, stable := range []error{
 		context.Canceled, context.DeadlineExceeded, submission.ErrExecutionInvalid, submission.ErrExecutionNotFound,
-		submission.ErrExecutionIntentConflict, submission.ErrExecutionTargetClaimed, submission.ErrExecutionClaimRejected,
+		submission.ErrExecutionIntentConflict, submission.ErrExecutionTargetClaimed, submission.ErrExecutionTargetSucceeded, submission.ErrExecutionClaimRejected,
 		submission.ErrExecutionInvalidTransition, submission.ErrExecutionEvidenceRequired, submission.ErrExecutionUnavailable,
 		submission.ErrExecutionOutcomeUnknown,
 	} {

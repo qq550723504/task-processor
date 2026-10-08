@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"task-processor/internal/listing/record"
+	record "task-processor/internal/listing/record/target"
 	"task-processor/internal/marketplace/shein/goods"
 	model "task-processor/internal/marketplace/shein/model"
 	"task-processor/internal/product/collection"

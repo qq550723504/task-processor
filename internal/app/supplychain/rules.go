@@ -6,7 +6,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 	storeapp "task-processor/internal/app/storecenter"
-	"task-processor/internal/listing/record"
+	record "task-processor/internal/listing/record/target"
 	"task-processor/internal/marketplace/shein/goods"
 	model "task-processor/internal/marketplace/shein/model"
 	"task-processor/internal/product/collection"

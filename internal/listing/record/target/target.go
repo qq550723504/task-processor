@@ -1,4 +1,4 @@
-package record
+package target
 
 import (
 	"context"
@@ -83,6 +83,10 @@ type TargetExecutionSourceSelector interface {
 type EffectiveTargetProductReader interface {
 	ReadEffectiveTargetProduct(context.Context, preparation.AuthorizedSource, uint64, string) (catalog.PublishedSnapshot, error)
 }
+
+type ApprovedAssetReader interface {
+	GetApprovedInventory(context.Context, asset.InventoryScope) (asset.ApprovedAssetInventory, error)
+}
 type TargetRuleReader interface {
 	ReadTargetRules(context.Context, collection.Scope, string, goods.OfficialDraftInput) (storecenter.ProductMerchantBinding, goods.OfficialRuleSnapshot, error)
 }
@@ -90,6 +94,7 @@ type TargetRepository interface {
 	FindTargetCommand(context.Context, collection.Scope, string, string) (TargetReceipt, error)
 	SaveTarget(context.Context, TargetPrepared) (TargetReceipt, error)
 	ReadTargetHead(context.Context, collection.Scope, string) (TargetRecord, error)
+	ReadTargetRecord(context.Context, collection.Scope, string) (TargetRecord, error)
 	ReadTargetCommand(context.Context, collection.Scope, string) (TargetReceipt, error)
 }
 type TargetDependencies struct {
