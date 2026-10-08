@@ -55,6 +55,7 @@ type UploadDependencies struct {
 	Kernel        UploadKernel
 	Intents       submission.OfficialIntentRepository
 	Receipts      submission.OfficialReceiptRepository
+	ReviewGate    func(context.Context, collection.Scope, record.TargetRecord) error
 }
 type UploadService struct{ dependencies UploadDependencies }
 type UploadResult struct {
@@ -97,6 +98,11 @@ func (s *UploadService) facts(ctx context.Context, scope collection.Scope, saved
 	var rules goods.OfficialRuleSnapshot
 	if err := s.authorize(ctx, scope); err != nil {
 		return inventory, rules, err
+	}
+	if s.dependencies.ReviewGate != nil {
+		if err := s.dependencies.ReviewGate(ctx, scope, saved); err != nil {
+			return inventory, rules, err
+		}
 	}
 	head, err := s.dependencies.Records.ReadTargetHead(ctx, scope, saved.TargetID)
 	if err != nil || head.ID != saved.ID || collection.Digest(head) != collection.Digest(saved) {

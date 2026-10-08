@@ -50,10 +50,12 @@ export const rulesSchema=z.object({merchant:merchantSchema,rules:z.object({appli
 export const preparationPageSchema=page(preparationSchema);
 export const sourcePageSchema=page(sourceSchema);
 export const operationItemPageSchema=page(operationItemSchema);
+export const stageSchema=z.enum(["all","waiting","missing","ready","review","uploaded"]);
+export const stagePageSchema=z.object({items:z.array(z.object({sourceId:collectionID,stage:stageSchema.exclude(["all"]),operationId:collectionID.optional(),review:operationItemSchema.optional()})).max(100),total:integer,batchTotal:integer,counts:z.object({all:integer,waiting:integer,missing:integer,ready:integer,review:integer,uploaded:integer}),nextCursor:collectionID.optional()}).refine(v=>v.counts.all===v.batchTotal&&v.counts.waiting+v.counts.missing+v.counts.ready+v.counts.review+v.counts.uploaded===v.batchTotal&&v.total<=v.batchTotal&&v.items.every(i=>!i.review||i.review.sourceId===i.sourceId));
 export const operationPageSchema=page(operationSchema);
 export const publicationSchema=z.object({sourceId:collectionID,storeId:collectionID,recordId:collectionID.optional(),receiptId:text(128).optional(),observedAt:time.optional(),product:z.object({spu_name:text(128).min(1),skc_list:list(z.object({skc_name:text(128).min(1),sku_list:list(z.object({sku_code:text(128).min(1),supplier_sku:text(200).min(1)}),400)}),40)}).optional()}).refine(v=>v.product?!!v.receiptId&&!!v.observedAt:!v.receiptId&&!v.observedAt&&!v.recordId);
-export type SupplyRoute="optimization-options"|"publication"|"preparation"|"operations"|"list"|"transfer"|"transfer-read"|"sources"|"source"|"target"|"save-target"|"rules"|"target-command"|"record"|"approve"|"inventory"|"create-operation"|"operation-key"|"operation"|"operation-items"|"ensure"|"cancel";
-export const supplyRouteMethods:ReadonlyArray<readonly["GET"|"POST",SupplyRoute]>=[["GET","optimization-options"],["GET","publication"],["GET","preparation"],["GET","operations"],["GET","list"],["POST","transfer"],["GET","transfer-read"],["GET","sources"],["GET","source"],["GET","target"],["POST","save-target"],["POST","rules"],["GET","target-command"],["GET","record"],["POST","approve"],["POST","inventory"],["POST","create-operation"],["GET","operation-key"],["GET","operation"],["GET","operation-items"],["POST","ensure"],["POST","cancel"]];
+export type SupplyRoute="stages"|"optimization-options"|"publication"|"preparation"|"operations"|"list"|"transfer"|"transfer-read"|"sources"|"source"|"target"|"save-target"|"rules"|"target-command"|"record"|"approve"|"inventory"|"create-operation"|"operation-key"|"operation"|"operation-items"|"ensure"|"cancel";
+export const supplyRouteMethods:ReadonlyArray<readonly["GET"|"POST",SupplyRoute]>=[["GET","stages"],["GET","optimization-options"],["GET","publication"],["GET","preparation"],["GET","operations"],["GET","list"],["POST","transfer"],["GET","transfer-read"],["GET","sources"],["GET","source"],["GET","target"],["POST","save-target"],["POST","rules"],["GET","target-command"],["GET","record"],["POST","approve"],["POST","inventory"],["POST","create-operation"],["GET","operation-key"],["GET","operation"],["GET","operation-items"],["POST","ensure"],["POST","cancel"]];
 export function supplyPath(method:string,p:string[]):SupplyRoute|null{
  if(p[0]!=="supply-preparations")return null;
  if(method==="GET"){
@@ -62,6 +64,7 @@ export function supplyPath(method:string,p:string[]):SupplyRoute|null{
   if(p.length===2 && isAcquisitionUUID(p[1]!))return "preparation";
   if(p.length===3 && isAcquisitionUUID(p[1]!) && p[2]==="operations")return "operations";
   if(p.length===3 && isAcquisitionUUID(p[1]!) && p[2]==="sources")return "sources";
+  if(p.length===3 && isAcquisitionUUID(p[1]!) && p[2]==="stages")return "stages";
   if(p.length===3 && isAcquisitionUUID(p[2]!))return p[1]==="sources"?"source":p[1]==="records"?"record":p[1]==="target-commands"?"target-command":p[1]==="operations"?"operation":null;
   if(p.length===4 && p[2]==="by-key" && isAcquisitionUUID(p[3]!))return p[1]==="transfers"?"transfer-read":p[1]==="operations"?"operation-key":null;
   if(p.length===4 && p[1]==="operations" && isAcquisitionUUID(p[2]!) && p[3]==="items")return "operation-items";
@@ -78,7 +81,7 @@ export const supplyRequestSchema=(route:SupplyRoute)=>route==="transfer"?transfe
 export const supplyUsesKey=(route:SupplyRoute)=>["transfer","save-target","approve","create-operation"].includes(route);
 export const supplyMutates=(route:SupplyRoute)=>supplyUsesKey(route)||route==="ensure"||route==="cancel";
 export function supplyResponseSchema(route:SupplyRoute):z.ZodType {
- return route==="optimization-options"?optimizationOptionsSchema:route==="publication"?publicationSchema:route==="preparation"?preparationSchema:route==="operations"?operationPageSchema:route==="list"?preparationPageSchema:route==="sources"?sourcePageSchema:route==="source"?sourceDetailSchema:route==="transfer"||route==="transfer-read"?transferReceiptSchema:route==="target"||route==="record"?targetRecordSchema:route==="save-target"||route==="target-command"?targetReceiptSchema:route==="rules"?rulesSchema:route==="approve"?imageApprovalReceiptSchema:route==="inventory"?inventorySchema:route==="create-operation"?operationReceiptSchema:route==="operation-items"?operationItemPageSchema:operationSchema;
+ return route==="stages"?stagePageSchema:route==="optimization-options"?optimizationOptionsSchema:route==="publication"?publicationSchema:route==="preparation"?preparationSchema:route==="operations"?operationPageSchema:route==="list"?preparationPageSchema:route==="sources"?sourcePageSchema:route==="source"?sourceDetailSchema:route==="transfer"||route==="transfer-read"?transferReceiptSchema:route==="target"||route==="record"?targetRecordSchema:route==="save-target"||route==="target-command"?targetReceiptSchema:route==="rules"?rulesSchema:route==="approve"?imageApprovalReceiptSchema:route==="inventory"?inventorySchema:route==="create-operation"?operationReceiptSchema:route==="operation-items"?operationItemPageSchema:operationSchema;
 }
 export type SupplyPreparation=z.infer<typeof preparationSchema>;
 export type SupplySource=z.infer<typeof sourceSchema>;
@@ -109,3 +112,6 @@ export const optimizationChoiceSchema=z.object({agentId:z.literal("product.title
 export const optimizationOptionsSchema=z.object({titles:z.array(optimizationChoiceSchema).max(100),reason:text(512).optional(),imageReason:text(512).optional(),nextCursor:collectionID.optional()});
 export type SupplyOptimizationChoice=z.infer<typeof optimizationChoiceSchema>;
 export type SupplyOptimizationOptions=z.infer<typeof optimizationOptionsSchema>;
+
+export type Stage=z.infer<typeof stageSchema>;
+export type SupplyStagePage=z.infer<typeof stagePageSchema>;

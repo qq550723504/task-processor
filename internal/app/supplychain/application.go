@@ -29,6 +29,7 @@ type Application struct {
 	PublicationStores     RuleStore
 	AuthorizeOptimization func(context.Context, preparation.OperationInput) error
 	OptimizationOptions   func(context.Context, collection.Query) (OptimizationOptions, error)
+	StageProjection       ReviewProjection
 }
 type SourceImageView struct {
 	ID     string `json:"id"`

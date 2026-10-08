@@ -46,4 +46,18 @@ describe("private product collection proxy", () => {
     expect(unknown.status).toBe(503);
     expect(await unknown.json()).toMatchObject({ code: "OUTCOME_UNKNOWN" });
   });
+  it("forwards bounded file bytes with the current actor and rejects an account switch",async()=>{
+    const bytes=new Uint8Array([80,75,3,4]);
+    for(const [suffix,type,hash] of [["imports/preview","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",undefined],["media","application/octet-stream","a".repeat(64)]] as const){
+      const headers={...scope,Origin:"http://localhost","Content-Type":type,...hash?{"X-Content-SHA256":hash}:{}};
+      const result=await buildWorkbenchUpstreamRequest(new Request(`http://localhost/api/workbench/collections/${suffix}`,{method:"POST",headers,body:bytes}),["collections",...suffix.split("/")],"server-token","actor-a");
+      expect(result).not.toBeInstanceOf(Response);if(result instanceof Response)continue;
+      expect(result.init.body).toBeInstanceOf(Blob);expect(Array.from(new Uint8Array(await (result.init.body as Blob).arrayBuffer()))).toEqual([...bytes]);
+      expect(result.sourceMutation).toBe(!!hash);
+      const stale=await buildWorkbenchUpstreamRequest(new Request(`http://localhost/api/workbench/collections/${suffix}`,{method:"POST",headers:{...headers,"X-Expected-User-ID":"old"},body:bytes}),["collections",...suffix.split("/")],"server-token","actor-a");
+      expect(stale).toBeInstanceOf(Response);if(stale instanceof Response)expect(stale.status).toBe(409);
+    }
+    const over=await buildWorkbenchUpstreamRequest(new Request("http://localhost/api/workbench/collections/media",{method:"POST",headers:{...scope,Origin:"http://localhost","Content-Type":"application/octet-stream","X-Content-SHA256":"a".repeat(64)},body:new Uint8Array(3*1024*1024+1)}),["collections","media"],"server-token","actor-a");
+    expect(over).toBeInstanceOf(Response);if(over instanceof Response)expect(over.status).toBe(413);
+  });
 });

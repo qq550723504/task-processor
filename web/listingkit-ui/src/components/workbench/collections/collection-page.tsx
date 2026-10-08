@@ -16,6 +16,8 @@ import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 import { useSupplyCommand } from "../supply/use-supply-command";
 import { SupplyCommandFeedback } from "../supply/command-feedback";
 import { transferReceiptSchema } from "@/lib/contracts/supply-chain";
+import { ExcelImportForm } from "./excel-import-form";
+import { SourceImageUploader } from "./source-image-uploader";
 import { ConsolePage, ConsoleState } from "../console/console-page";
 
 const kindLabels = { acquisition: "在线采集", own: "自有商品", manual: "手动分组" };
@@ -48,7 +50,7 @@ function ScopedCollectionPage({ scope,supplyAvailable }: { scope: CollectionScop
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [transferred,setTransferred]=useState<string|null>(null);
-  const [dialog, setDialog] = useState<"manage" | "own" | "rename" | "archive-batch" | "move" | "archive-item" | "detail" | "transfer" | null>(null);
+  const [dialog, setDialog] = useState<"manage" | "own" | "import" | "rename" | "archive-batch" | "move" | "archive-item" | "detail" | "transfer" | null>(null);
   const [selectedBatch, setSelectedBatch] = useState<CollectionBatch | null>(null);
   const [selectedItem, setSelectedItem] = useState<CollectionItem | null>(null);
   const [detail, setDetail] = useState<CollectionDetail | null>(null);
@@ -126,7 +128,7 @@ function ScopedCollectionPage({ scope,supplyAvailable }: { scope: CollectionScop
       {batchId ? <Button variant="ghost" onClick={() => changeView("batches")}>返回批次</Button> : null}
       <Button variant="outline" disabled={busy} onClick={refresh}>刷新</Button>
       <Button variant="outline" disabled={!canManage} onClick={() => { setName(""); setDialog("manage"); }}>管理批次</Button>
-      {tab === "own" ? <Button disabled={writeBlocked} onClick={() => setDialog("own")}>添加自有商品</Button> : null}
+      {tab === "own" ? <><Button variant="outline" disabled={writeBlocked} onClick={()=>setDialog("import")}>Excel 导入</Button><Button disabled={writeBlocked} onClick={() => setDialog("own")}>添加自有商品</Button></> : null}
     </Card>
     {supplyAvailable ? <SupplyCommandFeedback state={supply} /> : null}
     {transferred ? <Button asChild variant="outline" className="mb-4"><Link href={`/workbench/supply/mine?preparation=${transferred}`}>查看我的供应链</Link></Button> : null}
@@ -140,14 +142,15 @@ function ScopedCollectionPage({ scope,supplyAvailable }: { scope: CollectionScop
         <Table><TableHeader className="bg-slate-50"><TableRow><TableHead>批次名称</TableHead><TableHead>来源方式</TableHead><TableHead>商品总量</TableHead><TableHead>创建时间</TableHead><TableHead>操作</TableHead></TableRow></TableHeader><TableBody>{batches.map(batch => <TableRow key={batch.id}><TableCell><button className="font-medium text-slate-800 hover:text-primary" onClick={() => changeView("batches", batch.id)}>{batch.name}</button></TableCell><TableCell><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs text-emerald-700">{kindLabels[batch.kind]}</span></TableCell><TableCell>{batch.count}</TableCell><TableCell>{date(batch.createdAt)}</TableCell><TableCell><div className="flex gap-2">{supplyAvailable ? <Button size="sm" variant="outline" disabled={transferBlocked || batch.count===0} onClick={()=>{setSelectedBatch(batch);setDialog("transfer")}}>加入我的供应链</Button> : null}<Button size="sm" variant="outline" onClick={() => changeView("batches", batch.id)}>查看商品</Button><Button size="sm" variant="ghost" disabled={writeBlocked} onClick={() => { setSelectedBatch(batch); setName(batch.name); setDialog("rename"); }}>重命名</Button><Button size="sm" variant="ghost" disabled={writeBlocked} onClick={() => { setSelectedBatch(batch); setDialog("archive-batch"); }}>归档</Button></div></TableCell></TableRow>)}</TableBody></Table>}
       <div className="flex justify-end gap-2 border-t border-slate-100 p-4"><Button size="sm" variant="outline" disabled={!after || loading} onClick={() => { setAfter(undefined); setLoading(true); }}>首页</Button><Button size="sm" variant="outline" disabled={!next || loading} onClick={() => { setAfter(next); setLoading(true); }}>下一页</Button></div>
     </Card>
-    {dialog ? <CollectionDialog title={dialog === "transfer" ? "加入我的供应链" : dialog === "manage" ? "批次管理" : dialog === "own" ? "添加自有商品" : dialog === "rename" ? "重命名批次" : dialog === "move" ? "移动批次" : dialog === "detail" ? "原始商品资料" : "归档确认"} onClose={() => { if (!busy) setDialog(null); }}>
+    {dialog ? <CollectionDialog title={dialog === "import" ? "Excel 导入自有商品" : dialog === "transfer" ? "加入我的供应链" : dialog === "manage" ? "批次管理" : dialog === "own" ? "添加自有商品" : dialog === "rename" ? "重命名批次" : dialog === "move" ? "移动批次" : dialog === "detail" ? "原始商品资料" : "归档确认"} onClose={() => { if (!busy) setDialog(null); }}>
       {dialog === "manage" ? <><p className="text-sm text-slate-500">批次可重命名或归档，原始商品资料保留。</p><form className="flex gap-3" onSubmit={event => { event.preventDefault(); void command({ action: "create_batch", name }); }}><Input aria-label="新批次名称" placeholder="输入新批次名称" value={name} onChange={event => setName(event.target.value)} /><Button type="submit" disabled={writeBlocked || !name.trim()}>新建批次</Button></form><div className="flex flex-wrap gap-2">{batches.map(batch => <Button key={batch.id} variant="outline" disabled={writeBlocked} onClick={() => { setSelectedBatch(batch); setName(batch.name); setDialog("rename"); }}>{batch.name} · 重命名</Button>)}</div></> : null}
       {dialog === "rename" && selectedBatch ? <form className="space-y-4" onSubmit={event => { event.preventDefault(); void command({ action: "rename_batch", batchId: selectedBatch.id, expectedRevision: selectedBatch.revision, name }); }}><Input aria-label="批次名称" value={name} onChange={event => setName(event.target.value)} /><Button type="submit" disabled={writeBlocked || !name.trim()}>保存名称</Button></form> : null}
       {dialog === "archive-batch" && selectedBatch ? <><p>归档“{selectedBatch.name}”后将从列表隐藏，原始资料和发布记录保留。</p><Button disabled={writeBlocked} onClick={() => void command({ action: "archive_batch", batchId: selectedBatch.id, expectedRevision: selectedBatch.revision })}>确认归档</Button></> : null}
       {dialog === "archive-item" && selectedItem ? <><p>归档此商品后将从列表隐藏，原始资料和发布记录保留。</p><Button disabled={writeBlocked} onClick={() => void command({ action: "archive_item", itemId: selectedItem.id, expectedRevision: selectedItem.revision })}>确认归档</Button></> : null}
       {dialog === "move" && selectedItem ? <form className="space-y-4" onSubmit={event => { event.preventDefault(); void command({ action: "move_item", itemId: selectedItem.id, targetBatchId: targetBatch, expectedRevision: selectedItem.revision }); }}><label className="grid gap-2">目标批次<Select value={targetBatch} onChange={event => setTargetBatch(event.target.value)}><option value="">选择批次</option>{batches.filter(batch => batch.id !== selectedItem.batchId).map(batch => <option key={batch.id} value={batch.id}>{batch.name}</option>)}</Select></label><p className="text-sm text-slate-500">移动只改变分组，原始资料保留。</p><Button type="submit" disabled={writeBlocked || !targetBatch}>确认移动</Button></form> : null}
       {dialog === "transfer" && selectedBatch ? <><p>将“{selectedBatch.name}”的全部 {selectedBatch.count} 件商品加入我的供应链。</p><p className="text-sm text-slate-500">确认后保存当前批次的原始资料，后续可选择店铺并完成适配。</p><Button disabled={transferBlocked} onClick={()=>supply.execute("transfer",{batchId:selectedBatch.id,expectedRevision:selectedBatch.revision})}>确认加入</Button></> : null}
-      {dialog === "own" ? <OwnProductForm disabled={writeBlocked} onSubmit={product => void command({ action: "create_product", product })} /> : null}
+      {dialog === "own" ? <OwnProductForm scope={scope} disabled={writeBlocked} onSubmit={product => void command({ action: "create_product", product })} /> : null}
+      {dialog === "import" ? <ExcelImportForm scope={scope} disabled={writeBlocked} onSubmit={input=>void command(input)}/> : null}
       {dialog === "detail" ? detail ? <ProductFacts detail={detail} /> : <p role="status">正在读取原始资料…</p> : null}
     </CollectionDialog> : null}
   </ConsolePage>;
@@ -158,15 +161,17 @@ export function CollectionDialog({ title, children, onClose }: { title: string; 
   useEffect(() => { const dialog = ref.current; if (dialog && !dialog.open) { if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", ""); } }, []);
   return <dialog ref={ref} aria-label={title} onCancel={event => { event.preventDefault(); onClose(); }} className="m-auto max-h-[85vh] w-[min(960px,calc(100vw-32px))] overflow-auto rounded-2xl border border-slate-200 bg-white p-6 text-slate-800 shadow-2xl backdrop:bg-slate-900/30"><div className="mb-5 flex items-center justify-between"><h2 className="text-xl font-bold">{title}</h2><Button variant="ghost" size="icon" aria-label="关闭弹窗" onClick={onClose}>×</Button></div><div className="space-y-4">{children}</div></dialog>;
 }
-function OwnProductForm({ disabled, onSubmit }: { disabled: boolean; onSubmit: (product: ReturnType<typeof ownProductSchema.parse>) => void }) {
-  const [title, setTitle] = useState(""); const [description, setDescription] = useState(""); const [brand, setBrand] = useState(""); const [images, setImages] = useState(""); const [sku, setSKU] = useState(""); const [error, setError] = useState(false);
-  return <form className="space-y-4" onSubmit={event => { event.preventDefault(); const parsed = ownProductSchema.safeParse({ title, description, brand, images: images.split(/\r?\n/).map(value => value.trim()).filter(Boolean), ...(sku ? { variants: [{ sourceId: sku, title, sku, attributes: {}, currency: "", price: 0, stock: 0 }] } : {}) }); if (!parsed.success) { setError(true); return; } setError(false); onSubmit(parsed.data); }}>
+function OwnProductForm({ scope, disabled, onSubmit }: { scope:CollectionScope; disabled: boolean; onSubmit: (product: ReturnType<typeof ownProductSchema.parse>) => void }) {
+  const [title, setTitle] = useState(""); const [description, setDescription] = useState(""); const [brand, setBrand] = useState(""); const [images, setImages] = useState(""); const [sku, setSKU] = useState(""); const [error, setError] = useState(false); const [currency,setCurrency]=useState(""),[price,setPrice]=useState(""),[stock,setStock]=useState(""),[mediaBlocked,setMediaBlocked]=useState(false);
+  return <form className="space-y-4" onSubmit={event => { event.preventDefault(); const parsed = ownProductSchema.safeParse({ title, description, brand, images: images.split(/\r?\n/).map(value => value.trim()).filter(Boolean), ...(sku ? { variants: [{ sourceId: sku, title, sku, attributes: {}, currency, price: price.trim()?Number(price):NaN, stock: stock.trim()?Number(stock):NaN }] } : {}) }); if (!parsed.success) { setError(true); return; } setError(false); onSubmit(parsed.data); }}>
     <label className="grid gap-2 text-sm">商品名称<Input required value={title} onChange={event => setTitle(event.target.value)} /></label>
     <div className="grid gap-4 sm:grid-cols-2"><label className="grid gap-2 text-sm">SKU<Input value={sku} onChange={event => setSKU(event.target.value)} /></label><label className="grid gap-2 text-sm">品牌<Input value={brand} onChange={event => setBrand(event.target.value)} /></label></div>
+    {sku?<div className="grid gap-3 sm:grid-cols-3"><label className="grid gap-2 text-sm">来源币种<Input required pattern="[A-Z]{3}" value={currency} onChange={e=>setCurrency(e.target.value)}/></label><label className="grid gap-2 text-sm">来源价格<Input required type="number" min="0" step="0.01" value={price} onChange={e=>setPrice(e.target.value)}/></label><label className="grid gap-2 text-sm">来源库存<Input required type="number" min="0" step="1" value={stock} onChange={e=>setStock(e.target.value)}/></label></div>:null}
     <label className="grid gap-2 text-sm">商品描述<Textarea rows={4} value={description} onChange={event => setDescription(event.target.value)} /></label>
     <label className="grid gap-2 text-sm">原始图片链接<Textarea rows={3} placeholder="每行一个 HTTPS 图片链接" value={images} onChange={event => setImages(event.target.value)} /></label>
+    <SourceImageUploader scope={scope} disabled={disabled} onBlocked={setMediaBlocked} onImage={url=>setImages(v=>[v.trim(),url].filter(Boolean).join("\n"))}/>
     <p className="text-xs text-slate-500">保存用户提供的原始资料；图片在适配时由你确认，保存不会自动上传到平台。</p>
-    {error ? <p role="alert" className="text-sm text-red-700">请填写商品名称并检查图片链接。</p> : null}<Button type="submit" disabled={disabled}>保存商品</Button>
+    {error ? <p role="alert" className="text-sm text-red-700">请填写商品名称并检查图片链接。</p> : null}<Button type="submit" disabled={disabled||mediaBlocked}>保存商品</Button>
   </form>;
 }
 function ProductFacts({ detail }: { detail: CollectionDetail }) {

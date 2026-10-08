@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -35,11 +36,15 @@ func Routes(service Service, bind func(context.Context, string) (context.Context
 		{http.MethodGet, BasePath + "/items/:item_id", "detail"},
 		{http.MethodGet, BasePath + "/by-key/:key", "operation"},
 		{http.MethodPost, BasePath + "/commands", "mutate"},
+		{http.MethodPost, BasePath + "/imports/preview", "import-preview"},
+		{http.MethodGet, BasePath + "/imports/template", "import-template"},
+		{http.MethodPost, BasePath + "/media", "media-upload"},
+		{http.MethodGet, BasePath + "/media/:hash", "media-read"},
 	}
 	result := make([]httproute.Descriptor, 0, len(specs))
 	for _, spec := range specs {
 		permission := collection.PermissionRead
-		if spec.action == "mutate" {
+		if spec.action == "mutate" || spec.action == "import-preview" || strings.HasPrefix(spec.action, "media-") {
 			permission = collection.PermissionManage
 		}
 		result = append(result, httproute.Descriptor{Method: spec.method, Path: spec.path, Module: "product-collection", Permission: permission, AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: collection.Timeout, Handler: httproute.WithRequestBodyReadTimeout(3e9, func(c *gin.Context) {
@@ -55,6 +60,76 @@ func Routes(service Service, bind func(context.Context, string) (context.Context
 			}
 			var value any
 			switch spec.action {
+			case "media-upload", "media-read":
+				media, ok := service.(interface {
+					UploadMedia(context.Context, collection.MediaIdentity, []byte) (collection.MediaImage, error)
+					ReadMedia(context.Context, collection.MediaIdentity) (collection.MediaImage, error)
+				})
+				if !ok {
+					writeError(c, collection.ErrUnavailable)
+					return
+				}
+				if c.GetHeader("Content-Encoding") != "" || len(c.Request.Header.Values("Idempotency-Key")) != 0 {
+					writeError(c, collection.ErrInvalid)
+					return
+				}
+				if spec.action == "media-read" {
+					q, parseErr := url.ParseQuery(c.Request.URL.RawQuery)
+					if parseErr != nil || len(q) != 1 || len(q["bytes"]) != 1 || c.Request.ContentLength != 0 || len(c.Request.TransferEncoding) != 0 {
+						httproute.RejectUnreadRequestBody(c)
+						writeError(c, collection.ErrInvalid)
+						return
+					}
+					n, e := strconv.ParseInt(q.Get("bytes"), 10, 64)
+					if e != nil {
+						writeError(c, collection.ErrInvalid)
+						return
+					}
+					value, err = media.ReadMedia(ctx, collection.MediaIdentity{Hash: c.Param("hash"), Bytes: n})
+				} else {
+					if c.Request.URL.RawQuery != "" || c.GetHeader("Content-Type") != "application/octet-stream" || len(c.Request.Header.Values("X-Content-SHA256")) != 1 || c.Request.Body == nil {
+						writeError(c, collection.ErrInvalid)
+						return
+					}
+					raw, e := io.ReadAll(io.LimitReader(c.Request.Body, collection.MaxMediaBytes+1))
+					if e != nil || len(raw) > collection.MaxMediaBytes {
+						writeError(c, collection.ErrInvalid)
+						return
+					}
+					value, err = media.UploadMedia(ctx, collection.MediaIdentity{Hash: c.GetHeader("X-Content-SHA256"), Bytes: int64(len(raw))}, raw)
+				}
+			case "import-preview", "import-template":
+				imports, ok := service.(interface {
+					PreviewImport(context.Context, []byte) (collection.ImportPreview, error)
+					ImportTemplate(context.Context) (collection.ImportTemplate, error)
+				})
+				if !ok {
+					writeError(c, collection.ErrUnavailable)
+					return
+				}
+				if c.Request.URL.RawQuery != "" || c.Request.Header.Get("Content-Encoding") != "" || len(c.Request.Header.Values("Idempotency-Key")) != 0 {
+					writeError(c, collection.ErrInvalid)
+					return
+				}
+				if spec.action == "import-template" {
+					if c.Request.ContentLength != 0 || len(c.Request.TransferEncoding) != 0 {
+						httproute.RejectUnreadRequestBody(c)
+						writeError(c, collection.ErrInvalid)
+						return
+					}
+					value, err = imports.ImportTemplate(ctx)
+				} else {
+					if c.Request.Header.Get("Content-Type") != "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || c.Request.Body == nil {
+						writeError(c, collection.ErrInvalid)
+						return
+					}
+					raw, e := io.ReadAll(io.LimitReader(c.Request.Body, collection.MaxPayloadBytes+1))
+					if e != nil || len(raw) > collection.MaxPayloadBytes {
+						writeError(c, collection.ErrInvalid)
+						return
+					}
+					value, err = imports.PreviewImport(ctx, raw)
+				}
 			case "batches", "items", "own":
 				query, queryErr := parseQuery(c.Request)
 				if queryErr != nil {

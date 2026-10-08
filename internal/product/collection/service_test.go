@@ -111,3 +111,26 @@ func TestOwnProductIsUserEvidenceAndKeepsImagesUnapproved(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalid)
 	require.False(t, errors.Is(err, ErrUnavailable))
 }
+
+func TestImportValidatesEntireBatchBeforeWriteAndUsesStableRows(t *testing.T) {
+	store := &testStore{}
+	service, err := NewService(store, &testAuth{scope: Scope{"org", "actor", "member"}}, testSources{})
+	require.NoError(t, err)
+	key := uuid.NewString()
+	input := Mutation{Action: "import_products", Name: "Excel 商品", Products: []OwnProduct{{Title: "第一行"}, {Title: "第二行"}}}
+	_, err = service.Mutate(context.Background(), key, input)
+	require.NoError(t, err)
+	require.Len(t, store.commands[0].Envelopes, 2)
+	require.NotEqual(t, store.commands[0].Envelopes[0].Identity.SourceID, store.commands[0].Envelopes[1].Identity.SourceID)
+	_, err = service.Mutate(context.Background(), key, input)
+	require.NoError(t, err)
+	require.Equal(t, store.commands[0].Envelopes, store.commands[1].Envelopes)
+	input.Products[1].Images = []string{"file:///private.jpg"}
+	_, err = service.Mutate(context.Background(), uuid.NewString(), input)
+	require.ErrorIs(t, err, ErrInvalid)
+	require.Len(t, store.commands, 2, "a malformed final row must prevent every write")
+	for _, bad := range []Mutation{{Action: "import_products", Name: "空批次"}, {Action: "import_products", Name: "超限", Products: make([]OwnProduct, 201)}, {Action: "create_batch", Name: "混入", Products: []OwnProduct{{Title: "其他动作"}}}} {
+		_, err = service.Mutate(context.Background(), uuid.NewString(), bad)
+		require.ErrorIs(t, err, ErrInvalid)
+	}
+}

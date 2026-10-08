@@ -57,7 +57,7 @@ func (s *supplyProductAgent) validateTitleSelection(ctx context.Context, scope a
 	return profile, nil
 }
 func (s *supplyProductAgent) options(ctx context.Context, q collection.Query) (supplyapp.OptimizationOptions, error) {
-	out := supplyapp.OptimizationOptions{Titles: []supplyapp.TitleOptimizationChoice{}, ImageReason: "当前企业没有已准入的供应链图片模板"}
+	out := supplyapp.OptimizationOptions{Titles: []supplyapp.TitleOptimizationChoice{}, ImageReason: "当前图片智能体开放采集主图编辑，供应链图片模板尚未开放"}
 	if s == nil || s.agent == nil {
 		out.Reason = "商品标题智能体未配置"
 		return out, nil

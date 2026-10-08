@@ -28,6 +28,7 @@ func SupplyRoutes(app *Application, bind func(context.Context, string) (context.
 		{"GET", "/optimization-options", "optimization-options", preparation.PermissionManage},
 		{"GET", "", "list", preparation.PermissionRead}, {"POST", "/transfer", "transfer", preparation.PermissionManage}, {"GET", "/transfers/by-key/:key", "transfer-read", preparation.PermissionRead},
 		{"GET", "/:preparation_id/sources", "sources", preparation.PermissionRead}, {"GET", "/sources/:source_id", "source", preparation.PermissionRead},
+		{"GET", "/:preparation_id/stages", "stages", preparation.PermissionRead},
 		{"GET", "/:preparation_id", "preparation", preparation.PermissionRead}, {"GET", "/:preparation_id/operations", "operations", preparation.PermissionRead},
 		{"GET", "/sources/:source_id/publications/:store_id", "publication", preparation.PermissionRead},
 		{"GET", "/sources/:source_id/targets/:store_id", "target", preparation.PermissionRead}, {"POST", "/targets", "save-target", preparation.PermissionManage}, {"POST", "/target-rules", "rules", preparation.PermissionRead}, {"GET", "/target-commands/:key", "target-command", preparation.PermissionRead}, {"GET", "/records/:record_id", "record", preparation.PermissionRead},
@@ -54,7 +55,7 @@ func SupplyRoutes(app *Application, bind func(context.Context, string) (context.
 					return
 				}
 			}
-			if spec.action != "list" && spec.action != "sources" && spec.action != "operation-items" && spec.action != "operations" && c.Request.URL.RawQuery != "" {
+			if spec.action != "list" && spec.action != "sources" && spec.action != "stages" && spec.action != "operation-items" && spec.action != "operations" && c.Request.URL.RawQuery != "" {
 				supplyError(c, preparation.ErrInvalid)
 				return
 			}
@@ -72,6 +73,23 @@ func SupplyRoutes(app *Application, bind func(context.Context, string) (context.
 				output, err = app.OptimizationOptions(ctx, q)
 			case "preparation":
 				output, err = app.Preparations.Read(ctx, c.Param("preparation_id"))
+			case "stages":
+				values, e := url.ParseQuery(c.Request.URL.RawQuery)
+				if e != nil || len(values["storeId"]) != 1 || !collection.ValidID(values.Get("storeId")) || len(values["stage"]) != 1 || !validStage(values.Get("stage")) {
+					supplyError(c, preparation.ErrInvalid)
+					return
+				}
+				storeID, stage := values.Get("storeId"), values.Get("stage")
+				values.Del("storeId")
+				values.Del("stage")
+				request := c.Request.Clone(ctx)
+				request.URL.RawQuery = values.Encode()
+				q, e := supplyQuery(request)
+				if e != nil {
+					supplyError(c, e)
+					return
+				}
+				output, err = app.Stages(ctx, c.Param("preparation_id"), storeID, stage, q)
 			case "operations":
 				values, e := url.ParseQuery(c.Request.URL.RawQuery)
 				if e != nil || len(values["storeId"]) != 1 || !collection.ValidID(values.Get("storeId")) {

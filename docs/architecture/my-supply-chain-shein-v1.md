@@ -287,3 +287,16 @@ R1 独立结论为 NOT_READY：要求补齐 canonical selection / worker authori
 以下保留 IMPLEMENTATION_TEST：StoreProductAccess 必须组合当前成员/发布权限/服务/connection 而非只读凭据；enabled capability 的 schema/grant/verifier 一致及同 workflow 恢复；官方 DTO/响应、逐字段批准、部分失败/成功重放和跨批次 UNKNOWN fence。实施通过对应测试收敛，不重新打开无 Blocker 的冻结设计。
 
 真实密钥/店铺配置与付费调用不是架构准入前提；真实运行与用户验收保持 NOT_RUN。实现阶段严格消费本冻结合同，不临时发明第二事实源或授权恢复协议。设计准入不等于实现完成、真实上传或产品验收。
+
+
+### 增量设计：图片文件与 Excel 原始商品入口（2026-10-09）
+
+Design Basis: Reuse Existing Architecture；独立边界检查结论 IMPLEMENTATION_READY，无新增 BLOCKER。复用 §5 own-source UoW、原 Collection scope/command/receipt 及 Integration S3 immutable capability，不新增持久化 owner、表或恢复平台。
+
+图片入口接受单张实际 JPEG/PNG、最多 3MiB、最多 4000万像素，服务器重新验证类型、尺寸和 SHA256。服务器按 Organization/Actor 与 content hash 生成固定 key，只使用部署配置的存储端点与公开 HTTPS base；用户上传前明确知悉生成公开商品图片链接。PutImmutable 使用显式 immutable storage capability，COS 保留非版本化不可覆盖策略要求。上传后及显式核实均重新授权原 scope；以有界 ReadObject 重算 hash、bytes、实际类型，不把 412/403/超时当成功或不存在。浏览器只保存原 scope/hash/size 的待核实意图，文件字节留在内存；重载且确认不存在需重新选择同一文件。上传只生成来源候选，仍需 Asset 明确批准。孤立对象保留属本次接受范围，不追加清理系统。Legacy decision: RETIRE 旧 ListingKit 上传 Service 与 OSS entitlement；EXTRACT 仅当前合格 S3 与图片校验行为。
+
+Excel 使用成熟 Excelize v2.11.0，在服务端只读解析 XLSX：压缩文件 2MiB、实际展开总量 8MiB、单个 XML 2MiB、一个工作表、最多200商品行、8列。校验实际展开内容及整张工作表，稀疏坐标、隐藏单元格均纳入；拒绝公式、宏、外部链接、嵌入文件及未知表头，不执行或静默截断。声明表头为 title、description、brand、images、sku、currency、price、stock；提供 sku 时后三项必须由用户明确填写，避免伪造零价/零库存。预览复用 OwnProduct schema 与现有 2MiB payload/deadline 边界。
+
+确认使用 Collection import_products(name,products[1..200])，全部行先经 OwnEnvelope 校验；在一个现有 Product DB 事务保存新 own batch、逐行 publication/source 与一个 command receipt，行 operation ID 由原 command OperationID 和行序号固定。任一失败整体回滚；同键同载荷返回原回执，不同载荷冲突，COMMIT-unknown 只核实或重放原 key。当前 OwnPublisher 的调用方事务和再授权合同完整复用，无 provider/Agent 调用。
+
+内容验证、响应丢失核实、ZIP/公式/稀疏坐标拒绝、整批回滚、同键重放为 IMPLEMENTATION_TEST；实现完成后由用户或指定独立验证者试用，不由 Writer 签发产品验收。

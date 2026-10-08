@@ -317,8 +317,8 @@ const sourceAccountErrorStatuses: Readonly<Record<string, number>> = {
 
 const workbenchRouteAllowlist = [
   ...supplyRouteMethods.map(([method,name])=>routeDefinition(method,`supply-${name}`,`supply-${name}`,path=>supplyPath(method,path)===name?path.join("/"):null)),
-  ...(["batches", "items", "own", "detail", "operation", "command"] as const).map(name => {
-    const method = name === "command" ? "POST" : "GET";
+  ...(["batches", "items", "own", "detail", "operation", "command", "import-preview", "import-template", "media-upload", "media-read"] as const).map(name => {
+    const method = name === "command" || name === "import-preview" || name === "media-upload" ? "POST" : "GET";
     return routeDefinition(method, `collection-${name}`, `collection-${name}`, path => collectionPath(method, path) === name ? path.join("/") : null);
   }),
   ...([
@@ -448,8 +448,9 @@ export async function buildWorkbenchUpstreamRequest(
   });
   const requestId = readRequestId(request.headers);
   headers.set("X-Request-ID", requestId);
-  let body: string | undefined;
+  let body: BodyInit | undefined;
   let query = "";
+  let expectedCollectionMedia: string | undefined;
 
   if (route.requestContract === "context-switch") {
     const rawBody = await readRequestBody(request, SWITCH_REQUEST_BODY_MAX_BYTES);
@@ -505,8 +506,8 @@ export async function buildWorkbenchUpstreamRequest(
         body=JSON.stringify(checked.data);headers.set("Content-Type","application/json");if(key)headers.set("Idempotency-Key",key);
       }else{
         if(request.headers.has("Idempotency-Key") || !(await requestHasNoBody(request)))return protocolError(400,"INVALID_REQUEST","Body or command key is not allowed");
-        const allowed=["list","sources","operation-items","operations","optimization-options"].includes(action)?new Set(["limit","after",...action==="operations"?["storeId"]:action==="optimization-options"?[]:["keyword"]]):new Set<string>();
-        if(/%(?![0-9A-Fa-f]{2})/.test(url.search)||action==="operations"&&!isAcquisitionUUID(url.searchParams.get("storeId")??""))return protocolError(400,"INVALID_REQUEST","Supply query invalid");
+        const allowed=["list","sources","stages","operation-items","operations","optimization-options"].includes(action)?new Set(["limit","after",...action==="stages"?["storeId","stage","keyword"]:action==="operations"?["storeId"]:action==="optimization-options"?[]:["keyword"]]):new Set<string>();
+        if(/%(?![0-9A-Fa-f]{2})/.test(url.search)||(action==="operations"||action==="stages")&&!isAcquisitionUUID(url.searchParams.get("storeId")??"")||action==="stages"&&!["all","waiting","missing","ready","review","uploaded"].includes(url.searchParams.get("stage")??""))return protocolError(400,"INVALID_REQUEST","Supply query invalid");
         for(const key of url.searchParams.keys()){
           const values=url.searchParams.getAll(key);if(!allowed.has(key)||values.length!==1||!values[0])return protocolError(400,"INVALID_REQUEST","Supply query invalid");
           const value=values[0];if(key==="limit"&&(!/^[1-9][0-9]*$/.test(value)||Number(value)>100)||(key==="after"||key==="storeId")&&!isAcquisitionUUID(value)||key==="keyword"&&(new TextEncoder().encode(value).length>80||/[\0\r\n]/.test(value)))return protocolError(400,"INVALID_REQUEST","Supply query invalid");
@@ -516,7 +517,24 @@ export async function buildWorkbenchUpstreamRequest(
     } else if (collectionContract) {
       const action = route.requestContract.slice(11) as CollectionRoute;
       const url = new URL(request.url);
-      if (action === "command") {
+      if (!authenticatedActorSubject || request.headers.get(EXPECTED_USER_ID_HEADER)!==authenticatedActorSubject)return protocolError(409,"IDENTITY_CONTEXT_CHANGED","Identity context changed");
+      if(action === "media-upload") {
+        const boundary=validateSourceMutationBoundary(request,authenticatedActorSubject);if(boundary)return boundary;
+        const hash=request.headers.get("X-Content-SHA256");
+        if(url.search||request.headers.get("content-type")!=="application/octet-stream"||!hash||! /^[a-f0-9]{64}$/.test(hash)||request.headers.has("content-encoding")||request.headers.has("Idempotency-Key"))return protocolError(400,"INVALID_REQUEST","Media upload invalid");
+        const raw=await readRequestBody(request,3*1024*1024,"INPUT_TOO_LARGE");if(raw instanceof Response)return raw;
+        if(!raw.length)return protocolError(400,"INVALID_REQUEST","Media upload empty");
+        body=new Blob([new Uint8Array(raw)]);headers.set("Content-Type","application/octet-stream");headers.set("X-Content-SHA256",hash);expectedCollectionMedia=`${hash}:${raw.length}`;
+      } else if(action === "media-read") {
+        if(!(await requestHasNoBody(request))||request.headers.has("Idempotency-Key")||[...url.searchParams.keys()].length!==1||url.searchParams.getAll("bytes").length!==1||! /^[1-9][0-9]*$/.test(url.searchParams.get("bytes")??"")||Number(url.searchParams.get("bytes"))>3*1024*1024)return protocolError(400,"INVALID_REQUEST","Media verification invalid");
+        query=url.search;expectedCollectionMedia=`${path[2]}:${url.searchParams.get("bytes")}`;
+      } else if (action === "import-preview") {
+        const boundary=validateSourceMutationBoundary(request,authenticatedActorSubject); if(boundary)return boundary;
+        const media="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        if(url.search||request.headers.get("content-type")!==media||request.headers.has("content-encoding")||request.headers.has("Idempotency-Key"))return protocolError(400,"INVALID_REQUEST","Import request invalid");
+        const raw=await readRequestBody(request,COLLECTION_MAX_BYTES,"INPUT_TOO_LARGE");if(raw instanceof Response)return raw;
+        body=new Blob([new Uint8Array(raw)]);headers.set("Content-Type",media);
+      } else if (action === "command") {
         const boundary = validateSourceMutationBoundary(request, authenticatedActorSubject);
         if (boundary) return boundary;
         const key = readCanonicalUUIDHeader(request.headers, "Idempotency-Key");
@@ -918,7 +936,7 @@ export async function buildWorkbenchUpstreamRequest(
       cache: "no-store",
     },
     responseContract: route.responseContract,
-    expectedStoreId:
+    expectedStoreId: expectedCollectionMedia ??
       (route.requestContract==="supply-target"||route.requestContract==="supply-publication") ? `${path[2]}:${path[4]}` :
       ["supply-source","supply-preparation","supply-record","supply-operation","supply-ensure","supply-cancel"].includes(route.requestContract) ? (route.requestContract==="supply-preparation"?path[1]:path[2]) :
       route.requestContract === "collection-detail" ? path[2] :
@@ -936,7 +954,7 @@ export async function buildWorkbenchUpstreamRequest(
     requestId,
     sourceMutation:
       (supplyContract && supplyMutates(route.requestContract.slice(7) as SupplyRoute)) ||
-      route.requestContract === "collection-command" ||
+      route.requestContract === "collection-command" || route.requestContract === "collection-media-upload" ||
       (route.requestContract.startsWith("ai-") && !["ai-conversation-list", "ai-conversation-read", "ai-task-list", "ai-task-read"].includes(route.requestContract)) ||
       (route.requestContract.startsWith("store-connection-") && route.requestContract !== "store-connection-read" && route.requestContract !== "store-connection-applications") ||
       route.requestContract.startsWith("store-service-") ||

@@ -3,6 +3,7 @@ package collectionpersistence
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -46,6 +47,10 @@ func testCommand(scope collection.Scope, key string, input collection.Mutation) 
 	if input.Product != nil {
 		envelope, _ := collection.OwnEnvelope(command.OperationID, *input.Product)
 		command.Envelope = &envelope
+	}
+	for i, product := range input.Products {
+		envelope, _ := collection.OwnEnvelope(collection.StableID(command.OperationID, "row", strconv.Itoa(i)), product)
+		command.Envelopes = append(command.Envelopes, envelope)
 	}
 	return command
 }
@@ -126,9 +131,50 @@ func TestPostgresCollectionAtomicReplayOwnershipMoveAndCommitUnknown(t *testing.
 	require.Equal(t, int64(3), page.Total)
 	_, err = repository.Execute(ctx, testCommand(scope, uuid.NewString(), collection.Mutation{Action: "rename_batch", BatchID: verified.BatchID, ExpectedRevision: verified.Revision, Name: "改名"}))
 	require.NoError(t, err)
+	// An import uses the same physical transaction for every publication and source.
+	importCmd := testCommand(scope, uuid.NewString(), collection.Mutation{Action: "import_products", Name: "Excel完整批次", Products: []collection.OwnProduct{{Title: "导入一"}, {Title: "导入二"}}})
+	failCalls := 0
+	repository.own = func(tx *gorm.DB) (OwnPublisher, error) {
+		return testFailOwnPublisher{base: testOwnPublisher{tx}, calls: &failCalls}, nil
+	}
+	_, err = repository.Execute(ctx, importCmd)
+	require.Error(t, err)
+	var persisted int64
+	require.NoError(t, db.Raw("SELECT count(*) FROM product_snapshot_versions WHERE tenant_id=? AND publication_id IN (?,?)", scope.OrganizationID, importCmd.Envelopes[0].Identity.SourceID, importCmd.Envelopes[1].Identity.SourceID).Scan(&persisted).Error)
+	require.Zero(t, persisted, "first-row publication must roll back with second-row failure")
+	_, err = repository.ReadOperation(ctx, scope, importCmd.OperationID)
+	require.ErrorIs(t, err, collection.ErrNotFound)
+	repository.own = func(tx *gorm.DB) (OwnPublisher, error) { return testOwnPublisher{tx}, nil }
+	repository.afterCommit = func() error { return errors.New("lost import response") }
+	_, err = repository.Execute(ctx, importCmd)
+	require.ErrorIs(t, err, collection.ErrUnknown)
+	repository.afterCommit = nil
+	imported, err := repository.Execute(ctx, importCmd)
+	require.NoError(t, err)
+	require.True(t, imported.Replayed)
+	importedPage, err := repository.ListItems(ctx, scope, imported.BatchID, collection.Query{Limit: 100})
+	require.NoError(t, err)
+	require.Equal(t, int64(2), importedPage.Total)
+	require.NotEqual(t, importedPage.Items[0].Source.PublicationID, importedPage.Items[1].Source.PublicationID)
+	importCmd.InputHash = collection.Digest("changed spreadsheet")
+	_, err = repository.Execute(ctx, importCmd)
+	require.ErrorIs(t, err, collection.ErrConflict)
 	// A same-count FK aimed at the wrong ownership relation is not readiness.
 	require.NoError(t, db.Exec("ALTER TABLE product_collection_items DROP CONSTRAINT product_collection_items_organization_id_actor_id_batch_id_fkey").Error)
 	require.NoError(t, db.Exec("DELETE FROM product_collection_items").Error)
 	require.NoError(t, db.Exec("ALTER TABLE product_collection_items ADD FOREIGN KEY(organization_id,actor_id,id) REFERENCES product_collection_batches(organization_id,actor_id,id)").Error)
 	require.Error(t, VerifySchema(ctx, db))
+}
+
+type testFailOwnPublisher struct {
+	base  testOwnPublisher
+	calls *int
+}
+
+func (p testFailOwnPublisher) PublishOwn(ctx context.Context, scope collection.Scope, operation string, envelope sourcing.SourceEnvelope) (collection.Source, error) {
+	*p.calls++
+	if *p.calls == 2 {
+		return collection.Source{}, errors.New("second row failed")
+	}
+	return p.base.PublishOwn(ctx, scope, operation, envelope)
 }

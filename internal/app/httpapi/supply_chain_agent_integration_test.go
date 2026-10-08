@@ -22,6 +22,7 @@ import (
 	"task-processor/internal/authz"
 	prepstore "task-processor/internal/integration/persistence/listing/preparation"
 	recordstore "task-processor/internal/integration/persistence/listing/record"
+	submissionstore "task-processor/internal/integration/persistence/listing/submission"
 	assetstore "task-processor/internal/integration/persistence/product/asset"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	collectionstore "task-processor/internal/integration/persistence/product/collection"
@@ -53,6 +54,15 @@ func TestSupplyProductAgentDurableExecutionUsesRealOwners(t *testing.T) {
 type supplyAgentFixtureRules struct {
 	merchant storecenter.ProductMerchantBinding
 }
+type supplyStageMerchant struct {
+	supplyapp.RulesMerchant
+	binding storecenter.ProductMerchantBinding
+}
+
+func (r supplyStageMerchant) Binding() storecenter.ProductMerchantBinding { return r.binding }
+func (r supplyAgentFixtureRules) RulesMerchant(context.Context, collection.Scope, string, *storecenter.ProductMerchantBinding) (supplyapp.RulesMerchant, error) {
+	return supplyStageMerchant{binding: r.merchant}, nil
+}
 
 func (r supplyAgentFixtureRules) ReadTargetRules(context.Context, collection.Scope, string, goods.OfficialDraftInput) (storecenter.ProductMerchantBinding, goods.OfficialRuleSnapshot, error) {
 	return r.merchant, goods.OfficialRuleSnapshot{ApplicationMode: sheinmodel.ModeSelfOperated}, nil
@@ -76,7 +86,7 @@ func testSupplyAgentOwners(t *testing.T, mode string, f *acquisitionHTTPFixture,
 	collectionAuth, err := collection.NewContextAuthorizer(live, permissions)
 	require.NoError(t, err)
 	require.NoError(t, collectionstore.InstallSchema(f.owner))
-	for _, install := range []func(*gorm.DB) error{prepstore.InstallSchema, recordstore.InstallSchema, prepstore.InstallOperationSchema} {
+	for _, install := range []func(*gorm.DB) error{prepstore.InstallSchema, recordstore.InstallSchema, prepstore.InstallOperationSchema, submissionstore.InstallSchema, submissionstore.InstallOfficialSchema} {
 		require.NoError(t, install(f.owner))
 	}
 	collectionRepo, err := collectionstore.NewRepository(ctx, f.owner, func(*gorm.DB) (collectionstore.OwnPublisher, error) { return nil, collection.ErrUnavailable })
@@ -139,7 +149,7 @@ func testSupplyAgentOwners(t *testing.T, mode string, f *acquisitionHTTPFixture,
 		target, err = targets.Create(actor, uuid.NewString(), record.TargetInput{SourceID: page.Items[0].ID, StoreID: storeID, EffectiveVersion: 1})
 		require.NoError(t, err)
 	}
-	app := &supplyapp.Application{Sources: selector, Operations: operations, Records: records, Rules: rules, Products: effective, Execution: supplyapp.OperationApplication{}}
+	app := &supplyapp.Application{Preparations: preparations, Authorization: prepAuth, PublicationStores: rules, StageProjection: supplyapp.ReviewProjection{Facts: prepRepo, Reviews: core.store}, Sources: selector, Operations: operations, Records: records, Rules: rules, Products: effective, Execution: supplyapp.OperationApplication{}}
 	app.Execution.Repository = operationsRepo
 	bridge, err := connectSupplyProductAgent(ctx, f.owner, app, a, authority)
 	require.NoError(t, err)
@@ -161,6 +171,19 @@ func testSupplyAgentOwners(t *testing.T, mode string, f *acquisitionHTTPFixture,
 		_, err = activity.Process(ctx, supplyapp.OperationExecution{OrganizationID: "B", OperationID: operation.Operation.ID}, page.Items[0].ID)
 		require.NoError(t, err)
 		require.EqualValues(t, 4, calls.Load(), "same operation cannot invoke the model twice")
+		proof, err := operations.AuthorizeExecution(ctx, "B", operation.Operation.ID)
+		require.NoError(t, err)
+		_, err = operationsRepo.BindOperationTarget(ctx, proof, out.SourceID, uuid.NewString(), out.RecordRevision)
+		require.ErrorIs(t, err, preparation.ErrConflict)
+		_, err = operationsRepo.BindOperationTarget(ctx, proof, uuid.NewString(), out.RecordID, out.RecordRevision)
+		require.Error(t, err)
+		facts, err := app.Stages(actor, transferred.Preparation.ID, storeID, "review", collection.Query{Limit: 20})
+		require.NoError(t, err)
+		require.EqualValues(t, 1, facts.Counts["review"])
+		require.NotNil(t, facts.Items[0].Review)
+		saved, err := records.ReadTargetRecord(ctx, scope, out.RecordID)
+		require.NoError(t, err)
+		require.ErrorIs(t, app.StageProjection.RequireUploadReady(ctx, scope, saved), record.ErrNotReady)
 		return
 	}
 	require.Equal(t, target.Record.ID, items.Items[0].RecordID, "optimization must pin the original immutable target before execution")

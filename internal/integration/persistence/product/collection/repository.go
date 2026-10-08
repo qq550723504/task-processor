@@ -58,6 +58,31 @@ func (r *Repository) Execute(ctx context.Context, command collection.Command) (c
 		receipt = collection.Receipt{OperationID: command.OperationID}
 		input, scope, now := command.Mutation, command.Scope, r.now().UTC().Truncate(time.Microsecond)
 		switch input.Action {
+		case "import_products":
+			if len(command.Envelopes) < 1 || len(command.Envelopes) > 200 || len(command.Envelopes) != len(input.Products) {
+				return collection.ErrInvalid
+			}
+			receipt.BatchID = collection.StableID(command.OperationID, "batch")
+			if err := insertBatch(tx, scope, receipt.BatchID, input.Name, "own", now); err != nil {
+				return err
+			}
+			if _, err := lockBatch(tx, scope, receipt.BatchID, 0); err != nil {
+				return err
+			}
+			publisher, err := r.own(tx)
+			if err != nil {
+				return err
+			}
+			for _, envelope := range command.Envelopes {
+				source, err := publisher.PublishOwn(ctx, scope, envelope.Identity.SourceID, envelope)
+				if err != nil {
+					return err
+				}
+				if _, err := appendSource(tx, scope, receipt.BatchID, source, now); err != nil {
+					return err
+				}
+			}
+			receipt.Revision = int64(1 + len(command.Envelopes))
 		case "create_batch":
 			receipt.BatchID = collection.StableID(command.OperationID, "batch")
 			receipt.Revision = 1

@@ -11,6 +11,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"task-processor/internal/authidentity"
+	recordstore "task-processor/internal/integration/persistence/listing/record"
+	submissionstore "task-processor/internal/integration/persistence/listing/submission"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	collectionstore "task-processor/internal/integration/persistence/product/collection"
 	"task-processor/internal/listing/preparation"
@@ -78,6 +80,21 @@ func TestPostgresTransferCapturesAllPagesAndReplaysOriginalMembership(t *testing
 	require.NoError(t, InstallOperationSchema(db))
 	operations, err := NewOperationRepository(ctx, db)
 	require.NoError(t, err)
+	require.NoError(t, recordstore.InstallSchema(db))
+	require.NoError(t, submissionstore.InstallSchema(db))
+	require.NoError(t, submissionstore.InstallOfficialSchema(db))
+	projected := []preparation.SourceStageFacts{}
+	projectionAfter := ""
+	for {
+		facts, err := repository.ListStageFacts(ctx, scope, receipt.Preparation.ID, uuid.NewString(), collection.Digest("supplier"), projectionAfter)
+		require.NoError(t, err)
+		projected = append(projected, facts...)
+		if len(facts) < 100 {
+			break
+		}
+		projectionAfter = facts[len(facts)-1].SourceID
+	}
+	require.Len(t, projected, 205, "projection must traverse the complete batch")
 	opService, err := preparation.NewOperationService(service, collections, operations)
 	require.NoError(t, err)
 	opInput := preparation.OperationInput{PreparationID: receipt.Preparation.ID, ExpectedRevision: 1, StoreID: uuid.NewString(), Action: preparation.OperationAdapt}
@@ -205,6 +222,7 @@ func TestPostgresTransferCapturesAllPagesAndReplaysOriginalMembership(t *testing
 	_, err = repository.ListSources(actor, foreign, receipt.Preparation.ID, collection.Query{Limit: 100})
 	require.ErrorIs(t, err, preparation.ErrNotFound)
 	// Constructor is read-only: it does not repair an omitted required table.
+	require.NoError(t, db.Exec("DROP TABLE listing_submission_official_receipts; DROP TABLE listing_submission_official_intents; DROP TABLE listing_target_record_commands; DROP TABLE listing_preparation_targets; DROP TABLE listing_target_records").Error)
 	require.NoError(t, db.Exec("DROP TABLE listing_preparation_operation_items; DROP TABLE listing_preparation_operations").Error)
 	require.NoError(t, db.Exec("DROP TABLE listing_preparation_sources").Error)
 	_, err = NewRepository(ctx, db)

@@ -108,14 +108,15 @@ type OwnVariant struct {
 	Stock      int               `json:"stock"`
 }
 type Mutation struct {
-	Action            string      `json:"action"`
-	BatchID           string      `json:"batchId,omitempty"`
-	ItemID            string      `json:"itemId,omitempty"`
-	TargetBatchID     string      `json:"targetBatchId,omitempty"`
-	ExpectedRevision  int64       `json:"expectedRevision,omitempty"`
-	Name              string      `json:"name,omitempty"`
-	SourceOperationID string      `json:"sourceOperationId,omitempty"`
-	Product           *OwnProduct `json:"product,omitempty"`
+	Action            string       `json:"action"`
+	BatchID           string       `json:"batchId,omitempty"`
+	ItemID            string       `json:"itemId,omitempty"`
+	TargetBatchID     string       `json:"targetBatchId,omitempty"`
+	ExpectedRevision  int64        `json:"expectedRevision,omitempty"`
+	Name              string       `json:"name,omitempty"`
+	SourceOperationID string       `json:"sourceOperationId,omitempty"`
+	Product           *OwnProduct  `json:"product,omitempty"`
+	Products          []OwnProduct `json:"products,omitempty"`
 }
 type Command struct {
 	Scope                       Scope
@@ -123,6 +124,7 @@ type Command struct {
 	Mutation                    Mutation
 	Source                      *Source
 	Envelope                    *sourcing.SourceEnvelope
+	Envelopes                   []sourcing.SourceEnvelope
 }
 type Receipt struct {
 	OperationID string `json:"operationId"`

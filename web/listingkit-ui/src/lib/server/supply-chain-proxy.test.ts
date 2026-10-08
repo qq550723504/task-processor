@@ -20,4 +20,9 @@ describe("private supply chain proxy",()=>{
   const request=new Request(`http://localhost/api/workbench/supply-preparations/operations/${id}/ensure`,{method:"POST",headers:{...scope,"X-Expected-User-ID":"other",Origin:"http://localhost"}});
   const result=await buildWorkbenchUpstreamRequest(request,["supply-preparations","operations",id,"ensure"],"server-token","actor-a");expect(result).toBeInstanceOf(Response);if(result instanceof Response)expect(result.status).toBe(409);
  });
+ it("bounds whole-batch stage queries before dispatch",async()=>{
+  for(const query of [`storeId=${id}&stage=ready&stage=review`,`storeId=${id}&stage=fake`,`storeId=${id}&stage=ready&limit=101`]){
+   const result=await buildWorkbenchUpstreamRequest(new Request(`http://localhost/api/workbench/supply-preparations/${id}/stages?${query}`,{headers:scope}),["supply-preparations",id,"stages"],"server-token","actor-a");expect(result).toBeInstanceOf(Response);if(result instanceof Response)expect(result.status).toBe(400);
+  }
+ });
 });

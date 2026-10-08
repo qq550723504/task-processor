@@ -2,6 +2,8 @@ package collection
 
 import (
 	"context"
+	"encoding/json"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -14,6 +16,7 @@ type Service struct {
 	auth         Authorizer
 	acquisitions sourcing.PublishedAcquisitionReader
 	snapshots    catalog.VersionedSnapshotReader
+	media        SourceMedia
 }
 
 func NewService(store Repository, auth Authorizer, acquisitions sourcing.PublishedAcquisitionReader) (*Service, error) {
@@ -49,6 +52,10 @@ func (s *Service) Mutate(ctx context.Context, key string, input Mutation) (Recei
 	if !ValidID(key) || !validMutationShape(input) {
 		return Receipt{}, ErrInvalid
 	}
+	encoded, err := json.Marshal(input)
+	if err != nil || len(encoded) > MaxPayloadBytes {
+		return Receipt{}, ErrInvalid
+	}
 	command := Command{Scope: scope, Key: key, OperationID: StableID(scope.OrganizationID, scope.ActorID, key), InputHash: Digest(input), Mutation: input}
 	for _, id := range []string{input.BatchID, input.ItemID, input.TargetBatchID} {
 		if id != "" && !ValidID(id) {
@@ -56,6 +63,17 @@ func (s *Service) Mutate(ctx context.Context, key string, input Mutation) (Recei
 		}
 	}
 	switch input.Action {
+	case "import_products":
+		if !validName(input.Name) || len(input.Products) < 1 || len(input.Products) > 200 {
+			return Receipt{}, ErrInvalid
+		}
+		for index, product := range input.Products {
+			envelope, err := OwnEnvelope(StableID(command.OperationID, "row", strconv.Itoa(index)), product)
+			if err != nil {
+				return Receipt{}, err
+			}
+			command.Envelopes = append(command.Envelopes, envelope)
+		}
 	case "create_batch":
 		if !validName(input.Name) || input.BatchID != "" || input.ItemID != "" || input.Product != nil || input.SourceOperationID != "" {
 			return Receipt{}, ErrInvalid
@@ -107,6 +125,8 @@ func validName(name string) bool {
 func validMutationShape(input Mutation) bool {
 	allowed := Mutation{Action: input.Action}
 	switch input.Action {
+	case "import_products":
+		allowed.Name, allowed.Products = input.Name, input.Products
 	case "create_batch":
 		allowed.Name = input.Name
 	case "rename_batch":

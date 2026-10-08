@@ -25,6 +25,10 @@ export const listSupplyOperations=async(scope:SupplyScope,preparation:string,sto
  const value=await send(`${base}/${collectionID.parse(preparation)}/operations${query(q)}&storeId=${collectionID.parse(store)}`,scope,c.operationPageSchema,signal);
  if(value.items.some(o=>o.input.preparationId!==preparation||o.input.storeId!==store))throw new SupplyAPIError("DEPENDENCY_UNAVAILABLE",502);return value;
 };
+export const listSupplyStages=async(scope:SupplyScope,id:string,storeId:string,stage:c.Stage,q:Query={},signal?:AbortSignal)=>{
+ const value=await send(`${base}/${collectionID.parse(id)}/stages${query(q)}&storeId=${collectionID.parse(storeId)}&stage=${c.stageSchema.parse(stage)}`,scope,c.stagePageSchema,signal);
+ if(stage!=="all"&&value.items.some(i=>i.stage!==stage))throw new SupplyAPIError("DEPENDENCY_UNAVAILABLE",502);return value;
+};
 export const listSupplySources=(scope:SupplyScope,id:string,q:Query={},signal?:AbortSignal)=>send(`${base}/${collectionID.parse(id)}/sources${query(q)}`,scope,c.sourcePageSchema,signal);
 export const readSupplySource=async(scope:SupplyScope,id:string,signal?:AbortSignal)=>{
  const value=await send(`${base}/sources/${collectionID.parse(id)}`,scope,c.sourceDetailSchema,signal);if(value.source.id!==id)throw new SupplyAPIError("DEPENDENCY_UNAVAILABLE",502);return value;
