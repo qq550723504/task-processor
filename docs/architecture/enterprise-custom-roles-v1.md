@@ -119,7 +119,7 @@ role UI and context projection. Initial mapping:
 | Module | Existing permission bundle |
 | --- | --- |
 | AI conversation | ChatRead, ChatUse, TaskRead |
-| My Agents | AgentRead, AgentUse |
+| My Agents | LocalAgentWrite, AgentRead, AgentUse, TaskRead (existing Product Agent consumer; no AgentConfigure) |
 | Knowledge | KnowledgeRead, KnowledgeManage |
 | Product acquisition | ProductSourcingWrite, LocalAgentWrite, AgentRead, AgentUse, TaskRead |
 | Product images | ImageAgentRead, ImageAgentWrite |
