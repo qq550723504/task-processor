@@ -4,7 +4,7 @@ Refs [#605](https://github.com/qq550723504/task-processor/issues/605)。
 
 - Product Decision: **PD-SUPPLY-CHAIN-FULL-SHEIN-FIRST-2026-10-08**。
 - Design Basis: **Independent Architecture**。
-- Status: **DRAFT / NOT_READY**；独立准入结论写入 §12 与 Issue 当前正文。
+- Status: **IMPLEMENTATION_READY / FROZEN**；独立准入结论写入 §12 与 Issue 当前正文。
 - Investigation baseline: `main @ 01cdce76040f56fc4eb7cdef301f5a4850893190`。
 - One Writer / one primary branch: `codex/my-supply-chain`。
 
@@ -79,6 +79,8 @@ App 持有 composition 与跨 owner 调用，Domain 不直接访问 HTTP、GORM�
 ## 5. 数据、版本与事务
 
 新增 Product collection 与 Listing preparation/target-binding 表由显式 schema 初始化创建；不让 serving constructor 自动迁移。复用 Product 数据库容纳本批次 Product/Listing 的有界事实和 Submission 持久执行表，按表/列授予最小 serving 权限；Store/Asset/Agent/Commercial pool 继续独立，禁止跨库复制 owner 表。
+
+当前 acquisition serving role 的 readiness 明确拒绝未准入表权限。启用本模块时，初始化 grant 与只读 readiness 必须在同一最小权限清单中显式包含 collection、preparation、Listing record 与 Submission 表；不能仅增加 GRANT 后跳过原 verifier，也不能改用 owner/superuser 连接。未启用模块保留原清单。Product 数据库的当前 app 注入按这一 enabled capability 配置选择一致的 verifier；部署配置缺 schema/权限时 fail closed，不在 startup 修复或迁移。
 
 1. `CollectionBatch`：Organization、OwnerActorID、OwnerMemberID、BatchID、名称、创建时间、Revision、ArchivedAt。
 2. `CollectionItem`：Organization、OwnerActorID、OwnerMemberID、ItemID、BatchID、ProductKey、SourcePublicationID、OriginalSnapshotVersion、来源方式、SourceOperationID（采集来源）、Revision、ArchivedAt。原始版本永久指向来源资料；不随优化结果漂移。
@@ -168,7 +170,7 @@ Title Apply 成功后核对 receipt 指向的 ProductVersion，再生成绑定�
 
 新 `StoreProductAccess` Port由Store owner提供live成员访问、有效服务周期、Store platform/site、connection revision和短生命周期的merchant-bound执行能力。Listing/BFF不能接受浏览器提供openKeyId/secret、supplier identity或任意endpoint。凭据缺失/撤销/漂移fail closed；新业务请求不得调用旧登录profile或seller网页发布runtime。
 
-提交以 `Organization + Product/target-record + Platform + Site + Store + action` 限定intent及target。SubjectID包含Site，避免Submission内核没有显式Site字段时串目标；request payload含精确target record/asset/rule bindings。用当前canonical fingerprint与provider execution key，不自行添加未被SHEIN合同承诺的幂等header。
+商品提交 target fence 以 `Organization + Platform + Store + SubjectID` 固定。`SubjectID = "product-us-" + SHA256(canonical ProductKey + length-delimited Site)`，同一 canonical 商品在同 Store/Site 的所有批次、资料版本与 operation 都使用这个稳定 SubjectID。TargetRecordID/Revision、operation 和 action 只绑定 intent key / exact payload fingerprint，不能进入商品 SubjectID 或因更改资料绕开尚未解决的 UNKNOWN fence。用当前 canonical fingerprint 与 provider execution key，不自行添加未被 SHEIN 合同承诺的幂等 header。
 
 1. 重新核对live访问、Store服务/connection、exact资料/批准/规则，建立Submission intent。
 2. 只有现有内核首次committed SendPermit允许发送；重放、COMMIT-unknown或claim过期无第二permit。
@@ -187,7 +189,7 @@ Title Apply 成功后核对 receipt 指向的 ProductVersion，再生成绑定�
 
 顺序固定为：worker reauth → 精确 source/record/approval/rule 检查 → Store Authorize → 建立/读取 Submission intent → 原内核 claim/committed SendPermit → Store 发送前再核对同 MerchantBinding → adapter 单次调用 → 原内核 finalize。发送前连接/授权漂移拒绝执行。若已取得 SendPermit 后才发现授权变化或进程在 wire-send 前退出，由于现有内核没有 local-no-dispatch evidence kind，保守进入 UNKNOWN，不能制造 provider_response 或自行宣布无副作用；沿现有 qualified readback/manual resolution contract 处理原 attempt。批准回执、权限或连接漂移均不得换 payload 后重用旧 permit。
 
-商品与可能有副作用的图片调用分别有 effect identity：原 operation + target/store/site + action + exact payload/source-image hash。平台已确认的 image result 与原输入绑定，最终商品 payload 只消费这些结果。没有官方 safe-repeat 证明的 image-effect 也使用同 Submission 内核和 fence；UNKNOWN 先核实原 effect，不由 Temporal 自动重发。纯本地图片格式校验无 provider mutation。
+图片调用使用独立 `image-us-` SubjectID namespace，按 Store/Site + exact source-image hash + effect action 规范化摘要；不得随 operation/record 变化，也不共用商品 subject，避免同一批次图片处理与随后商品提交互相阻塞。图片 intent 绑定确切输入/provider规则版本，重复批次复用原 effect 身份和成功结果。平台已确认的 image result 与原输入绑定，最终商品 payload 只消费这些结果。没有官方 safe-repeat 证明的 image-effect 也使用同 Submission 内核和 fence；UNKNOWN 先核实原 effect，不由 Temporal 自动重发。纯本地图片格式校验无 provider mutation。
 
 adapter 返回三种明确结果：`ConfirmedSuccess`（business success、必要 SPU/SKC/SKU 标识、trace、exact payload correlation 与证据 hash）；`DefinitiveNoEffect`（官方明确拒绝且可证明未发生写入的已列举业务结果）；`OutcomeUnknown`（其余情况，包括 transport error、缺标识、未识别 code、响应丢失、发送后取消）。只有现有内核验证的 evidence 能转移状态；200 或 query 列表缺失都不能作为证据捷径。初版不把未知业务错误归入无副作用失败。
 
@@ -229,12 +231,14 @@ TDD覆盖当前修改的不变量：同key冲突/回放与COMMIT-unknown、跨Or
 
 ## 12. Architecture Admission
 
-当前结论：**NOT_READY / R2_PENDING**；只完成只读映射与设计，尚无生产代码/schema变更。
+当前结论：**IMPLEMENTATION_READY / FROZEN**。2026-10-08 独立 reviewer `/root/supply_architecture_review` 完成 R2 并给出显式开工准入；准入时尚无生产代码/schema变更。
 
 独立Reviewer应只核对本次用户Must和高风险边界，对finding按AGENTS分类；不得把全部旧父Issue关闭、全仓搬迁、全平台开放或新验收工具追加成前置。
 
 R1 独立结论为 NOT_READY：要求补齐 canonical selection / worker authorization、逐字段批准绑定、Store → SendPermit → official/recovery 三处合同；该轮没有独立验证出代码 BLOCKER，也没有要求新增产品决定。R1 未逐行验证所有现有端口，不能当作实现或完整代码评审 PASS。
 
-上述补齐分别在 §5.1 / §7.1、§7.2、§8.1。R2 仅复核这些增量及其引用的当前 source/Review/Store/Submission/worker 端口，依 AGENTS 的两轮停止规则给出明确 IMPLEMENTATION_READY 或具体命中 Must 的 BLOCKER，不枚举额外产品范围。非 Blocker 的实现细节以 IMPLEMENTATION_TEST / BACKLOG 记录。
+上述补齐分别在 §5.1 / §7.1、§7.2、§8.1。R2 实际核对 source/readproof 与 actor-qualified SQL、AI Workbench selection、Review.Apply 的 title-only 语义、Asset approval、ImageAgent worker live authorization、Store credential/member ports 和 SUB-K1 fence/permit/evidence。发现并已修正商品 SubjectID 必须跨批次/record/operation 稳定、图片使用独立 namespace 的防重合同。无剩余 BLOCKER，正常架构评审两轮收束。
 
-仍须取得独立显式 IMPLEMENTATION_READY 才能修改正式生产路径。真实密钥/店铺配置与付费调用不是架构准入前提；真实运行与用户验收保持 NOT_RUN。实现阶段严格消费本冻结合同，不临时发明第二事实源或授权恢复协议。
+以下保留 IMPLEMENTATION_TEST：StoreProductAccess 必须组合当前成员/发布权限/服务/connection 而非只读凭据；enabled capability 的 schema/grant/verifier 一致及同 workflow 恢复；官方 DTO/响应、逐字段批准、部分失败/成功重放和跨批次 UNKNOWN fence。实施通过对应测试收敛，不重新打开无 Blocker 的冻结设计。
+
+真实密钥/店铺配置与付费调用不是架构准入前提；真实运行与用户验收保持 NOT_RUN。实现阶段严格消费本冻结合同，不临时发明第二事实源或授权恢复协议。设计准入不等于实现完成、真实上传或产品验收。
