@@ -143,7 +143,7 @@ func TestEcoservicesPostgresRecoveryWorkersRotatePastUnpaidHead(t *testing.T) {
 	for n := 0; n < 21; n++ {
 		c := e.FinancialCommand{ID: uuid.NewString(), RequestID: uuid.NewString(), OrderID: uuid.NewString(), Kind: "CREATE_PURCHASE", State: "PROCESSING"}
 		raw, _ := json.Marshal(c)
-		if err := r.db.Create(&financialRow{ID: c.ID, RequestID: c.RequestID, OrderID: c.OrderID, Kind: c.Kind, Fingerprint: e.Fingerprint(c), Payload: raw, State: c.State, CreatedAt: time.Now().UTC()}).Error; err != nil {
+		if err := r.db.Create(&financialRow{ID: c.ID, RequestID: c.RequestID, OrderID: c.OrderID, Kind: c.Kind, Fingerprint: e.Fingerprint(c), Payload: raw, State: c.State, DispatchAdmitted: true, CreatedAt: time.Now().UTC()}).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -177,13 +177,22 @@ func TestEcoservicesPostgresRecoveryWorkersRotatePastUnpaidHead(t *testing.T) {
 }
 func TestEcoservicesPostgresStartCancelExclusiveAndCounts(t *testing.T) {
 	ctx, db, repo, service := postgresFixture(t)
-	app := e.Application{ID: uuid.NewString(), OrganizationID: "provider", CompanyName: "qualified fixture", State: "ACTIVE", Version: 1, MerchantID: "fixture-submerchant", AgreementAccepted: true, OnboardingState: "FINISH"}
+	app := e.Application{ID: uuid.NewString(), OrganizationID: "provider", CompanyName: "qualified fixture", State: "ACTIVE", Version: 1, MerchantID: "original-sub", AgreementAccepted: true, AgreementVersion: e.PolicyVersion, OnboardingState: "FINISH"}
 	if err := db.Create(applicationRecord(app)).Error; err != nil {
 		t.Fatal(err)
 	}
-	id := uuid.NewString()
-	request := e.Request{ID: id, BuyerOrganizationID: "buyer", ProviderOrganizationID: "provider", State: "PAID_READY", Version: 1, OrderID: uuid.NewString(), PaymentReceiptID: "controlled-payment-receipt", Quote: &e.Quote{AmountMinor: 10000, DeliveryDays: 7, Version: 1}, CreatedAt: time.Now(), UpdatedAt: time.Now()}
-	if err := db.Create(requestRecord(request)).Error; err != nil {
+	request, _ := checkoutAdmissionFixture(t, repo)
+	id := request.ID
+	request.State = "PAID_READY"
+	request.PaymentReceiptID = "verified-original-payment"
+	if err := db.Save(requestRecord(request)).Error; err != nil {
+		t.Fatal(err)
+	}
+	// This test exercises the E request lock; current canonical funds are an
+	// explicit supplied proof, rather than a missing trading dependency.
+	var err error
+	service, err = e.NewService(repo, originalPaymentRecovery{paidOrder: request.OrderID}, 180)
+	if err != nil {
 		t.Fatal(err)
 	}
 	commands := []e.Command{{Scope: e.Scope{OrganizationID: "buyer", ActorID: "b"}, Kind: "cancel", Key: uuid.NewString(), ID: id, Version: 1}, {Scope: e.Scope{OrganizationID: "provider", ActorID: "p"}, Kind: "start", Key: uuid.NewString(), ID: id, Version: 1}}

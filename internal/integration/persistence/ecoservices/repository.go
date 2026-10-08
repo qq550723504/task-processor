@@ -671,7 +671,10 @@ func (r *Repository) PendingFinancialCommands(ctx context.Context, limit int) ([
 		now := time.Now().UTC()
 		var rows []financialRow
 		dueOrders := tx.Model(&requestRow{}).Select("order_id").Where("payment_receipt_id<>'' AND financial_fence=false AND state NOT IN ? AND financial_state NOT IN ? AND (funds_expire_at<=? OR state IN ?)", []string{"CANCELLED"}, []string{"SETTLED", "REFUNDED"}, now, []string{"PAID_READY", "SERVICING", "AWAITING_ACCEPTANCE"})
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).Where("next_attempt_at<=? AND (state IN ? OR (state='DONE' AND kind='CREATE_PURCHASE' AND order_id IN (?)))", now, []string{"PENDING", "PROCESSING"}, dueOrders).Order("next_attempt_at,created_at,id").Limit(limit).Find(&rows).Error; err != nil {
+		// A confirmed quote is not a channel dispatch. Checkout's durable
+		// admission or a verified inbox wake enables its original recovery;
+		// untouched purchases cannot starve financial commands with queries.
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).Where("next_attempt_at<=? AND ((state IN ? AND (kind<>'CREATE_PURCHASE' OR dispatch_admitted=true OR recovery_generation>0)) OR (state='DONE' AND kind='CREATE_PURCHASE' AND order_id IN (?)))", now, []string{"PENDING", "PROCESSING"}, dueOrders).Order("next_attempt_at,created_at,id").Limit(limit).Find(&rows).Error; err != nil {
 			return err
 		}
 		for _, row := range rows {
@@ -799,7 +802,7 @@ func (r *Repository) AdmitFinancialCommand(ctx context.Context, in e.FinancialCo
 		}
 		// The immutable original intent is admitted once. Later refunds must queue
 		// behind this in-flight intent in billing, rather than undo its permission.
-		if err := tx.Model(&row).Updates(map[string]any{"dispatch_admitted": true, "state": "PROCESSING"}).Error; err != nil {
+		if err := tx.Model(&row).Updates(map[string]any{"dispatch_admitted": true, "state": "PROCESSING", "next_attempt_at": time.Time{}}).Error; err != nil {
 			return err
 		}
 		if admissionKey != "" {

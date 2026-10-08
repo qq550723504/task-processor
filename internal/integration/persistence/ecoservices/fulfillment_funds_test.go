@@ -37,7 +37,12 @@ func fulfillmentFundsFixture(t *testing.T) (*Repository, *e.Service, *mstore.Rep
 	t.Helper()
 	r, _ := fixture(t)
 	req, original := checkoutAdmissionFixture(t, r)
-	if err := r.db.Create(applicationRecord(e.Application{ID: uuid.NewString(), OrganizationID: "provider", State: "ACTIVE", Version: 1, MerchantID: original.MerchantID})).Error; err != nil {
+	if err := r.db.Create(applicationRecord(e.Application{ID: uuid.NewString(), OrganizationID: "provider", State: "ACTIVE", Version: 1, MerchantID: original.MerchantID, AgreementAccepted: true, AgreementVersion: e.PolicyVersion, OnboardingState: "FINISH"})).Error; err != nil {
+		t.Fatal(err)
+	}
+	admission := original
+	admission.DispatchOperationID = "checkout:" + original.ID
+	if _, err := r.AdmitFinancialCommand(context.Background(), admission); err != nil {
 		t.Fatal(err)
 	}
 	// Separate owner databases; consumers use the real E -> B -> M adapters.

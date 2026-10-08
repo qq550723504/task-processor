@@ -207,7 +207,7 @@ func TestVerifiedPaymentBehindTwentyWaitingOrdersStillRecovers(t *testing.T) {
 		}
 		c := e.FinancialCommand{ID: uuid.NewString(), RequestID: requestID, OrderID: orderID, Kind: "CREATE_PURCHASE", State: "PENDING"}
 		raw, _ := json.Marshal(c)
-		if err := r.db.Create(&financialRow{ID: c.ID, RequestID: requestID, OrderID: orderID, Kind: c.Kind, Fingerprint: e.Fingerprint(c), Payload: raw, State: state, CreatedAt: time.Now().UTC().Add(time.Duration(i-21) * time.Minute)}).Error; err != nil {
+		if err := r.db.Create(&financialRow{ID: c.ID, RequestID: requestID, OrderID: orderID, Kind: c.Kind, Fingerprint: e.Fingerprint(c), Payload: raw, State: state, DispatchAdmitted: i < 20, CreatedAt: time.Now().UTC().Add(time.Duration(i-21) * time.Minute)}).Error; err != nil {
 			t.Fatal(err)
 		}
 		if err := r.db.Create(requestRecord(e.Request{ID: requestID, OrderID: orderID, State: "ORDER_PENDING", Version: 1, BuyerOrganizationID: "buyer", ProviderOrganizationID: "provider"})).Error; err != nil {
