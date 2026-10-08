@@ -145,6 +145,9 @@ func (s *ServicePurchases) Execute(ctx context.Context, c ServicePurchaseCommand
 	}
 	recoverOriginal := o.ActiveCommand != nil && o.ActiveCommand.ID == c.ID && o.Operation != nil && o.Operation.Dispatched
 	if o.State == "RECONCILIATION_REQUIRED" && !recoverOriginal {
+		if r, ok := o.CompletedCommands[c.ID]; ok && r.State == "RECONCILIATION_REQUIRED" {
+			return r, nil
+		}
 		return serviceResult(o), nil
 	}
 	if r, ok := o.CompletedCommands[c.ID]; ok {
@@ -254,6 +257,12 @@ func (s *ServicePurchases) Execute(ctx context.Context, c ServicePurchaseCommand
 			return serviceResult(o), err
 		}
 		op, err := nextServiceOperation(o, c, f)
+		if errors.Is(err, ErrReconciliationRequired) {
+			o.State = "RECONCILIATION_REQUIRED"
+			o.Reason = "UNMATCHED_COMMISSION_RETURN"
+			err = s.save(ctx, &o)
+			return serviceResult(o), err
+		}
 		if err != nil {
 			return serviceResult(o), err
 		}
@@ -477,6 +486,14 @@ func (s *ServicePurchases) acceptFailure(ctx context.Context, o *ServicePurchase
 	}
 	o.State = "CHANNEL_OPERATION_FAILED"
 	o.Reason = p.Reason
+	f, err := s.funds.ReadServiceFunds(ctx, c.OrderID)
+	if err != nil {
+		return err
+	}
+	if f.SharedMinor > 0 && f.SharedMinor-f.ReturnedMinor < f.PlatformMinor {
+		o.State = "RECONCILIATION_REQUIRED"
+		o.Reason = "UNMATCHED_COMMISSION_RETURN"
+	}
 	o.Operation = nil
 	o.ActiveCommand = nil
 	result := serviceResult(*o)

@@ -67,3 +67,18 @@ func TestServiceRefundPlanUsesOriginalAllocationSnapshot(t *testing.T) {
 		t.Fatalf("changed refund rate accepted: %v", err)
 	}
 }
+
+func TestServiceRefundPlanFencesUnmatchedCommissionReturn(t *testing.T) {
+	p := money.ServiceAllocationPolicy{CommissionBPS: 1000, Basis: money.ServiceAllocationCumulativeNetFloorV1}
+	o := ServicePurchaseOrder{Source: ServicePurchaseCommand{OrderID: "original", Allocation: p}, ShareOperationID: "share", ShareProviderRequestID: "original-share"}
+	c := ServicePurchaseCommand{ID: "smaller-refund", Kind: "REFUND", AmountMinor: 20, SourceProofID: "approved", Allocation: p}
+	f := money.ServiceFundsView{Allocation: p, GrossMinor: 100, PlatformMinor: 10, ProviderMinor: 90, SharedMinor: 10, ReturnedMinor: 5, ReleasedMinor: 90}
+	if op, err := nextServiceOperation(o, c, f); err != ErrReconciliationRequired || op != nil {
+		t.Fatalf("smaller refund misattributes unmatched returned commission: %+v %v", op, err)
+	}
+	// An original pre-settlement refund has no commission share to return.
+	f.SharedMinor, f.ReturnedMinor, f.ReleasedMinor = 0, 0, 0
+	if op, err := nextServiceOperation(o, c, f); err != nil || op == nil || op.Reservation.Kind != money.ServiceRefund {
+		t.Fatalf("unsettled refund blocked: %+v %v", op, err)
+	}
+}

@@ -53,6 +53,9 @@ func nextServiceOperation(o ServicePurchaseOrder, c ServicePurchaseCommand, f mo
 			return nil, ErrInvalid
 		}
 		due := f.SharedMinor - f.ReturnedMinor - p
+		if f.SharedMinor > 0 && due < 0 {
+			return nil, ErrReconciliationRequired
+		}
 		if due > 0 {
 			if done(money.ServiceReturn) || o.ShareOperationID == "" || o.ShareProviderRequestID == "" {
 				return nil, ErrConflict

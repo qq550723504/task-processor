@@ -11,9 +11,11 @@ import (
 )
 
 type serviceSourceFixture struct {
-	original       billing.ServicePurchaseCommand
-	cancel, denied bool
-	denySettle     bool
+	original              billing.ServicePurchaseCommand
+	cancel, denied        bool
+	denySettle            bool
+	denyRefundAfterReturn bool
+	refundDispatchChecks  int
 }
 
 func TestServiceRefundableAmountUsesCanonicalCumulativeRefund(t *testing.T) {
@@ -38,7 +40,13 @@ func (f *serviceSourceFixture) OriginalServicePurchase(context.Context, string) 
 func (f *serviceSourceFixture) VerifyServiceCommand(context.Context, billing.ServicePurchaseCommand) error {
 	return nil
 }
-func (f *serviceSourceFixture) CanDispatchServiceCommand(context.Context, billing.ServicePurchaseCommand) error {
+func (f *serviceSourceFixture) CanDispatchServiceCommand(_ context.Context, c billing.ServicePurchaseCommand) error {
+	if c.Kind == "REFUND" && f.denyRefundAfterReturn {
+		f.refundDispatchChecks++
+		if f.refundDispatchChecks > 1 {
+			return billing.ErrOrderCancelled
+		}
+	}
 	return nil
 }
 func (f *serviceSourceFixture) AdmitServiceCommand(_ context.Context, c billing.ServicePurchaseCommand, operation string) error {
@@ -102,6 +110,7 @@ type serviceProviderFixture struct {
 	profile                                                billing.ServiceMerchantProfile
 	enabled, paid, lostCheckout, lostEffect, refundPending bool
 	refundUnknown, failShare                               bool
+	failKind                                               money.ServiceEffectKind
 	creates, closes                                        int
 	dispatched                                             map[string]int
 	effects                                                map[string]billing.ServiceOperationObservation
@@ -239,7 +248,7 @@ func (f *serviceProviderFixture) DispatchServiceOperation(_ context.Context, o b
 		p.Reason = "ORIGINAL_SUBMERCHANT_FUNDS_INSUFFICIENT"
 	}
 	f.effects[op.ProviderRequestID] = p
-	if f.failShare && p.Kind == money.ServiceShare {
+	if f.failShare && p.Kind == money.ServiceShare || f.failKind != "" && p.Kind == f.failKind {
 		p.State = "FAILED"
 		p.Reason = "ORIGINAL_SHARE_CLOSED"
 		f.effects[op.ProviderRequestID] = p
@@ -257,7 +266,7 @@ type loseFailedBillingSave struct {
 }
 
 func (r *loseFailedBillingSave) SaveServicePurchase(ctx context.Context, o billing.ServicePurchaseOrder) (billing.ServicePurchaseOrder, error) {
-	if o.State == "CHANNEL_OPERATION_FAILED" && !r.lost {
+	if (o.State == "CHANNEL_OPERATION_FAILED" || o.State == "RECONCILIATION_REQUIRED") && !r.lost {
 		r.lost = true
 		return billing.ServicePurchaseOrder{}, errors.New("B7 write acknowledgement lost")
 	}
