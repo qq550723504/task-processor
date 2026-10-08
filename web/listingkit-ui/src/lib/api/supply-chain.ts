@@ -3,10 +3,17 @@ import * as c from "../contracts/supply-chain";
 import { collectionID } from "../contracts/product-collection";
 import type { CollectionScope } from "./product-collection";
 import { readBoundedStrictJSON } from "./strict-json-response";
+import { supplyReviewCommand,supplyReviewApplyCommandSchema,supplyReviewDecisionCommandSchema } from "./supply-review-command";
+import { SupplyAPIError } from "./supply-error";
 
 export type SupplyScope=CollectionScope;
-export type SupplyIntent=Readonly<SupplyScope & { key:string; route:"transfer"|"save-target"|"approve"|"create-operation"; command:unknown }>;
-export class SupplyAPIError extends Error{constructor(public readonly code:string,public readonly status:number){super(code)}}
+export type SupplyIntent=Readonly<SupplyScope & { key:string; route:"transfer"|"save-target"|"approve"|"create-operation"|"review-decision"|"review-apply"; command:unknown }>;
+export function supplyIntentRequestSchema(route:SupplyIntent["route"]){
+ if(route==="review-decision")return supplyReviewDecisionCommandSchema;
+ if(route==="review-apply")return supplyReviewApplyCommandSchema;
+ return c.supplyRequestSchema(route);
+}
+export {SupplyAPIError} from "./supply-error";
 const base="/api/workbench/supply-preparations";
 type Query={after?:string;keyword?:string;limit?:number};
 const query=(q:Query)=>{const p=new URLSearchParams({limit:String(q.limit??50)});if(q.after)p.set("after",q.after);if(q.keyword)p.set("keyword",q.keyword);return `?${p}`};
@@ -34,6 +41,7 @@ export const readSupplyRecord=async(scope:SupplyScope,id:string,signal?:AbortSig
 export const supplyRules=(scope:SupplyScope,input:c.SupplyTargetInput,signal?:AbortSignal)=>send(`${base}/target-rules`,scope,c.rulesSchema,signal,{method:"POST",command:c.targetInputSchema.parse(input)});
 export const supplyInventory=(scope:SupplyScope,input:z.infer<typeof c.sourceSelectionSchema>,signal?:AbortSignal)=>send(`${base}/images/inventory`,scope,c.inventorySchema,signal,{method:"POST",command:c.sourceSelectionSchema.parse(input)});
 export async function supplyCommand(intent:SupplyIntent,signal?:AbortSignal){
+	if(intent.route==="review-decision"||intent.route==="review-apply")return supplyReviewCommand(intent,signal);
  const schema=c.supplyRequestSchema(intent.route);if(!schema)throw new SupplyAPIError("INVALID_REQUEST",400);
  const suffix=intent.route==="transfer"?"transfer":intent.route==="save-target"?"targets":intent.route==="approve"?"images/approve":"operations";
  const value=await send(`${base}/${suffix}`,intent,c.supplyResponseSchema(intent.route),signal,{method:"POST",command:schema.parse(intent.command),key:collectionID.parse(intent.key),mutates:true});
@@ -43,7 +51,7 @@ export async function readSupplyCommand(intent:SupplyIntent,signal?:AbortSignal)
  const key=collectionID.parse(intent.key);
  // Approval is a safely repeatable local fact commit. Replaying the exact full
  // set with the same key reads its immutable receipt without a platform send.
- if(intent.route==="approve")return supplyCommand(intent,signal);
+ if(intent.route==="approve"||intent.route==="review-decision"||intent.route==="review-apply")return supplyCommand(intent,signal);
  const suffix=intent.route==="transfer"?`transfers/by-key/${key}`:intent.route==="save-target"?`target-commands/${key}`:`operations/by-key/${key}`;
  const route=intent.route==="transfer"?"transfer-read":intent.route==="save-target"?"target-command":"operation-key";
  const value=await send(`${base}/${suffix}`,intent,c.supplyResponseSchema(route),signal);
@@ -85,9 +93,11 @@ function commandResult(value:unknown,intent:SupplyIntent,mutates:boolean){
  if(intent.route==="create-operation"){
   const input=c.operationInputSchema.parse(intent.command),receipt=c.operationReceiptSchema.safeParse(value);
   const output=(receipt.success?receipt.data.operation:c.operationSchema.parse(value)).input;
-  const canonical=(v:z.infer<typeof c.operationInputSchema>)=>JSON.stringify([v.preparationId,v.expectedRevision,v.action,v.storeId,[...(v.sourceIds??[])].sort(),v.categoryId??0,v.titleTemplateId??"",v.imageTemplateId??""]);
+  const canonical=(v:z.infer<typeof c.operationInputSchema>)=>JSON.stringify([v.preparationId,v.expectedRevision,v.action,v.storeId,[...(v.sourceIds??[])].sort(),v.categoryId??0,v.titleTemplateId??"",v.titleTemplateRevision??"",v.titleQuoteHash??"",v.imageTemplateId??""]);
   valid=canonical(input)===canonical(output);
  }
  if(!valid)throw new SupplyAPIError(mutates?"OUTCOME_UNKNOWN":"DEPENDENCY_UNAVAILABLE",mutates?503:502);
  return value;
 }
+
+export const readSupplyOptimizationOptions=(scope:SupplyScope,q:Query={},signal?:AbortSignal)=>send(`${base}/optimization-options${query(q)}`,scope,c.optimizationOptionsSchema,signal);

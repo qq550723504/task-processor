@@ -121,6 +121,21 @@ func (a *OperationActivities) Process(ctx context.Context, in OperationExecution
 		if a.Optimizer == nil {
 			return item, preparation.ErrUnavailable
 		}
+		if item.RecordID == "" {
+			receipt, e := a.adapt(ctx, op, item, preparation.ItemCommandID(op.ID, item.SourceID, preparation.OperationAdapt))
+			if e != nil {
+				return item, e
+			}
+			proof, e = a.Operations.AuthorizeExecution(ctx, in.OrganizationID, in.OperationID)
+			if e != nil {
+				return item, e
+			}
+			item, e = a.Repository.BindOperationTarget(ctx, proof, item.SourceID, receipt.Record.ID, receipt.Record.Revision)
+			if e != nil {
+				return item, e
+			}
+			result = item
+		}
 		result.ResultReference, err = a.Optimizer.Optimize(ctx, op, item, key)
 		if err == nil {
 			result.Status = preparation.ItemReview
@@ -139,6 +154,9 @@ func (a *OperationActivities) Process(ctx context.Context, in OperationExecution
 		case errors.Is(err, record.ErrConflict), errors.Is(err, submission.ErrExecutionIntentConflict):
 			result.Status = preparation.ItemFailed
 			result.Note = "资料、店铺连接或原操作版本已变化，请核对原结果"
+		case errors.Is(err, preparation.ErrUnknown):
+			result.Status = preparation.ItemUnknown
+			result.Note = "智能体原运行结果待核实，不会自动重新调用"
 		default:
 			return item, err
 		}

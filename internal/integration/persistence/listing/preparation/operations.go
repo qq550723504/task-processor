@@ -177,7 +177,7 @@ func (r *OperationRepository) PrepareOperation(ctx context.Context, proof prepar
 		items := make([]operationItemRow, 0, len(sources))
 		for _, source := range sources {
 			item := operationItemRow{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID, MemberID: scope.MemberID, OperationID: row.ID, SourceID: source.ID, Status: preparation.ItemPending}
-			if input.Action == preparation.OperationUpload {
+			if input.Action == preparation.OperationUpload || input.Action == preparation.OperationOptimize {
 				var target struct {
 					CurrentRecordID string
 					Revision        int64
@@ -188,7 +188,7 @@ func (r *OperationRepository) PrepareOperation(ctx context.Context, proof prepar
 				}
 				if result.Error == nil {
 					item.RecordID, item.RecordRevision = &target.CurrentRecordID, &target.Revision
-				} else {
+				} else if input.Action == preparation.OperationUpload {
 					item.Status, item.Note = preparation.ItemMissing, "尚无该店铺的适配资料"
 					row.CompletedCount++
 				}
@@ -381,6 +381,60 @@ func (r *OperationRepository) FinishOperationItem(ctx context.Context, proof pre
 		}
 		return tx.Model(&operationRow{}).Where("organization_id=? AND actor_id=? AND id=?", row.OrganizationID, row.ActorID, row.ID).Updates(map[string]any{"completed_count": row.CompletedCount, "status": row.Status}).Error
 	})
+}
+
+func (r *OperationRepository) BindOperationTarget(ctx context.Context, proof preparation.OperationAccess, sourceID, recordID string, revision int64) (preparation.OperationItem, error) {
+	var output preparation.OperationItem
+	if !collection.ValidID(sourceID) || !collection.ValidID(recordID) || revision <= 0 {
+		return output, preparation.ErrInvalid
+	}
+	err := r.mutate(ctx, proof, func(tx *gorm.DB, row *operationRow) error {
+		op, err := row.value()
+		if err != nil {
+			return err
+		}
+		if op.Input.Action != preparation.OperationOptimize {
+			return preparation.ErrConflict
+		}
+		var item operationItemRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id=? AND actor_id=? AND member_id=? AND operation_id=? AND source_id=?", row.OrganizationID, row.ActorID, row.MemberID, row.ID, sourceID).Take(&item).Error; err != nil {
+			return err
+		}
+		if item.RecordID != nil {
+			if *item.RecordID != recordID || item.RecordRevision == nil || *item.RecordRevision != revision {
+				return preparation.ErrConflict
+			}
+			output = item.value()
+			return nil
+		}
+		if item.Status != preparation.ItemRunning {
+			return preparation.ErrConflict
+		}
+		var head struct {
+			CurrentRecordID string
+			Revision        int64
+		}
+		if err := tx.Table("listing_preparation_targets").Clauses(clause.Locking{Strength: "SHARE"}).Where("organization_id=? AND actor_id=? AND member_id=? AND source_id=? AND store_id=? AND site='shein-us'", row.OrganizationID, row.ActorID, row.MemberID, sourceID, op.Input.StoreID).Take(&head).Error; err != nil {
+			return err
+		}
+		if head.CurrentRecordID != recordID || head.Revision != revision {
+			return preparation.ErrConflict
+		}
+		var count int64
+		if err := tx.Table("listing_target_records").Where("organization_id=? AND actor_id=? AND member_id=? AND id=? AND source_id=? AND store_id=? AND site='shein-us' AND revision=?", row.OrganizationID, row.ActorID, row.MemberID, recordID, sourceID, op.Input.StoreID, revision).Count(&count).Error; err != nil {
+			return err
+		}
+		if count != 1 {
+			return preparation.ErrConflict
+		}
+		if err := tx.Model(&operationItemRow{}).Where("organization_id=? AND actor_id=? AND member_id=? AND operation_id=? AND source_id=? AND record_id IS NULL", row.OrganizationID, row.ActorID, row.MemberID, row.ID, sourceID).Updates(map[string]any{"record_id": recordID, "record_revision": revision}).Error; err != nil {
+			return err
+		}
+		item.RecordID, item.RecordRevision = &recordID, &revision
+		output = item.value()
+		return nil
+	})
+	return output, err
 }
 
 var _ preparation.OperationRepository = (*OperationRepository)(nil)

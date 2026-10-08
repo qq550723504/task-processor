@@ -32,6 +32,13 @@ func NewInternalProducer(db *gorm.DB, live sourcing.LiveOrganizationAccess, perm
 	}
 	return sourcing.NewInternalProducer(authorizer, store, sourcing.ProducerDescriptor{Kind: sourcing.ControlledSnapshotProducerKind, Version: sourcing.ControlledSnapshotProducerVersion})
 }
+func NewExecutionPublicationGateway(db *gorm.DB, resolve func(context.Context) (sourcing.PublicationExecutionScope, error)) (*sourcing.ExecutionPublicationGateway, error) {
+	store, err := sourcingpersistence.NewRepository(db, newCatalogBridge)
+	if err != nil {
+		return nil, err
+	}
+	return sourcing.NewExecutionPublicationGateway(store, resolve)
+}
 
 // NewPublicAcquisition admits external public evidence as its own producer.
 func NewPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer, charges orgresource.ConsumerChargePort, options ...AcquisitionPublicationOption) (*AcquisitionService, error) {

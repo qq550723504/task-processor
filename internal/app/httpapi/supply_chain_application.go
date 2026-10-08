@@ -53,7 +53,7 @@ func (s supplyChainModule) Register(r *kernelmodule.Registry) error {
 	return nil
 }
 
-func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d SupplyChainDependencies, deps routeAuthDependencies, permissions *authz.ListingKitAuthorizer, apps *storeapp.OfficialApplicationRegistry, cfg *config.Config) (supplyChainModule, error) {
+func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d SupplyChainDependencies, deps routeAuthDependencies, permissions *authz.ListingKitAuthorizer, apps *storeapp.OfficialApplicationRegistry, cfg *config.Config, productAgent *productAgentApplication) (supplyChainModule, error) {
 	var empty supplyChainModule
 	resolver, ok := deps.organizationResolver.(*workbenchcontext.Resolver)
 	if !ok || resolver == nil || permissions == nil || d.AssetDB == nil || d.Workflow == nil || d.Worker == nil || apps == nil || productDB == nil || storeDB == nil || cfg == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "" {
@@ -166,7 +166,17 @@ func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d 
 		return empty, err
 	}
 	app := &supplyapp.Application{Preparations: preparations, Sources: sources, Operations: operations, Execution: supplyapp.OperationApplication{Service: operations, Repository: operationsRepo, Starter: supplyapp.TemporalOperationStarter{Client: d.Workflow}}, Targets: targets, Records: records, Products: effective, Rules: rules, Assets: assets, Approvals: approvals, Authorization: auth, PublicationReceipts: official, PublicationStores: supplyapp.OfficialRuleStore{Access: access}}
-	currentWorker, err := supplyapp.NewSupplyWorker(d.Workflow, &supplyapp.OperationActivities{Operations: operations, Repository: operationsRepo, Sources: sources, Products: effective, Targets: records, Creator: targets, Uploader: uploader})
+	var optimizer supplyapp.OperationOptimizer
+	if productAgent != nil {
+		bridge, e := connectSupplyProductAgent(ctx, productAgent.config.ReviewDB, app, productAgent, executionAuth)
+		if e != nil {
+			return empty, e
+		}
+		optimizer = bridge
+		app.AuthorizeOptimization = bridge.authorizeRequest
+		app.OptimizationOptions = bridge.options
+	}
+	currentWorker, err := supplyapp.NewSupplyWorker(d.Workflow, &supplyapp.OperationActivities{Operations: operations, Repository: operationsRepo, Sources: sources, Products: effective, Targets: records, Creator: targets, Uploader: uploader, Optimizer: optimizer})
 	if err != nil {
 		return empty, err
 	}

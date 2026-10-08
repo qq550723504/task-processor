@@ -2,8 +2,10 @@ package preparation
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"sort"
+	"strconv"
 	"time"
 
 	"task-processor/internal/authidentity"
@@ -30,14 +32,16 @@ const (
 )
 
 type OperationInput struct {
-	PreparationID    string   `json:"preparationId"`
-	ExpectedRevision int64    `json:"expectedRevision"`
-	Action           string   `json:"action"`
-	StoreID          string   `json:"storeId"`
-	SourceIDs        []string `json:"sourceIds,omitempty"`
-	CategoryID       int64    `json:"categoryId,omitempty"`
-	TitleTemplateID  string   `json:"titleTemplateId,omitempty"`
-	ImageTemplateID  string   `json:"imageTemplateId,omitempty"`
+	PreparationID         string   `json:"preparationId"`
+	ExpectedRevision      int64    `json:"expectedRevision"`
+	Action                string   `json:"action"`
+	StoreID               string   `json:"storeId"`
+	SourceIDs             []string `json:"sourceIds,omitempty"`
+	CategoryID            int64    `json:"categoryId,omitempty"`
+	TitleTemplateID       string   `json:"titleTemplateId,omitempty"`
+	TitleTemplateRevision string   `json:"titleTemplateRevision,omitempty"`
+	TitleQuoteHash        string   `json:"titleQuoteHash,omitempty"`
+	ImageTemplateID       string   `json:"imageTemplateId,omitempty"`
 }
 
 func (i OperationInput) Validate() error {
@@ -54,6 +58,15 @@ func (i OperationInput) Validate() error {
 		return ErrInvalid
 	}
 	if i.Action == OperationOptimize && i.TitleTemplateID == "" && i.ImageTemplateID == "" {
+		return ErrInvalid
+	}
+	if i.TitleTemplateID != "" {
+		revision, err := strconv.ParseUint(i.TitleTemplateRevision, 10, 63)
+		hash, hashErr := hex.DecodeString(i.TitleQuoteHash)
+		if err != nil || revision == 0 || strconv.FormatUint(revision, 10) != i.TitleTemplateRevision || hashErr != nil || len(hash) != 32 || hex.EncodeToString(hash) != i.TitleQuoteHash {
+			return ErrInvalid
+		}
+	} else if i.TitleTemplateRevision != "" || i.TitleQuoteHash != "" {
 		return ErrInvalid
 	}
 	for _, v := range []string{i.TitleTemplateID, i.ImageTemplateID} {
@@ -147,6 +160,7 @@ type OperationRepository interface {
 	CancelOperation(context.Context, OperationAccess) (Operation, error)
 	MarkExecution(context.Context, OperationAccess, string) error
 	BeginOperationItem(context.Context, OperationAccess, string) (OperationItem, error)
+	BindOperationTarget(context.Context, OperationAccess, string, string, int64) (OperationItem, error)
 	FinishOperationItem(context.Context, OperationAccess, OperationItem) error
 }
 

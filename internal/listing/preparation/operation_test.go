@@ -12,6 +12,19 @@ import (
 	"task-processor/internal/product/sourcing"
 )
 
+func TestOptimizationPinsTemplateRevisionAndConfirmedQuote(t *testing.T) {
+	input := OperationInput{PreparationID: uuid.NewString(), StoreID: uuid.NewString(), ExpectedRevision: 1, Action: OperationOptimize, TitleTemplateID: uuid.NewString()}
+	require.ErrorIs(t, input.Validate(), ErrInvalid)
+	input.TitleTemplateRevision = "1"
+	input.TitleQuoteHash = collection.Digest("quote")
+	require.NoError(t, input.Validate())
+	input.TitleTemplateRevision = "01"
+	require.ErrorIs(t, input.Validate(), ErrInvalid)
+	input.TitleTemplateRevision = "1"
+	input.TitleQuoteHash = "unknown"
+	require.ErrorIs(t, input.Validate(), ErrInvalid)
+}
+
 type operationAuth struct {
 	scope  Scope
 	denied bool

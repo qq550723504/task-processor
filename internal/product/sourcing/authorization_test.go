@@ -13,6 +13,26 @@ import (
 	"task-processor/internal/authz"
 )
 
+func TestExecutionSourceProofIsSeparateBoundedAndPublicationQualified(t *testing.T) {
+	now := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	subject := PublicationExecutionScope{OrganizationID: "org-a", ActorID: "actor-a", MemberID: "member-a", PublicationID: "publication-a", ProductKey: "product-a", CatalogVersion: 1}
+	proved, err := withPublicationExecutionProof(ctx, subject, now)
+	require.NoError(t, err)
+	verified := &readProofAuthorizer{now: func() time.Time { return now.Add(time.Second) }}
+	scope, err := verified.Authorize(proved)
+	require.NoError(t, err)
+	require.Equal(t, PublicationScope{OrganizationID: "org-a", ActorID: "actor-a"}, scope)
+	_, authenticated := authidentity.AuthenticatedIdentityFromContext(proved)
+	require.False(t, authenticated)
+	verified.now = func() time.Time { return now.Add(6 * time.Second) }
+	_, err = verified.Authorize(proved)
+	require.ErrorIs(t, err, ErrPublicationForbidden)
+	_, err = verified.Authorize(context.WithoutCancel(proved))
+	require.ErrorIs(t, err, ErrPublicationForbidden)
+}
+
 type liveRolesFunc func(context.Context, string, string) ([]string, error)
 
 func (f liveRolesFunc) ResolveLiveRoles(ctx context.Context, organizationID, actorID string) ([]string, error) {

@@ -28,6 +28,7 @@ type Application struct {
 	PublicationReceipts   submission.OfficialReceiptRepository
 	PublicationStores     RuleStore
 	AuthorizeOptimization func(context.Context, preparation.OperationInput) error
+	OptimizationOptions   func(context.Context, collection.Query) (OptimizationOptions, error)
 }
 type SourceImageView struct {
 	ID     string `json:"id"`

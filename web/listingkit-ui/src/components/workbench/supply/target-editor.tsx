@@ -10,16 +10,18 @@ import { supplyRules,supplyInventory,SupplyAPIError,type SupplyScope } from "@/l
 import { targetInputSchema,inventorySchema,type SupplySourceDetail,type SupplyTarget,type SupplyRules,type OfficialProduct } from "@/lib/contracts/supply-chain";
 import { initialSupplyDraft,applyApplicationMode,categoryLeaves,emptySKC,emptySKU,sampleForSKU,type SupplyDraft,type AttributeValue,type SKU } from "./draft-fields";
 import type { SupplyCommandState } from "./use-supply-command";
+import type {ProductTitleProposal} from "@/lib/api/product-title-review";
+import {reviewedSupplyDraft} from "./title-review-binding";
 type Inventory=z.infer<typeof inventorySchema>;
 type RuleAttribute=SupplyRules["rules"]["attributes"]["attribute_infos"][number];
 const modeLabel={self_operated:"自营",semi_managed:"半托管",fully_managed:"全托管"};
 const roleLabel={main:"主图",white_background:"白底图",gallery:"展示图",design:"设计图"};
 type Role=keyof typeof roleLabel;
-export function SupplyTargetEditor({scope,source,storeId,existing,command,disabled,saved}:{scope:SupplyScope;source:SupplySourceDetail;storeId:string;existing?:SupplyTarget;command:SupplyCommandState;disabled:boolean;saved:number}){
- const [draft,setDraft]=useState<SupplyDraft>(()=>structuredClone(existing?.input.draft??initialSupplyDraft(source)));
+export function SupplyTargetEditor({scope,source,storeId,existing,appliedProposal,command,disabled,saved}:{scope:SupplyScope;source:SupplySourceDetail;storeId:string;existing?:SupplyTarget;appliedProposal?:ProductTitleProposal;command:SupplyCommandState;disabled:boolean;saved:number}){
+ const [draft,setDraft]=useState<SupplyDraft>(()=>existing&&appliedProposal?reviewedSupplyDraft(existing,appliedProposal):structuredClone(existing?.input.draft??initialSupplyDraft(source)));
  const [rules,setRules]=useState<SupplyRules>();const [inventory,setInventory]=useState<Inventory>();
  const [selectedImages,setSelectedImages]=useState<Record<string,Role>>({});const [error,setError]=useState<string>();const [resolvedRuleEpoch,setResolvedRuleEpoch]=useState(-1),[ruleEpoch,setRuleEpoch]=useState(0);
- const applied=existing?.applyReceiptId;const version=existing?.effectiveVersion??source.source.source.version;
+ const applied=appliedProposal?.proposal_id??existing?.applyReceiptId;const version=appliedProposal?.apply_receipt?.product_version??existing?.effectiveVersion??source.source.source.version;
  const mode=useRef(existing?.merchant.application_type);
  const currentInput=useRef(draft);
  useEffect(()=>{currentInput.current=draft},[draft]);

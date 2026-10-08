@@ -41,13 +41,14 @@ const (
 )
 
 type AgentTextModel struct {
-	knowledge      KnowledgeContext
-	executor       TextExecutor
-	snapshots      SnapshotReader
-	selectProfile  func(context.Context, string) (aicapability.ModelProfile, error)
-	routeReadiness func(context.Context, string) TextRouteReadiness
-	tools          []commercetool.ToolRef
-	freshIdentity  func(context.Context) (authidentity.AuthenticatedIdentity, error)
+	knowledge         KnowledgeContext
+	executor          TextExecutor
+	snapshots         SnapshotReader
+	selectProfile     func(context.Context, string) (aicapability.ModelProfile, error)
+	routeReadiness    func(context.Context, string) TextRouteReadiness
+	tools             []commercetool.ToolRef
+	freshIdentity     func(context.Context) (authidentity.AuthenticatedIdentity, error)
+	executionResolver func(context.Context) (agent.ExecutionIdentity, error)
 }
 
 func NewAgentTextModel(executor TextExecutor, snapshots SnapshotReader,
@@ -80,7 +81,7 @@ Use Kind=interrupt when required evidence is absent. A proposal never applies ch
 type preparedAgentText struct {
 	knowledge *k.ContextBundle
 	ctx       context.Context
-	identity  authidentity.AuthenticatedIdentity
+	identity  agent.ExecutionIdentity
 	profile   aicapability.ModelProfile
 	text      aicapability.TextInputIdentity
 	quote     aicapability.TextQuote
@@ -116,20 +117,13 @@ func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (prep
 		!in.Binding.Valid() || !agent.ValidID(in.AgentRunID) || !agent.ValidID(in.PromptVersion) {
 		return p, agent.ErrInvalid
 	}
-	original, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
-	if !ok || original.TenantID != original.EffectiveOrganizationID {
-		return p, agent.ErrUnavailable
+	identity, resolvedCtx, err := m.resolveIdentity(ctx)
+	if err != nil {
+		return p, err
 	}
-	identity, err := m.freshIdentity(ctx)
-	if err != nil || identity.UserID != original.UserID || identity.TenantID != original.EffectiveOrganizationID ||
-		identity.EffectiveOrganizationID != identity.TenantID || !agent.ValidID(identity.EffectiveMemberID) ||
-		!identity.TokenExpiresAt.After(time.Now()) {
-		return p, agent.ErrUnavailable
-	}
-	p.identity = identity
-	p.ctx = authidentity.WithAuthenticatedIdentity(ctx, identity)
+	p.identity, p.ctx = identity, resolvedCtx
 	snapshot, err := m.snapshots.LoadSnapshot(p.ctx,
-		agent.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, in.ConfigurationSnapshotRef)
+		agent.Scope{OrganizationID: identity.OrganizationID, ActorID: identity.ActorID}, in.ConfigurationSnapshotRef)
 	if err != nil || snapshot.AgentID != in.AgentID || snapshot.AgentVersion != in.AgentVersion ||
 		snapshot.Request.Binding != in.Binding || snapshot.Request.ContextSnapshotRef != (agent.ContextSnapshotRef{}) ||
 		snapshot.Request.PolicyVersion != in.PolicyVersion || snapshot.Request.PromptVersion != in.PromptVersion ||
@@ -145,7 +139,7 @@ func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (prep
 	if p.profile.Validate() != nil {
 		return p, agent.ErrUnavailable
 	}
-	current, err := m.selectProfile(p.ctx, identity.TenantID)
+	current, err := m.selectProfile(p.ctx, identity.OrganizationID)
 	if err != nil || current != p.profile {
 		return p, agent.ErrUnavailable
 	}
@@ -176,8 +170,8 @@ func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (prep
 	if p.knowledge != nil {
 		system += "\n" + knowledgeTextSystem
 	}
-	p.text = aicapability.TextInputIdentity{OrganizationID: identity.TenantID, ActorID: identity.UserID,
-		MemberID: identity.EffectiveMemberID, Operation: aicapability.OperationProductAgentDecision,
+	p.text = aicapability.TextInputIdentity{OrganizationID: identity.OrganizationID, ActorID: identity.ActorID,
+		MemberID: identity.MemberID, Operation: aicapability.OperationProductAgentDecision,
 		AgentRunID: in.AgentRunID,
 		System:     system, Prompt: string(prompt), Profile: p.profile}
 	p.quote, err = aicapability.QuoteText(p.text)
@@ -228,7 +222,7 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 			return nil, nil
 		}
 		permit, err := m.knowledge.AcquireDispatchPermit(gateCtx,
-			k.Scope{OrganizationID: p.identity.TenantID, ActorID: p.identity.UserID},
+			k.Scope{OrganizationID: p.identity.OrganizationID, ActorID: p.identity.ActorID},
 			knowledgeRef(in.ContextSnapshotRef), in.InvocationID)
 		if err != nil {
 			return nil, err
@@ -259,3 +253,34 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 }
 
 var _ agent.GovernedModel = (*AgentTextModel)(nil)
+
+// WithExecutionResolver explicitly enables the already governed model for a
+// tokenless worker. Request identities retain the original resolver and cannot
+// downgrade to execution when their request authorization fails.
+func (m *AgentTextModel) WithExecutionResolver(resolve func(context.Context) (agent.ExecutionIdentity, error)) (*AgentTextModel, error) {
+	if m == nil || resolve == nil {
+		return nil, agent.ErrUnavailable
+	}
+	next := *m
+	next.executionResolver = resolve
+	return &next, nil
+}
+func (m *AgentTextModel) resolveIdentity(ctx context.Context) (agent.ExecutionIdentity, context.Context, error) {
+	original, authenticated := authidentity.AuthenticatedIdentityFromContext(ctx)
+	if authenticated {
+		identity, err := m.freshIdentity(ctx)
+		if err != nil || original.TenantID != original.EffectiveOrganizationID || identity.UserID != original.UserID || identity.TenantID != original.EffectiveOrganizationID || identity.EffectiveOrganizationID != identity.TenantID || !agent.ValidID(identity.EffectiveMemberID) || !identity.TokenExpiresAt.After(time.Now()) {
+			return agent.ExecutionIdentity{}, ctx, agent.ErrUnavailable
+		}
+		return agent.ExecutionIdentity{OrganizationID: identity.TenantID, ActorID: identity.UserID, MemberID: identity.EffectiveMemberID}, authidentity.WithAuthenticatedIdentity(ctx, identity), nil
+	}
+	deadline, bounded := ctx.Deadline()
+	if m.executionResolver == nil || !bounded || !time.Now().Before(deadline) {
+		return agent.ExecutionIdentity{}, ctx, agent.ErrUnavailable
+	}
+	identity, err := m.executionResolver(ctx)
+	if err != nil || !identity.Valid() || ctx.Err() != nil {
+		return agent.ExecutionIdentity{}, ctx, agent.ErrUnavailable
+	}
+	return identity, ctx, nil
+}

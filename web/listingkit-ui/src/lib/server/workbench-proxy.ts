@@ -505,7 +505,7 @@ export async function buildWorkbenchUpstreamRequest(
         body=JSON.stringify(checked.data);headers.set("Content-Type","application/json");if(key)headers.set("Idempotency-Key",key);
       }else{
         if(request.headers.has("Idempotency-Key") || !(await requestHasNoBody(request)))return protocolError(400,"INVALID_REQUEST","Body or command key is not allowed");
-        const allowed=["list","sources","operation-items","operations"].includes(action)?new Set(["limit","after",...action==="operations"?["storeId"]:["keyword"]]):new Set<string>();
+        const allowed=["list","sources","operation-items","operations","optimization-options"].includes(action)?new Set(["limit","after",...action==="operations"?["storeId"]:action==="optimization-options"?[]:["keyword"]]):new Set<string>();
         if(/%(?![0-9A-Fa-f]{2})/.test(url.search)||action==="operations"&&!isAcquisitionUUID(url.searchParams.get("storeId")??""))return protocolError(400,"INVALID_REQUEST","Supply query invalid");
         for(const key of url.searchParams.keys()){
           const values=url.searchParams.getAll(key);if(!allowed.has(key)||values.length!==1||!values[0])return protocolError(400,"INVALID_REQUEST","Supply query invalid");

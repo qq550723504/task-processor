@@ -32,23 +32,16 @@ func (r EffectiveProductReader) ReadEffectiveTargetProduct(ctx context.Context, 
 	if r.Reviews == nil || r.Snapshots == nil || !collection.ValidID(applyID) || version <= original.Version {
 		return catalog.PublishedSnapshot{}, record.ErrNotReady
 	}
-	reviewed, err := r.Reviews.Read(ctx, review.Scope{Org: scope.OrganizationID, Actor: scope.ActorID}, applyID)
-	if err != nil {
-		return catalog.PublishedSnapshot{}, record.ErrNotReady
-	}
-	if review.ValidateStoredRecord(reviewed) != nil || reviewed.ID != applyID || reviewed.Org != scope.OrganizationID || reviewed.Owner != scope.ActorID || reviewed.Input.ProductKey != source.Source.ProductKey || reviewed.Input.BaseVersion != original.Version || reviewed.BasePublicationID != original.PublicationID || reviewed.Policy != "title-review-v1" || reviewed.State != "applied" || reviewed.Receipt == nil || reviewed.Receipt.ProposalID != applyID || reviewed.Receipt.ProductVersion != version || reviewed.Receipt.Actor != scope.ActorID {
-		return catalog.PublishedSnapshot{}, record.ErrNotReady
-	}
 	current, err := r.Snapshots.GetSnapshot(ctx, original.Identity, version)
-	if err != nil || current.Identity != original.Identity || current.Version != version || current.PublicationID != reviewed.Receipt.PublicationID || current.Snapshot.Title != reviewed.Title {
+	if err != nil || current.Identity != original.Identity || current.Version != version {
 		return catalog.PublishedSnapshot{}, record.ErrNotReady
 	}
-	expected, err := catalog.CloneProductSnapshot(original.Snapshot)
-	if err != nil {
-		return catalog.PublishedSnapshot{}, record.ErrUnavailable
+	lookup, ok := r.Reviews.(review.AppliedPublicationLookup)
+	if !ok {
+		return catalog.PublishedSnapshot{}, record.ErrNotReady
 	}
-	expected.Title = reviewed.Title
-	if !reflect.DeepEqual(expected, current.Snapshot) {
+	lineage, err := review.ResolveAppliedSnapshot(ctx, review.Scope{Org: scope.OrganizationID, Actor: scope.ActorID}, current, r.Snapshots, lookup)
+	if err != nil || len(lineage.Applied) == 0 || lineage.Applied[0].ProposalID != applyID || lineage.Original.Identity != original.Identity || lineage.Original.Version != original.Version || lineage.Original.PublicationID != original.PublicationID || !reflect.DeepEqual(lineage.Original.Snapshot, original.Snapshot) || current.Identity.ProductKey != source.Source.ProductKey {
 		return catalog.PublishedSnapshot{}, record.ErrNotReady
 	}
 	return current, nil

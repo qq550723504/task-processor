@@ -240,6 +240,9 @@ func readPersistedPublication(ctx context.Context, authorizer PublicationAuthori
 		return PersistedPublication{}, err
 	}
 	publicationID = strings.TrimSpace(publicationID)
+	if proof, ok := ctx.Value(publicationExecutionProofKey{}).(publicationExecutionProof); ok && publicationID != proof.subject.PublicationID {
+		return PersistedPublication{}, ErrPublicationForbidden
+	}
 	if !authidentity.IsBoundedIdentifier(scope.OrganizationID) || !authidentity.IsBoundedIdentifier(scope.ActorID) || !authidentity.IsBoundedIdentifier(publicationID) {
 		return PersistedPublication{}, ErrInvalidSourcePublication
 	}
@@ -282,6 +285,9 @@ func readPersistedPublication(ctx context.Context, authorizer PublicationAuthori
 	}
 	persisted.Envelope = envelope
 	persisted.Snapshot = derived
+	if proof, ok := ctx.Value(publicationExecutionProofKey{}).(publicationExecutionProof); ok && (persisted.Receipt.ActorID != proof.subject.ActorID || persisted.Receipt.ProductKey != proof.subject.ProductKey || persisted.Receipt.CatalogVersion != proof.subject.CatalogVersion) {
+		return PersistedPublication{}, ErrSourcePublicationConflict
+	}
 	return persisted, nil
 }
 

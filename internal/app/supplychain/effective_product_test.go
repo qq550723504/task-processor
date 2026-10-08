@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	record "task-processor/internal/listing/record/target"
 	"task-processor/internal/product/catalog"
+	"task-processor/internal/product/enrichment"
 	"task-processor/internal/product/review"
 	"testing"
 	"time"
@@ -32,6 +33,13 @@ func (f *effectiveReviewFixture) Read(_ context.Context, scope review.Scope, id 
 	}
 	return f.record, nil
 }
+func (f *effectiveReviewFixture) ReadAppliedPublication(ctx context.Context, scope review.Scope, product string, version uint64, publication string) (review.Record, error) {
+	r, err := f.Read(ctx, scope, f.record.ID)
+	if err != nil || r.Input.ProductKey != product || r.Receipt == nil || r.Receipt.ProductVersion != version || r.Receipt.PublicationID != publication {
+		return review.Record{}, review.ErrNotFound
+	}
+	return r, nil
+}
 func TestEffectiveProductRequiresExactOriginalOwnerAndAppliedTitleOnlyReceipt(t *testing.T) {
 	upload, scope, records, _, _, _, auth := uploadFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -47,6 +55,8 @@ func TestEffectiveProductRequiresExactOriginalOwnerAndAppliedTitleOnlyReceipt(t 
 	applied.Snapshot.Title = "Reviewed title"
 	reviewOwner := &effectiveReviewFixture{record: review.Record{ID: id, Org: scope.OrganizationID, Owner: scope.ActorID, Input: review.CreateInput{ProductKey: original.Identity.ProductKey, BaseVersion: original.Version}, BasePublicationID: original.PublicationID, Policy: "title-review-v1", Before: original.Snapshot.Title, Title: applied.Snapshot.Title, State: "applied", Revision: 2, Receipt: &review.Receipt{ProposalID: id, Revision: 2, ProductVersion: 2, PublicationID: applied.PublicationID, Actor: scope.ActorID, At: time.Now()}}}
 	reader := EffectiveProductReader{Reviews: reviewOwner, Snapshots: uploadCatalog{applied}}
+	reviewOwner.record.Original = enrichment.Proposal{Changes: []enrichment.FieldChange{{Field: "title", Value: applied.Snapshot.Title}}}
+	reader.Snapshots = effectiveVersions{original.Version: original, applied.Version: applied}
 	result, err := reader.ReadEffectiveTargetProduct(ctx, selected, 2, id)
 	require.NoError(t, err)
 	require.Equal(t, applied, result)
@@ -60,14 +70,24 @@ func TestEffectiveProductRequiresExactOriginalOwnerAndAppliedTitleOnlyReceipt(t 
 	reviewOwner.record.Receipt = &review.Receipt{ProposalID: id, Revision: 2, ProductVersion: 2, PublicationID: applied.PublicationID, Actor: scope.ActorID, At: time.Now()}
 	changed := applied
 	changed.Snapshot.Description = "Unreviewed changed field"
-	reader.Snapshots = uploadCatalog{changed}
+	reader.Snapshots = effectiveVersions{original.Version: original, changed.Version: changed}
 	_, err = reader.ReadEffectiveTargetProduct(ctx, selected, 2, id)
 	require.ErrorIs(t, err, record.ErrNotReady)
-	reader.Snapshots = uploadCatalog{applied}
+	reader.Snapshots = effectiveVersions{original.Version: original, applied.Version: applied}
 	reviewOwner.record.Owner = "other-actor"
 	_, err = reader.ReadEffectiveTargetProduct(ctx, selected, 2, id)
 	require.ErrorIs(t, err, record.ErrNotReady)
 	auth.denied = true
 	_, err = reader.ReadEffectiveTargetProduct(ctx, selected, original.Version, "")
 	require.Error(t, err)
+}
+
+type effectiveVersions map[uint64]catalog.PublishedSnapshot
+
+func (v effectiveVersions) GetSnapshot(_ context.Context, id catalog.SnapshotIdentity, version uint64) (catalog.PublishedSnapshot, error) {
+	p, ok := v[version]
+	if !ok || p.Identity != id {
+		return catalog.PublishedSnapshot{}, catalog.ErrSnapshotNotReady
+	}
+	return p, nil
 }

@@ -173,6 +173,18 @@ Title Apply 成功后核对 receipt 指向的 ProductVersion，再生成绑定�
 
 增量准入状态：**IMPLEMENTATION_READY**。2026-10-08 独立 reviewer `/root/supply_architecture_review` 核对实际代码，确认缺口为“核心 happy path 无法完成”的 BLOCKER，并准入本节最小修正。保留原始 provenance / effective inventory version 分离、完整集合替换、同键冲突、来源替换/跨 Actor/撤权拒绝、混合 origin 读取与关闭 Agent 可提交路径为 IMPLEMENTATION_TEST。这是实际新 Blocker 的窄增量复核，不是第三轮正常全面架构审核或新增产品决定；实现与真实上传尚未完成。
 
+### 7.4 实施发现：审核应用后的再次重构
+
+2026-10-09 实查确认 Review.Apply 发布真实 `review:<hash>` Catalog 版本，但当前 Review source 与 SRC1 工具只读取原始 publication，Supply EffectiveProductReader 仅允许一段 Apply。该限制阻断 §6 修改/重新重构 Must，分类为核心 happy path BLOCKER。原独立 Reviewer `/root/supply_architecture_review` 完成窄增量检查，结论 **IMPLEMENTATION_READY**；冻结的其余边界继续有效。
+
+由既有 Review owner 增加 scoped AppliedPublicationLookup，始终限定 Organization、原 Owner、ProductKey、输出 version/publication（管理员也不放宽 Owner）。复用已保存的 applied record/receipt，不新增表或事实。每段严格递减回溯，核对精确 base/output Catalog、Before/Title、完整 snapshot 的 title-only 替换及真实批准回执，最终精确回到 selection 的原始 publication/version。缺段、错 owner、非标题改动全部拒绝，没有 fallback。
+
+Review 请求和事务、Supply 有效版本读取共用这一 owner 核验；事务使用本 tx 的 lookup/reader，保留原私有 source proof、实时授权、五秒/deadline 和最终 Catalog CAS。SRC1 对派生版本使用独立 projection，分别表达请求的 effective reference、原始 source projection 和真实 Review lineage，同步 tool 版本/schema，不伪造 effective PersistedPublication 或改变 SourceReceipt/hash。canonical inspection 仍读取 effective 版本，Review lineage 不能替代原始 canonical evidence gate。两轮真实 Apply、断链、错 owner、非标题改动与 stale CAS 收敛为 IMPLEMENTATION_TEST。
+
+### 7.5 首次重构的资料固定
+
+2026-10-09 窄增量独立检查确认 **IMPLEMENTATION_READY**，属于冻结 §6/7.2 的实现补齐：Optimize 无 target 时保存 pending/null record；固定成员事务先于 Temporal。worker Begin 后用既有 Target.CreateForExecution 及固定 item command `/adapt` 生成不可变资料，刷新五秒 execution proof 后在同 DB 事务一次性 pin record/revision。事务锁定原 running item，核对原 owner、source、store、preparation、当前 target head；相同 pin 可重放，其他 pin 冲突。付费调用前必须完成 pin，后续 Optimize/Finish 只消费固定 record/revision。创建后崩溃以原 key 恢复；漂移继续被 live IAM/member、head、rules 与 quote 检查拒绝。Upload 无 target 仍为 missing。无新增状态、表、事实 owner 或恢复平台；首次无资料、pin冲突、撤权与稳定重试使用实现测试收敛。
+
 ## 8. SHEIN官方上传与UNKNOWN
 
 官方资料查证于2026-10-08：

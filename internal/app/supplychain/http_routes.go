@@ -25,6 +25,7 @@ const supplyMaxBytes = 2 << 20
 
 func SupplyRoutes(app *Application, bind func(context.Context, string) (context.Context, error)) []httproute.Descriptor {
 	specs := []struct{ method, path, action, permission string }{
+		{"GET", "/optimization-options", "optimization-options", preparation.PermissionManage},
 		{"GET", "", "list", preparation.PermissionRead}, {"POST", "/transfer", "transfer", preparation.PermissionManage}, {"GET", "/transfers/by-key/:key", "transfer-read", preparation.PermissionRead},
 		{"GET", "/:preparation_id/sources", "sources", preparation.PermissionRead}, {"GET", "/sources/:source_id", "source", preparation.PermissionRead},
 		{"GET", "/:preparation_id", "preparation", preparation.PermissionRead}, {"GET", "/:preparation_id/operations", "operations", preparation.PermissionRead},
@@ -58,6 +59,17 @@ func SupplyRoutes(app *Application, bind func(context.Context, string) (context.
 				return
 			}
 			switch spec.action {
+			case "optimization-options":
+				q, e := supplyQuery(c.Request)
+				if e != nil || q.Keyword != "" {
+					supplyError(c, preparation.ErrInvalid)
+					return
+				}
+				if app.OptimizationOptions == nil {
+					output = OptimizationOptions{Titles: []TitleOptimizationChoice{}, Reason: "智能体优化未配置"}
+					break
+				}
+				output, err = app.OptimizationOptions(ctx, q)
 			case "preparation":
 				output, err = app.Preparations.Read(ctx, c.Param("preparation_id"))
 			case "operations":

@@ -16,11 +16,12 @@ import (
 )
 
 type Service struct {
-	reader       catalog.VersionedSnapshotReader
-	sourceReader SourcePublicationGateway
-	store        Store
-	proposer     enrichment.Proposer
-	auth         Authorizer
+	reader            catalog.VersionedSnapshotReader
+	sourceReader      SourcePublicationGateway
+	store             Store
+	proposer          enrichment.Proposer
+	auth              Authorizer
+	executionResolver func(context.Context) (CandidateExecutionScope, error)
 }
 
 func NewService(reader catalog.VersionedSnapshotReader, sourceReader SourcePublicationGateway, store Store, proposer enrichment.Proposer, auth Authorizer) (*Service, error) {
@@ -41,6 +42,9 @@ func NewCandidateService(reader catalog.VersionedSnapshotReader, sourceReader So
 func (s *Service) authorize(ctx context.Context, write, admin bool) (Scope, error) {
 	if err := ctx.Err(); err != nil {
 		return Scope{}, err
+	}
+	if s.executionResolver != nil {
+		return s.executionScope(ctx, admin)
 	}
 	i, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
 	if !ok || !ValidKey(i.UserID) || !ValidKey(i.EffectiveOrganizationID) || i.TenantID != i.EffectiveOrganizationID || !time.Now().Before(i.TokenExpiresAt) {
@@ -119,7 +123,7 @@ func (s *Service) ValidateCandidate(ctx context.Context, in CandidateInput) (enr
 	if err != nil {
 		return enrichment.Proposal{}, err
 	}
-	base, source, err := s.source(ctx, s.reader, s.sourceReader, scope.Org, in.Base)
+	base, source, err := s.source(ctx, s.reader, s.sourceReader, scope, in.Base)
 	if err != nil {
 		return enrichment.Proposal{}, err
 	}
@@ -160,7 +164,7 @@ func (s *Service) create(ctx context.Context, key string, in CreateInput, suppli
 	if v, found, e := s.store.Preflight(ctx, op); e != nil || found {
 		return v, false, e
 	}
-	base, source, err := s.source(ctx, s.reader, s.sourceReader, a.Org, in)
+	base, source, err := s.source(ctx, s.reader, s.sourceReader, a, in)
 	if err != nil {
 		return View{}, false, err
 	}
@@ -196,7 +200,7 @@ func (s *Service) create(ctx context.Context, key string, in CreateInput, suppli
 		if v, found, e := tx.Replay(); e != nil || found {
 			return v, e
 		}
-		rechecked, _, e := s.source(ctx, tx.Reader(), tx.SourceReader(), a.Org, in)
+		rechecked, _, e := s.source(ctx, tx.Reader(), tx.SourceReader(), a, in, appliedLookup(tx))
 		if e != nil {
 			return View{}, e
 		}
@@ -307,7 +311,7 @@ func (s *Service) validatePatch(ctx context.Context, tx Tx, r *Record, a Scope) 
 	if err := ValidateTitle(r.Title); err != nil {
 		return catalog.PublishedSnapshot{}, err
 	}
-	base, source, err := s.source(ctx, tx.Reader(), tx.SourceReader(), a.Org, r.Input)
+	base, source, err := s.source(ctx, tx.Reader(), tx.SourceReader(), Scope{Org: a.Org, Actor: r.Owner}, r.Input, appliedLookup(tx))
 	if err != nil {
 		return base, err
 	}

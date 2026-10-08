@@ -65,6 +65,21 @@ func (a OrganizationExecutionAuthorizer) AuthorizeExecution(ctx context.Context,
 	}
 	return nil
 }
+
+// Agent consumers must obtain their own live module grants. Supply manage
+// never substitutes for Product Agent, source evidence or Review authority.
+func (a OrganizationExecutionAuthorizer) ResolveAgentExecution(ctx context.Context, scope collection.Scope) ([]string, error) {
+	roles, err := a.current(ctx, scope)
+	if err != nil {
+		return nil, collection.ErrForbidden
+	}
+	for _, permission := range []string{collection.PermissionRead, preparation.PermissionRead, preparation.PermissionManage, authz.PermissionLocalAgentWrite, authz.PermissionWorkbenchAgentUse, authz.PermissionProductSourcingWrite} {
+		if !authz.AllowedOrganization(ctx, a.Permissions, scope.ActorID, scope.OrganizationID, roles, permission) {
+			return nil, collection.ErrForbidden
+		}
+	}
+	return append([]string(nil), roles...), nil
+}
 func (a OrganizationExecutionAuthorizer) AuthorizeProductExecution(ctx context.Context, subject storecenter.ProductExecutionSubject) (storecenter.ProductExecutionAuthorization, error) {
 	scope := collection.Scope{OrganizationID: subject.OrganizationID, ActorID: subject.ActorID, MemberID: subject.MemberID}
 	permissions := []string{preparation.PermissionRead, authz.PermissionWorkbenchStoreRead}

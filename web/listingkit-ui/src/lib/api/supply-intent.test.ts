@@ -7,6 +7,10 @@ it("retains the same complete command and identity across a page reload",()=>{
  expect(saveSupplyIntent(intent)).toBe(true);expect(loadSupplyIntent()).toEqual(intent);
  expect(saveSupplyIntent(null)).toBe(true);expect(loadSupplyIntent()).toBeNull();
 });
+it("retains the pinned product and target for a saved human review action",()=>{
+ const review={...intent,route:"review-decision" as const,command:{proposalId:id,sourceId:id,recordId:id,productKey:"product",baseVersion:"2",input:{action:"accept",expected_revision:"1"}}};
+ expect(saveSupplyIntent(review)).toBe(true);expect(loadSupplyIntent()).toEqual(review);
+});
 it("rejects injected credentials, unknown routes and invalid payloads",()=>{
  for(const value of [{...intent,command:{...intent.command,credential:"private"}},{...intent,route:"publish-again"},{...intent,key:"new"}])expect(parseSupplyIntent(JSON.stringify(value))).toBeNull();
 });

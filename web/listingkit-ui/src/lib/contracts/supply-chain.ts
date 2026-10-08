@@ -37,7 +37,7 @@ const role=z.enum(["main","white_background","gallery","design"]);
 export const imageApprovalSchema=z.object({actionId:collectionID.optional(),selection:sourceSelectionSchema,images:z.array(z.object({id:collectionID,role}).strict()).max(40),approved:z.array(z.object({actionId:text(128),assetId:text(128)}).strict()).max(40)}).strict().refine(v=>v.images.length+v.approved.length>0 && v.images.length+v.approved.length<=40);
 export const imageApprovalReceiptSchema=z.object({action_id:collectionID,asset_ids:z.array(text(128)).min(1).max(40)});
 export const inventorySchema=z.object({scope:z.object({tenant_id:text(128),product_key:text(128),target_platform:z.literal("shein"),source_snapshot_version:revision}),assets:list(z.object({id:text(128).min(1),role,url:text(2048),width:integer.optional(),height:integer.optional(),source_asset_id:text(128).optional()}),40)});
-export const operationInputSchema=z.object({preparationId:collectionID,expectedRevision:revision,action:z.enum(["adapt","upload","optimize"]),storeId:collectionID,sourceIds:z.array(collectionID).max(1000).optional(),categoryId:integer.optional(),titleTemplateId:text(128).optional(),imageTemplateId:text(128).optional()}).strict().refine(v=>v.action==="optimize"?!!(v.titleTemplateId||v.imageTemplateId):!v.titleTemplateId&&!v.imageTemplateId).refine(v=>v.action!=="upload"||!v.categoryId);
+export const operationInputSchema=z.object({preparationId:collectionID,expectedRevision:revision,action:z.enum(["adapt","upload","optimize"]),storeId:collectionID,sourceIds:z.array(collectionID).max(1000).optional(),categoryId:integer.optional(),titleTemplateId:collectionID.optional(),titleTemplateRevision:version.optional(),titleQuoteHash:z.string().regex(/^[a-f0-9]{64}$/).optional(),imageTemplateId:text(128).optional()}).strict().refine(v=>v.action==="optimize"?!!(v.titleTemplateId||v.imageTemplateId):!v.titleTemplateId&&!v.imageTemplateId).refine(v=>v.action!=="upload"||!v.categoryId).refine(v=>v.titleTemplateId?!!v.titleTemplateRevision&&!!v.titleQuoteHash:!v.titleTemplateRevision&&!v.titleQuoteHash);
 export const operationSchema=z.object({id:collectionID,input:operationInputSchema,count:integer,completed:integer,status:z.enum(["pending","running","completed","cancelled"]),execution:z.enum(["pending","started","start_unknown"]),createdAt:time}).refine(v=>v.completed<=v.count);
 export const operationReceiptSchema=z.object({operation:operationSchema,replayed:z.boolean()});
 export const operationItemSchema=z.object({sourceId:collectionID,recordId:collectionID.optional(),recordRevision:revision.optional(),status:z.enum(["pending","running","succeeded","missing","review","unknown","denied","failed","cancelled"]),resultReference:text(2048).optional(),note:text(8192).optional()});
@@ -52,12 +52,13 @@ export const sourcePageSchema=page(sourceSchema);
 export const operationItemPageSchema=page(operationItemSchema);
 export const operationPageSchema=page(operationSchema);
 export const publicationSchema=z.object({sourceId:collectionID,storeId:collectionID,recordId:collectionID.optional(),receiptId:text(128).optional(),observedAt:time.optional(),product:z.object({spu_name:text(128).min(1),skc_list:list(z.object({skc_name:text(128).min(1),sku_list:list(z.object({sku_code:text(128).min(1),supplier_sku:text(200).min(1)}),400)}),40)}).optional()}).refine(v=>v.product?!!v.receiptId&&!!v.observedAt:!v.receiptId&&!v.observedAt&&!v.recordId);
-export type SupplyRoute="publication"|"preparation"|"operations"|"list"|"transfer"|"transfer-read"|"sources"|"source"|"target"|"save-target"|"rules"|"target-command"|"record"|"approve"|"inventory"|"create-operation"|"operation-key"|"operation"|"operation-items"|"ensure"|"cancel";
-export const supplyRouteMethods:ReadonlyArray<readonly["GET"|"POST",SupplyRoute]>=[["GET","publication"],["GET","preparation"],["GET","operations"],["GET","list"],["POST","transfer"],["GET","transfer-read"],["GET","sources"],["GET","source"],["GET","target"],["POST","save-target"],["POST","rules"],["GET","target-command"],["GET","record"],["POST","approve"],["POST","inventory"],["POST","create-operation"],["GET","operation-key"],["GET","operation"],["GET","operation-items"],["POST","ensure"],["POST","cancel"]];
+export type SupplyRoute="optimization-options"|"publication"|"preparation"|"operations"|"list"|"transfer"|"transfer-read"|"sources"|"source"|"target"|"save-target"|"rules"|"target-command"|"record"|"approve"|"inventory"|"create-operation"|"operation-key"|"operation"|"operation-items"|"ensure"|"cancel";
+export const supplyRouteMethods:ReadonlyArray<readonly["GET"|"POST",SupplyRoute]>=[["GET","optimization-options"],["GET","publication"],["GET","preparation"],["GET","operations"],["GET","list"],["POST","transfer"],["GET","transfer-read"],["GET","sources"],["GET","source"],["GET","target"],["POST","save-target"],["POST","rules"],["GET","target-command"],["GET","record"],["POST","approve"],["POST","inventory"],["POST","create-operation"],["GET","operation-key"],["GET","operation"],["GET","operation-items"],["POST","ensure"],["POST","cancel"]];
 export function supplyPath(method:string,p:string[]):SupplyRoute|null{
  if(p[0]!=="supply-preparations")return null;
  if(method==="GET"){
   if(p.length===1)return "list";
+  if(p.length===2 && p[1]==="optimization-options")return "optimization-options";
   if(p.length===2 && isAcquisitionUUID(p[1]!))return "preparation";
   if(p.length===3 && isAcquisitionUUID(p[1]!) && p[2]==="operations")return "operations";
   if(p.length===3 && isAcquisitionUUID(p[1]!) && p[2]==="sources")return "sources";
@@ -77,7 +78,7 @@ export const supplyRequestSchema=(route:SupplyRoute)=>route==="transfer"?transfe
 export const supplyUsesKey=(route:SupplyRoute)=>["transfer","save-target","approve","create-operation"].includes(route);
 export const supplyMutates=(route:SupplyRoute)=>supplyUsesKey(route)||route==="ensure"||route==="cancel";
 export function supplyResponseSchema(route:SupplyRoute):z.ZodType {
- return route==="publication"?publicationSchema:route==="preparation"?preparationSchema:route==="operations"?operationPageSchema:route==="list"?preparationPageSchema:route==="sources"?sourcePageSchema:route==="source"?sourceDetailSchema:route==="transfer"||route==="transfer-read"?transferReceiptSchema:route==="target"||route==="record"?targetRecordSchema:route==="save-target"||route==="target-command"?targetReceiptSchema:route==="rules"?rulesSchema:route==="approve"?imageApprovalReceiptSchema:route==="inventory"?inventorySchema:route==="create-operation"?operationReceiptSchema:route==="operation-items"?operationItemPageSchema:operationSchema;
+ return route==="optimization-options"?optimizationOptionsSchema:route==="publication"?publicationSchema:route==="preparation"?preparationSchema:route==="operations"?operationPageSchema:route==="list"?preparationPageSchema:route==="sources"?sourcePageSchema:route==="source"?sourceDetailSchema:route==="transfer"||route==="transfer-read"?transferReceiptSchema:route==="target"||route==="record"?targetRecordSchema:route==="save-target"||route==="target-command"?targetReceiptSchema:route==="rules"?rulesSchema:route==="approve"?imageApprovalReceiptSchema:route==="inventory"?inventorySchema:route==="create-operation"?operationReceiptSchema:route==="operation-items"?operationItemPageSchema:operationSchema;
 }
 export type SupplyPreparation=z.infer<typeof preparationSchema>;
 export type SupplySource=z.infer<typeof sourceSchema>;
@@ -103,3 +104,8 @@ export function parseSupplyResponse(route:SupplyRoute,payload:unknown,expected?:
 }
 
 export type SupplyPublication=z.infer<typeof publicationSchema>;
+
+export const optimizationChoiceSchema=z.object({agentId:z.literal("product.title.agent"),templateId:collectionID,revision:version,name:text(512),quoteHash:z.string().regex(/^[a-f0-9]{64}$/),maximumCostMicros:integer,currency:text(16),maximumPoints:revision,priceVersion:text(128).min(1)});
+export const optimizationOptionsSchema=z.object({titles:z.array(optimizationChoiceSchema).max(100),reason:text(512).optional(),imageReason:text(512).optional(),nextCursor:collectionID.optional()});
+export type SupplyOptimizationChoice=z.infer<typeof optimizationChoiceSchema>;
+export type SupplyOptimizationOptions=z.infer<typeof optimizationOptionsSchema>;
