@@ -86,7 +86,7 @@ type ImageAgentConfig struct {
 }
 
 // AccountAuditUsageConfig supplies bounded, read-only pools for the existing
-// image and product invocation owners without enabling either Agent runtime.
+// invocation owners not already supplied by their enabled Agent runtime.
 type AccountAuditUsageConfig struct {
 	Image   DatabaseConfig `json:"image"`
 	Product DatabaseConfig `json:"product"`
@@ -99,10 +99,26 @@ func (a *AccountAuditUsageConfig) validate(cfg *Config) error {
 	for _, target := range []struct {
 		name, database, user string
 		value                DatabaseConfig
+		execution            *DatabaseConfig
 	}{
-		{"image", "image_agent", "account_audit_image_reader", a.Image},
-		{"product", "product_agent", "account_audit_product_reader", a.Product},
+		{"image", "image_agent", "account_audit_image_reader", a.Image, nil},
+		{"product", "product_agent", "account_audit_product_reader", a.Product, nil},
 	} {
+		if target.name == "image" && cfg.ImageAgent != nil {
+			target.execution = &cfg.ImageAgent.Database
+		}
+		if target.name == "product" && cfg.ProductAgent != nil && cfg.ProductAgent.Enabled {
+			target.execution = &cfg.ProductAgent.Database
+		}
+		if target.execution != nil {
+			if target.value != (DatabaseConfig{}) {
+				return fmt.Errorf("account audit %s cannot duplicate its Agent execution source", target.name)
+			}
+			if target.execution.Database != target.database || target.execution.Host != cfg.SourceAccountDatabase.Host || target.execution.Port != cfg.SourceAccountDatabase.Port {
+				return fmt.Errorf("account audit %s execution source must use its current local owner", target.name)
+			}
+			continue
+		}
 		if err := target.value.validate("accountAuditUsage." + target.name); err != nil {
 			return err
 		}
@@ -110,8 +126,8 @@ func (a *AccountAuditUsageConfig) validate(cfg *Config) error {
 			return fmt.Errorf("account audit %s requires its dedicated local read-only owner", target.name)
 		}
 	}
-	if cfg.ImageAgent != nil || cfg.ProductAgent != nil && cfg.ProductAgent.Enabled {
-		return errors.New("account audit read-only sources cannot overlap Agent execution sources")
+	if a.Image == (DatabaseConfig{}) && a.Product == (DatabaseConfig{}) {
+		return errors.New("account audit read-only sources must declare at least one owner")
 	}
 	return nil
 }

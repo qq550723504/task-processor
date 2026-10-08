@@ -190,14 +190,44 @@ func WithAcquisitionImageAgent(db *gorm.DB, workflows imageagent.WorkflowClient)
 	}
 }
 
-// WithAccountAuditUsageSources supplies the existing image and product ledger
-// owners for audit reads only. It does not enable an Agent route or provider.
+// WithAccountAuditUsageSources supplies audit-only ledger pools for namespaces
+// without an enabled Agent. A nil pool must be supplied by that namespace's Agent.
 func WithAccountAuditUsageSources(image, product *gorm.DB) CurrentApplicationOption {
 	return func(options *currentApplicationOptions) {
 		options.accountAuditSources++
 		options.accountAuditImageDB = image
 		options.accountAuditProductDB = product
 	}
+}
+
+func currentInvocationAuditSources(options currentApplicationOptions) (invocationAuditSources, error) {
+	sources := invocationAuditSources{}
+	if options.imageAgentDB != nil {
+		sources["image"] = options.imageAgentDB
+	}
+	if options.productAgent != nil && options.productAgent.RunDB != nil {
+		sources["product"] = options.productAgent.RunDB
+	}
+	if options.accountAuditSources == 0 {
+		return sources, nil
+	}
+	if options.accountAuditImageDB == nil && options.accountAuditProductDB == nil {
+		return nil, errors.New("account audit read-only sources require at least one owner pool")
+	}
+	readers := invocationAuditSources{"image": options.accountAuditImageDB, "product": options.accountAuditProductDB}
+	for namespace, pool := range readers {
+		if pool == nil {
+			continue
+		}
+		if sources[namespace] != nil {
+			return nil, fmt.Errorf("account audit %s source supplied by both Agent and reader", namespace)
+		}
+		sources[namespace] = pool
+	}
+	if sources["image"] == nil || sources["product"] == nil || sources["image"] == sources["product"] {
+		return nil, errors.New("account audit requires two independent invocation owners")
+	}
+	return sources, nil
 }
 
 // WithMembership supplies the independently owned membership receipt pool and provider credentials.
@@ -291,8 +321,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 			}
 		}
 	}
-	if supplied.accountAuditSources > 0 && (supplied.accountAuditImageDB == nil || supplied.accountAuditProductDB == nil || supplied.accountAuditImageDB == supplied.accountAuditProductDB || supplied.imageAgentDB != nil || supplied.productAgent != nil) {
-		return nil, errors.New("account audit requires two independent read-only sources without Agent execution")
+	auditSources, auditSourceErr := currentInvocationAuditSources(supplied)
+	if auditSourceErr != nil {
+		return nil, auditSourceErr
 	}
 	if supplied.knowledgeServices > 1 || supplied.knowledgeServices > 0 && supplied.knowledge == nil {
 		return nil, errors.New("knowledge service unavailable or supplied more than once")
@@ -620,18 +651,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		if supplied.membership != nil {
 			membershipDB = supplied.membership.ReceiptDB
 		}
-		sources := invocationAuditSources{}
-		if supplied.imageAgentDB != nil {
-			sources["image"] = supplied.imageAgentDB
-		}
-		if supplied.productAgent != nil && supplied.productAgent.RunDB != nil {
-			sources["product"] = supplied.productAgent.RunDB
-		}
-		if supplied.accountAuditSources > 0 {
-			sources["image"] = supplied.accountAuditImageDB
-			sources["product"] = supplied.accountAuditProductDB
-		}
-		audit, auditErr = factories.buildAccountAudit(sourceAccountDB, membershipDB, supplied.commercialOwnerDB, sources, authorizer)
+		audit, auditErr = factories.buildAccountAudit(sourceAccountDB, membershipDB, supplied.commercialOwnerDB, auditSources, authorizer)
 
 		if auditErr != nil {
 			return nil, fmt.Errorf("build current account audit module: %w", auditErr)

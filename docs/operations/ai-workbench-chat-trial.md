@@ -10,6 +10,8 @@ Refs #576、#588。入口为当前 Console 的 `/workbench/ai/chat` 和 `/workbe
 - `planningTextPolicies[organizationId]` 为获准企业单独设置 `RoutePolicy`，其 `Profile` 使用 `PromptVersion=ai-workbench-chat-plan-v1`、`OutputSchemaVersion=ai-workbench-plan-decision-v1`。规划和标题执行分别有自己的组织凭据、准入版本、输入/输出上限、点数费率与价格；不能借用对方的 route。
 - 标题 `productAgent.textPolicies` 也须使用当前 `RoutePolicy`。两种文本操作都经 Eino 的受控组件、当前 AI invocation 与成员额度 owner 执行；实际 provider 的计量、价格和付费准入需要部署者核实并单独授权。缺任何一项时保持执行关闭。
 
+从已有全源 Account Audit 配置接入 ProductAgent 时，复用当前 `product_agent` owner 数据库，省略 `accountAuditUsage.product` 专用 reader 配置，保留未启用 ImageAgent 的 `accountAuditUsage.image` 只读目标。审计 product 来源由现有 ProductAgent pool 明确提供；不要同时配置同 namespace 的 reader，也不要关闭整个 Account Audit。启动装配须同时消费 `WithProductAcquisition`、`WithProductAgent` 和 `WithAIWorkbench`，仅修改清单或菜单不会挂载任务接口。
+
 全新安装时，先由数据库 owner 创建限制权限且没有 schema/table 所有权的 `ai_workbench_runtime` 角色，再使用私有、具备建表权限的连接执行：
 
 ```powershell
