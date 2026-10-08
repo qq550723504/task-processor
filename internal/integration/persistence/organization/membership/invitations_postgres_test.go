@@ -21,6 +21,18 @@ func testInvitations(t *testing.T, ctx context.Context, repo *Repository) {
 	if err != nil || replay {
 		t.Fatalf("create %v %v", replay, err)
 	}
+	rows, _, err := store.ListNoticeInvitations(ctx, flow.NoticeQuery{OrganizationID: inv.OrganizationID, Limit: 100})
+	if err != nil || len(rows) != 1 || rows[0].ID != inv.ID {
+		t.Fatal("stored invitation notification read", err)
+	}
+	rows, _, err = store.ListNoticeInvitations(ctx, flow.NoticeQuery{Contact: inv.Contact, RecipientID: "recipient", Limit: 100})
+	if err != nil || len(rows) != 1 {
+		t.Fatal("recipient notification read", err)
+	}
+	rows, _, err = store.ListNoticeInvitations(ctx, flow.NoticeQuery{Contact: "other@example.test", RecipientID: "recipient", Limit: 100})
+	if err != nil || len(rows) != 0 {
+		t.Fatal("foreign contact notifications", err)
+	}
 	got, replay, err := store.Create(ctx, inv)
 	if err != nil || !replay || got.Fingerprint != inv.Fingerprint {
 		t.Fatal("replay", err)

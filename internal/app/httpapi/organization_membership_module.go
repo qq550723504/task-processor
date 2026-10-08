@@ -73,7 +73,7 @@ func buildMembershipModule(ctx context.Context, cfg *config.Config, deps Members
 	service := membership.NewService(directory, authorizer, cfg.ListingKit.Zitadel.ProjectID, cfg.ListingKit.PlatformAdminRoles...)
 	service.SetRoleStore(store)
 	authorizer.SetRolePolicyReader(store)
-	handler := memberhttp.NewCommandHandler(service, func(request *http.Request) (memberhttp.CommandService, error) {
+	commandFactory := func(request *http.Request) (memberhttp.CommandService, error) {
 		initial, ok := authidentity.AuthenticatedIdentityFromContext(request.Context())
 		if !ok {
 			return nil, membership.ErrAuthentication
@@ -98,7 +98,8 @@ func buildMembershipModule(ctx context.Context, cfg *config.Config, deps Members
 			return authidentity.WithAuthenticatedIdentity(ctx, resolved), nil
 		}
 		return membership.NewCommands(service, store, writer, refresh), nil
-	})
+	}
+	handler := memberhttp.NewCommandHandler(service, commandFactory)
 	factory, err := buildInvitationFactory(deps, cfg.ListingKit.Zitadel.ProjectID, auth, service, store, writer, authorizer)
 	if err != nil {
 		return nil, err
@@ -107,5 +108,11 @@ func buildMembershipModule(ctx context.Context, cfg *config.Config, deps Members
 	if ctx.Err() != nil {
 		return nil, membership.ErrUnavailable
 	}
-	return memberhttp.NewModule(handler), nil
+	return currentMembershipModule{Module: memberhttp.NewModule(handler), invitations: factory, commands: commandFactory}, nil
+}
+
+type currentMembershipModule struct {
+	kernelmodule.Module
+	invitations memberhttp.InvitationFactory
+	commands    memberhttp.CommandFactory
 }
