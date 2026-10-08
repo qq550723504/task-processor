@@ -25,6 +25,75 @@ func auditUsageTestConfig() *Config {
 	return cfg
 }
 
+func TestAccountAuditUsageCombinesProductExecutionWithImageReader(t *testing.T) {
+	cfg := agentRuntimeConfig()
+	cfg.ProductAgent.Database.Database = "product_agent"
+	cfg.AccountAuditUsage = &AccountAuditUsageConfig{Image: auditUsageTestConfig().AccountAuditUsage.Image}
+	if err := cfg.validate(); err != nil {
+		t.Fatalf("one source per namespace must allow Product Agent and the image reader: %v", err)
+	}
+	cfg.ProductAgent.Database.Database = "other_product_owner"
+	if err := cfg.AccountAuditUsage.validate(cfg); err == nil {
+		t.Fatal("mixed audit source must remain on the current product owner")
+	}
+	cfg.ProductAgent.Database.Database = "product_agent"
+	cfg.ProductAgent.Enabled = false
+	if err := cfg.AccountAuditUsage.validate(cfg); err == nil {
+		t.Fatal("configuration-only Product Agent cannot satisfy the missing product usage source")
+	}
+}
+
+func TestAccountAuditUsageMixedRuntimeOpensOnlyTheDeclaredReader(t *testing.T) {
+	cfg := agentRuntimeConfig()
+	cfg.ProductAgent.Database.Database = "product_agent"
+	cfg.AccountAuditUsage = &AccountAuditUsageConfig{Image: auditUsageTestConfig().AccountAuditUsage.Image}
+	imageSQL, imageMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer imageSQL.Close()
+	image, err := gorm.Open(postgres.New(postgres.Config{Conn: imageSQL, PreferSimpleProtocol: true}), &gorm.Config{DisableAutomaticPing: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	imageMock.ExpectQuery(`SELECT "invocation_id","member_id","prompt_tokens","completion_tokens","total_tokens","finished_at" FROM "ai_invocations" WHERE tenant_id`).WillReturnRows(sqlmock.NewRows([]string{"invocation_id", "member_id", "prompt_tokens", "completion_tokens", "total_tokens", "finished_at"}))
+	source, commercial, acquisition, runDB := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
+	stop := errors.New("mixed sources reached application assembly")
+	readerOpens := 0
+	err = Run(context.Background(), cfg, logrus.New(), Dependencies{
+		IdentityPreflight:      func(context.Context, IdentityConfig) error { return nil },
+		OpenSourceAccount:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+		OpenCommercialOwner:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
+		OpenProductAcquisition: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return acquisition, nil },
+		OpenProductAgent: func(_ context.Context, target DatabaseConfig) (*gorm.DB, error) {
+			if target.Database == "product_agent" {
+				return runDB, nil
+			}
+			return &gorm.DB{}, nil
+		},
+		OpenAccountAuditUsage: func(_ context.Context, target DatabaseConfig) (*gorm.DB, error) {
+			readerOpens++
+			if target.Database != "image_agent" || target.User != "account_audit_image_reader" {
+				t.Fatalf("opened an undeclared reader: %+v", target)
+			}
+			return image, nil
+		},
+		NewApplicationWithFeatures: func(_ context.Context, _ *gorm.DB, features ApplicationFeatures, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+			if features.AccountAuditImageDB != image || features.AccountAuditProductDB != nil || features.ProductAgentDB != runDB {
+				t.Fatal("mixed owners were not preserved")
+			}
+			return nil, stop
+		},
+		CloseDatabase: func(*gorm.DB) error { return nil },
+	})
+	if !errors.Is(err, stop) || readerOpens != 1 {
+		t.Fatalf("mixed assembly failed: %v; reader opens=%d", err, readerOpens)
+	}
+	if err := imageMock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAccountAuditUsageRejectsUnreadableLedgerBeforeServing(t *testing.T) {
 	cfg := auditUsageTestConfig()
 	source := &gorm.DB{}
