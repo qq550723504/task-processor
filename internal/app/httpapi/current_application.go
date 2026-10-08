@@ -451,7 +451,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		if err != nil {
 			return nil, err
 		}
-		modules = append(modules, ehttp.NewModule(handler))
+		modules = append(modules, ecoservicesRouteModule{handler: handler})
 		ecoservicesRecovery = recover
 	}
 	if supplied.knowledgeServices > 0 {

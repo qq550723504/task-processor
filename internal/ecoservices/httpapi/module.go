@@ -4,9 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"task-processor/internal/authz"
-	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
-	kernelmodule "task-processor/internal/kernel/module"
 	"time"
 )
 
@@ -14,17 +12,6 @@ const ModuleName = "ecoservices"
 const Base = "/api/v1/ecoservices"
 const AdminBase = "/api/v1/admin/ecoservices"
 
-type routeModule struct{ handler *Handler }
-
-func NewModule(h *Handler) kernelmodule.Module { return routeModule{h} }
-func (routeModule) Name() string               { return ModuleName }
-func (m routeModule) Enabled(c *config.Config) bool {
-	return m.handler != nil && c != nil && c.Workbench.Enabled
-}
-func (m routeModule) Register(registry *kernelmodule.Registry) error {
-	registry.AddRoutes(Routes(m.handler)...)
-	return nil
-}
 func Routes(h *Handler) []httproute.Descriptor {
 	if h == nil {
 		h = &Handler{}

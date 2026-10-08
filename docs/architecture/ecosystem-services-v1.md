@@ -273,7 +273,7 @@ E1/E4的pending command本身就是有界durable outbox，不另建通用平台�
 
 新权限接入既有WorkbenchPermissions/Casbin和三个module IDs：services-read，services-mine-read/purchase/manage，services-join-join/manage；业务service仍检查双方绑定及准入。菜单/前端不是权限事实源；平台入口能力来自后端真实鉴权结果。查询用当前org过滤，不能把浏览器传入org写进目标事实。
 
-BFF沿现有workbench同源proxy/严格route allowlist、CSRF/origin、cookie/bearer和Expected-Organization校验；禁止前端自由转发provider API。模块app注入只构造deps/port/config/pool、注册域httpapi.NewModule并启动有界恢复，业务规则留owner。
+BFF沿现有workbench同源proxy/严格route allowlist、CSRF/origin、cookie/bearer和Expected-Organization校验；禁止前端自由转发provider API。模块app注入只构造deps/port/config/pool、注册域httpapi.Routes描述符并启动有界恢复，业务规则留owner。
 
 JSON 1MiB上限（敏感商户申请可用2MiB独立上限）、文件10MiB、单申请/交付至多10附件；分页默认20/最大100，search≤200字符。普通请求10s、金融/文件30s并绑定调用deadline；渠道HTTP有界10s、响应1MiB且关闭敏感日志。这些是当前实现资源上限，不是新增容量框架。
 

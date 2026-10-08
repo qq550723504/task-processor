@@ -30,7 +30,8 @@ func TestS3IntegrationAndImageAgentBoundaries(t *testing.T) {
 func TestProductionS3UploaderConstructorInventoryIsComplete(t *testing.T) {
 	got := scanProductionS3Uses(t, true)
 	want := map[string]int{
-		"cmd/current-application/knowledge.go": 1,
+		"cmd/current-application/ecoservices.go":              1,
+		"cmd/current-application/knowledge.go":                1,
 		"internal/app/worker/imageagent/dependencies.go":      1,
 		"internal/listingkit/httpapi/builders_image_store.go": 1,
 	}

@@ -17,6 +17,7 @@ import (
 	estore "task-processor/internal/integration/persistence/ecoservices"
 	moneystore "task-processor/internal/integration/persistence/money"
 	"task-processor/internal/integration/servicepayments"
+	kernelmodule "task-processor/internal/kernel/module"
 	"time"
 )
 
@@ -26,6 +27,18 @@ type EcoservicesDependencies struct {
 	Channel            b.ServicePurchaseProvider
 	Protection         b.ServicePayloadProtection
 	MerchantProtection e.MerchantProtection
+}
+
+// The application adapts its process config; the domain exposes only routes.
+type ecoservicesRouteModule struct{ handler *ehttp.Handler }
+
+func (ecoservicesRouteModule) Name() string { return ehttp.ModuleName }
+func (m ecoservicesRouteModule) Enabled(c *config.Config) bool {
+	return m.handler != nil && c != nil && c.Workbench.Enabled
+}
+func (m ecoservicesRouteModule) Register(registry *kernelmodule.Registry) error {
+	registry.AddRoutes(ehttp.Routes(m.handler)...)
+	return nil
 }
 
 func WithEcoservices(deps EcoservicesDependencies) CurrentApplicationOption {

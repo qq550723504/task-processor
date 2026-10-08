@@ -88,6 +88,7 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
     - `1688-batch-import`
     - `1688-local-agent`
     - `commercial-owner-schema-migrate`
+    - `ecoservices-schema-init`
     - `fingerprint-browser-installer`
     - `knowledge-schema-init`
     - `issue36-local-trial-init`
@@ -114,6 +115,7 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
   - `shein-import-platform-recovery` 由 `scripts/shein-import-platform-recovery.ps1` 运行；脚本默认 dry-run，只有同时提供 `-Execute` 和 dry-run 返回的 `-ConfirmFingerprint` 才会请求写入。
   - `store-center-schema-init` 由 `deployments/docker/account-compose` 维护，通过显式私密 owner 配置创建当前 Store 空库 schema，并向既有 canonical commercial quota 表授予窄运行权限；不读取、迁移或兼容历史 Store 数据。
   - `knowledge-schema-init` 由 `deployments/docker/account-compose` 的可选 Knowledge overlay 维护，使用私密 `knowledge_owner` 配置通过 Goose 初始化新空 `knowledge` 数据库，并授予 `knowledge_runtime` 所需列权限；运行进程不执行 DDL，不迁移历史数据。依据 #557 / [Knowledge V1 架构](../architecture/agent-knowledge-context-v1.md)。
+  - `ecoservices-schema-init` 的构建归属为 `deployments/docker/Dockerfile.account-compose` 的 `schema-init` target；安装者显式提供私密 `ECOSERVICES_SCHEMA_DSN`，仅在名为 `ecoservices` 的专属新数据库安装 schema 并授予既有 `ecoservices_runtime` 最小权限。Compose 不自动调用，不创建申请、订单或付款，不迁移旧数据。依据 #603 / [生态服务 V1 架构](../architecture/ecosystem-services-v1.md)。
   - `agent-configuration-schema-init` 的构建归属为 `deployments/docker/Dockerfile.account-compose` 的 `schema-init` target；安装人员通过私密 `AGENT_CONFIGURATION_SCHEMA_DSN` 与显式 `--runtime-role` 单独运行，只初始化同 ProductAgentDB 的新配置 schema 并授予最小权限。Compose 不自动调用，不自动启用企业，不迁移旧数据。依据 #570 / [企业智能体配置 V1](../architecture/organization-agent-configuration-v1.md)。
   - `product-agent-credential-provision` 由 `scripts/product-agent-credential-provision.ps1` 显式委托；部署者用私有 manifest 与私有凭据输入，通过同一 ProductAgentDB 的独立受限写入角色配置标题组织行。它不自动启用 Agent 或执行付费调用；准入条件见 [标题诊断试用交接](../operations/product-agent-trial.md)。
   - 不再新增临时调试可执行程序。

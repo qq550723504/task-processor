@@ -2031,3 +2031,11 @@ func TestCurrentStoreDesignPreservesGreenfieldOwnersAndUnopenedServices(t *testi
 		"IMPLEMENTATION_READY", "全新系统产品基线", "storeCenter.quotaDatabase", "commercialOwnerDatabase", "AuthPolicyCurrentIdentity", "LiveWrite", "record_status", "pending_activation", "store_center_runtime", "store_quota_runtime", "Activate/Renew/Reactivate", "EXTRACT", "RETIRE",
 	})
 }
+
+func TestEcoservicesDesignPreservesOriginalFundsAndPrivateDomainOwners(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "ecosystem-services-v1.md"), []string{
+		"IMPLEMENTATION_READY", "internal/ecoservices", "internal/commercial/billing", "money",
+		"SERVICE_PURCHASE", "NON_COMMISSIONABLE", "CUSTOMER_ACCEPTED", "AR1", "UNKNOWN",
+		"CurrentIdentityWithVerifiedRoles", "LiveWrite", "全新", "原订单", "私有",
+	})
+}
