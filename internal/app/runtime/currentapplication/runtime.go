@@ -300,6 +300,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			{cfg.AccountAuditUsage.Image, &auditImageDB},
 			{cfg.AccountAuditUsage.Product, &auditProductDB},
 		} {
+			if target.cfg == (DatabaseConfig{}) {
+				continue // Config validation binds this namespace to its enabled Agent.
+			}
 			pool, openErr := dependencies.OpenAccountAuditUsage(startupContext, target.cfg)
 			if openErr != nil {
 				return fmt.Errorf("open account audit %s read-only owner: %w", target.cfg.Database, openErr)
@@ -314,6 +317,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			namespace string
 			pool      *gorm.DB
 		}{{"image", auditImageDB}, {"product", auditProductDB}} {
+			if target.pool == nil {
+				continue
+			}
 			if _, err := aistore.NewGormInvocationRecorder(target.pool).ListObservedUsage(startupContext, "__account_audit_probe__", target.namespace, 1, nil); err != nil {
 				return fmt.Errorf("account audit %s usage owner unreadable: %w", target.namespace, err)
 			}
