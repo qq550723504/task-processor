@@ -722,6 +722,18 @@ func (r *Repository) AdmitFinancialCommand(ctx context.Context, in e.FinancialCo
 		if json.Unmarshal(row.Payload, &out) != nil {
 			return e.ErrConflict
 		}
+		if in.Kind == "CREATE_PURCHASE" {
+			// A checkout receipt records the original admission, not permission
+			// to disclose a payment capability after cancellation. Recheck under
+			// the request lock before either historical admission shortcut.
+			req, err := requestFact(request)
+			if err != nil {
+				return err
+			}
+			if req.State != "ORDER_PENDING" || req.FinancialFence {
+				return e.ErrConflict
+			}
+		}
 		admissionKey := in.DispatchOperationID
 		if admissionKey != "" {
 			if len(admissionKey) > 192 {

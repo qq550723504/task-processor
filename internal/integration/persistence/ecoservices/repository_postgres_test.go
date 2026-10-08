@@ -261,3 +261,8 @@ func TestEcoservicesPostgresEachFinancialStageHonorsNewDispute(t *testing.T) {
 		t.Fatalf("existing original in-flight fact lost admission: %v", err)
 	}
 }
+
+func TestEcoservicesPostgresCheckoutReplayHonorsCommittedCancellation(t *testing.T) {
+	ctx, _, repo, service := postgresFixture(t)
+	assertCheckoutReplayRejectsCommittedCancellation(t, ctx, repo, service)
+}
