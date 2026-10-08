@@ -1,5 +1,5 @@
 import { afterEach,expect,it,vi } from "vitest";
-import { supplyCommand,readSupplyCommand,type SupplyIntent } from "./supply-chain";
+import { supplyCommand,readSupplyCommand,listSupplyOperationItems,type SupplyIntent } from "./supply-chain";
 import { titleProposalFixture } from "@/test/product-title-review-fixture";
 const id="11111111-1111-4111-8111-111111111111",other="22222222-2222-4222-8222-222222222222";
 const intent:SupplyIntent={userId:"actor",organizationId:"org",key:id,route:"create-operation",command:{preparationId:id,expectedRevision:1,storeId:id,action:"adapt"}};
@@ -48,4 +48,12 @@ it("resolves the original upload with a readback request and preserves uncertain
 it("rejects a readback response for a different original attempt",async()=>{
  vi.stubGlobal("fetch",vi.fn().mockResolvedValue(reply({recordId:id,attemptId:id,status:"outcome_unknown"})));
  await expect(supplyCommand({...intent,route:"resolve-upload",command:{recordId:id,attemptId:other,spu:"spu-a"}})).rejects.toMatchObject({code:"OUTCOME_UNKNOWN"});
+});
+
+it("reads original UNKNOWN history with confirmed provider facts and rejects success claims without an original attempt",async()=>{
+ const item={sourceId:id,recordId:id,recordRevision:1,status:"unknown",resultReference:other,confirmedProduct:{spu_name:"spu-a",skc_list:[{skc_name:"skc-a",sku_list:[{sku_code:"sku-a",supplier_sku:"original-sku"}]}]}};
+ const fetcher=vi.fn().mockImplementation(()=>Promise.resolve(reply({items:[item],total:1})));vi.stubGlobal("fetch",fetcher);
+ await expect(listSupplyOperationItems({userId:"actor",organizationId:"org"},id,{limit:100})).resolves.toMatchObject({items:[item]});
+ fetcher.mockImplementation(()=>Promise.resolve(reply({items:[{...item,resultReference:"not-an-attempt"}],total:1})));
+ await expect(listSupplyOperationItems({userId:"actor",organizationId:"org"},id,{limit:100})).rejects.toMatchObject({code:"DEPENDENCY_UNAVAILABLE"});
 });

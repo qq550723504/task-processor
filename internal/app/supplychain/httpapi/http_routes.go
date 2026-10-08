@@ -128,7 +128,7 @@ func SupplyRoutes(app *supplyapp.Application, bind func(context.Context, string)
 				case "sources":
 					output, err = app.Preparations.ListSources(ctx, c.Param("preparation_id"), q)
 				case "operation-items":
-					output, err = app.Operations.ListItems(ctx, c.Param("operation_id"), q)
+					output, err = app.OperationItems(ctx, c.Param("operation_id"), q)
 				}
 			case "transfer":
 				var in preparation.TransferInput

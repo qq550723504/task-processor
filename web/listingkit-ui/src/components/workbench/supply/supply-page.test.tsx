@@ -2,10 +2,10 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SupplyPage } from "./supply-page";
-const state=vi.hoisted(()=>({context:{} as Record<string,unknown>,preparation:vi.fn(),stages:vi.fn(),sources:vi.fn(),history:vi.fn(),stores:vi.fn(),options:vi.fn(),write:vi.fn(),push:vi.fn(),detail:vi.fn(),target:vi.fn(),publication:vi.fn()}));
+const state=vi.hoisted(()=>({context:{} as Record<string,unknown>,preparation:vi.fn(),stages:vi.fn(),sources:vi.fn(),history:vi.fn(),stores:vi.fn(),options:vi.fn(),write:vi.fn(),push:vi.fn(),detail:vi.fn(),target:vi.fn(),publication:vi.fn(),operation:vi.fn(),items:vi.fn(),attempt:vi.fn()}));
 vi.mock("next/navigation",()=>({useRouter:()=>({push:state.push})}));
 vi.mock("@/components/providers/workbench-context-provider",()=>({useWorkbenchContext:()=>state.context}));
-vi.mock("@/lib/api/supply-chain",async original=>({...await original<object>(),readSupplyPreparation:state.preparation,listSupplyStages:state.stages,listSupplySources:state.sources,listSupplyOperations:state.history,supplyCommand:state.write,readSupplyOptimizationOptions:state.options,readSupplySource:state.detail,readSupplyTarget:state.target,readSupplyPublication:state.publication}));
+vi.mock("@/lib/api/supply-chain",async original=>({...await original<object>(),readSupplyPreparation:state.preparation,listSupplyStages:state.stages,listSupplySources:state.sources,listSupplyOperations:state.history,supplyCommand:state.write,readSupplyOptimizationOptions:state.options,readSupplySource:state.detail,readSupplyTarget:state.target,readSupplyPublication:state.publication,readSupplyOperation:state.operation,listSupplyOperationItems:state.items,readSupplyUploadAttempt:state.attempt}));
 vi.mock("./bulk-review-panel",()=>({BulkSupplyReviewPanel:({items}:{items:unknown[]})=><p>实际批量提案 {items.length} 件</p>}));
 vi.mock("@/lib/api/workbench-stores",()=>({listWorkbenchStores:state.stores}));
 const prep="11111111-1111-4111-8111-111111111111",store="22222222-2222-4222-8222-222222222222",source="33333333-3333-4333-8333-333333333333";
@@ -87,4 +87,21 @@ it("reloads the full-batch projection when the source filter changes",async()=>{
  render(<SupplyPage initialPreparation={prep} initialStore={store}/>);await screen.findByText("完整批次");
  await userEvent.selectOptions(screen.getByLabelText("商品来源"),"acquisition");
  await waitFor(()=>expect(state.stages).toHaveBeenLastCalledWith(expect.anything(),prep,store,"all",expect.objectContaining({sourceKind:"acquisition"}),expect.any(AbortSignal)));
+});
+
+it("retains confirmed UNKNOWN readback across progress refresh while other items remain pending verification",async()=>{
+ const operation="44444444-4444-4444-8444-444444444444",attempt="55555555-5555-4555-8555-555555555555";
+ const op={id:operation,input:{preparationId:prep,expectedRevision:1,storeId:store,action:"upload"},count:2,completed:2,status:"completed",execution:"started",createdAt:"2026-10-08T00:00:00Z"};
+ const original={sourceId:source,recordId:prep,recordRevision:1,status:"unknown",resultReference:attempt,note:"原请求响应丢失"};
+ const other={sourceId:store,recordId:source,recordRevision:1,status:"unknown",resultReference:operation};
+ const product={spu_name:"confirmed-spu",skc_list:[{skc_name:"confirmed-skc",sku_list:[{sku_code:"confirmed-sku",supplier_sku:"sku-a"}]}]};
+ state.operation.mockResolvedValue(op);state.history.mockResolvedValue({items:[op],total:1});state.items.mockResolvedValue({items:[original,other],total:2});
+ state.attempt.mockResolvedValue({recordId:prep,attemptId:attempt,effectKind:"publish",status:"outcome_unknown",message:"请核实原商品"});
+ state.write.mockImplementation(async()=>{state.items.mockResolvedValue({items:[{...original,confirmedProduct:product},other],total:2});return {recordId:prep,publishedRecordId:prep,attemptId:attempt,status:"succeeded",currentRecordUploaded:true,product,message:"原上传已核实"}});
+ const view=render(<SupplyPage initialPreparation={prep} initialStore={store} initialOperation={operation}/>);
+ const buttons=await screen.findAllByRole("button",{name:"查看待核实结果"});await userEvent.click(buttons[0]);
+ await userEvent.type(await screen.findByLabelText("原商品 SPU"),"confirmed-spu");await userEvent.click(screen.getByRole("button",{name:"从官方查询并核实"}));
+ expect(await screen.findByText("原执行 UNKNOWN，已核实成功")).toBeInTheDocument();expect(screen.getByText("SPU：confirmed-spu")).toBeInTheDocument();expect(screen.getAllByRole("button",{name:"查看待核实结果"})).toHaveLength(1);
+ view.unmount();render(<SupplyPage initialPreparation={prep} initialStore={store} initialOperation={operation}/>);
+ expect(await screen.findByText("原执行 UNKNOWN，已核实成功")).toBeInTheDocument();expect(screen.getByText("SPU：confirmed-spu")).toBeInTheDocument();expect(screen.getAllByRole("button",{name:"查看待核实结果"})).toHaveLength(1);expect(state.write).toHaveBeenCalledOnce();
 });
