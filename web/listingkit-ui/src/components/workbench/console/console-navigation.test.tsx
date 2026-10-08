@@ -1,8 +1,26 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ecoRequest } from "@/lib/api/ecoservices";
 import { ConsoleNavigation } from "./console-navigation";
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
+
+vi.mock("@/lib/api/ecoservices", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/api/ecoservices")>(), ecoRequest: vi.fn() }));
+
+it("discovers platform review through the original global backend gate without enterprise grants", async () => {
+  vi.mocked(ecoRequest).mockResolvedValue({ applications: [], total: "0" });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(<QueryClientProvider client={client}><ConsoleNavigation pathname="/workbench/services/review" ariaLabel="主导航" ecoservicesAvailable userId="platform-user" /></QueryClientProvider>);
+  expect(await screen.findByRole("link", { name: "平台审核" })).toHaveAttribute("href", "/workbench/services/review");
+  expect(screen.getByRole("link", { name: "平台审核" })).toHaveAttribute("aria-current", "page");
+  expect(ecoRequest).toHaveBeenCalledWith({ userId: "platform-user", organizationId: "" }, "applications?page=1&pageSize=20", expect.anything(), expect.anything(), true);
+  vi.mocked(ecoRequest).mockRejectedValue(new Error("ECOSERVICES_FORBIDDEN"));
+  view.rerender(<QueryClientProvider client={client}><ConsoleNavigation pathname="/workbench/services/review" ariaLabel="主导航" ecoservicesAvailable userId="enterprise-admin-only" /></QueryClientProvider>);
+  expect(screen.queryByRole("link", { name: "平台审核" })).not.toBeInTheDocument();
+  view.rerender(<QueryClientProvider client={client}><ConsoleNavigation pathname="/workbench/services/review" ariaLabel="主导航" ecoservicesAvailable={false} userId="platform-user" /></QueryClientProvider>);
+  expect(screen.queryByRole("link", { name: "平台审核" })).not.toBeInTheDocument();
+});
 
 afterEach(cleanup);
 

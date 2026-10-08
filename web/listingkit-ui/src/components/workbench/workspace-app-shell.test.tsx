@@ -77,7 +77,7 @@ describe("WorkspaceAppShell", () => {
 
   it("allows the exact global ecosystem review route without choosing an enterprise",()=>{
     navigation.pathname="/workbench/services/review";injectProfileContext({selectionRequired:true});
-    render(<WorkspaceAppShell ecoservicesAvailable><p>platform review consumer</p></WorkspaceAppShell>);
+    render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><WorkspaceAppShell ecoservicesAvailable><p>platform review consumer</p></WorkspaceAppShell></QueryClientProvider>);
     expect(screen.getByText("platform review consumer")).toBeVisible();expect(navigation.replace).not.toHaveBeenCalled();
   });
   it.each([{}, { isLoading: true }, { selectionRequired: true }, { error: { code: "DEPENDENCY_UNAVAILABLE" } }, { blockingError: { code: "ORGANIZATION_ACCESS_REVOKED" } }])("allows only exact profile through enterprise gates: %j", overrides => {
