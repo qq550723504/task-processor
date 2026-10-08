@@ -29,7 +29,7 @@ func TestOfficialCompletionBindsFullResultToExactCommittedAttemptAndPayload(t *t
 	attempt := reservation.Attempt
 	attempt.FenceEpoch = 1
 	claim := ExecutionClaim{Scope: ExecutionScope{scope.OrganizationID}, AttemptID: attempt.AttemptID, FenceEpoch: 1, OwnerID: attempt.ClaimOwnerID, Token: "private-claim"}
-	binding := storecenter.ProductMerchantBinding{OrganizationID: scope.OrganizationID, StoreID: storeID, Site: "shein-us", StoreVersion: 1, ConnectionRevision: 1, ApplicationRevision: "v1", SupplierIdentityHash: collection.Digest("supplier"), ServiceExpiresAt: now.Add(time.Hour)}
+	binding := storecenter.ProductMerchantBinding{OrganizationID: scope.OrganizationID, StoreID: storeID, Site: "shein-us", StoreVersion: 1, ConnectionRevision: 1, ApplicationRevision: "v1:self_operated", ApplicationID: "app-a", ApplicationType: storecenter.ApplicationSelfOperated, SupplierIdentityHash: collection.Digest("supplier"), ServiceExpiresAt: now.Add(time.Hour)}
 	result := model.PublishResult{SPUName: "spu-a", SKCs: []model.PublishedSKC{{SKCName: "skc-a", SKUs: []model.PublishedSKU{{SupplierSKU: "sku-a", SKUCode: "code-a"}}}}, ResponseHash: collection.Digest("response")}
 	proof, err := NewPublishCompletion(scope, uuid.NewString(), "product-a", binding, attempt, claim, payload, result)
 	require.NoError(t, err)

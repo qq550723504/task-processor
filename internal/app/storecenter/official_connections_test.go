@@ -26,7 +26,7 @@ type officialProvider struct {
 }
 
 func (*officialProvider) Application() storecenter.OfficialApplication {
-	return storecenter.OfficialApplication{AppID: "test-app", Version: "config-1", CallbackURL: "https://localhost/callback"}
+	return storecenter.OfficialApplication{AppID: "test-app", Version: storeapp.BoundOfficialRevision("config-1", storecenter.ApplicationSelfOperated), CallbackURL: "https://localhost/callback"}
 }
 func (*officialProvider) AuthorizationURL(state string) (string, error) {
 	return "https://openapi-sem.sheincorp.com/#/empower?state=" + state, nil
@@ -48,11 +48,11 @@ func TestOfficialUnknownExchangeNeverRepeatsAndNewConsentFencesOldAttempt(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := storeapp.NewOfficialConnections(repo, provider, protection)
+	app, err := newTestOfficialConnections(repo, provider, protection)
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := storecenter.OfficialConnectionCommand{OrganizationID: "org-a", StoreID: stored.ID(), AttemptID: uuid.NewString(), ExpectedStoreVersion: stored.Version()}
+	command := storecenter.OfficialConnectionCommand{OrganizationID: "org-a", StoreID: stored.ID(), AttemptID: uuid.NewString(), ExpectedStoreVersion: stored.Version(), ApplicationID: "test-app"}
 	begin, err := app.Begin(context.Background(), command)
 	if err != nil {
 		t.Fatal(err)
@@ -91,11 +91,11 @@ func TestOfficialEncryptedCredentialRecoveryQueriesOnlyAndDisconnectFences(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	app, err := storeapp.NewOfficialConnections(repo, provider, protection)
+	app, err := newTestOfficialConnections(repo, provider, protection)
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := storecenter.OfficialConnectionCommand{OrganizationID: "org-a", StoreID: stored.ID(), AttemptID: uuid.NewString(), ExpectedStoreVersion: stored.Version()}
+	command := storecenter.OfficialConnectionCommand{OrganizationID: "org-a", StoreID: stored.ID(), AttemptID: uuid.NewString(), ExpectedStoreVersion: stored.Version(), ApplicationID: "test-app"}
 	begin, err := app.Begin(context.Background(), command)
 	if err != nil {
 		t.Fatal(err)
@@ -145,8 +145,8 @@ func TestOfficialCallbackStateAppAndTTLRejectBeforeDispatch(t *testing.T) {
 	_, repo, _, stored := serviceFixture(t)
 	provider := &officialProvider{key: "merchant-scope"}
 	protection, _ := shein.NewCredentialProtection("test-key", make([]byte, 32))
-	app, _ := storeapp.NewOfficialConnections(repo, provider, protection)
-	command := storecenter.OfficialConnectionCommand{OrganizationID: "org-a", StoreID: stored.ID(), AttemptID: uuid.NewString(), ExpectedStoreVersion: stored.Version()}
+	app, _ := newTestOfficialConnections(repo, provider, protection)
+	command := storecenter.OfficialConnectionCommand{OrganizationID: "org-a", StoreID: stored.ID(), AttemptID: uuid.NewString(), ExpectedStoreVersion: stored.Version(), ApplicationID: "test-app"}
 	begin, err := app.Begin(context.Background(), command)
 	if err != nil {
 		t.Fatal(err)
@@ -198,9 +198,9 @@ func TestOfficialOneMerchantCannotAttachToAnotherEnterpriseOrStore(t *testing.T)
 	db, repo, access, stored := serviceFixture(t)
 	protection, _ := shein.NewCredentialProtection("test-key", make([]byte, 32))
 	provider := &officialProvider{key: "merchant-global"}
-	app, _ := storeapp.NewOfficialConnections(repo, provider, protection)
+	app, _ := newTestOfficialConnections(repo, provider, protection)
 	connect := func(org string, s *storecenter.Store) error {
-		cmd := storecenter.OfficialConnectionCommand{OrganizationID: org, StoreID: s.ID(), AttemptID: uuid.NewString(), ExpectedStoreVersion: s.Version()}
+		cmd := storecenter.OfficialConnectionCommand{OrganizationID: org, StoreID: s.ID(), AttemptID: uuid.NewString(), ExpectedStoreVersion: s.Version(), ApplicationID: "test-app"}
 		begin, err := app.Begin(context.Background(), cmd)
 		if err != nil {
 			return err
@@ -243,7 +243,7 @@ func TestOfficialMissingConfigurationLeavesReadsUsableAndDoesNotCreateConsent(t 
 	if result, err := app.Read(context.Background(), "org-a", stored.ID()); err != nil || result.Status != storecenter.ConnectionStatusUnavailable {
 		t.Fatalf("read without setup: %+v %v", result, err)
 	}
-	if _, err := app.Begin(context.Background(), storecenter.OfficialConnectionCommand{OrganizationID: "org-a", StoreID: stored.ID(), AttemptID: uuid.NewString(), ExpectedStoreVersion: stored.Version()}); !errors.Is(err, storecenter.ErrOfficialConnectionUnavailable) {
+	if _, err := app.Begin(context.Background(), storecenter.OfficialConnectionCommand{OrganizationID: "org-a", StoreID: stored.ID(), AttemptID: uuid.NewString(), ExpectedStoreVersion: stored.Version(), ApplicationID: "test-app"}); !errors.Is(err, storecenter.ErrOfficialConnectionUnavailable) {
 		t.Fatalf("missing setup admitted consent: %v", err)
 	}
 	var count int64
@@ -283,4 +283,12 @@ func serviceFixture(t *testing.T) (*gorm.DB, *storecenter.MemberScopedStoreRepos
 		t.Fatal(err)
 	}
 	return db, repo, access, store
+}
+
+func newTestOfficialConnections(repo storecenter.OfficialConnectionStore, provider storecenter.OfficialConnectionProvider, protection storecenter.OfficialCredentialProtection) (*storeapp.OfficialConnections, error) {
+	registry, err := storeapp.NewOfficialApplicationRegistry([]storeapp.OfficialApplicationRegistration{{Provider: provider, Protection: protection, Type: storecenter.ApplicationSelfOperated}})
+	if err != nil {
+		return nil, err
+	}
+	return storeapp.NewOfficialConnections(repo, registry)
 }

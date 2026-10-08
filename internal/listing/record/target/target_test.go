@@ -52,7 +52,7 @@ func (targetAssets) GetApprovedInventory(context.Context, asset.InventoryScope) 
 type targetRules struct{}
 
 func (targetRules) ReadTargetRules(_ context.Context, scope collection.Scope, storeID string, input goods.OfficialDraftInput) (storecenter.ProductMerchantBinding, goods.OfficialRuleSnapshot, error) {
-	return storecenter.ProductMerchantBinding{OrganizationID: scope.OrganizationID, StoreID: storeID, Site: "shein-us", StoreVersion: 1, ConnectionRevision: 1, ApplicationRevision: "v1", SupplierIdentityHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ServiceExpiresAt: time.Now().Add(time.Hour)}, goods.OfficialRuleSnapshot{}, nil
+	return storecenter.ProductMerchantBinding{OrganizationID: scope.OrganizationID, StoreID: storeID, Site: "shein-us", StoreVersion: 1, ConnectionRevision: 1, ApplicationRevision: "v1:self_operated", ApplicationID: "app-a", ApplicationType: storecenter.ApplicationSelfOperated, SupplierIdentityHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ServiceExpiresAt: time.Now().Add(time.Hour)}, goods.OfficialRuleSnapshot{ApplicationMode: model.ModeSelfOperated}, nil
 }
 
 type targetRecords struct {

@@ -4,9 +4,9 @@ import "errors"
 
 // StoreCenterConfig uses the independently owned native record database.
 type StoreCenterConfig struct {
-	Enabled            bool                           `json:"enabled"`
-	Database           DatabaseConfig                 `json:"database"`
-	OfficialConnection *OfficialStoreConnectionConfig `json:"officialConnection,omitempty"`
+	Enabled              bool                            `json:"enabled"`
+	Database             DatabaseConfig                  `json:"database"`
+	OfficialApplications []OfficialStoreConnectionConfig `json:"officialApplications,omitempty"`
 }
 
 func (c *Config) validateStoreCenter() error {
@@ -14,7 +14,7 @@ func (c *Config) validateStoreCenter() error {
 		return nil
 	}
 	s := c.StoreCenter
-	if err := s.OfficialConnection.validate(); err != nil {
+	if err := validateOfficialApplications(s.OfficialApplications); err != nil {
 		return err
 	}
 	if err := s.Database.validate("storeCenter.database"); err != nil {

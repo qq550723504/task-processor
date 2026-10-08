@@ -1,5 +1,17 @@
 package model
 
+type ApplicationMode string
+
+const (
+	ModeSelfOperated ApplicationMode = "self_operated"
+	ModeSemiManaged  ApplicationMode = "semi_managed"
+	ModeFullyManaged ApplicationMode = "fully_managed"
+)
+
+func (m ApplicationMode) Valid() bool {
+	return m == ModeSelfOperated || m == ModeSemiManaged || m == ModeFullyManaged
+}
+
 // These DTOs follow the current official OpenAPI, excluding browser-backend
 // fields and platform-generated identifiers from new-product requests.
 type LanguageContent struct {
@@ -49,7 +61,7 @@ type ProductSKU struct {
 	WeightUnit           string           `json:"weight_unit,omitempty"`
 	DimensionUnit        string           `json:"length_width_height_unit,omitempty"`
 	MallState            int              `json:"mall_state"`
-	Prices               []ProductPrice   `json:"price_info_list"`
+	Prices               []ProductPrice   `json:"price_info_list,omitempty"`
 	Stock                []ProductStock   `json:"stock_info_list"`
 	SaleAttributes       []AttributeValue `json:"sale_attribute_list"`
 	Attributes           []AttributeValue `json:"sku_scope_attribute_list,omitempty"`
@@ -85,7 +97,7 @@ type PublishProduct struct {
 	Names             []LanguageContent `json:"multi_language_name_list"`
 	Descriptions      []LanguageContent `json:"multi_language_desc_list,omitempty"`
 	Attributes        []AttributeValue  `json:"product_attribute_list"`
-	Sites             []SiteSelection   `json:"site_list"`
+	Sites             []SiteSelection   `json:"site_list,omitempty"`
 	SKCs              []ProductSKC      `json:"skc_list"`
 	ImageInfo         *ImageInfo        `json:"image_info,omitempty"`
 	SizeAttributes    []SizeAttribute   `json:"size_attribute_list,omitempty"`

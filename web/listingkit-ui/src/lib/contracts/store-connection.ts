@@ -1,7 +1,9 @@
 import { z } from "zod";
 export const officialConnectionViewSchema = z
-  .object({
-    attemptId: z.union([z.uuid(), z.literal("")]),
+	.object({
+		appId:z.string().min(1).max(128).optional(),
+		appRevision:z.string().min(1).max(200).optional(),
+		attemptId: z.union([z.uuid(), z.literal("")]),
     state: z.enum([
       "disconnected",
       "awaiting_consent",
@@ -55,7 +57,13 @@ export const officialConnectionCompleteSchema = z
   .strict();
 export const officialConnectionQuerySchema = z
   .object({ attemptId: z.uuid() })
-  .strict();
+	.strict();
+export const officialApplicationChoicesSchema=z.array(z.object({
+	appId:z.string().min(1).max(128),revision:z.string().min(1).max(200),
+	type:z.enum(["self_operated","semi_managed","fully_managed"]),
+}).strict()).max(16).refine(values=>new Set(values.map(v=>v.appId)).size===values.length);
+export const officialConnectionStartSchema=z.object({appId:z.string().min(1).max(128)}).strict();
+export const officialApplicationListSchema=z.object({applications:officialApplicationChoicesSchema}).strict();
 export type OfficialConnectionCallback = z.infer<
   typeof officialConnectionCompleteSchema
 >;

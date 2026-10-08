@@ -3,7 +3,9 @@ import {
   officialConnectionViewSchema,
   officialConnectionBeginSchema,
   officialConnectionCompleteSchema,
-  officialConnectionQuerySchema,
+	officialConnectionQuerySchema,
+	officialApplicationListSchema,
+	officialConnectionStartSchema,
   type OfficialConnectionCallback,
 } from "@/lib/contracts/store-connection";
 import { memberResourceID, type MemberResourceScope } from "./member-resources";
@@ -85,13 +87,18 @@ export function beginStoreConnection(
   scope: MemberResourceScope,
   storeId: string,
   version: number,
-  key: string,
+	key: string,
+	appId:string,
 ) {
   z.uuid().parse(key);
   return request(scope, storeId, "begin", officialConnectionBeginSchema, {
     method: "POST",
-    headers: { "If-Match": `"${version}"`, "Idempotency-Key": key },
-  });
+		headers: { "If-Match": `"${version}"`, "Idempotency-Key": key,"Content-Type":"application/json" },
+		body:JSON.stringify(officialConnectionStartSchema.parse({appId})),
+	});
+}
+export async function getStoreApplications(scope:MemberResourceScope,storeId:string,signal?:AbortSignal) {
+	const result=await request(scope,storeId,"applications",officialApplicationListSchema,{method:"GET",signal});return result.applications;
 }
 export async function completeStoreConnection(
   scope: MemberResourceScope,

@@ -57,7 +57,7 @@ func attemptValue(a officialAttemptRow) OfficialConnectionAttempt {
 	return OfficialConnectionAttempt{OrganizationID: a.OrganizationID, StoreID: a.StoreID, AttemptID: a.AttemptID, ActorID: a.ActorID, MemberID: a.MemberID, AppID: a.AppID, AppVersion: a.AppVersion, StateHash: a.StateHash, StoreVersion: a.StoreVersion, ConnectionVersion: a.ConnectionVersion, ExpiresAt: a.ExpiresAt, State: a.State, KeyID: a.KeyID, Ciphertext: a.Ciphertext}
 }
 func connectionView(c officialConnectionRow, a officialAttemptRow) OfficialConnectionView {
-	return OfficialConnectionView{AttemptID: c.AttemptID, State: a.State, Status: ConnectionStatus(c.Status), Version: c.Version, ObservedAt: c.ObservedAt}
+	return OfficialConnectionView{AppID: a.AppID, AppRevision: a.AppVersion, AttemptID: c.AttemptID, State: a.State, Status: ConnectionStatus(c.Status), Version: c.Version, ObservedAt: c.ObservedAt}
 }
 func validConnectionCommand(c OfficialConnectionCommand) bool {
 	return c.OrganizationID != "" && len(c.OrganizationID) <= MaxOrganizationIDBytes && uuid.Validate(c.StoreID) == nil && uuid.Validate(c.AttemptID) == nil && c.ExpectedStoreVersion > 0 && c.ExpectedStoreVersion < math.MaxInt64
@@ -258,6 +258,27 @@ func (r *MemberScopedStoreRepository) ReadOfficialQueryAttempt(ctx context.Conte
 			return ErrOfficialExchangeUnknown
 		}
 		result = attemptValue(original)
+		return nil
+	})
+	return result, err
+}
+func (r *MemberScopedStoreRepository) ReadOfficialAttemptBinding(ctx context.Context, org, storeID, attemptID string) (result OfficialAttemptBinding, err error) {
+	if uuid.Validate(storeID) != nil || uuid.Validate(attemptID) != nil {
+		return result, ErrNotFound
+	}
+	access, err := r.authorize(ctx, org, true)
+	if err != nil {
+		return result, err
+	}
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		original, _, err := r.authorizedAttempt(tx, access, attemptID)
+		if err != nil {
+			return err
+		}
+		if original.StoreID != storeID {
+			return ErrNotFound
+		}
+		result = OfficialAttemptBinding{AppID: original.AppID, AppVersion: original.AppVersion}
 		return nil
 	})
 	return result, err

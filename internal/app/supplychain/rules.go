@@ -50,8 +50,14 @@ func (r RuleReader) ReadTargetRules(ctx context.Context, scope collection.Scope,
 		return storecenter.ProductMerchantBinding{}, snapshot, record.ErrNotReady
 	}
 	binding := merchant.Binding()
+	if !binding.ApplicationType.Valid() || binding.ApplicationID == "" {
+		return binding, snapshot, record.ErrNotReady
+	}
+	snapshot.ApplicationMode = model.ApplicationMode(binding.ApplicationType)
 	group, reads := errgroup.WithContext(ctx)
-	group.Go(func() error { var err error; snapshot.Sites, err = merchant.Sites(reads); return err })
+	if snapshot.ApplicationMode != model.ModeFullyManaged {
+		group.Go(func() error { var err error; snapshot.Sites, err = merchant.Sites(reads); return err })
+	}
 	group.Go(func() error { var err error; snapshot.Categories, err = merchant.Categories(reads); return err })
 	group.Go(func() error { var err error; snapshot.Brands, err = merchant.Brands(reads); return err })
 	if group.Wait() != nil {

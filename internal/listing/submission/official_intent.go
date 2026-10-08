@@ -105,7 +105,7 @@ func OfficialIntentInputHash(value OfficialIntent) string {
 func ValidateOfficialIntent(value OfficialIntent) error {
 	if !authidentity.IsBoundedIdentifier(value.Key) || value.Owner.Validate() != nil || !collection.ValidID(value.RecordID) || !isExecutionDigest(value.RecordHash) || !collection.ValidID(value.Source.ID) ||
 		value.Target.Platform != "shein" || !collection.ValidID(value.Target.StoreID) || value.Binding.OrganizationID != value.Owner.OrganizationID || value.Binding.StoreID != value.Target.StoreID || value.Binding.Site != "shein-us" ||
-		value.Binding.StoreVersion < 1 || value.Binding.ConnectionRevision < 1 || !authidentity.IsBoundedIdentifier(value.Binding.ApplicationRevision) || !isExecutionDigest(value.Binding.SupplierIdentityHash) || value.Binding.ServiceExpiresAt.IsZero() ||
+		value.Binding.StoreVersion < 1 || value.Binding.ConnectionRevision < 1 || !value.Binding.ValidApplication() || !isExecutionDigest(value.Binding.SupplierIdentityHash) || value.Binding.ServiceExpiresAt.IsZero() ||
 		!isExecutionDigest(value.PayloadFingerprint) || value.CreatedAt.IsZero() || OfficialIntentInputHash(value) != value.InputHash {
 		return ErrExecutionEvidenceRequired
 	}

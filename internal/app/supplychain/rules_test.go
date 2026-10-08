@@ -59,7 +59,7 @@ func (s *rulesFixture) LinkedRules(_ context.Context, input model.LinkedRulesReq
 func TestMerchantRuleReaderCapturesAllCombinationsWithExactStoreBinding(t *testing.T) {
 	scope := collection.Scope{"org-a", "actor-a", "member-a"}
 	storeID := uuid.NewString()
-	fixture := &rulesFixture{binding: storecenter.ProductMerchantBinding{OrganizationID: scope.OrganizationID, StoreID: storeID, Site: "shein-us", StoreVersion: 1, ConnectionRevision: 2, ApplicationRevision: "v1", SupplierIdentityHash: collection.Digest("merchant"), ServiceExpiresAt: time.Now().Add(time.Hour)}}
+	fixture := &rulesFixture{binding: storecenter.ProductMerchantBinding{OrganizationID: scope.OrganizationID, StoreID: storeID, Site: "shein-us", StoreVersion: 1, ConnectionRevision: 2, ApplicationRevision: "v1:self_operated", ApplicationID: "app-a", ApplicationType: storecenter.ApplicationSelfOperated, SupplierIdentityHash: collection.Digest("merchant"), ServiceExpiresAt: time.Now().Add(time.Hour)}}
 	input := goods.OfficialDraftInput{Product: model.PublishProduct{CategoryID: 123, ProductTypeID: 999}}
 	for i := 0; i < 25; i++ {
 		input.Product.SKCs = append(input.Product.SKCs, model.ProductSKC{SKUs: []model.ProductSKU{{}}})

@@ -12,10 +12,10 @@ import (
 	"gorm.io/gorm"
 
 	aistore "task-processor/internal/aicapability/store"
+	storeapp "task-processor/internal/app/storecenter"
 	coreconfig "task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/knowledge"
-	"task-processor/internal/storecenter"
 )
 
 type Dependencies struct {
@@ -50,8 +50,7 @@ type ApplicationFeatures struct {
 	Knowledge                                            *knowledge.Service
 	StoreCenterDB                                        *gorm.DB
 	LocalTrialDB                                         *gorm.DB
-	OfficialStoreProvider                                storecenter.OfficialConnectionProvider
-	OfficialStoreProtection                              storecenter.OfficialCredentialProtection
+	OfficialStoreApplications                            *storeapp.OfficialApplicationRegistry
 	ProductAgentDB, ProductReviewDB, ProductAgentAssetDB *gorm.DB
 	ProductAgent                                         *ProductAgentConfig
 	AIWorkbenchDB                                        *gorm.DB
@@ -91,11 +90,10 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		return err
 	}
 	core := cfg.CoreConfig()
-	var officialProvider storecenter.OfficialConnectionProvider
-	var officialProtection storecenter.OfficialCredentialProtection
+	var officialApplications *storeapp.OfficialApplicationRegistry
 	if cfg.StoreCenter != nil && cfg.StoreCenter.Enabled {
 		var err error
-		officialProvider, officialProtection, err = cfg.StoreCenter.OfficialConnection.prepare(ctx)
+		officialApplications, err = prepareOfficialApplications(ctx, cfg.StoreCenter.OfficialApplications)
 		if err != nil {
 			return err
 		}
@@ -408,7 +406,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreProvider: officialProvider, OfficialStoreProtection: officialProtection, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {

@@ -129,7 +129,7 @@ func sealOfficialCompletion(claim ExecutionClaim, body OfficialReceipt) (Officia
 func ValidateOfficialReceipt(value OfficialReceipt) error {
 	if !validExecutionAttemptID(value.ID) || value.Owner.Validate() != nil || value.Target.Platform != "shein" || !collection.ValidID(value.Target.StoreID) || !authidentity.IsBoundedIdentifier(value.IntentKey) ||
 		!isExecutionDigest(value.PayloadFingerprint) || !isExecutionDigest(value.ResponseHash) || value.Binding.OrganizationID != value.Owner.OrganizationID || value.Binding.StoreID != value.Target.StoreID || value.Binding.Site != "shein-us" ||
-		value.Binding.StoreVersion < 1 || value.Binding.ConnectionRevision < 1 || !authidentity.IsBoundedIdentifier(value.Binding.ApplicationRevision) || !isExecutionDigest(value.Binding.SupplierIdentityHash) || value.Binding.ServiceExpiresAt.IsZero() || value.ObservedAt.IsZero() {
+		value.Binding.StoreVersion < 1 || value.Binding.ConnectionRevision < 1 || !value.Binding.ValidApplication() || !isExecutionDigest(value.Binding.SupplierIdentityHash) || value.Binding.ServiceExpiresAt.IsZero() || value.ObservedAt.IsZero() {
 		return ErrExecutionEvidenceRequired
 	}
 	switch value.Kind {

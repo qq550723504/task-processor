@@ -210,6 +210,24 @@ adapter 返回三种明确结果：`ConfirmedSuccess`（business success、必�
 
 官方 payload 在 marketplace SHEIN owner 定义独立 DTO 与 deterministic validation：发布站点/语言、末级 category、类目属性及销售规格、SKU/价格/库存、品牌/产地等必需事实、已确认平台图片引用。规则与类目规范由官方只读接口或版本化 fixture 提供；缺必需事实保持待补全，不能复用旧 seller DTO 或自动补造合规事实。正式请求由当前 official adapter 编码、签名和发送；实现阶段对实际 DTO/response 做 fixture 合同测试，真实调用仍 NOT_RUN。
 
+### 8.2 三种官方应用类型与多应用隔离增量
+
+2026-10-08 用户明确要求自运营、半托管、全托管都支持。官方站点 `store_type` 仅表示平台/自营类型，不能推导应用类型；原按 `store_type=2` 判断自运营的实现必须修正。当前 Store runtime 只配置一个官方应用，无法让不同应用类型的店铺同时使用，这阻断当前新增 Must。本节是用户范围决定引起的窄高风险增量，不重新评审已冻结的商品、批次、批准与 SUB-K1。
+
+Product outcome：同一安装可配置三类应用，用户连接店铺时从已配置应用中选择，后续规则与上传自动采用该店铺原连接绑定的应用。缺少配置的类型显示未配置，不能用其他类型代替。不会自动创建官方应用、申请权限、接触真实凭据或替用户选择业务模式。
+
+- 当前 Store 的 official connection attempt 已保存 AppID / AppVersion，是唯一连接绑定事实。采用有界（最多 16 个）服务端应用 registry，配置每个精确 AppID、不可变 revision、显式 `self_operated | semi_managed | fully_managed`、官方 origin/callback 和独立私有 secret/key 文件。AppID、key identity、私有文件归属唯一；不得跨应用共享解密配置或把相同 revision 配置成另一类型。取代 runtime 的单应用配置消费路径，不增加旧配置 fallback 或双配置事实源。
+- registry 由 currentapplication 在启动前验证并构建。Store App 通过窄 `Resolve(AppID, AppVersion)` port 获取原 provider/protection/mode；公开列表仅提供 AppID、revision、mode 与可用状态，不含密钥、文件或 provider endpoint。Begin 接收所选已配置 AppID（不接受用户 mode、secret、endpoint），保存该应用原有 attempt。Complete / ResumeQuery / Status 从 owner 读取原 attempt 后 resolve 精确 AppID/revision，回调中的 AppID 仅用于相等核对。删除配置、版本漂移或不匹配 fail closed，不能改用默认应用交换/查询。
+- 保留现有 Store grant、服务权益、连接版本、全局 merchant identity、exchange claim / UNKNOWN / credential seal 状态机与事务。Begin 重复 key 仍拒绝新建或更换原 attempt，不重建仅持 hash 的 consent state；Complete 原 key 继续核对原 AppID/revision，结果丢失不重复 exchange。registry 不是新凭据事实 owner。保护与签名仍仅发生在 Store 私有执行与 Integration，AppID 不得成为放松组织/成员/店铺授权的依据。
+- ProductAccess 先按原成员目的从 Store owner 读当前 verified material，再解析 material.Attempt 的原 AppID/revision。解密仅使用该条 registry protection，且明文 credential.AppID 必须相等。私有执行句柄固定 registry entry、AppID/revision/mode、connection/cipher hash 与原 subject；每次官方调用前重读 owner 并核对完整绑定。MerchantBinding 增加公开 application identity/type，规则 snapshot 保存该类型，变更使旧 record/rules 无效。不能接受浏览器传入的模式覆盖规则。
+- Application type 不进入 canonical Product / Store / US 的 SUB-K1 subject。重新连接应用仍受原商品或图片 UNKNOWN fence 限制，不能靠切换应用重复发布。已观察到的原响应仍由原 intent/binding 原子保存，不要求撤权后另发 API。
+- Marketplace 纯规则按可信应用类型构建：自运营使用销售价与仓库库存；半托管使用规范 currency 的成本价及仓库库存；全托管使用成本价与采购/可售库存字段，不要求仓库，必须提供其 `suit_flag` 等实际适用字段。不适用字段省略。具体 required/show、sample、minimum_stock、stop_purchase、mall_state、品牌、图片、属性以对应应用当前官方规范和发布合同共同验证，不以未知字段通过代替实际支持。美国站作为当前选择目标；全托管发布合同不使用 `site_list`，仍绑定当前 US Store 目标，不伪造 API 不接受的站点参数。
+- 官方依据：[自运营发布](https://open.sheincorp.com/documents/system/165b51da-c8dd-43b6-a885-4aed2c7fa582)、[半托管发布](https://open.sheincorp.com/documents/system/115a679e-f21f-44e1-84db-466a5d0730eb)、[全托管发布](https://open.sheincorp.com/documents/system/99154fa1-77d5-4b48-9253-cfff1d2a60ce)、[发布字段规范](https://open.sheincorp.com/documents/apidoc/detail/3002044)，本轮只读实查。
+
+验证：三种模式实际 DTO 成功与缺字段拒绝；应用选择/原 attempt 回放；跨应用 credential/callback/key 拒绝；配置缺失/类型或 revision 漂移阻止发送；句柄不能改应用；已有 SUB-K1 同 Store 稳定 fence 不被应用切换绕过。复用当前 Store/官方 adapter/隔离 PostgreSQL 测试，不新增运行治理或验收工具。
+
+增量准入状态：**IMPLEMENTATION_READY**。2026-10-08 独立 reviewer `/root/supply_architecture_review` 实查 `773d43eb5` 的 Store 连接、AES-GCM 关联数据、商品句柄重授权与稳定 SUB-K1 fence，确认该最小增量无剩余设计 BLOCKER。首次 Complete 所需原 attempt binding 只读成员授权入口、配置/模式漂移与跨应用拒绝、三类实际 DTO 保留为 IMPLEMENTATION_TEST；不放宽原 query 状态限制。该结论只批准本节设计开工，不代表三类应用已可用或真实平台/用户验收通过。
+
 ## 9. HTTP、权限、资源与恢复
 
 同源BFF/current-application路径：`/api/v1/workbench/collections`（批次/商品及导入/下载）、`/api/v1/workbench/supply-preparations`（转入、适配、补全、优化、审核投影）、`/api/v1/workbench/listing-submissions`（提交/同intent核实/读取）。handler仅验证/dispatch，Domain决定事实。批次构成 owner 范围不因最终 route 名称而变化；当前显式配置 `productCollections: true` 与初始化 manifest 的 `collections: true` 选择匹配 schema/grant/verifier，未配置时不会启用。

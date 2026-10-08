@@ -15,16 +15,15 @@ import (
 )
 
 type OfficialConnections struct {
-	store      storecenter.OfficialConnectionStore
-	provider   storecenter.OfficialConnectionProvider
-	protection storecenter.OfficialCredentialProtection
+	store        storecenter.OfficialConnectionStore
+	applications *OfficialApplicationRegistry
 }
 
-func NewOfficialConnections(store storecenter.OfficialConnectionStore, provider storecenter.OfficialConnectionProvider, protection storecenter.OfficialCredentialProtection) (*OfficialConnections, error) {
-	if store == nil || provider == nil || protection == nil {
+func NewOfficialConnections(store storecenter.OfficialConnectionStore, applications *OfficialApplicationRegistry) (*OfficialConnections, error) {
+	if store == nil || applications == nil {
 		return nil, storecenter.ErrOfficialConnectionUnavailable
 	}
-	return &OfficialConnections{store: store, provider: provider, protection: protection}, nil
+	return &OfficialConnections{store: store, applications: applications}, nil
 }
 
 // Missing developer setup affects this capability, while Store CRUD and local
@@ -37,8 +36,9 @@ func NewUnconfiguredOfficialConnections(store storecenter.OfficialConnectionStor
 }
 
 func (a *OfficialConnections) Begin(ctx context.Context, c storecenter.OfficialConnectionCommand) (storecenter.OfficialConnectionBegin, error) {
-	if a.provider == nil || a.protection == nil {
-		return storecenter.OfficialConnectionBegin{}, storecenter.ErrOfficialConnectionUnavailable
+	entry, err := a.applications.selectApplication(c.ApplicationID)
+	if err != nil {
+		return storecenter.OfficialConnectionBegin{}, err
 	}
 	stateBytes := make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, stateBytes); err != nil {
@@ -46,24 +46,29 @@ func (a *OfficialConnections) Begin(ctx context.Context, c storecenter.OfficialC
 	}
 	state := base64.RawURLEncoding.EncodeToString(stateBytes)
 	hash := sha256.Sum256([]byte(state))
-	url, err := a.provider.AuthorizationURL(state)
+	url, err := entry.provider.AuthorizationURL(state)
 	if err != nil {
 		return storecenter.OfficialConnectionBegin{}, storecenter.ErrOfficialConnectionUnavailable
 	}
-	attempt, err := a.store.BeginOfficialConnection(ctx, c, a.provider.Application(), hex.EncodeToString(hash[:]), time.Now().UTC())
+	attempt, err := a.store.BeginOfficialConnection(ctx, c, entry.application, hex.EncodeToString(hash[:]), time.Now().UTC())
 	if err != nil {
 		return storecenter.OfficialConnectionBegin{}, err
 	}
 	return storecenter.OfficialConnectionBegin{AttemptID: attempt.AttemptID, AuthorizationURL: url, ExpiresAt: attempt.ExpiresAt}, nil
 }
 func (a *OfficialConnections) Complete(ctx context.Context, c storecenter.CompleteOfficialConnection) (storecenter.OfficialConnectionView, error) {
-	if a.provider == nil || a.protection == nil {
-		return storecenter.OfficialConnectionView{}, storecenter.ErrOfficialConnectionUnavailable
-	}
 	if len(c.State) < 1 || len(c.State) > 128 || len(c.TempToken) > 4096 || strings.TrimSpace(c.State) != c.State {
 		return storecenter.OfficialConnectionView{}, storecenter.ErrNotFound
 	}
-	app := a.provider.Application()
+	binding, err := a.store.ReadOfficialAttemptBinding(ctx, c.OrganizationID, c.StoreID, c.AttemptID)
+	if err != nil {
+		return storecenter.OfficialConnectionView{}, err
+	}
+	entry, err := a.applications.resolve(binding.AppID, binding.AppVersion)
+	if err != nil {
+		return storecenter.OfficialConnectionView{}, err
+	}
+	app := entry.application
 	if c.AppID != app.AppID {
 		return storecenter.OfficialConnectionView{}, storecenter.ErrNotFound
 	}
@@ -80,7 +85,7 @@ func (a *OfficialConnections) Complete(ctx context.Context, c storecenter.Comple
 			return storecenter.OfficialConnectionView{}, storecenter.ErrOfficialAuthorizationRejected
 		}
 		callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		credential, callErr := a.provider.Exchange(callCtx, c.TempToken, c.State)
+		credential, callErr := entry.provider.Exchange(callCtx, c.TempToken, c.State)
 		cancel()
 		if callErr != nil {
 			if errors.Is(callErr, storecenter.ErrOfficialAuthorizationRejected) {
@@ -92,7 +97,10 @@ func (a *OfficialConnections) Complete(ctx context.Context, c storecenter.Comple
 			}
 			return storecenter.OfficialConnectionView{}, storecenter.ErrOfficialExchangeUnknown
 		}
-		key, encrypted, err := a.protection.Seal(attempt, credential)
+		if credential.AppID != app.AppID {
+			return storecenter.OfficialConnectionView{}, storecenter.ErrOfficialExchangeUnknown
+		}
+		key, encrypted, err := entry.protection.Seal(attempt, credential)
 		if err != nil {
 			return storecenter.OfficialConnectionView{}, storecenter.ErrOfficialExchangeUnknown
 		}
@@ -116,27 +124,27 @@ func (a *OfficialConnections) Complete(ctx context.Context, c storecenter.Comple
 }
 
 func (a *OfficialConnections) ResumeQuery(ctx context.Context, org, storeID, attemptID string) (storecenter.OfficialConnectionView, error) {
-	if a.provider == nil || a.protection == nil {
-		return storecenter.OfficialConnectionView{}, storecenter.ErrOfficialConnectionUnavailable
-	}
 	attempt, err := a.store.ReadOfficialQueryAttempt(ctx, org, storeID, attemptID)
 	if err != nil {
 		return storecenter.OfficialConnectionView{}, err
 	}
-	app := a.provider.Application()
-	if attempt.AppID != app.AppID || attempt.AppVersion != app.Version {
+	if _, err := a.applications.resolve(attempt.AppID, attempt.AppVersion); err != nil {
 		return storecenter.OfficialConnectionView{}, storecenter.ErrOfficialConnectionUnavailable
 	}
 	return a.queryAttempt(ctx, attempt)
 }
 
 func (a *OfficialConnections) queryAttempt(ctx context.Context, attempt storecenter.OfficialConnectionAttempt) (storecenter.OfficialConnectionView, error) {
-	credential, err := a.protection.Open(attempt, attempt.KeyID, attempt.Ciphertext)
+	entry, err := a.applications.resolve(attempt.AppID, attempt.AppVersion)
 	if err != nil {
+		return storecenter.OfficialConnectionView{}, err
+	}
+	credential, err := entry.protection.Open(attempt, attempt.KeyID, attempt.Ciphertext)
+	if err != nil || credential.AppID != entry.application.AppID {
 		return storecenter.OfficialConnectionView{}, storecenter.ErrOfficialConnectionUnavailable
 	}
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	_, err = a.provider.QueryStore(callCtx, credential)
+	_, err = entry.provider.QueryStore(callCtx, credential)
 	cancel()
 	status := storecenter.ConnectionStatusConnected
 	if err != nil {
@@ -162,13 +170,23 @@ func (a *OfficialConnections) Read(ctx context.Context, org, store string) (stor
 	if err != nil {
 		return view, err
 	}
-	if a.provider == nil || a.protection == nil {
+	if a.applications == nil {
 		view.Status = storecenter.ConnectionStatusUnavailable
+	} else if view.AppID != "" {
+		if _, err := a.applications.resolve(view.AppID, view.AppRevision); err != nil {
+			view.Status = storecenter.ConnectionStatusUnavailable
+		}
 	}
 	return view, nil
 }
+func (a *OfficialConnections) Applications(ctx context.Context, org, store string) ([]storecenter.OfficialApplicationChoice, error) {
+	if _, err := a.store.ReadOfficialConnection(ctx, org, store); err != nil {
+		return nil, err
+	}
+	return a.applications.Applications(), nil
+}
 func (a *OfficialConnections) Status(ctx context.Context, input storecenter.ConnectionStatusInput) (storecenter.ConnectionStatus, error) {
-	if a.provider == nil || a.protection == nil {
+	if a.applications == nil {
 		return storecenter.ConnectionStatusUnavailable, storecenter.ErrOfficialConnectionUnavailable
 	}
 	attempt, view, err := a.store.ReadOfficialCredential(ctx, input)
@@ -181,16 +199,16 @@ func (a *OfficialConnections) Status(ctx context.Context, input storecenter.Conn
 	if attempt.State != "verified" {
 		return storecenter.ConnectionStatusUnavailable, nil
 	}
-	app := a.provider.Application()
-	if attempt.AppID != app.AppID || attempt.AppVersion != app.Version {
+	entry, err := a.applications.resolve(attempt.AppID, attempt.AppVersion)
+	if err != nil {
 		return storecenter.ConnectionStatusUnavailable, storecenter.ErrOfficialConnectionUnavailable
 	}
-	credential, err := a.protection.Open(attempt, attempt.KeyID, attempt.Ciphertext)
-	if err != nil {
-		return storecenter.ConnectionStatusUnavailable, err
+	credential, err := entry.protection.Open(attempt, attempt.KeyID, attempt.Ciphertext)
+	if err != nil || credential.AppID != entry.application.AppID {
+		return storecenter.ConnectionStatusUnavailable, storecenter.ErrOfficialConnectionUnavailable
 	}
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	_, err = a.provider.QueryStore(callCtx, credential)
+	_, err = entry.provider.QueryStore(callCtx, credential)
 	cancel()
 	status := storecenter.ConnectionStatusConnected
 	if err != nil {

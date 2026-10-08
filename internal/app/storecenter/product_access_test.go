@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/stretchr/testify/require"
+	"task-processor/internal/integration/shein"
 	model "task-processor/internal/marketplace/shein/model"
 	"task-processor/internal/storecenter"
 	"testing"
@@ -38,13 +39,66 @@ func (productSecretProtection) Open(storecenter.OfficialConnectionAttempt, strin
 
 type productProvider struct {
 	OfficialGoodsProvider
+	storecenter.OfficialConnectionProvider
 	calls      int
 	appVersion string
+	appID      string
 	deadline   time.Time
 }
 
 func (p *productProvider) Application() storecenter.OfficialApplication {
-	return storecenter.OfficialApplication{AppID: "app-a", Version: p.appVersion}
+	id := p.appID
+	if id == "" {
+		id = "app-a"
+	}
+	return storecenter.OfficialApplication{AppID: id, Version: p.appVersion}
+}
+func TestProductExecutionUsesOnlyOriginalApplicationProtectionAndMode(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	now := time.Now().UTC()
+	providers := []*productProvider{}
+	protections := []*shein.CredentialProtection{}
+	entries := []OfficialApplicationRegistration{}
+	modes := []storecenter.OfficialApplicationType{storecenter.ApplicationSelfOperated, storecenter.ApplicationSemiManaged, storecenter.ApplicationFullyManaged}
+	for index, mode := range modes {
+		p := &productProvider{appID: string(mode), appVersion: BoundOfficialRevision("v1", mode)}
+		providers = append(providers, p)
+		key := make([]byte, 32)
+		key[0] = byte(index + 1)
+		protection, err := shein.NewCredentialProtection(string(mode), key)
+		require.NoError(t, err)
+		protections = append(protections, protection)
+		entries = append(entries, OfficialApplicationRegistration{Provider: p, Protection: protection, Type: mode})
+	}
+	registry, err := NewOfficialApplicationRegistry(entries)
+	require.NoError(t, err)
+	subject := storecenter.ProductExecutionSubject{OrganizationID: "org-a", ActorID: "actor-a", MemberID: "member-a", Purpose: storecenter.ProductPurposePublish}
+	for index, mode := range modes {
+		attempt := storecenter.OfficialConnectionAttempt{OrganizationID: "org-a", StoreID: "store-a", AttemptID: "connection-a", ActorID: "actor-a", MemberID: "member-a", AppID: string(mode), AppVersion: providers[index].appVersion, ConnectionVersion: 1, State: "verified"}
+		attempt.KeyID, attempt.Ciphertext, err = protections[index].Seal(attempt, storecenter.OfficialMerchantCredential{AppID: string(mode), OpenKeyID: "merchant-key", SecretKey: "synthetic-private", SupplierID: "123"})
+		require.NoError(t, err)
+		reader := &productMaterialReader{material: storecenter.ProductExecutionMaterial{StoreVersion: 1, Platform: "shein", ServiceExpiresAt: now.Add(time.Hour), Connection: storecenter.OfficialConnectionView{AttemptID: "connection-a", Version: 1, Status: "connected", State: "verified"}, Attempt: attempt}}
+		access, err := NewOfficialProductAccess(reader, productLiveAccess{}, registry)
+		require.NoError(t, err)
+		handle, err := access.Authorize(ctx, subject, "store-a", nil)
+		require.NoError(t, err)
+		require.Equal(t, mode, handle.Binding().ApplicationType)
+		require.Equal(t, string(mode), handle.Binding().ApplicationID)
+		other := (index + 1) % len(modes)
+		reader.material.Attempt.AppID = string(modes[other])
+		reader.material.Attempt.AppVersion = providers[other].appVersion
+		_, err = handle.Publish(ctx, model.PublishProduct{})
+		require.ErrorIs(t, err, ErrProductAccessChanged)
+		_, err = access.Authorize(ctx, subject, "store-a", nil)
+		require.ErrorIs(t, err, ErrProductAccessChanged, "ciphertext sealed for original AppID cannot be used with another app/key")
+		reader.material.Attempt = attempt
+		handle, err = access.Authorize(ctx, subject, "store-a", nil)
+		require.NoError(t, err)
+		_, err = handle.Publish(ctx, model.PublishProduct{})
+		require.NoError(t, err)
+		require.Equal(t, 1, providers[index].calls)
+	}
 }
 func (p *productProvider) PublishProduct(ctx context.Context, c storecenter.OfficialMerchantCredential, input model.PublishProduct) (model.PublishResult, error) {
 	p.calls++
@@ -54,9 +108,11 @@ func (p *productProvider) PublishProduct(ctx context.Context, c storecenter.Offi
 
 func TestProductHandleReauthorizesBeforeSendAndCannotSerializeOrRepeatMutation(t *testing.T) {
 	now := time.Now().UTC()
-	reader := &productMaterialReader{material: storecenter.ProductExecutionMaterial{StoreVersion: 3, Platform: "shein", ServiceExpiresAt: now.Add(time.Hour), Connection: storecenter.OfficialConnectionView{AttemptID: "connection-a", Version: 2, Status: "connected", State: "verified"}, Attempt: storecenter.OfficialConnectionAttempt{AppID: "app-a", AppVersion: "v1", State: "verified", KeyID: "key-a", Ciphertext: "sealed", AttemptID: "connection-a", OrganizationID: "org-a", StoreID: "store-a"}}}
-	provider := &productProvider{appVersion: "v1"}
-	access, err := NewOfficialProductAccess(reader, productLiveAccess{}, provider, productSecretProtection{})
+	reader := &productMaterialReader{material: storecenter.ProductExecutionMaterial{StoreVersion: 3, Platform: "shein", ServiceExpiresAt: now.Add(time.Hour), Connection: storecenter.OfficialConnectionView{AttemptID: "connection-a", Version: 2, Status: "connected", State: "verified"}, Attempt: storecenter.OfficialConnectionAttempt{AppID: "app-a", AppVersion: BoundOfficialRevision("v1", storecenter.ApplicationSelfOperated), State: "verified", KeyID: "key-a", Ciphertext: "sealed", AttemptID: "connection-a", OrganizationID: "org-a", StoreID: "store-a"}}}
+	provider := &productProvider{appVersion: BoundOfficialRevision("v1", storecenter.ApplicationSelfOperated)}
+	registry, err := NewOfficialApplicationRegistry([]OfficialApplicationRegistration{{Provider: provider, Protection: productSecretProtection{}, Type: storecenter.ApplicationSelfOperated}})
+	require.NoError(t, err)
+	access, err := NewOfficialProductAccess(reader, productLiveAccess{}, registry)
 	require.NoError(t, err)
 	access.now = func() time.Time { return now }
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -97,7 +153,7 @@ func TestProductHandleReauthorizesBeforeSendAndCannotSerializeOrRepeatMutation(t
 	provider.appVersion = "v2"
 	_, err = handle.Publish(ctx, model.PublishProduct{})
 	require.ErrorIs(t, err, ErrProductAccessChanged)
-	provider.appVersion = "v1"
+	provider.appVersion = BoundOfficialRevision("v1", storecenter.ApplicationSelfOperated)
 	handle, err = access.Authorize(ctx, subject, "store-a", nil)
 	require.NoError(t, err)
 	now = now.Add(11 * time.Second)

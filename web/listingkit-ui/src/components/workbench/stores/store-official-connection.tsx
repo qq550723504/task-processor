@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
-  getStoreConnection,
+	getStoreConnection,
+	getStoreApplications,
   beginStoreConnection,
   queryStoreConnection,
   disconnectStoreConnection,
@@ -19,6 +20,7 @@ const labels = {
   expired: "授权已失效",
   unavailable: "连接服务未配置或暂不可用",
 };
+const applicationLabels={self_operated:"自运营",semi_managed:"半托管",fully_managed:"全托管"} as const;
 export function StoreOfficialConnection({
   store,
   scope,
@@ -46,7 +48,14 @@ export function StoreOfficialConnection({
     staleTime: 0,
     retry: false,
   });
-  const [message, setMessage] = useState("");
+	const [message, setMessage] = useState("");
+	const applications=useQuery({
+		queryKey:["workbench",scope.expectedUserId,scope.expectedOrganizationId,"official-applications",store.id],
+		queryFn:({signal})=>getStoreApplications(scope,store.id,signal),gcTime:0,staleTime:0,retry:false,
+	});
+	const [selectedApp,setSelectedApp]=useState("");
+	const choices=!applications.isFetching && !applications.isError ? applications.data??[]:[];
+	const chosen=choices.find(choice=>choice.appId===selectedApp)?.appId ?? (choices.length===1 ? choices[0]!.appId:"");
   const [working, setWorking] = useState(false);
   const busy = useRef(false);
   const active = useRef<{ alive: boolean } | null>(null);
@@ -71,13 +80,15 @@ export function StoreOfficialConnection({
     setWorking(true);
     setMessage("");
     try {
-      if (action === "begin") {
+			if (action === "begin") {
+				if(!chosen)return;
         const key = crypto.randomUUID();
         const result = await beginStoreConnection(
           scope,
           store.id,
           store.version,
-          key,
+					key,
+					chosen,
         );
         if (!current.alive) return;
         rememberStoreAuthorization({
@@ -141,10 +152,17 @@ export function StoreOfficialConnection({
         前往 SHEIN
         官方授权页，由店铺主账号确认。连接只证明当前授权有效，发布权限另行判断。
       </p>
-      {canWrite &&
-      store.recordStatus !== "deleting" ? (
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={working || !data} onClick={() => void run("begin")}>
+			{canWrite &&
+			store.recordStatus !== "deleting" ? (
+				<><label className="grid gap-1 text-sm">官方应用类型
+					<select aria-label="官方应用类型" value={chosen} disabled={working || applications.isFetching} onChange={event=>setSelectedApp(event.target.value)} className="rounded-lg border bg-background p-2">
+						<option value="">选择已配置的官方应用</option>
+						{choices.map(choice=><option key={choice.appId} value={choice.appId}>{applicationLabels[choice.type]} · {choice.appId}</option>)}
+					</select>
+				</label>
+				<p className="text-sm text-muted-foreground">{applications.isFetching ? "正在读取应用配置…": applications.isError ? "未取得应用配置，请刷新后再连接。": Object.entries(applicationLabels).filter(([type])=>!choices.some(choice=>choice.type===type)).map(([,label])=>`${label}未配置`).join("；")}</p>
+				<div className="flex flex-wrap gap-2">
+					<Button disabled={working || !data || !chosen} onClick={() => void run("begin")}>
             {data?.attemptId ? "重新官方授权" : "前往官方授权"}
           </Button>
           {data?.state === "credential_received" ||
@@ -173,7 +191,7 @@ export function StoreOfficialConnection({
           >
             刷新连接状态
           </Button>
-        </div>
+				</div></>
       ) : null}
       {message ? <p role="alert">{message}</p> : null}
       <StoreServiceActions

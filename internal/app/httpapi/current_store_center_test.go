@@ -9,12 +9,12 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	storeapp "task-processor/internal/app/storecenter"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/ledger/orgresource"
-	"task-processor/internal/storecenter"
 	storehttp "task-processor/internal/storecenter/httpapi"
 )
 
@@ -75,7 +75,7 @@ func TestCurrentStoreOptionalAssembly(t *testing.T) {
 				buildResourceCharges: func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (*orgresource.ConsumerChargeService, error) {
 					return orgresource.NewConsumerChargeService(currentStoreChargeFixture{}, map[orgresource.ResourceConsumer]orgresource.ConsumerChargeOwner{orgresource.ConsumerStoreService: currentStoreChargeFixture{}})
 				},
-				buildStoreCenter: func(_ context.Context, r *gorm.DB, _ *authz.ListingKitAuthorizer, charges orgresource.ConsumerChargePort, _ storecenter.OfficialConnectionProvider, _ storecenter.OfficialCredentialProtection) (kernelmodule.Module, error) {
+				buildStoreCenter: func(_ context.Context, r *gorm.DB, _ *authz.ListingKitAuthorizer, charges orgresource.ConsumerChargePort, _ *storeapp.OfficialApplicationRegistry) (kernelmodule.Module, error) {
 					calls++
 					require.Same(t, records, r)
 					require.NotNil(t, charges)

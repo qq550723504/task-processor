@@ -29,8 +29,7 @@ type MerchantBinding = storecenter.ProductMerchantBinding
 type OfficialProductAccess struct {
 	reader        storecenter.ProductExecutionReader
 	authorization storecenter.ProductExecutionAuthorizer
-	provider      OfficialGoodsProvider
-	protection    storecenter.OfficialCredentialProtection
+	applications  *OfficialApplicationRegistry
 	now           func() time.Time
 }
 
@@ -38,6 +37,7 @@ type OfficialProductAccess struct {
 // minted for one current process, original membership and bounded activity.
 type MerchantHandle struct {
 	owner                         *OfficialProductAccess
+	entry                         officialApplicationEntry
 	subject                       storecenter.ProductExecutionSubject
 	binding                       MerchantBinding
 	connectionRef, credentialHash string
@@ -45,11 +45,11 @@ type MerchantHandle struct {
 	mutationSent                  atomic.Bool
 }
 
-func NewOfficialProductAccess(reader storecenter.ProductExecutionReader, authorization storecenter.ProductExecutionAuthorizer, provider OfficialGoodsProvider, protection storecenter.OfficialCredentialProtection) (*OfficialProductAccess, error) {
-	if reader == nil || authorization == nil || provider == nil || protection == nil {
+func NewOfficialProductAccess(reader storecenter.ProductExecutionReader, authorization storecenter.ProductExecutionAuthorizer, applications *OfficialApplicationRegistry) (*OfficialProductAccess, error) {
+	if reader == nil || authorization == nil || applications == nil {
 		return nil, storecenter.ErrOfficialConnectionUnavailable
 	}
-	return &OfficialProductAccess{reader, authorization, provider, protection, time.Now}, nil
+	return &OfficialProductAccess{reader, authorization, applications, time.Now}, nil
 }
 func (a *OfficialProductAccess) Authorize(ctx context.Context, subject storecenter.ProductExecutionSubject, storeID string, expected *MerchantBinding) (*MerchantHandle, error) {
 	if a == nil || ctx == nil || ctx.Err() != nil {
@@ -61,11 +61,18 @@ func (a *OfficialProductAccess) Authorize(ctx context.Context, subject storecent
 	if err != nil {
 		return nil, ErrProductAccessChanged
 	}
-	credential, err := a.protection.Open(material.Attempt, material.Attempt.KeyID, material.Attempt.Ciphertext)
-	if err != nil || !a.validMaterial(subject, storeID, material, credential) {
+	entry, err := a.applications.resolve(material.Attempt.AppID, material.Attempt.AppVersion)
+	if err != nil {
 		return nil, ErrProductAccessChanged
 	}
-	binding := merchantBinding(subject, storeID, material, credential)
+	if _, ok := entry.provider.(OfficialGoodsProvider); !ok {
+		return nil, ErrProductAccessChanged
+	}
+	credential, err := entry.protection.Open(material.Attempt, material.Attempt.KeyID, material.Attempt.Ciphertext)
+	if err != nil || !a.validMaterial(subject, storeID, material, credential, entry) {
+		return nil, ErrProductAccessChanged
+	}
+	binding := merchantBinding(subject, storeID, material, credential, entry.mode)
 	if expected != nil && *expected != binding {
 		return nil, ErrProductAccessChanged
 	}
@@ -76,7 +83,7 @@ func (a *OfficialProductAccess) Authorize(ctx context.Context, subject storecent
 	if !a.now().Before(expiresAt) {
 		return nil, ErrProductAccessChanged
 	}
-	return &MerchantHandle{owner: a, subject: subject, binding: binding, connectionRef: material.Connection.AttemptID, credentialHash: privateCredentialHash(material), expiresAt: expiresAt}, nil
+	return &MerchantHandle{owner: a, entry: entry, subject: subject, binding: binding, connectionRef: material.Connection.AttemptID, credentialHash: privateCredentialHash(material), expiresAt: expiresAt}, nil
 }
 func (h *MerchantHandle) Binding() MerchantBinding {
 	if h == nil {
@@ -92,63 +99,67 @@ func (h *MerchantHandle) credential(ctx context.Context) (storecenter.OfficialMe
 	if err != nil || material.Connection.AttemptID != h.connectionRef || privateCredentialHash(material) != h.credentialHash {
 		return storecenter.OfficialMerchantCredential{}, ErrProductAccessChanged
 	}
-	credential, err := h.owner.protection.Open(material.Attempt, material.Attempt.KeyID, material.Attempt.Ciphertext)
-	if err != nil || !h.owner.validMaterial(h.subject, h.binding.StoreID, material, credential) || merchantBinding(h.subject, h.binding.StoreID, material, credential) != h.binding || !h.owner.now().Before(h.expiresAt) {
+	entry, err := h.owner.applications.resolve(material.Attempt.AppID, material.Attempt.AppVersion)
+	if err != nil || entry.application != h.entry.application || entry.mode != h.entry.mode {
+		return storecenter.OfficialMerchantCredential{}, ErrProductAccessChanged
+	}
+	credential, err := entry.protection.Open(material.Attempt, material.Attempt.KeyID, material.Attempt.Ciphertext)
+	if err != nil || !h.owner.validMaterial(h.subject, h.binding.StoreID, material, credential, entry) || merchantBinding(h.subject, h.binding.StoreID, material, credential, entry.mode) != h.binding || !h.owner.now().Before(h.expiresAt) {
 		return storecenter.OfficialMerchantCredential{}, ErrProductAccessChanged
 	}
 	return credential, nil
 }
-func (a *OfficialProductAccess) validMaterial(subject storecenter.ProductExecutionSubject, storeID string, m storecenter.ProductExecutionMaterial, c storecenter.OfficialMerchantCredential) bool {
-	application := a.provider.Application()
+func (a *OfficialProductAccess) validMaterial(subject storecenter.ProductExecutionSubject, storeID string, m storecenter.ProductExecutionMaterial, c storecenter.OfficialMerchantCredential, entry officialApplicationEntry) bool {
+	application := entry.application
 	return m.Platform == storecenter.PlatformShein && m.StoreVersion > 0 && m.Connection.Version > 0 && m.Connection.Status == storecenter.ConnectionStatusConnected && m.Attempt.State == "verified" && m.Attempt.OrganizationID == subject.OrganizationID && m.Attempt.StoreID == storeID && m.Attempt.AttemptID == m.Connection.AttemptID && m.Attempt.AppID == application.AppID && m.Attempt.AppVersion == application.Version && c.AppID == application.AppID && c.SupplierID != "" && c.OpenKeyID != "" && c.SecretKey != "" && a.now().Before(m.ServiceExpiresAt)
 }
-func merchantBinding(subject storecenter.ProductExecutionSubject, storeID string, m storecenter.ProductExecutionMaterial, c storecenter.OfficialMerchantCredential) MerchantBinding {
+func merchantBinding(subject storecenter.ProductExecutionSubject, storeID string, m storecenter.ProductExecutionMaterial, c storecenter.OfficialMerchantCredential, mode storecenter.OfficialApplicationType) MerchantBinding {
 	hash := sha256.Sum256([]byte(c.AppID + "\x00" + c.SupplierID + "\x00" + c.OpenKeyID))
-	return MerchantBinding{OrganizationID: subject.OrganizationID, StoreID: storeID, Site: "shein-us", StoreVersion: m.StoreVersion, ConnectionRevision: m.Connection.Version, ApplicationRevision: m.Attempt.AppVersion, SupplierIdentityHash: hex.EncodeToString(hash[:]), ServiceExpiresAt: m.ServiceExpiresAt.UTC()}
+	return MerchantBinding{OrganizationID: subject.OrganizationID, StoreID: storeID, Site: "shein-us", StoreVersion: m.StoreVersion, ConnectionRevision: m.Connection.Version, ApplicationRevision: m.Attempt.AppVersion, ApplicationID: m.Attempt.AppID, ApplicationType: mode, SupplierIdentityHash: hex.EncodeToString(hash[:]), ServiceExpiresAt: m.ServiceExpiresAt.UTC()}
 }
 func (h *MerchantHandle) Publish(ctx context.Context, input model.PublishProduct) (model.PublishResult, error) {
 	return callMerchant(ctx, h, storecenter.ProductPurposePublish, func(ctx context.Context, c storecenter.OfficialMerchantCredential) (model.PublishResult, error) {
-		return h.owner.provider.PublishProduct(ctx, c, input)
+		return h.entry.provider.(OfficialGoodsProvider).PublishProduct(ctx, c, input)
 	})
 }
 func (h *MerchantHandle) TransformImage(ctx context.Context, input model.TransformImage) (model.TransformedImage, error) {
 	return callMerchant(ctx, h, storecenter.ProductPurposeImage, func(ctx context.Context, c storecenter.OfficialMerchantCredential) (model.TransformedImage, error) {
-		return h.owner.provider.TransformProductImage(ctx, c, input)
+		return h.entry.provider.(OfficialGoodsProvider).TransformProductImage(ctx, c, input)
 	})
 }
 func (h *MerchantHandle) Sites(ctx context.Context) ([]model.MainSite, error) {
 	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) ([]model.MainSite, error) {
-		return h.owner.provider.QueryProductSites(ctx, c)
+		return h.entry.provider.(OfficialGoodsProvider).QueryProductSites(ctx, c)
 	})
 }
 func (h *MerchantHandle) Categories(ctx context.Context) ([]model.Category, error) {
 	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) ([]model.Category, error) {
-		return h.owner.provider.QueryProductCategories(ctx, c)
+		return h.entry.provider.(OfficialGoodsProvider).QueryProductCategories(ctx, c)
 	})
 }
 func (h *MerchantHandle) FillStandards(ctx context.Context, id int64) (model.FillStandards, error) {
 	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) (model.FillStandards, error) {
-		return h.owner.provider.QueryProductFillStandards(ctx, c, id)
+		return h.entry.provider.(OfficialGoodsProvider).QueryProductFillStandards(ctx, c, id)
 	})
 }
 func (h *MerchantHandle) Attributes(ctx context.Context, id int64) (model.AttributeTemplate, error) {
 	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) (model.AttributeTemplate, error) {
-		return h.owner.provider.QueryProductAttributes(ctx, c, id)
+		return h.entry.provider.(OfficialGoodsProvider).QueryProductAttributes(ctx, c, id)
 	})
 }
 func (h *MerchantHandle) LinkedRules(ctx context.Context, input model.LinkedRulesRequest) ([]model.LinkedRules, error) {
 	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) ([]model.LinkedRules, error) {
-		return h.owner.provider.QueryProductLinkedRules(ctx, c, input)
+		return h.entry.provider.(OfficialGoodsProvider).QueryProductLinkedRules(ctx, c, input)
 	})
 }
 func (h *MerchantHandle) Brands(ctx context.Context) ([]model.Brand, error) {
 	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) ([]model.Brand, error) {
-		return h.owner.provider.QueryProductBrands(ctx, c)
+		return h.entry.provider.(OfficialGoodsProvider).QueryProductBrands(ctx, c)
 	})
 }
 func (h *MerchantHandle) PublishPermission(ctx context.Context, brand string) (model.PublishPermission, error) {
 	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) (model.PublishPermission, error) {
-		return h.owner.provider.QueryProductPublishPermission(ctx, c, brand)
+		return h.entry.provider.(OfficialGoodsProvider).QueryProductPublishPermission(ctx, c, brand)
 	})
 }
 func callMerchant[T any](ctx context.Context, h *MerchantHandle, mutationPurpose string, call func(context.Context, storecenter.OfficialMerchantCredential) (T, error)) (T, error) {

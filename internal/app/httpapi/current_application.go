@@ -15,6 +15,7 @@ import (
 
 	confighttp "task-processor/internal/agentconfig/httpapi"
 	registration "task-processor/internal/app/referralregistration"
+	storeapp "task-processor/internal/app/storecenter"
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
@@ -29,7 +30,6 @@ import (
 	knowledgehttp "task-processor/internal/knowledge/httpapi"
 	"task-processor/internal/ledger/orgresource"
 	collectionhttp "task-processor/internal/product/collection/httpapi"
-	"task-processor/internal/storecenter"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
 	"task-processor/internal/workbenchcontext"
 )
@@ -89,7 +89,7 @@ var currentCommercialBillingApplicationRoutes = []currentApplicationRoute{
 }
 
 type currentApplicationFactories struct {
-	buildStoreCenter         func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, storecenter.OfficialConnectionProvider, storecenter.OfficialCredentialProtection) (kernelmodule.Module, error)
+	buildStoreCenter         func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, *storeapp.OfficialApplicationRegistry) (kernelmodule.Module, error)
 	buildLocalTrial          func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildResourceCharges     func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (*orgresource.ConsumerChargeService, error)
 	buildCommercialResources func(context.Context, *gorm.DB) (kernelmodule.Module, error)
@@ -111,37 +111,36 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
-	agentConfigurationDB    *gorm.DB
-	knowledgeServices       int
-	knowledge               *knowledge.Service
-	storeCenters            int
-	storeCenterDB           *gorm.DB
-	localTrials             int
-	localTrialDB            *gorm.DB
-	officialStoreProvider   storecenter.OfficialConnectionProvider
-	officialStoreProtection storecenter.OfficialCredentialProtection
-	officialStoreConfigs    int
-	runtimeContext          context.Context
-	commercialOwnerDB       *gorm.DB
-	moneyOwnerDB            *gorm.DB
-	referralDB              *gorm.DB
-	productAcquisitionDB    *gorm.DB
-	imageAgentDB            *gorm.DB
-	accountAuditImageDB     *gorm.DB
-	accountAuditProductDB   *gorm.DB
-	accountAuditSources     int
-	imageAgentWorkflows     imageagent.WorkflowClient
-	membership              *MembershipDependencies
-	referrals               int
-	productAcquisitions     int
-	productCollections      int
-	imageAgents             int
-	memberships             int
-	browserCaptures         int
-	productAgent            *ProductAgentDependencies
-	productAgents           int
-	aiWorkbench             *AIWorkbenchDependencies
-	aiWorkbenches           int
+	agentConfigurationDB      *gorm.DB
+	knowledgeServices         int
+	knowledge                 *knowledge.Service
+	storeCenters              int
+	storeCenterDB             *gorm.DB
+	localTrials               int
+	localTrialDB              *gorm.DB
+	officialStoreApplications *storeapp.OfficialApplicationRegistry
+	officialStoreConfigs      int
+	runtimeContext            context.Context
+	commercialOwnerDB         *gorm.DB
+	moneyOwnerDB              *gorm.DB
+	referralDB                *gorm.DB
+	productAcquisitionDB      *gorm.DB
+	imageAgentDB              *gorm.DB
+	accountAuditImageDB       *gorm.DB
+	accountAuditProductDB     *gorm.DB
+	accountAuditSources       int
+	imageAgentWorkflows       imageagent.WorkflowClient
+	membership                *MembershipDependencies
+	referrals                 int
+	productAcquisitions       int
+	productCollections        int
+	imageAgents               int
+	memberships               int
+	browserCaptures           int
+	productAgent              *ProductAgentDependencies
+	productAgents             int
+	aiWorkbench               *AIWorkbenchDependencies
+	aiWorkbenches             int
 }
 
 // WithRuntimeContext supplies the long-lived application context for bounded
@@ -349,7 +348,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	if err != nil {
 		return nil, fmt.Errorf("build current application authorizer: %w", err)
 	}
-	if supplied.officialStoreConfigs > 1 || (supplied.officialStoreConfigs > 0 && supplied.storeCenters == 0) || (supplied.officialStoreProvider == nil) != (supplied.officialStoreProtection == nil) {
+	if supplied.officialStoreConfigs > 1 || (supplied.officialStoreConfigs > 0 && supplied.storeCenters == 0) || (supplied.officialStoreConfigs > 0 && supplied.officialStoreApplications == nil) {
 		return nil, errors.New("official Store configuration must accompany its owner and protection")
 	}
 	if supplied.productAcquisitionDB != nil || supplied.storeCenters > 0 {
@@ -451,7 +450,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, knowledgehttp.NewModule(handler))
 	}
 	if supplied.storeCenters > 0 {
-		stores, err := factories.buildStoreCenter(ctx, supplied.storeCenterDB, authorizer, consumerCharges, supplied.officialStoreProvider, supplied.officialStoreProtection)
+		stores, err := factories.buildStoreCenter(ctx, supplied.storeCenterDB, authorizer, consumerCharges, supplied.officialStoreApplications)
 		if err != nil {
 			return nil, fmt.Errorf("build current store center: %w", err)
 		}

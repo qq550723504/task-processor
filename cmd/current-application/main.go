@@ -123,8 +123,8 @@ func execute() error {
 			}
 			if features.StoreCenterDB != nil {
 				options = append(options, httpapi.WithStoreCenter(features.StoreCenterDB))
-				if features.OfficialStoreProvider != nil || features.OfficialStoreProtection != nil {
-					options = append(options, httpapi.WithStoreOfficialConnection(features.OfficialStoreProvider, features.OfficialStoreProtection))
+				if features.OfficialStoreApplications != nil {
+					options = append(options, httpapi.WithStoreOfficialApplications(features.OfficialStoreApplications))
 				}
 			}
 			if features.LocalTrialDB != nil {

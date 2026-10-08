@@ -278,19 +278,20 @@ func uploadFixture(t *testing.T) (*UploadService, collection.Scope, *uploadRecor
 	require.NoError(t, err)
 	selector, err = selector.WithExecution(auth, collection.ExecutionOwnerAuthority{Authorization: auth})
 	require.NoError(t, err)
-	binding := storecenter.ProductMerchantBinding{OrganizationID: scope.OrganizationID, StoreID: uuid.NewString(), Site: "shein-us", StoreVersion: 1, ConnectionRevision: 1, ApplicationRevision: "v1", SupplierIdentityHash: collection.Digest("merchant-a"), ServiceExpiresAt: time.Now().Add(time.Hour)}
+	binding := storecenter.ProductMerchantBinding{OrganizationID: scope.OrganizationID, StoreID: uuid.NewString(), Site: "shein-us", StoreVersion: 1, ConnectionRevision: 1, ApplicationRevision: "v1:self_operated", ApplicationID: "app-a", ApplicationType: storecenter.ApplicationSelfOperated, SupplierIdentityHash: collection.Digest("merchant-a"), ServiceExpiresAt: time.Now().Add(time.Hour)}
 	binding.ServiceExpiresAt = binding.ServiceExpiresAt.UTC().Truncate(time.Microsecond)
-	rules := goods.OfficialRuleSnapshot{
+	rules := goods.OfficialRuleSnapshot{ApplicationMode: model.ModeSelfOperated,
 		Categories: []model.Category{{ID: 123, ProductTypeID: 456, Leaf: uploadPointer(true)}}, Sites: []model.MainSite{{ID: "shein", Sites: []model.Site{{Abbreviation: "shein-us", Status: uploadPointer(1), StoreType: uploadPointer(2), Currency: "USD"}}}},
 		Fill:       model.FillStandards{DefaultLanguage: "en", DefaultTitleMaximum: uploadPointer(150), SupplierCodeInSPU: uploadPointer(false), Fields: []model.FillRule{}, Pictures: []model.PictureRule{{Field: "switch_spu_picture", Enabled: uploadPointer(false)}, {Field: "sku_image_required", Enabled: uploadPointer(false)}}},
 		Attributes: model.AttributeTemplate{ProductTypeID: 456, MainAttributeStatus: uploadPointer(1), Attributes: []model.Attribute{{ID: 12, Name: "Default", Type: uploadPointer(1), Show: uploadPointer(1), MainLabel: uploadPointer(1), Mode: uploadPointer(2), Status: uploadPointer(3), MaximumSelections: uploadPointer(1), Options: []model.AttributeOption{{ID: 34, Name: "Default", Show: uploadPointer(1)}}}}},
-		Linked:     []model.LinkedRules{{GroupID: "product", Attributes: []model.LinkedAttributeRule{}}, {GroupID: "sku-0-0", Attributes: []model.LinkedAttributeRule{}}}, Brands: []model.Brand{},
+		Linked:     []model.LinkedRules{{GroupID: "product", Attributes: []model.LinkedAttributeRule{}}, {GroupID: "sku-0-0", Attributes: []model.LinkedAttributeRule{}}}, Brands: []model.Brand{{Code: "brand-a", Name: "Fixture brand"}},
 	}
 	inventory := asset.ApprovedAssetInventory{Scope: asset.InventoryScope{TenantID: scope.OrganizationID, ProductKey: "product-a", TargetPlatform: "shein", SourceSnapshotVersion: 1}, Assets: []asset.ApprovedAsset{}}
 	for _, id := range []string{"main", "detail", "square"} {
 		inventory.Assets = append(inventory.Assets, asset.ApprovedAsset{ID: id, URL: "https://images.example.org/" + id + ".jpg", Width: 900, Height: 900})
 	}
-	input := record.TargetInput{SourceID: source.ID, StoreID: binding.StoreID, EffectiveVersion: 1, Draft: goods.OfficialDraftInput{Product: model.PublishProduct{CategoryID: 123, Names: []model.LanguageContent{{Language: "en", Name: "Manual title"}}, Attributes: []model.AttributeValue{}}}}
+	input := record.TargetInput{SourceID: source.ID, StoreID: binding.StoreID, EffectiveVersion: 1, Draft: goods.OfficialDraftInput{Product: model.PublishProduct{CategoryID: 123, BrandCode: "brand-a", Names: []model.LanguageContent{{Language: "en", Name: "Manual title"}}, Attributes: []model.AttributeValue{}}}}
+	input.Draft.Product.Descriptions = []model.LanguageContent{{Language: "en", Name: "Human supplied description"}}
 	input.Draft.Product.SKCs = []model.ProductSKC{{SupplierCode: "spu-a", SaleAttribute: model.AttributeValue{AttributeID: 12, AttributeValueID: uploadPointer(int64(34))}, SKUs: []model.ProductSKU{{SupplierSKU: "sku-a", Length: "10", Width: "10", Height: "10", Weight: uploadPointer(100.0), MallState: 1, Prices: []model.ProductPrice{{BasePrice: 12.5, Currency: "USD", SubSite: "shein-us"}}, Stock: []model.ProductStock{{Quantity: 5}}, SaleAttributes: []model.AttributeValue{}}}}}
 	input.Draft.Images = []goods.OfficialImageSlot{{Group: "skc", AssetID: "main", Type: 1, Sort: 1}, {Group: "skc", AssetID: "detail", Type: 2, Sort: 2}, {Group: "skc", AssetID: "square", Type: 5, Sort: 3}}
 	saved := record.TargetRecord{ID: uuid.NewString(), TargetID: record.TargetIdentity(scope, source.ID, binding.StoreID), Revision: 1, Source: source, EffectiveVersion: 1, ProductHash: collection.Digest(snapshot.Snapshot), InventoryHash: collection.Digest(inventory), RulesHash: collection.Digest(rules), Merchant: binding, Input: input, Result: goods.BuildOfficial(input.Draft, rules, inventory, nil), CreatedAt: time.Now().UTC()}

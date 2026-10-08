@@ -210,7 +210,7 @@ func (s *TargetService) create(ctx context.Context, scope collection.Scope, key 
 	if err != nil {
 		return TargetReceipt{}, err
 	}
-	if merchant.OrganizationID != scope.OrganizationID || merchant.StoreID != input.StoreID || merchant.Site != "shein-us" || merchant.StoreVersion < 1 || merchant.ConnectionRevision < 1 || merchant.ApplicationRevision == "" || len(merchant.SupplierIdentityHash) != 64 || !time.Now().Before(merchant.ServiceExpiresAt) {
+	if merchant.OrganizationID != scope.OrganizationID || merchant.StoreID != input.StoreID || merchant.Site != "shein-us" || merchant.StoreVersion < 1 || merchant.ConnectionRevision < 1 || !merchant.ValidApplication() || string(rules.ApplicationMode) != string(merchant.ApplicationType) || len(merchant.SupplierIdentityHash) != 64 || !time.Now().Before(merchant.ServiceExpiresAt) {
 		return TargetReceipt{}, ErrNotReady
 	}
 	result := goods.BuildOfficial(input.Draft, rules, inventory, nil)

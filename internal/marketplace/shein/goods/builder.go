@@ -15,12 +15,13 @@ import (
 )
 
 type OfficialRuleSnapshot struct {
-	Categories []model.Category        `json:"categories"`
-	Sites      []model.MainSite        `json:"sites"`
-	Fill       model.FillStandards     `json:"fill"`
-	Attributes model.AttributeTemplate `json:"attributes"`
-	Linked     []model.LinkedRules     `json:"linked"`
-	Brands     []model.Brand           `json:"brands"`
+	ApplicationMode model.ApplicationMode   `json:"application_type"`
+	Categories      []model.Category        `json:"categories"`
+	Sites           []model.MainSite        `json:"sites"`
+	Fill            model.FillStandards     `json:"fill"`
+	Attributes      model.AttributeTemplate `json:"attributes"`
+	Linked          []model.LinkedRules     `json:"linked"`
+	Brands          []model.Brand           `json:"brands"`
 }
 type OfficialDraftInput struct {
 	Product model.PublishProduct `json:"product"`
@@ -76,7 +77,16 @@ func BuildOfficial(input OfficialDraftInput, rules OfficialRuleSnapshot, invento
 	b.result.Images = append([]OfficialImageSlot(nil), input.Images...)
 	p := &b.result.Product
 	p.SourceSystem, p.SuitFlag = "OpenAPI", "0"
+	if input.Product.SuitFlag != "" && input.Product.SuitFlag != "0" {
+		b.issue("suit_flag", "unsupported", "官方 API 暂不支持套装商品")
+	}
 	p.Sites = []model.SiteSelection{{MainSite: "shein", SubSites: []string{"shein-us"}}}
+	if !rules.ApplicationMode.Valid() {
+		b.issue("application_type", "rule_unavailable", "无法确认店铺绑定的官方应用类型")
+	}
+	if rules.ApplicationMode == model.ModeFullyManaged {
+		p.Sites = nil
+	}
 	category, ok := findOfficialCategory(rules.Categories, p.CategoryID)
 	if !ok || category.Leaf == nil || !*category.Leaf || category.ProductTypeID <= 0 {
 		b.issue("category_id", "missing", "选择当前店铺可发布的末级类目")
@@ -90,13 +100,10 @@ func BuildOfficial(input OfficialDraftInput, rules OfficialRuleSnapshot, invento
 				if site.Status == nil || *site.Status != 1 || site.Currency != "USD" {
 					b.issue("site_list", "unavailable", "店铺美国站未启用或币种规则不可用")
 				}
-				if site.StoreType == nil || *site.StoreType != 2 {
-					b.issue("site_list", "unsupported_store_mode", "当前美国站发布资料支持自运营店铺；此店铺模式的资料规则尚未开放")
-				}
 			}
 		}
 	}
-	if siteCount != 1 {
+	if rules.ApplicationMode != model.ModeFullyManaged && siteCount != 1 {
 		b.issue("site_list", "unavailable", "无法确认当前店铺的美国站")
 	}
 	if rules.Attributes.ProductTypeID != p.ProductTypeID || rules.Attributes.MainAttributeStatus == nil || rules.Attributes.Attributes == nil {
@@ -111,9 +118,7 @@ func BuildOfficial(input OfficialDraftInput, rules OfficialRuleSnapshot, invento
 		b.issue("multi_language_name_list", "rule_unavailable", "当前店铺默认语种和标题上限不可用")
 	}
 	b.languages("multi_language_name_list", p.Names, true, false)
-	if len(p.Descriptions) > 0 {
-		b.languages("multi_language_desc_list", p.Descriptions, true, true)
-	}
+	b.languages("multi_language_desc_list", p.Descriptions, true, true)
 	if len(p.SKCs) < 1 || len(p.SKCs) > 40 {
 		b.issue("skc_list", "missing", "填写 1 至 40 个 SKC")
 	}
@@ -125,6 +130,9 @@ func BuildOfficial(input OfficialDraftInput, rules OfficialRuleSnapshot, invento
 	}
 	if rules.Fill.SupplierCodeInSPU != nil && !*rules.Fill.SupplierCodeInSPU {
 		p.SupplierCode = ""
+	}
+	if p.BrandCode == "" {
+		b.issue("brand_code", "missing", "美国市场须选择当前店铺可用品牌")
 	}
 	if p.BrandCode != "" {
 		found := false
@@ -181,14 +189,15 @@ func BuildOfficial(input OfficialDraftInput, rules OfficialRuleSnapshot, invento
 			if sku.MallState != 1 && sku.MallState != 2 {
 				b.issue(sp+".mall_state", "missing", "选择在售或停售")
 			}
-			if len(sku.Prices) != 1 || sku.Prices[0].Currency != "USD" || sku.Prices[0].SubSite != "shein-us" || !positiveMoney(sku.Prices[0].BasePrice) {
-				b.issue(sp+".price_info_list", "missing", "填写美国站真实 USD 售价，正数且最多两位小数")
-			}
+			b.pricing(sp, *sku)
 			if len(sku.Stock) < 1 || len(sku.Stock) > 100 {
 				b.issue(sp+".stock_info_list", "missing", "填写真实库存")
 			}
 			seenWarehouse := map[string]bool{}
 			for _, stock := range sku.Stock {
+				if rules.ApplicationMode == model.ModeFullyManaged && (len(sku.Stock) != 1 || stock.WarehouseID != "" || stock.WarehouseName != "") {
+					b.issue(sp+".stock_info_list", "invalid", "全托管填写商品可售总库存，不填写仓库")
+				}
 				if stock.Quantity < 0 || stock.Quantity > 99999 || seenWarehouse[stock.WarehouseID] || len(sku.Stock) > 1 && stock.WarehouseID == "" {
 					b.issue(sp+".stock_info_list", "invalid", "库存范围为 0 至 99999，多仓库存须有不同的真实仓库 ID")
 				}
@@ -441,9 +450,42 @@ func (b *officialBuild) optionalSKU(path string, sku model.ProductSKU) {
 			b.issue(path+".competing_product_link", "invalid", "商品参考链接须为有效 HTTPS 链接，最多 300 字符")
 		}
 	}
-	if sku.Cost != nil || sku.StopPurchase != nil {
-		b.issue(path, "unsupported_store_mode", "自运营资料不接受托管模式供货价和采购状态")
+}
+func (b *officialBuild) pricing(path string, sku model.ProductSKU) {
+	if b.rules.ApplicationMode == model.ModeSelfOperated {
+		if len(sku.Prices) != 1 || sku.Prices[0].Currency != "USD" || sku.Prices[0].SubSite != "shein-us" || !positiveMoney(sku.Prices[0].BasePrice) {
+			b.issue(path+".price_info_list", "missing", "填写美国站真实 USD 售价，正数且最多两位小数")
+		}
+		if sku.Cost != nil {
+			b.issue(path+".cost_info", "forbidden", "自运营应用不接受托管供货价")
+		}
+	} else if b.rules.ApplicationMode == model.ModeSemiManaged || b.rules.ApplicationMode == model.ModeFullyManaged {
+		if len(sku.Prices) > 0 {
+			b.issue(path+".price_info_list", "forbidden", "托管应用由平台决定售价，请填写真实供货价")
+		}
+		if b.rules.Fill.Currency == nil || !regexp.MustCompile(`^[A-Z]{3}$`).MatchString(*b.rules.Fill.Currency) {
+			b.issue(path+".cost_info", "rule_unavailable", "当前店铺供货价币种不可用")
+		} else if sku.Cost == nil || sku.Cost.Currency != *b.rules.Fill.Currency || !nonnegativeCost(sku.Cost.Price) {
+			b.issue(path+".cost_info", "missing", "填写规范币种的真实供货价，0 至 100000 且最多两位小数")
+		}
 	}
+	if b.rules.ApplicationMode == model.ModeFullyManaged {
+		if sku.StopPurchase == nil || (*sku.StopPurchase != 1 && *sku.StopPurchase != 2) {
+			b.issue(path+".stop_purchase", "missing", "全托管须选择可采或停采")
+		}
+	} else if sku.StopPurchase != nil {
+		b.issue(path+".stop_purchase", "forbidden", "采购状态仅适用于全托管应用")
+	}
+}
+
+var costPattern = regexp.MustCompile(`^(0|[1-9][0-9]{0,5})(\.[0-9]{1,2})?$`)
+
+func nonnegativeCost(value string) bool {
+	if !costPattern.MatchString(value) {
+		return false
+	}
+	number, err := strconv.ParseFloat(value, 64)
+	return err == nil && number <= 100000
 }
 func (b *officialBuild) fieldProvided(field string) bool {
 	p := b.result.Product

@@ -11,7 +11,7 @@ func rulePointer[T any](value T) *T { return &value }
 func officialFixture() (OfficialDraftInput, OfficialRuleSnapshot, asset.ApprovedAssetInventory) {
 	input := OfficialDraftInput{
 		Product: model.PublishProduct{
-			CategoryID: 123, SupplierCode: "source-product",
+			CategoryID: 123, BrandCode: "brand-a", Descriptions: []model.LanguageContent{{Language: "en", Name: "Human supplied description"}}, SupplierCode: "source-product",
 			Names:      []model.LanguageContent{{Language: "en", Name: "Source product"}},
 			Attributes: []model.AttributeValue{},
 			SKCs: []model.ProductSKC{{
@@ -21,7 +21,7 @@ func officialFixture() (OfficialDraftInput, OfficialRuleSnapshot, asset.Approved
 		},
 		Images: []OfficialImageSlot{{Group: "skc", SKC: 0, AssetID: "main", Sort: 1, Type: 1}, {Group: "skc", SKC: 0, AssetID: "detail", Sort: 2, Type: 2}, {Group: "skc", SKC: 0, AssetID: "square", Sort: 3, Type: 5}},
 	}
-	rules := OfficialRuleSnapshot{Categories: []model.Category{{ID: 123, ProductTypeID: 456, Leaf: rulePointer(true)}}, Sites: []model.MainSite{{ID: "shein", Sites: []model.Site{{Abbreviation: "shein-us", Status: rulePointer(1), StoreType: rulePointer(2), Currency: "USD"}}}}, Fill: model.FillStandards{DefaultLanguage: "en", DefaultTitleMaximum: rulePointer(150), SupplierCodeInSPU: rulePointer(false), Fields: []model.FillRule{}, Pictures: []model.PictureRule{{Field: "switch_spu_picture", Enabled: rulePointer(false)}, {Field: "sku_image_required", Enabled: rulePointer(false)}}}, Attributes: model.AttributeTemplate{ProductTypeID: 456, MainAttributeStatus: rulePointer(1), Attributes: []model.Attribute{{ID: 12, Name: "Default", Type: rulePointer(1), Show: rulePointer(1), MainLabel: rulePointer(1), Mode: rulePointer(2), Status: rulePointer(3), MaximumSelections: rulePointer(1), Options: []model.AttributeOption{{ID: 34, Show: rulePointer(1), Name: "Default"}}}}}, Linked: []model.LinkedRules{{GroupID: "product", Attributes: []model.LinkedAttributeRule{}}}, Brands: []model.Brand{}}
+	rules := OfficialRuleSnapshot{ApplicationMode: model.ModeSelfOperated, Categories: []model.Category{{ID: 123, ProductTypeID: 456, Leaf: rulePointer(true)}}, Sites: []model.MainSite{{ID: "shein", Sites: []model.Site{{Abbreviation: "shein-us", Status: rulePointer(1), StoreType: rulePointer(2), Currency: "USD"}}}}, Fill: model.FillStandards{DefaultLanguage: "en", DefaultTitleMaximum: rulePointer(150), SupplierCodeInSPU: rulePointer(false), Fields: []model.FillRule{}, Pictures: []model.PictureRule{{Field: "switch_spu_picture", Enabled: rulePointer(false)}, {Field: "sku_image_required", Enabled: rulePointer(false)}}}, Attributes: model.AttributeTemplate{ProductTypeID: 456, MainAttributeStatus: rulePointer(1), Attributes: []model.Attribute{{ID: 12, Name: "Default", Type: rulePointer(1), Show: rulePointer(1), MainLabel: rulePointer(1), Mode: rulePointer(2), Status: rulePointer(3), MaximumSelections: rulePointer(1), Options: []model.AttributeOption{{ID: 34, Show: rulePointer(1), Name: "Default"}}}}}, Linked: []model.LinkedRules{{GroupID: "product", Attributes: []model.LinkedAttributeRule{}}}, Brands: []model.Brand{{Code: "brand-a", Name: "Fixture brand"}}}
 	inventory := asset.ApprovedAssetInventory{Scope: asset.InventoryScope{TenantID: "org-a", ProductKey: "product-a", TargetPlatform: "shein", SourceSnapshotVersion: 1}, Assets: []asset.ApprovedAsset{{ID: "main", URL: "https://images.example.org/main.jpg", Width: 900, Height: 900}, {ID: "detail", URL: "https://images.example.org/detail.jpg", Width: 900, Height: 900}, {ID: "square", URL: "https://images.example.org/square.jpg", Width: 900, Height: 900}}}
 	rules.Linked = append(rules.Linked, model.LinkedRules{GroupID: "sku-0-0", Attributes: []model.LinkedAttributeRule{}})
 	return input, rules, inventory
@@ -53,6 +53,7 @@ func TestOfficialDraftUsesExactMerchantRulesAndNeverInventsRemoteImageEvidence(t
 func TestOfficialDraftReportsMissingFactsAndMerchantRequiredFields(t *testing.T) {
 	input, rules, inventory := officialFixture()
 	input.Product.SKCs[0].SKUs[0].Weight = nil
+	input.Product.BrandCode = ""
 	rules.Fill.Fields = append(rules.Fill.Fields, model.FillRule{Field: "brand_code", Required: rulePointer(true), Show: rulePointer(true)})
 	result := BuildOfficial(input, rules, inventory, nil)
 	require.False(t, result.ReadyForUpload)
