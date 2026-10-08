@@ -8,6 +8,7 @@ import (
 	"sync"
 	m "task-processor/internal/ledger/money"
 	"testing"
+	"time"
 )
 
 func TestServicePostgresOriginalClaimAndConcurrentRefundReservation(t *testing.T) {
@@ -102,5 +103,53 @@ func TestServicePostgresOriginalClaimAndConcurrentRefundReservation(t *testing.T
 	}
 	if err := VerifyProviderTopUpRuntime(ctx, r.db); !errors.Is(err, m.ErrUnavailable) {
 		t.Fatalf("immutable claim column mutation allowed: %v", err)
+	}
+}
+
+func TestServicePostgresChargebackIngressKeepsOriginalFacts(t *testing.T) {
+	ctx, _, r, observer := newMoneyPostgresRuntime(t)
+	in := servicePayment()
+	if _, err := r.AcceptServicePayment(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	op := m.ServiceOperation{OrderID: in.OrderID, OperationID: "admitted-share", Kind: m.ServiceShare, AmountMinor: 10, SourceProofID: "accepted-version"}
+	if _, err := r.PrepareServiceOperation(ctx, op); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.AdmitServiceOperation(ctx, op); err != nil {
+		t.Fatal(err)
+	}
+	cb := m.ChargebackSettlement{ChargebackID: "verified-chargeback", PaymentID: in.Payment.PaymentID, AmountMinor: 101, OccurredAt: time.Now().UTC(), ProviderReference: "original-channel-proof"}
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+	for range 8 {
+		wg.Go(func() { errs <- r.RecordChargebackSettlementAndNotify(ctx, cb, observer) })
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal("original verified ingress did not converge", err)
+		}
+	}
+	if _, err := r.AcceptServiceEffect(ctx, m.ServiceEffect{Operation: op, ProviderReference: "late-original-share", OccurredAt: time.Now().UTC()}); err != nil {
+		t.Fatal("chargeback rejected admitted original fact", err)
+	}
+	f, err := r.ReadServiceFunds(ctx, in.OrderID)
+	if err != nil || f.ChargedBackMinor != 101 || f.SharedMinor != 10 || f.ReconciliationReason != "CHANNEL_CHARGEBACK_REQUIRES_RECONCILIATION" {
+		t.Fatal("canonical chargeback or original share lost", f, err)
+	}
+	if _, err := r.PrepareServiceOperation(ctx, m.ServiceOperation{OrderID: in.OrderID, OperationID: "new-finish", Kind: m.ServiceFinish, SourceProofID: "accepted-version"}); !errors.Is(err, m.ErrConflict) {
+		t.Fatal("chargeback did not fence new dispatch", err)
+	}
+	var facts, effects, wallets int64
+	if err := r.db.Model(&chargebackRow{}).Where("chargeback_id=?", cb.ChargebackID).Count(&facts).Error; err != nil || facts != 1 {
+		t.Fatal("canonical chargeback duplicated", facts, err)
+	}
+	if err := r.db.Model(&serviceEffectRow{}).Where("kind=?", string(m.ServiceChargeback)).Count(&effects).Error; err != nil || effects != 1 {
+		t.Fatal("service chargeback receipt duplicated", effects, err)
+	}
+	if err := r.db.Model(&organizationWalletRow{}).Count(&wallets).Error; err != nil || wallets != 0 {
+		t.Fatal("service reversal produced wallet balance", wallets, err)
 	}
 }

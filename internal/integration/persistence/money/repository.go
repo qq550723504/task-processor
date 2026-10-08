@@ -194,6 +194,9 @@ func (r *Repository) RecordChargebackSettlement(ctx context.Context, chargeback 
 	if handled, err := r.recordProviderReversal(ctx, chargeback.PaymentID, chargeback.ChargebackID, money.WalletReversalChargeback, chargeback.AmountMinor, chargeback.OccurredAt, chargeback.ProviderReference); handled || err != nil {
 		return err
 	}
+	if handled, err := r.recordServiceChargeback(ctx, chargeback); handled || err != nil {
+		return err
+	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := lockOrdinaryReversal(tx, chargeback.PaymentID); err != nil {
 			return money.ErrUnavailable

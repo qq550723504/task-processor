@@ -537,6 +537,22 @@ func (r *Repository) AbandonUndispatchedServiceOperation(ctx context.Context, in
 
 // This path consumes a verified involuntary channel fact, rather than inventing
 // an approval for a chargeback. A conflict remains in billing's durable inbox.
+func (r *Repository) recordServiceChargeback(ctx context.Context, in m.ChargebackSettlement) (bool, error) {
+	var payment paymentRow
+	if err := r.db.WithContext(ctx).Where("payment_id=? AND payment_purpose=?", in.PaymentID, m.PaymentPurposeServicePurchase).Take(&payment).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	var binding servicePaymentRow
+	if err := r.db.WithContext(ctx).Where("payment_id=?", payment.PaymentID).Take(&binding).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		return true, m.ErrConflict
+	} else if err != nil {
+		return true, err
+	}
+	return true, r.ObserveServiceChargeback(ctx, binding.OrderID, in)
+}
+
 func (r *Repository) ObserveServiceChargeback(ctx context.Context, orderID string, in m.ChargebackSettlement) error {
 	if r == nil || r.db == nil || orderID == "" || in.Validate() != nil {
 		return m.ErrInvalid

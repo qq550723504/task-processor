@@ -34,17 +34,8 @@ func TestServiceFundsOriginalIdentityAndNoOrdinaryBypass(t *testing.T) {
 	if _, err := r.AcceptServicePayment(ctx, in); !errors.Is(err, m.ErrConflict) {
 		t.Fatalf("different payload accepted: %v", err)
 	}
-	for _, mutate := range []func() error{
-		func() error {
-			return r.RecordRefundSettlement(ctx, m.RefundSettlement{RefundID: "bypass", PaymentID: "service-pay", AmountMinor: 1, OccurredAt: time.Now(), ProviderReference: "ref"})
-		},
-		func() error {
-			return r.RecordChargebackSettlement(ctx, m.ChargebackSettlement{ChargebackID: "bypass", PaymentID: "service-pay", AmountMinor: 1, OccurredAt: time.Now(), ProviderReference: "cb"})
-		},
-	} {
-		if err := mutate(); !errors.Is(err, m.ErrUnsupportedMutation) {
-			t.Fatalf("ordinary reversal bypass: %v", err)
-		}
+	if err := r.RecordRefundSettlement(ctx, m.RefundSettlement{RefundID: "bypass", PaymentID: "service-pay", AmountMinor: 1, OccurredAt: time.Now(), ProviderReference: "ref"}); !errors.Is(err, m.ErrUnsupportedMutation) {
+		t.Fatalf("unapproved service refund bypass: %v", err)
 	}
 	var wallets int64
 	if err := r.db.Model(&organizationWalletRow{}).Count(&wallets).Error; err != nil || wallets != 0 {
@@ -132,11 +123,23 @@ func TestServiceExternalChargebackKeepsTruthAndBlocksNewEffects(t *testing.T) {
 	}
 	applyServiceEffect(t, r, m.ServiceShare, "share", 10)
 	cb := m.ChargebackSettlement{ChargebackID: "external-chargeback", PaymentID: in.Payment.PaymentID, AmountMinor: 101, OccurredAt: time.Date(2026, 10, 8, 4, 0, 0, 0, time.UTC), ProviderReference: "signed-chargeback-observation"}
-	if err := r.ObserveServiceChargeback(ctx, in.OrderID, cb); err != nil {
+	if err := r.RecordChargebackSettlement(ctx, cb); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.ObserveServiceChargeback(ctx, in.OrderID, cb); err != nil {
+	if err := r.RecordChargebackSettlement(ctx, cb); err != nil {
 		t.Fatal(err)
+	}
+	changed := cb
+	changed.AmountMinor--
+	if err := r.RecordChargebackSettlement(ctx, changed); !errors.Is(err, m.ErrConflict) {
+		t.Fatalf("changed original chargeback accepted: %v", err)
+	}
+	var facts, effects int64
+	if err := r.db.Model(&chargebackRow{}).Count(&facts).Error; err != nil || facts != 1 {
+		t.Fatal("chargeback canonical fact duplicated", facts, err)
+	}
+	if err := r.db.Model(&serviceEffectRow{}).Where("kind=?", string(m.ServiceChargeback)).Count(&effects).Error; err != nil || effects != 1 {
+		t.Fatal("original service chargeback receipt duplicated", effects, err)
 	}
 	funds, err := r.ReadServiceFunds(ctx, in.OrderID)
 	if err != nil || funds.ChargedBackMinor != 101 || funds.PlatformMinor != 0 || funds.ReconciliationReason == "" {
@@ -162,7 +165,7 @@ func TestServiceInFlightShareSuccessAfterChargebackRetainsBothFacts(t *testing.T
 	if err := r.AdmitServiceOperation(ctx, op); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.ObserveServiceChargeback(ctx, in.OrderID, cb); err != nil {
+	if err := r.RecordChargebackSettlement(ctx, cb); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.AcceptServiceEffect(ctx, m.ServiceEffect{Operation: op, ProviderReference: "signed-original-share-success", OccurredAt: time.Now()}); err != nil {
