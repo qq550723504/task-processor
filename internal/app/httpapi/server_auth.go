@@ -23,6 +23,16 @@ type organizationIdentityResolver interface {
 	Resolve(context.Context, httproute.OrganizationAccessPolicy, workbenchcontext.ResolveInput) (authidentity.AuthenticatedIdentity, error)
 }
 
+// Keep explicit identity/grant rejection separate from a failed dependency
+// read. Both fail closed, but only the former proves an authorized empty scope.
+func workbenchIdentityRejected(err error) bool {
+	return errors.Is(err, workbenchcontext.ErrAuthenticationRequired) ||
+		errors.Is(err, workbenchcontext.ErrOrganizationSelectionRequired) ||
+		errors.Is(err, workbenchcontext.ErrOrganizationAccessDenied) ||
+		errors.Is(err, workbenchcontext.ErrOrganizationAccessRevoked) ||
+		errors.Is(err, workbenchcontext.ErrOrganizationSuspended)
+}
+
 type routeAuthDependencies struct {
 	identityMiddleware   gin.HandlerFunc
 	authorizer           *authz.ListingKitAuthorizer

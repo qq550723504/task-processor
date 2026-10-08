@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"task-processor/internal/authidentity"
+	zitadel "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
@@ -85,12 +86,21 @@ func buildMembershipModule(ctx context.Context, cfg *config.Config, deps Members
 		token := parts[1]
 		refresh := func(ctx context.Context) (context.Context, error) {
 			verified, err := auth.workbenchVerifier.Verify(ctx, token)
-			if err != nil || verified.UserID != initial.UserID {
+			if err != nil {
+				if zitadel.IsVerificationInvalid(err) {
+					return nil, membership.ErrAuthentication
+				}
+				return nil, membership.ErrUnavailable
+			}
+			if verified.UserID != initial.UserID {
 				return nil, membership.ErrAuthentication
 			}
 			resolved, err := auth.organizationResolver.Resolve(ctx, httproute.OrganizationAccessPolicyLiveWrite, workbenchcontext.ResolveInput{Identity: verified, BearerToken: token, RequestedOrganizationID: initial.EffectiveOrganizationID})
 			if err != nil {
-				return nil, membership.ErrPermission
+				if workbenchIdentityRejected(err) {
+					return nil, membership.ErrPermission
+				}
+				return nil, membership.ErrUnavailable
 			}
 			if resolved.EffectiveOrganizationID != initial.EffectiveOrganizationID {
 				return nil, membership.ErrPermission

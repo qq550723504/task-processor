@@ -21,7 +21,10 @@ func (c *Commands) NotificationFacts(ctx context.Context, after string, limit in
 		return nil, "", e
 	}
 	_, again, e := c.current(ctx)
-	if e != nil || again.UserID != i.UserID || again.EffectiveOrganizationID != i.EffectiveOrganizationID {
+	if e != nil {
+		return nil, "", e
+	}
+	if again.UserID != i.UserID || again.EffectiveOrganizationID != i.EffectiveOrganizationID {
 		return nil, "", ErrPermission
 	}
 	return rows, next, nil

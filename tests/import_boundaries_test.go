@@ -3980,6 +3980,8 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "storecenter", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #556 freezes Knowledge HTTP as its own domain adapter; core stays framework-free.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "knowledge", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	// #608 admits only Notification Center's feature-local HTTP adapter.
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "notificationcenter", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #570 / PR #571 admits only Agent Configuration's feature-local HTTP adapter.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "agentconfig", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "listingsubscription", "httpapi"))+string(os.PathSeparator)] = struct{}{}
@@ -4034,6 +4036,16 @@ func TestSubjectVerificationHTTPBoundaryRegistration(t *testing.T) {
 	} {
 		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(tc.path)), allowed); got != tc.want {
 			t.Errorf("HTTP boundary allows %s = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestNotificationCenterHTTPBoundaryRegistration(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowed := businessHTTPPackages(root)
+	for path, want := range map[string]bool{"notificationcenter/httpapi/handler.go": true, "notificationcenter/service.go": false, "notificationcenter/httpapi_extra/handler.go": false} {
+		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(path)), allowed); got != want {
+			t.Errorf("HTTP boundary allows %s = %v, want %v", path, got, want)
 		}
 	}
 }

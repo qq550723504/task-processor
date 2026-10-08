@@ -47,7 +47,7 @@ func (s *Service) NotificationFacts(ctx context.Context, recipient bool, after s
 		}
 		i, e := s.Manager(ctx, "")
 		if e != nil {
-			return nil, "", ErrPermission
+			return nil, "", e
 		}
 		q.OrganizationID = i.EffectiveOrganizationID
 	}

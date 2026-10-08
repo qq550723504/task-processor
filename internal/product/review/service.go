@@ -49,7 +49,11 @@ func (s *Service) authorize(ctx context.Context, write, admin bool) (Scope, erro
 	// Scope roles are produced by the existing organization resolver. Configured
 	// global user grants cannot substitute for a grant in the effective org.
 	a := Scope{i.EffectiveOrganizationID, i.UserID, s.auth.IsTenantAdmin("", i.Roles)}
-	if !authz.AllowedOrganization(ctx, s.auth, "", i.EffectiveOrganizationID, i.Roles, authz.PermissionLocalAgentWrite) || write && !authz.AllowedOrganization(ctx, s.auth, "", i.EffectiveOrganizationID, i.Roles, authz.PermissionLocalAgentWrite) || admin && !a.Admin {
+	allowed, err := authz.AuthorizeOrganization(ctx, s.auth, "", i.EffectiveOrganizationID, i.Roles, authz.PermissionLocalAgentWrite)
+	if err != nil {
+		return Scope{}, ErrUnavailable
+	}
+	if !allowed || admin && !a.Admin {
 		return Scope{}, ErrForbidden
 	}
 	return a, nil

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strconv"
-	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authz"
 	"task-processor/internal/ledger/orgresource"
 	n "task-processor/internal/notificationcenter"
@@ -13,7 +12,7 @@ import (
 )
 
 type acquisitionNoticeFacts interface {
-	NotificationFacts(context.Context, string, int) ([]productsourcing.AcquisitionNoticeFact, string, error)
+	NotificationFacts(context.Context, string, int) ([]sourcing.AcquisitionNoticeFact, string, error)
 }
 
 func acquisitionNotificationSource(reader acquisitionNoticeFacts) n.Source {

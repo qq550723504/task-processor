@@ -65,7 +65,14 @@ func (s *Service) FindAgentTaskReviewMetadata(ctx context.Context, runID string)
 		return TaskStateMetadata{}, false, ErrInvalid
 	}
 	i, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
-	if !ok || !ValidKey(i.UserID) || i.TenantID != i.EffectiveOrganizationID || !time.Now().Before(i.TokenExpiresAt) || !authz.AllowedOrganization(ctx, s.auth, i.UserID, i.TenantID, i.Roles, authz.PermissionWorkbenchTaskRead) {
+	if !ok || !ValidKey(i.UserID) || i.TenantID != i.EffectiveOrganizationID || !time.Now().Before(i.TokenExpiresAt) {
+		return TaskStateMetadata{}, false, ErrForbidden
+	}
+	allowed, err := authz.AuthorizeOrganization(ctx, s.auth, i.UserID, i.TenantID, i.Roles, authz.PermissionWorkbenchTaskRead)
+	if err != nil {
+		return TaskStateMetadata{}, false, ErrUnavailable
+	}
+	if !allowed {
 		return TaskStateMetadata{}, false, ErrForbidden
 	}
 	r, found, e := s.findAgentReview(ctx, Scope{Org: i.TenantID, Actor: i.UserID}, runID)
