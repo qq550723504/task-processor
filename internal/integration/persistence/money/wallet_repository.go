@@ -233,7 +233,7 @@ func (r *Repository) CreditSettledTopUp(ctx context.Context, _ string, settlemen
 			}
 			return ledgermoney.ErrUnavailable
 		}
-		if payment.PaymentPurpose == ledgermoney.PaymentPurposeWalletTopUp {
+		if payment.PaymentPurpose == ledgermoney.PaymentPurposeWalletTopUp || payment.PaymentPurpose == ledgermoney.PaymentPurposeServicePurchase {
 			return ledgermoney.ErrUnsupportedMutation
 		}
 		if payment.Currency != settlement.Currency || settlement.AmountMinor > payment.GrossAmountMinor {
@@ -316,6 +316,9 @@ func (r *Repository) ApplyTopUpReversal(ctx context.Context, _ string, reversal 
 			return ledgermoney.OrganizationWalletSnapshot{}, ledgermoney.ErrNotFound
 		}
 		return ledgermoney.OrganizationWalletSnapshot{}, err
+	}
+	if payment.PaymentPurpose == ledgermoney.PaymentPurposeServicePurchase {
+		return ledgermoney.OrganizationWalletSnapshot{}, ledgermoney.ErrUnsupportedMutation
 	}
 	if payment.PaymentPurpose == ledgermoney.PaymentPurposeWalletTopUp {
 		if _, err := r.AcceptProviderTopUpReversal(ctx, reversal); err != nil {

@@ -1,0 +1,80 @@
+package ecoservices
+
+import (
+	"errors"
+	"testing"
+	"time"
+)
+
+func serviceRequest() Request {
+	return Request{ID: "request", BuyerOrganizationID: "buyer", ProviderOrganizationID: "provider", State: "PAID_READY", Version: 1, OrderID: "order", PaymentReceiptID: "verified-payment", Quote: &Quote{AmountMinor: 101, Version: 1, Scope: "service scope", AcceptanceCriteria: "deliver registered company", DeliveryDays: 3}}
+}
+func TestStartCancelAndExactCustomerAcceptance(t *testing.T) {
+	r := serviceRequest()
+	buyer := Scope{OrganizationID: "buyer", ActorID: "buyer-user"}
+	provider := Scope{OrganizationID: "provider", ActorID: "provider-user"}
+	cancel := Command{Scope: buyer, Kind: "cancel", Key: "cancel", Version: 1}
+	if _, err := TransitionRequest(&r, cancel, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := TransitionRequest(&r, Command{Scope: provider, Kind: "start", Version: r.Version}, time.Now()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("cancelled request started: %v", err)
+	}
+	r = serviceRequest()
+	if _, err := TransitionRequest(&r, Command{Scope: provider, Kind: "start", Version: 1}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := TransitionRequest(&r, cancel, time.Now()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale cancellation succeeded: %v", err)
+	}
+	if _, err := TransitionRequest(&r, Command{Scope: provider, Kind: "deliver", Version: r.Version, Delivery: &Delivery{Content: "registration complete"}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := TransitionRequest(&r, Command{Scope: provider, Kind: "accept", Version: r.Version, DeliveryVersion: r.Delivery.Version}, time.Now()); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("provider accepted own delivery: %v", err)
+	}
+	if _, err := TransitionRequest(&r, Command{Scope: buyer, Kind: "accept", Key: "accept", Version: r.Version, DeliveryVersion: r.Delivery.Version - 1}, time.Now()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("wrong delivery accepted: %v", err)
+	}
+	fc, err := TransitionRequest(&r, Command{Scope: buyer, Kind: "accept", Key: "accept", Version: r.Version, DeliveryVersion: r.Delivery.Version}, time.Now())
+	if err != nil || fc == nil || fc.Kind != "SETTLE" || r.AcceptanceID == "" {
+		t.Fatalf("customer acceptance missing durable source command: %+v %v", fc, err)
+	}
+}
+func TestRefundAgreementNeedsBothExactVersionsAndPlatformReview(t *testing.T) {
+	r := serviceRequest()
+	r.State = "SERVICING"
+	buyer := Scope{OrganizationID: "buyer", ActorID: "b"}
+	provider := Scope{OrganizationID: "provider", ActorID: "p"}
+	admin := Scope{ActorID: "a", Platform: true}
+	if _, err := TransitionRequest(&r, Command{Scope: buyer, Kind: "refund_propose", Version: r.Version, RefundAmountMinor: 40, Reason: "partial delivery"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := TransitionRequest(&r, Command{Scope: admin, Kind: "refund_review", Version: r.Version, RefundVersion: 1, Reason: "approved"}, time.Now()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("single-side agreement reviewed: %v", err)
+	}
+	if _, err := TransitionRequest(&r, Command{Scope: provider, Kind: "refund_propose", Version: r.Version, RefundAmountMinor: 50, Reason: "counteroffer"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if r.Refund.BuyerConfirmed {
+		t.Fatal("changed amount retained old buyer consent")
+	}
+	if _, err := TransitionRequest(&r, Command{Scope: buyer, Kind: "refund_confirm", Version: r.Version, RefundVersion: 1}, time.Now()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("old proposal consent accepted: %v", err)
+	}
+	if _, err := TransitionRequest(&r, Command{Scope: buyer, Kind: "refund_confirm", Version: r.Version, RefundVersion: r.Refund.Version}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	fc, err := TransitionRequest(&r, Command{Scope: admin, Kind: "refund_review", Key: "review", Version: r.Version, RefundVersion: r.Refund.Version, Reason: "approved"}, time.Now())
+	if err != nil || fc == nil || fc.Kind != "REFUND" || fc.AmountMinor != 50 {
+		t.Fatalf("approved agreed refund missing: %+v %v", fc, err)
+	}
+}
+func TestChannelReleaseNeverCreatesCustomerAcceptance(t *testing.T) {
+	r := serviceRequest()
+	r.State = "AWAITING_ACCEPTANCE"
+	ApplyFinancialResult(&r, FinancialResult{OrderID: r.OrderID, State: "AUTOMATICALLY_RELEASED", Reason: "AR1: manual review required"}, time.Now())
+	if r.AcceptanceID != "" || r.State != "AWAITING_ACCEPTANCE" {
+		t.Fatal("channel expiry fabricated customer acceptance")
+	}
+}

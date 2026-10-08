@@ -127,6 +127,8 @@ func moneyRuntimeGrants() []string {
 		`GRANT SELECT ON TABLE public.ledger_payment_settlements TO referral_runtime`,
 		`DO $$ BEGIN EXECUTE format('GRANT CONNECT ON DATABASE %I TO money_owner_runtime', current_database()); END $$`,
 		`GRANT USAGE ON SCHEMA public TO money_owner_runtime`,
+		`GRANT SELECT, INSERT ON TABLE public.ledger_channel_payment_claims, public.ledger_service_effect_receipts TO money_owner_runtime`,
+		`GRANT SELECT, INSERT, UPDATE ON TABLE public.ledger_service_payment_bindings, public.ledger_service_operation_reservations TO money_owner_runtime`,
 		`GRANT SELECT, INSERT ON TABLE public.ledger_payment_settlements, public.ledger_refund_settlements, public.ledger_chargeback_settlements, public.ledger_organization_wallet_entries, public.ledger_organization_wallet_reserve_decisions, public.ledger_organization_topup_settlements, public.ledger_organization_wallet_reversals, public.ledger_topup_reversal_receipts, public.ledger_topup_excess_reconciliations TO money_owner_runtime`,
 		`GRANT SELECT, INSERT, UPDATE ON TABLE public.ledger_organization_wallets, public.ledger_organization_wallet_reservations, public.ledger_provider_topup_claims, public.ledger_topup_refund_holds TO money_owner_runtime`,
 	}

@@ -2,10 +2,7 @@ package s3
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/hex"
 	"net/http"
-	"strings"
 
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
@@ -47,20 +44,7 @@ func (s *KnowledgeStore) Inspect(ctx context.Context, o knowledge.Object) (knowl
 	return knowledgeInspection(i), nil
 }
 func knowledgeInspection(i ObjectInspection) knowledge.Inspection {
-	digest := strings.ToLower(i.Metadata["sha256"])
-	if i.ServerChecksumSHA256 != "" {
-		decoded, err := base64.StdEncoding.DecodeString(i.ServerChecksumSHA256)
-		if err != nil || len(decoded) != 32 {
-			return knowledge.Inspection{Exists: i.Exists, SizeBytes: i.ContentLength}
-		}
-		server := hex.EncodeToString(decoded)
-		if digest != "" && digest != server {
-			digest = ""
-		} else {
-			digest = server
-		}
-	}
-	return knowledge.Inspection{Exists: i.Exists, SHA256: digest, SizeBytes: i.ContentLength}
+	return knowledge.Inspection{Exists: i.Exists, SHA256: privateInspectionDigest(i), SizeBytes: i.ContentLength}
 }
 func (s *KnowledgeStore) ReadBounded(ctx context.Context, o knowledge.Object, max int64) ([]byte, error) {
 	data, i, err := s.uploader.ReadObject(ctx, o.Key, max)

@@ -1,0 +1,687 @@
+package ecoservices
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	e "task-processor/internal/ecoservices"
+	"time"
+)
+
+type Repository struct{ db *gorm.DB }
+type applicationRow struct {
+	ID             string `gorm:"primaryKey"`
+	OrganizationID string `gorm:"uniqueIndex;not null"`
+	State          string
+	Version        int64
+	MerchantID     string
+	Payload        []byte
+	UpdatedAt      time.Time
+}
+
+func (applicationRow) TableName() string { return "ecoservices_applications" }
+
+type listingRow struct {
+	ID                     string `gorm:"primaryKey"`
+	ProviderOrganizationID string `gorm:"index;not null"`
+	State                  string `gorm:"index"`
+	Category               string `gorm:"index"`
+	Title                  string
+	Version                int64
+	Payload                []byte
+}
+
+func (listingRow) TableName() string { return "ecoservices_listings" }
+
+type requestRow struct {
+	ID                                          string `gorm:"primaryKey"`
+	BuyerOrganizationID, ProviderOrganizationID string `gorm:"index;not null"`
+	State                                       string `gorm:"index"`
+	Title                                       string
+	Category                                    string
+	Version                                     int64
+	OrderID                                     *string `gorm:"uniqueIndex"`
+	PaymentReceiptID                            string
+	FinancialFence                              bool
+	Payload                                     []byte
+	CreatedAt, UpdatedAt                        time.Time
+}
+
+func (requestRow) TableName() string { return "ecoservices_requests" }
+
+type operationRow struct {
+	OrganizationID string `gorm:"primaryKey"`
+	Kind           string `gorm:"primaryKey"`
+	Key            string `gorm:"primaryKey"`
+	Fingerprint    string
+	Result         []byte
+}
+
+func (operationRow) TableName() string { return "ecoservices_operations" }
+
+type versionRow struct {
+	ID        string `gorm:"primaryKey"`
+	Kind      string `gorm:"primaryKey"`
+	Version   int64  `gorm:"primaryKey"`
+	ActorID   string
+	Payload   []byte
+	CreatedAt time.Time
+}
+
+func (versionRow) TableName() string { return "ecoservices_versions" }
+
+type financialRow struct {
+	ID               string `gorm:"primaryKey"`
+	RequestID        string `gorm:"index;not null"`
+	OrderID          string `gorm:"index;not null"`
+	Kind             string
+	Fingerprint      string
+	Payload          []byte
+	State            string `gorm:"index"`
+	DispatchAdmitted bool
+	Result           []byte
+	CreatedAt        time.Time
+}
+
+func (financialRow) TableName() string { return "ecoservices_financial_commands" }
+
+type merchantBindingRow struct {
+	ApplicationID     string `gorm:"primaryKey"`
+	OrganizationID    string `gorm:"uniqueIndex;not null"`
+	MerchantID        string `gorm:"uniqueIndex;not null"`
+	OriginalAttemptID string `gorm:"uniqueIndex;not null"`
+	Proof             []byte
+}
+
+func (merchantBindingRow) TableName() string { return "ecoservices_merchant_bindings" }
+
+type fileRow struct {
+	ID                                       string `gorm:"primaryKey"`
+	OrganizationID                           string `gorm:"index;not null"`
+	ParentID, ParentKind                     string
+	ActorID                                  string
+	Fingerprint                              string
+	Filename, ContentType, SHA256, ObjectKey string
+	SizeBytes                                int64
+	State                                    string
+	CreatedAt                                time.Time
+}
+
+func (fileRow) TableName() string { return "ecoservices_files" }
+
+// Install is only used by the explicit greenfield schema installer and tests.
+func Install(ctx context.Context, db *gorm.DB) error {
+	if db == nil {
+		return e.ErrUnavailable
+	}
+	return db.WithContext(ctx).AutoMigrate(&applicationRow{}, &listingRow{}, &requestRow{}, &operationRow{}, &versionRow{}, &financialRow{}, &merchantBindingRow{}, &fileRow{})
+}
+func listingRecord(v e.Listing) *listingRow {
+	p, _ := json.Marshal(v)
+	return &listingRow{ID: v.ID, ProviderOrganizationID: v.ProviderOrganizationID, State: v.State, Category: string(v.Category), Title: v.Title, Version: v.Version, Payload: p}
+}
+func requestRecord(v e.Request) *requestRow {
+	p, _ := json.Marshal(v)
+	var order *string
+	if v.OrderID != "" {
+		o := v.OrderID
+		order = &o
+	}
+	return &requestRow{ID: v.ID, BuyerOrganizationID: v.BuyerOrganizationID, ProviderOrganizationID: v.ProviderOrganizationID, State: v.State, Title: v.Title, Category: string(v.Category), Version: v.Version, OrderID: order, PaymentReceiptID: v.PaymentReceiptID, FinancialFence: v.FinancialFence, Payload: p, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+}
+func applicationRecord(v e.Application) *applicationRow {
+	p, _ := json.Marshal(v)
+	return &applicationRow{ID: v.ID, OrganizationID: v.OrganizationID, State: v.State, Version: v.Version, MerchantID: v.MerchantID, Payload: p, UpdatedAt: v.UpdatedAt}
+}
+func requestFact(v requestRow) (e.Request, error) {
+	var r e.Request
+	if json.Unmarshal(v.Payload, &r) != nil {
+		return r, e.ErrConflict
+	}
+	r.BuyerOrganizationID = v.BuyerOrganizationID
+	r.ProviderOrganizationID = v.ProviderOrganizationID
+	r.PaymentReceiptID = v.PaymentReceiptID
+	r.FinancialFence = v.FinancialFence
+	return r, nil
+}
+func applicationFact(v applicationRow) (e.Application, error) {
+	var r e.Application
+	if json.Unmarshal(v.Payload, &r) != nil {
+		return r, e.ErrConflict
+	}
+	r.OrganizationID = v.OrganizationID
+	r.MerchantID = v.MerchantID
+	return r, nil
+}
+func listingFact(v listingRow) (e.Listing, error) {
+	var r e.Listing
+	if json.Unmarshal(v.Payload, &r) != nil {
+		return r, e.ErrConflict
+	}
+	r.ProviderOrganizationID = v.ProviderOrganizationID
+	return r, nil
+}
+func lockOperation(tx *gorm.DB, c e.Command) error {
+	if tx.Dialector.Name() == "postgres" {
+		return tx.Exec("SELECT pg_advisory_xact_lock(hashtextextended(?,0))", "ecoservices:"+e.Fingerprint([]string{c.Scope.OrganizationID, c.Kind, c.Key})).Error
+	}
+	if tx.Dialector.Name() == "sqlite" {
+		return nil
+	}
+	return e.ErrUnavailable
+}
+func (r *Repository) Apply(ctx context.Context, c e.Command, freezeDays int) (e.Result, error) {
+	var out e.Result
+	if r == nil || r.db == nil || c.Fingerprint == "" {
+		return out, e.ErrUnavailable
+	}
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := lockOperation(tx, c); err != nil {
+			return err
+		}
+		var old operationRow
+		if err := tx.Where("organization_id=? AND kind=? AND key=?", c.Scope.OrganizationID, c.Kind, c.Key).Take(&old).Error; err == nil {
+			if old.Fingerprint != c.Fingerprint {
+				return e.ErrConflict
+			}
+			if json.Unmarshal(old.Result, &out) != nil {
+				return e.ErrConflict
+			}
+			return nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		now := time.Now().UTC()
+		id := uuid.NewSHA1(uuid.NameSpaceOID, []byte("ecoservices:"+c.Scope.OrganizationID+":"+c.Kind+":"+c.Key)).String()
+		var versionKind, versionID string
+		var version int64
+		var payload []byte
+		switch c.Kind {
+		case "application_submit":
+			var count int64
+			if err := tx.Model(&applicationRow{}).Where("organization_id=?", c.Scope.OrganizationID).Count(&count).Error; err != nil {
+				return err
+			}
+			if count != 0 {
+				return e.ErrConflict
+			}
+			app := *c.Application
+			app.ID = id
+			app.OrganizationID = c.Scope.OrganizationID
+			app.State = "SUBMITTED"
+			app.Version = 1
+			app.AgreementVersion = e.PolicyVersion
+			app.AgreementAccepted = false
+			app.MerchantID = ""
+			app.OnboardingState = "NOT_STARTED"
+			app.UpdatedAt = now
+			if err := attachFiles(tx, app.FileIDs, c.Scope.OrganizationID, "APPLICATION", app.ID); err != nil {
+				return err
+			}
+			if err := tx.Create(applicationRecord(app)).Error; err != nil {
+				return err
+			}
+			out.Application = &app
+			versionKind = "APPLICATION"
+			versionID = app.ID
+			version = app.Version
+			payload, _ = json.Marshal(app)
+		case "application_review", "application_reject", "agreement_accept":
+			var row applicationRow
+			q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=?", c.ID)
+			if !c.Scope.Platform {
+				q = q.Where("organization_id=?", c.Scope.OrganizationID)
+			}
+			if err := q.Take(&row).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+				return e.ErrNotFound
+			} else if err != nil {
+				return err
+			}
+			app, err := applicationFact(row)
+			if err != nil {
+				return err
+			}
+			if app.Version != c.Version {
+				return e.ErrConflict
+			}
+			if c.Kind == "agreement_accept" {
+				if app.State != "APPROVED" {
+					return e.ErrConflict
+				}
+				app.AgreementAccepted = true
+			} else {
+				if app.State != "SUBMITTED" {
+					return e.ErrConflict
+				}
+				app.State = "APPROVED"
+				if c.Kind == "application_reject" {
+					app.State = "REJECTED"
+				}
+				app.ReviewReason = c.Reason
+			}
+			if app.State == "APPROVED" && app.AgreementAccepted && app.MerchantID != "" && app.OnboardingState == "FINISH" {
+				app.State = "ACTIVE"
+			}
+			app.Version++
+			app.UpdatedAt = now
+			if err := tx.Save(applicationRecord(app)).Error; err != nil {
+				return err
+			}
+			out.Application = &app
+			versionKind = "APPLICATION"
+			versionID = app.ID
+			version = app.Version
+			payload, _ = json.Marshal(app)
+		case "listing_create", "listing_update", "listing_publish":
+			var appRow applicationRow
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id=? AND state=?", c.Scope.OrganizationID, "ACTIVE").Take(&appRow).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+				return e.ErrNotQualified
+			} else if err != nil {
+				return err
+			}
+			app, err := applicationFact(appRow)
+			if err != nil {
+				return err
+			}
+			if app.MerchantID == "" {
+				return e.ErrNotQualified
+			}
+			var item e.Listing
+			if c.Kind == "listing_create" {
+				item = *c.Listing
+				item.ID = id
+				item.Version = 1
+				item.State = "DRAFT"
+			} else {
+				var row listingRow
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=? AND provider_organization_id=?", c.ID, c.Scope.OrganizationID).Take(&row).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+					return e.ErrNotFound
+				} else if err != nil {
+					return err
+				}
+				item, err = listingFact(row)
+				if err != nil {
+					return err
+				}
+				if item.Version != c.Version {
+					return e.ErrConflict
+				}
+				if c.Kind == "listing_update" {
+					updated := *c.Listing
+					updated.ID = item.ID
+					updated.Version = item.Version
+					updated.State = "DRAFT"
+					item = updated
+				} else {
+					if e.ValidateListing(&item, freezeDays) != nil {
+						return e.ErrInvalid
+					}
+					item.State = "PUBLISHED"
+				}
+				item.Version++
+			}
+			item.ProviderOrganizationID = c.Scope.OrganizationID
+			item.ProviderName = app.CompanyName
+			if err := tx.Save(listingRecord(item)).Error; err != nil {
+				return err
+			}
+			out.Listing = &item
+			versionKind = "LISTING"
+			versionID = item.ID
+			version = item.Version
+			payload, _ = json.Marshal(item)
+		case "request_create":
+			var listing listingRow
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=? AND state=?", c.ID, "PUBLISHED").Take(&listing).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+				return e.ErrNotFound
+			} else if err != nil {
+				return err
+			}
+			item, err := listingFact(listing)
+			if err != nil {
+				return err
+			}
+			if item.ProviderOrganizationID == c.Scope.OrganizationID {
+				return e.ErrForbidden
+			}
+			req := e.Request{ID: id, BuyerOrganizationID: c.Scope.OrganizationID, ProviderOrganizationID: item.ProviderOrganizationID, ListingID: item.ID, ListingVersion: item.Version, Title: item.Title, Category: item.Category, Description: c.Description, FileIDs: c.FileIDs, State: "REQUESTED", Version: 1, CreatedAt: now, UpdatedAt: now}
+			if err := attachFiles(tx, req.FileIDs, c.Scope.OrganizationID, "REQUEST", req.ID); err != nil {
+				return err
+			}
+			if err := tx.Create(requestRecord(req)).Error; err != nil {
+				return err
+			}
+			out.Request = &req
+			versionKind = "REQUEST"
+			versionID = req.ID
+			version = req.Version
+			payload, _ = json.Marshal(req)
+		default:
+			var row requestRow
+			q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=?", c.ID)
+			if !c.Scope.Platform {
+				q = q.Where("buyer_organization_id=? OR provider_organization_id=?", c.Scope.OrganizationID, c.Scope.OrganizationID)
+			}
+			if err := q.Take(&row).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+				return e.ErrNotFound
+			} else if err != nil {
+				return err
+			}
+			req, err := requestFact(row)
+			if err != nil {
+				return err
+			}
+			fc, err := e.TransitionRequest(&req, c, now)
+			if err != nil {
+				return err
+			}
+			if c.Kind == "deliver" {
+				if err := attachFiles(tx, req.Delivery.FileIDs, c.Scope.OrganizationID, "REQUEST", req.ID); err != nil {
+					return err
+				}
+			}
+			if fc != nil {
+				var app applicationRow
+				if err := tx.Where("organization_id=?", req.ProviderOrganizationID).Take(&app).Error; err != nil {
+					return e.ErrNotQualified
+				}
+				if app.MerchantID == "" {
+					return e.ErrNotQualified
+				}
+				fc.MerchantID = app.MerchantID
+				data, err := json.Marshal(fc)
+				if err != nil {
+					return err
+				}
+				if err := tx.Create(&financialRow{ID: fc.ID, RequestID: req.ID, OrderID: req.OrderID, Kind: fc.Kind, Fingerprint: e.Fingerprint(fc), Payload: data, State: "PENDING", CreatedAt: now}).Error; err != nil {
+					return err
+				}
+			}
+			if err := tx.Save(requestRecord(req)).Error; err != nil {
+				return err
+			}
+			out.Request = &req
+			versionKind = "REQUEST"
+			versionID = req.ID
+			version = req.Version
+			payload, _ = json.Marshal(req)
+		}
+		if err := tx.Create(&versionRow{ID: versionID, Kind: versionKind, Version: version, ActorID: c.Scope.ActorID, Payload: payload, CreatedAt: now}).Error; err != nil {
+			return err
+		}
+		result, err := json.Marshal(out)
+		if err != nil {
+			return err
+		}
+		return tx.Create(&operationRow{OrganizationID: c.Scope.OrganizationID, Kind: c.Kind, Key: c.Key, Fingerprint: c.Fingerprint, Result: result}).Error
+	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	return out, err
+}
+func attachFiles(tx *gorm.DB, ids []string, org, kind, parent string) error {
+	for _, id := range ids {
+		var file fileRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=? AND organization_id=? AND state=?", id, org, "CONFIRMED").Take(&file).Error; err != nil {
+			return e.ErrForbidden
+		}
+		if file.ParentID != "" && (file.ParentID != parent || file.ParentKind != kind) {
+			return e.ErrForbidden
+		}
+		if file.ParentID == "" {
+			if file.ParentKind != kind {
+				return e.ErrForbidden
+			}
+			if err := tx.Model(&file).Update("parent_id", parent).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+func (r *Repository) Read(ctx context.Context, q e.Query) (e.Page, error) {
+	out := e.Page{Counts: map[string]int64{}}
+	db := r.db.WithContext(ctx)
+	offset := (q.Page - 1) * q.PageSize
+	switch q.Kind {
+	case "applications":
+		query := db.Model(&applicationRow{})
+		if !q.Scope.Platform {
+			query = query.Where("organization_id=?", q.Scope.OrganizationID)
+		}
+		if q.ID != "" {
+			query = query.Where("id=?", q.ID)
+		}
+		if q.State != "" {
+			query = query.Where("state=?", q.State)
+		}
+		if err := query.Count(&out.Total).Error; err != nil {
+			return out, err
+		}
+		var rows []applicationRow
+		if err := query.Order("updated_at DESC,id DESC").Offset(offset).Limit(q.PageSize).Find(&rows).Error; err != nil {
+			return out, err
+		}
+		out.Applications = []e.Application{}
+		for _, row := range rows {
+			v, err := applicationFact(row)
+			if err != nil {
+				return out, err
+			}
+			out.Applications = append(out.Applications, v)
+		}
+	case "catalog", "provider_listings":
+		query := db.Model(&listingRow{})
+		if q.Kind == "catalog" {
+			query = query.Where("state=?", "PUBLISHED")
+		} else {
+			query = query.Where("provider_organization_id=?", q.Scope.OrganizationID)
+		}
+		if q.ID != "" {
+			query = query.Where("id=?", q.ID)
+		}
+		if q.Category != "" {
+			query = query.Where("category=?", q.Category)
+		}
+		if q.Search != "" {
+			query = query.Where("title LIKE ?", "%"+q.Search+"%")
+		}
+		if err := query.Count(&out.Total).Error; err != nil {
+			return out, err
+		}
+		var rows []listingRow
+		if err := query.Order("id").Offset(offset).Limit(q.PageSize).Find(&rows).Error; err != nil {
+			return out, err
+		}
+		out.Listings = []e.Listing{}
+		for _, row := range rows {
+			v, err := listingFact(row)
+			if err != nil {
+				return out, err
+			}
+			out.Listings = append(out.Listings, v)
+		}
+	case "requests", "due_orders":
+		query := db.Model(&requestRow{})
+		if !q.Scope.Platform {
+			if q.Side == "buyer" {
+				query = query.Where("buyer_organization_id=?", q.Scope.OrganizationID)
+			} else if q.Side == "provider" {
+				query = query.Where("provider_organization_id=?", q.Scope.OrganizationID)
+			} else {
+				query = query.Where("buyer_organization_id=? OR provider_organization_id=?", q.Scope.OrganizationID, q.Scope.OrganizationID)
+			}
+		}
+		if q.ID != "" {
+			query = query.Where("id=?", q.ID)
+		}
+		if q.Category != "" {
+			query = query.Where("category=?", q.Category)
+		}
+		if q.Search != "" {
+			query = query.Where("title LIKE ? OR id LIKE ?", "%"+q.Search+"%", "%"+q.Search+"%")
+		}
+		if q.From != nil {
+			query = query.Where("created_at>=?", *q.From)
+		}
+		if q.To != nil {
+			query = query.Where("created_at<?", *q.To)
+		}
+		var counts []struct {
+			State string
+			Count int64
+		}
+		if err := query.Session(&gorm.Session{}).Select("state,COUNT(*) AS count").Group("state").Scan(&counts).Error; err != nil {
+			return out, err
+		}
+		for _, v := range counts {
+			out.Counts[v.State] = v.Count
+		}
+		if q.State != "" {
+			query = query.Where("state=?", q.State)
+		}
+		if err := query.Count(&out.Total).Error; err != nil {
+			return out, err
+		}
+		var rows []requestRow
+		if err := query.Order("updated_at DESC,id DESC").Offset(offset).Limit(q.PageSize).Find(&rows).Error; err != nil {
+			return out, err
+		}
+		out.Requests = []e.Request{}
+		for _, row := range rows {
+			v, err := requestFact(row)
+			if err != nil {
+				return out, err
+			}
+			v.Side = "buyer"
+			if v.ProviderOrganizationID == q.Scope.OrganizationID {
+				v.Side = "provider"
+			}
+			out.Requests = append(out.Requests, v)
+		}
+	default:
+		return out, e.ErrInvalid
+	}
+	if q.ID != "" && out.Total == 0 {
+		return out, e.ErrNotFound
+	}
+	return out, nil
+}
+func (r *Repository) PendingFinancialCommands(ctx context.Context, limit int) ([]e.FinancialCommand, error) {
+	if limit < 1 || limit > 100 {
+		return nil, e.ErrInvalid
+	}
+	var rows []financialRow
+	if err := r.db.WithContext(ctx).Where("state IN ?", []string{"PENDING", "PROCESSING"}).Order("created_at,id").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]e.FinancialCommand, 0, len(rows))
+	for _, row := range rows {
+		var command e.FinancialCommand
+		if json.Unmarshal(row.Payload, &command) != nil {
+			return nil, e.ErrConflict
+		}
+		command.DispatchAdmitted = row.DispatchAdmitted
+		out = append(out, command)
+	}
+	return out, nil
+}
+func (r *Repository) AdmitFinancialCommand(ctx context.Context, in e.FinancialCommand) (e.FinancialCommand, error) {
+	var out e.FinancialCommand
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var request requestRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=?", in.RequestID).Take(&request).Error; err != nil {
+			return err
+		}
+		var row financialRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=?", in.ID).Take(&row).Error; err != nil {
+			return err
+		}
+		original := in
+		original.DispatchAdmitted = false
+		if row.Fingerprint != e.Fingerprint(original) || row.OrderID != in.OrderID {
+			return e.ErrConflict
+		}
+		if json.Unmarshal(row.Payload, &out) != nil {
+			return e.ErrConflict
+		}
+		if row.DispatchAdmitted {
+			out.DispatchAdmitted = true
+			return nil
+		}
+		req, err := requestFact(request)
+		if err != nil {
+			return err
+		}
+		switch in.Kind {
+		case "CREATE_PURCHASE":
+			if req.State != "ORDER_PENDING" || req.FinancialFence {
+				return e.ErrConflict
+			}
+		case "SETTLE":
+			if req.AcceptanceID != in.SourceProofID || req.FinancialFence || req.State != "ACCEPTED" {
+				return e.ErrConflict
+			}
+		case "CANCEL":
+			if req.State != "CANCEL_REQUESTED" {
+				return e.ErrConflict
+			}
+		case "REFUND":
+			if req.Refund == nil || req.Refund.State != "APPROVED" || req.Refund.AmountMinor != in.AmountMinor {
+				return e.ErrConflict
+			}
+		default:
+			return e.ErrInvalid
+		}
+		// The immutable original intent is admitted once. Later refunds must queue
+		// behind this in-flight intent in billing, rather than undo its permission.
+		if err := tx.Model(&row).Updates(map[string]any{"dispatch_admitted": true, "state": "PROCESSING"}).Error; err != nil {
+			return err
+		}
+		out.DispatchAdmitted = true
+		return nil
+	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	return out, err
+}
+func (r *Repository) CompleteFinancialCommand(ctx context.Context, in e.FinancialCommand, result e.FinancialResult) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var request requestRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=?", in.RequestID).Take(&request).Error; err != nil {
+			return err
+		}
+		var row financialRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=?", in.ID).Take(&row).Error; err != nil {
+			return err
+		}
+		original := in
+		original.DispatchAdmitted = false
+		if row.Fingerprint != e.Fingerprint(original) {
+			return e.ErrConflict
+		}
+		req, err := requestFact(request)
+		if err != nil {
+			return err
+		}
+		data, err := json.Marshal(result)
+		if err != nil {
+			return err
+		}
+		if string(row.Result) == string(data) {
+			return nil
+		}
+		if err := e.ApplyFinancialResult(&req, result, time.Now().UTC()); err != nil {
+			return err
+		}
+		if err := tx.Save(requestRecord(req)).Error; err != nil {
+			return err
+		}
+		terminal := result.State == "SETTLED" || result.State == "REFUNDED" || result.State == "CLOSED_UNPAID" || in.Kind == "CREATE_PURCHASE" && result.PaymentReceiptID != ""
+		state := "PROCESSING"
+		if terminal {
+			state = "DONE"
+		}
+		return tx.Model(&row).Updates(map[string]any{"state": state, "result": data}).Error
+	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+}
