@@ -14,6 +14,31 @@ import { MarketingHomepage } from "@/components/marketing/marketing-homepage";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("MarketingHomepage", () => {
+  it("uses the current owner price and the 30-day contract without inventing a trial grant", () => {
+    const pricing = {
+      schema_version: "retail-price-catalog-v1" as const,
+      store_period_days: 30 as const,
+      items: [{ offer_id: "store-service-30d-v1", product_kind: "STORE_RENEWAL_PERIOD" as const, resource_type: "store_renewal_period" as const, currency: "CNY" as const, unit_price_minor: "16800", min_quantity: "1", max_quantity: "120", pricing_version: "store-168-v1" }],
+    };
+    const { rerender } = render(<MarketingHomepage pricing={pricing} />);
+    const section = document.getElementById("pricing")!;
+    expect(within(section).getByRole("heading", { name: "¥168 / 店铺 / 30 天" })).toBeInTheDocument();
+    expect(within(section).queryByText("¥99")).not.toBeInTheDocument();
+    expect(within(section).getByText(/试用计划尚未开放/)).toBeInTheDocument();
+    expect(within(section).queryByRole("link", { name: /免费开始体验/ })).not.toBeInTheDocument();
+    rerender(<MarketingHomepage pricing={{ ...pricing, items: [{ ...pricing.items[0], unit_price_minor: "19900", pricing_version: "owner-next" }] }} />);
+    expect(within(section).getByRole("heading", { name: "¥199 / 店铺 / 30 天" })).toBeInTheDocument();
+  });
+
+  it("shows unavailable pricing instead of a static price when the catalog is missing or empty", () => {
+    const { rerender } = render(<MarketingHomepage />);
+    const section = document.getElementById("pricing")!;
+    expect(within(section).getByText("店铺价格暂不可用")).toBeInTheDocument();
+    expect(within(section).queryByText("¥168")).not.toBeInTheDocument();
+    rerender(<MarketingHomepage pricing={{ schema_version: "retail-price-catalog-v1", store_period_days: 30, items: [] }} />);
+    expect(within(section).getByText("店铺价格暂不可用")).toBeInTheDocument();
+  });
+
   it("presents the public site as 硕米智能引擎", () => {
     render(<MarketingHomepage />);
 

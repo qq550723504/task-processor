@@ -10,11 +10,9 @@ import (
 
 	"gorm.io/gorm"
 
-	"task-processor/internal/commercial/billing"
 	orgresourceadapter "task-processor/internal/integration/orgresource"
 	commercialstore "task-processor/internal/integration/persistence/commercialbilling"
 	moneystore "task-processor/internal/integration/persistence/money"
-	"task-processor/internal/ledger/orgresource"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
@@ -89,22 +87,8 @@ func migrateOwnerSchemas(moneyDB, commercialDB *gorm.DB) error {
 	if err != nil {
 		return fmt.Errorf("open commercial catalog owner: %w", err)
 	}
-	dataOfferIDs, err := store.ListActiveDataRowOfferIDs(context.Background())
-	if err != nil {
-		return fmt.Errorf("inspect existing data-row offers: %w", err)
-	}
-	for _, offerID := range dataOfferIDs {
-		if offerID != "data-row-1688-server-v1" {
-			return fmt.Errorf("existing DATA_ROW offer %q requires an explicit price decision", offerID)
-		}
-	}
-	if err := store.CreateOfferIfAbsent(context.Background(), billing.Offer{
-		OfferID: "data-row-1688-server-v1", ProductKind: billing.ProductDataRow,
-		ResourceType: orgresource.ResourceDataRow, Currency: billing.CurrencyCNY,
-		UnitPriceMinor: 5, PricingVersion: "1688-server-5fen-v1",
-		MinQuantity: 1, MaxQuantity: 100000, Status: billing.OfferActive,
-	}); err != nil {
-		return fmt.Errorf("install approved data-row offer: %w", err)
+	if err := store.InstallInitialRetailOffers(context.Background()); err != nil {
+		return fmt.Errorf("install approved retail offers: %w", err)
 	}
 	return nil
 }

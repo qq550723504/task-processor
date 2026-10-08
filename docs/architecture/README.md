@@ -189,6 +189,9 @@ source of truth for long-lived rules.
 - [`unified-base-prepaid-resources-v1.md`](./unified-base-prepaid-resources-v1.md)
   - IMPLEMENTATION_READY design basis for #478/#564: current Figma base plan, native Stores, prepaid purchases, real resource events and Product Agent point metering; supersedes subscription/quota/Token entry paths without changing repository package-boundary rules.
 
+- [`commercial-retail-pricing-v1.md`](./commercial-retail-pricing-v1.md)
+  - IMPLEMENTATION_READY #600: approved Store CNY 168 per 30-day period, AI-point purchase CNY 0.01 per point, create-only catalog installation and price-only public projection; unchanged wallet/resource/Store contracts.
+
 These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 

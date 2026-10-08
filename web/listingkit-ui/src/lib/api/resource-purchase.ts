@@ -52,6 +52,7 @@ const offer = z
       positiveInt64(v.max_quantity) &&
       BigInt(v.min_quantity) <= BigInt(v.max_quantity),
   );
+export const resourceOfferSchema = offer;
 const offers = z
   .object({ organization_id: id, items: z.array(offer).max(100) })
   .strict()
