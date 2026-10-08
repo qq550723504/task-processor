@@ -18,3 +18,11 @@ func TestSupplyPermissionsAreExplicitAndDoNotGrantPublishingToViewers(t *testing
 	require.False(t, authorizer.Authorize("actor", []string{"listingkit_viewer"}, PermissionWorkbenchListingSubmit))
 	require.False(t, authorizer.Authorize("actor", []string{"unassigned"}, PermissionWorkbenchListingSubmit))
 }
+
+func TestSupplyMenuGrantsCurrentConsumerPermissions(t *testing.T) {
+	require.True(t, ValidModuleIDs([]string{"supply-mine"}))
+	permissions := ModulePermissions([]string{"supply-mine"})
+	for _, p := range []string{PermissionWorkbenchSupplyRead, PermissionWorkbenchSupplyManage, PermissionWorkbenchListingSubmit, PermissionWorkbenchStoreRead} {
+		require.Contains(t, permissions, p)
+	}
+}

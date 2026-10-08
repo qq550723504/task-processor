@@ -1,26 +1,29 @@
-package submissionpersistence
+package officialpersistence
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	recordstore "task-processor/internal/integration/persistence/listing/record"
+	submissionstore "task-processor/internal/integration/persistence/listing/submission"
 	"task-processor/internal/listing/submission"
 	"task-processor/internal/product/collection"
 )
 
 type OfficialRepository struct {
 	db   *gorm.DB
-	core *Repository
+	core *submissionstore.Repository
 }
 
 func NewOfficialRepository(ctx context.Context, db *gorm.DB) (*OfficialRepository, error) {
 	if VerifyOfficialSchema(ctx, db) != nil {
 		return nil, submission.ErrExecutionUnavailable
 	}
-	core, err := NewOfficialEffectsRepository(db)
+	core, err := submissionstore.NewOfficialEffectsRepository(db)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +187,7 @@ func (r *OfficialRepository) CompleteOfficial(ctx context.Context, proof submiss
 	} else if !errors.Is(err, submission.ErrExecutionNotFound) {
 		return submission.OfficialReceipt{}, err
 	}
-	bound, err := NewTransactionFinalizer(ctx, tx)
+	bound, err := submissionstore.NewTransactionFinalizer(ctx, tx)
 	if err != nil {
 		return submission.OfficialReceipt{}, err
 	}
@@ -267,3 +270,15 @@ func (r *OfficialRepository) FindOfficialTarget(ctx context.Context, org string,
 
 var _ submission.OfficialIntentRepository = (*OfficialRepository)(nil)
 var _ submission.OfficialReceiptRepository = (*OfficialRepository)(nil)
+
+// Preserve the original official-intent transaction lock identity.
+func advisoryLock(db *gorm.DB, parts ...string) error {
+	hash := sha256.New()
+	var length [8]byte
+	for _, part := range parts {
+		binary.BigEndian.PutUint64(length[:], uint64(len(part)))
+		_, _ = hash.Write(length[:])
+		_, _ = hash.Write([]byte(part))
+	}
+	return db.Exec("SELECT pg_advisory_xact_lock(?)", int64(binary.BigEndian.Uint64(hash.Sum(nil)[:8]))).Error
+}

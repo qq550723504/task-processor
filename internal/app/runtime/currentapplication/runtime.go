@@ -5,9 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"go.temporal.io/sdk/client"
-	"go.temporal.io/sdk/worker"
 	"net"
 	"net/http"
+	"task-processor/internal/app/productsourcing"
+	supplyapp "task-processor/internal/app/supplychain"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -51,6 +52,7 @@ type Dependencies struct {
 // ApplicationFeatures keeps separately owned, opt-in current modules together
 // only at the serving composition boundary.
 type ApplicationFeatures struct {
+	SourceMediaStorage                                   productsourcing.SourceMediaStorage
 	Knowledge                                            *knowledge.Service
 	StoreCenterDB                                        *gorm.DB
 	LocalTrialDB                                         *gorm.DB
@@ -65,7 +67,7 @@ type ApplicationFeatures struct {
 	ProductCollections                                   bool
 	SupplyAssetDB                                        *gorm.DB
 	SupplyWorkflow                                       client.Client
-	SupplyWorker                                         *worker.Worker
+	SupplyWorker                                         *supplyapp.OperationWorker
 	ImageAgentDB                                         *gorm.DB
 	AccountAuditImageDB, AccountAuditProductDB           *gorm.DB
 	ImageAgentWorkflow                                   imageagent.WorkflowClient
@@ -376,7 +378,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var supplyAssetDB *gorm.DB
 	var supplyWorkflow client.Client
-	var supplyWorker worker.Worker
+	var supplyWorker supplyapp.OperationWorker
 	if s := cfg.SupplyChain; s != nil {
 		supplyAssetDB, err = dependencies.OpenSupplyAssets(startupContext, s.AssetDatabase)
 		if err != nil || supplyAssetDB == nil {
@@ -435,9 +437,16 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	if dependencies.NewApplicationWithFeatures == nil && commercialOwnerDB == nil && productDB == nil && referralDB == nil && membershipDB == nil && dependencies.NewApplication == nil {
 		return errors.New("current application serving lifecycle unavailable")
 	}
+	var sourceMediaStorage productsourcing.SourceMediaStorage
+	if cfg.SourceMedia != nil {
+		sourceMediaStorage, err = NewSourceMediaStorage(*cfg.SourceMedia, logger)
+		if err != nil {
+			return errors.New("source media storage unavailable")
+		}
+	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, SupplyAssetDB: supplyAssetDB, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, SourceMediaStorage: sourceMediaStorage, SupplyAssetDB: supplyAssetDB, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {

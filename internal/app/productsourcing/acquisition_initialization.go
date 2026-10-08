@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	officialstore "task-processor/internal/integration/persistence/listing/official"
 	"time"
 
 	"gorm.io/gorm"
@@ -106,7 +107,7 @@ func InstallSupplyChainSchema(db *gorm.DB) error {
 		return errors.New("supply requires existing Product PostgreSQL owner")
 	}
 	return db.Transaction(func(tx *gorm.DB) error {
-		for _, install := range []func(*gorm.DB) error{preparationstore.InstallSchema, recordstore.InstallSchema, preparationstore.InstallOperationSchema, submissionstore.InstallSchema, submissionstore.InstallOfficialSchema, reviewstore.InstallSchema} {
+		for _, install := range []func(*gorm.DB) error{preparationstore.InstallSchema, recordstore.InstallSchema, preparationstore.InstallOperationSchema, submissionstore.InstallSchema, officialstore.InstallOfficialSchema, reviewstore.InstallSchema} {
 			if err := install(tx); err != nil {
 				return err
 			}

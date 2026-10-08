@@ -58,7 +58,7 @@ export const officialConnectionCompleteSchema = z
 export const officialConnectionQuerySchema = z
   .object({ attemptId: z.uuid() })
 	.strict();
-export const officialApplicationChoicesSchema=z.array(z.object({
+const officialApplicationChoicesSchema=z.array(z.object({
 	appId:z.string().min(1).max(128),revision:z.string().min(1).max(200),
 	type:z.enum(["self_operated","semi_managed","fully_managed"]),
 }).strict()).max(16).refine(values=>new Set(values.map(v=>v.appId)).size===values.length);

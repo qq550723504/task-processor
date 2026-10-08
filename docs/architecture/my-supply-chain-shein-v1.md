@@ -313,3 +313,21 @@ OfficialRepository 锁原 intent，通过 existing transaction finalizer 在同�
 ### 增量实现合同：官方库存证明（2026-10-09）
 
 独立边界检查 IMPLEMENTATION_READY；复用官方 proof_of_stock required/show、immutable TargetRecord JSON/hash 和现有 SSRF-safe HTTPS reader。每个 SKC 最多一个公开 HTTPS 文件，类型 1 为实际 JPEG/PNG、类型 2 为 PDF，最多 3MiB。服务器观察固定 SKC/name/type/sourceURL 与 bytes/mediaType/contentHash；浏览器不得提供观察。缺失或不匹配不能 Ready。保存时读取实际文件，任何图片 transform 前及 publish 前重新读取全部文件并比较原 hash；漂移不得追加外部 mutation。没有新表、事实 owner、审批或文件恢复系统。官方接收文件不执行文件内容；本次不新增 PDF 内容审查或安全扫描产品。
+
+来源图片存储装配修正：独立检查确认现有 ImageAgent 耦合构成核心 happy path BLOCKER（普通文件上传无法独立启用），允许 Reuse Existing Architecture 局部修正，IMPLEMENTATION_READY。当前 private manifest 的可选 sourceMedia 直接映射 ProductCollectionSourceMedia，复用原 S3 immutable 配置/校验；HTTP 只消费此来源，不 fallback ImageAgent。启用文件上传不打开 Agent DB、Temporal、预算或 admission。二者可使用不同 bucket 或同 bucket 不同 immutable namespace。未配置文件存储仍返回不可用，URL 来源入口保留。
+
+
+### UI 增量 Design Basis：批量人工审核
+
+Reuse Existing Architecture / Ready。Figma 待审核 frame 2738:359 的批量审核通过复用当前 Review.Decide 与 Supply 原范围持久意图；一个页面最多选择20件，先读取并核对每个原 record/proposal 的 owner、source、store、baseVersion，再展示实际标题及证据。用户明确确认后顺序接受当前 pending 修订；每件独立使用已有幂等 key/receipt，失败或 UNKNOWN 即停止，原待核实意图继续保留，不把部分完成写成整批成功。组织切换在处理期间阻止。没有新表、状态、事实 owner、恢复平台或 provider 调用。批准和 Apply 保持两个显式动作；批量批准后仍在原审核入口单独确认应用并补全新目标资料，不自动上传。完整跨页批量操作仍由既有 Operation owner 执行，页面所选不伪装成整批。
+
+整批列表筛选 Design Basis: Reuse Existing Architecture / Ready。来源筛选仅接受 own/acquisition，SKU 和批次名称与标题同属只读当前快照查询；固定 membership、counts、cursor、owner、授权及状态不变。筛选在扫描完整批次时执行，不在当前页客户端截断。SHEIN/美国站是当前唯一开放目标，页面明确展示该范围，其他平台不伪造可用。
+
+
+### 当前 adapter 落点修正（独立检查 IMPLEMENTATION_READY，2026-10-09）
+
+当前 official UoW 位于 `internal/integration/persistence/listing/official`，复用纯 Submission persistence 的 transaction finalizer，原表、锁身份、Product DB 事务与唯一 UNKNOWN owner 不变。Preparation/Target persistence 只准入对应领域端口；官方 SHEIN transport 仅三个 official 文件消费确定性 goods/model。Supply HTTP 在 `internal/app/supplychain/httpapi`，Temporal workflow/starter/worker factory 在 `internal/app/runtime/supplychain`，HTTP 只注入无 SDK 的 starter/lifecycle/factory。
+
+Legacy decision: EXTRACT。Reusable behavior: 现有 httpimage public HTTPS/SSRF/content helper；Current owner: 已登记 CURRENT leaf；Cutover/deletion condition: 旧 ProductImage adapter 无新增调用，保留原 legacy ceiling=8。新增精确 consumer 文件/API 使用 Issue398 现有全源码准入模式；不开放目录、ProductImage provider 或 sibling API。独立检查分类为 IMPLEMENTATION_TEST，必需 guard 不放宽。来源存储实际 constructor 绑定当前 logger，不以库存登记替代真实接线。
+
+来源 S3 构造器与配置校验归现有 `internal/app/runtime/currentapplication/source_media_storage.go`，产品能力只消费 SourceMediaStorage port。避免给冻结 core 根增加消费者，原 import ceiling 不变；runtime 创建存储后通过当前 ApplicationFeatures / command 注入 port；HTTP 不依赖 runtime/config constructor。CURRENT HTTPS helper 仅随实际文件迁移到 runtime 精确位置，旧 API/文件仍禁入。

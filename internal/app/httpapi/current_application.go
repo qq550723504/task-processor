@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	supplyhttp "task-processor/internal/app/supplychain/httpapi"
 	billinghttp "task-processor/internal/commercial/billing/httpapi"
 	"time"
 
@@ -16,7 +17,6 @@ import (
 	confighttp "task-processor/internal/agentconfig/httpapi"
 	registration "task-processor/internal/app/referralregistration"
 	storeapp "task-processor/internal/app/storecenter"
-	supplyapp "task-processor/internal/app/supplychain"
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
@@ -134,6 +134,8 @@ type currentApplicationOptions struct {
 	membership                *MembershipDependencies
 	referrals                 int
 	productAcquisitions       int
+	collectionSourceMedias    int
+	collectionSourceMedia     *collectionSourceMediaDependencies
 	productCollections        int
 	supplyChains              int
 	supplyChain               *SupplyChainDependencies
@@ -288,10 +290,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	if supplied.storeCenters > 1 || supplied.localTrials > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.productCollections > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 || supplied.accountAuditSources > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
 	}
+	if supplied.collectionSourceMedias > 1 || cfg.ProductCollectionSourceMedia.Enabled != (supplied.collectionSourceMedias == 1) || supplied.collectionSourceMedias == 1 && (supplied.productCollections != 1 || supplied.collectionSourceMedia == nil || supplied.collectionSourceMedia.Storage == nil) {
+		return nil, errors.New("source media requires its explicit current storage port and collections")
+	}
 	if supplied.productCollections > 0 && supplied.productAcquisitionDB == nil {
 		return nil, errors.New("collections require their current Product owner pool")
 	}
-	if supplied.supplyChains > 1 || supplied.supplyChains > 0 && (supplied.supplyChain == nil || supplied.supplyChain.AssetDB == nil || supplied.supplyChain.Workflow == nil || supplied.supplyChain.Worker == nil || supplied.productCollections != 1 || supplied.productAcquisitionDB == nil || supplied.storeCenters != 1 || supplied.officialStoreApplications == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "") {
+	if supplied.supplyChains > 1 || supplied.supplyChains > 0 && (supplied.supplyChain == nil || supplied.supplyChain.AssetDB == nil || supplied.supplyChain.Starter == nil || supplied.supplyChain.NewWorker == nil || supplied.supplyChain.Worker == nil || supplied.productCollections != 1 || supplied.productAcquisitionDB == nil || supplied.storeCenters != 1 || supplied.officialStoreApplications == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "") {
 		return nil, errors.New("supply chain requires current Product, Store, Asset and workflow owners")
 	}
 	if supplied.localTrials > 0 {
@@ -559,7 +564,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, acquisition)
 	}
 	if supplied.productCollections > 0 {
-		collections, err := buildProductCollectionModuleWithSourceMedia(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, cfg, supplied.supplyChains > 0)
+		collections, err := buildProductCollectionModuleWithSourceMedia(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, cfg, supplied.supplyChains > 0, supplied.collectionSourceMedia)
 		if err != nil {
 			return nil, fmt.Errorf("build current product collections: %w", err)
 		}
@@ -820,7 +825,7 @@ type currentApplicationOptionalRoutes struct {
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
 	if optional.SupplyChain {
-		for _, r := range supplyapp.SupplyRoutes(nil, nil) {
+		for _, r := range supplyhttp.SupplyRoutes(nil, nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
 		}
 	}
@@ -961,7 +966,7 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {
-		if descriptor.Path == supplyapp.SupplyBasePath || strings.HasPrefix(descriptor.Path, supplyapp.SupplyBasePath+"/") {
+		if descriptor.Path == supplyhttp.SupplyBasePath || strings.HasPrefix(descriptor.Path, supplyhttp.SupplyBasePath+"/") {
 			if !optional.SupplyChain {
 				return errors.New("supply chain feature not admitted")
 			}

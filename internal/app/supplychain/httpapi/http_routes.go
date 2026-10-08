@@ -1,4 +1,4 @@
-package supplychainapp
+package supplychainhttp
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	sigjson "sigs.k8s.io/json"
 	"strconv"
 	"strings"
+	supplyapp "task-processor/internal/app/supplychain"
 	"task-processor/internal/httproute"
 	"task-processor/internal/listing/preparation"
 	record "task-processor/internal/listing/record/target"
@@ -23,7 +24,7 @@ import (
 const SupplyBasePath = "/api/v1/workbench/supply-preparations"
 const supplyMaxBytes = 2 << 20
 
-func SupplyRoutes(app *Application, bind func(context.Context, string) (context.Context, error)) []httproute.Descriptor {
+func SupplyRoutes(app *supplyapp.Application, bind func(context.Context, string) (context.Context, error)) []httproute.Descriptor {
 	specs := []struct{ method, path, action, permission string }{
 		{"GET", "/optimization-options", "optimization-options", preparation.PermissionManage},
 		{"GET", "", "list", preparation.PermissionRead}, {"POST", "/transfer", "transfer", preparation.PermissionManage}, {"GET", "/transfers/by-key/:key", "transfer-read", preparation.PermissionRead},
@@ -57,7 +58,7 @@ func SupplyRoutes(app *Application, bind func(context.Context, string) (context.
 					return
 				}
 			}
-			if spec.action != "list" && spec.action != "sources" && spec.action != "stages" && spec.action != "operation-items" && spec.action != "operations" && c.Request.URL.RawQuery != "" {
+			if spec.action != "optimization-options" && spec.action != "list" && spec.action != "sources" && spec.action != "stages" && spec.action != "operation-items" && spec.action != "operations" && c.Request.URL.RawQuery != "" {
 				supplyError(c, preparation.ErrInvalid)
 				return
 			}
@@ -75,7 +76,7 @@ func SupplyRoutes(app *Application, bind func(context.Context, string) (context.
 					return
 				}
 				if app.OptimizationOptions == nil {
-					output = OptimizationOptions{Titles: []TitleOptimizationChoice{}, Reason: "智能体优化未配置"}
+					output = supplyapp.OptimizationOptions{Titles: []supplyapp.TitleOptimizationChoice{}, Reason: "智能体优化未配置"}
 					break
 				}
 				output, err = app.OptimizationOptions(ctx, q)
@@ -83,13 +84,14 @@ func SupplyRoutes(app *Application, bind func(context.Context, string) (context.
 				output, err = app.Preparations.Read(ctx, c.Param("preparation_id"))
 			case "stages":
 				values, e := url.ParseQuery(c.Request.URL.RawQuery)
-				if e != nil || len(values["storeId"]) != 1 || !collection.ValidID(values.Get("storeId")) || len(values["stage"]) != 1 || !validStage(values.Get("stage")) {
+				if e != nil || len(values["storeId"]) != 1 || !collection.ValidID(values.Get("storeId")) || len(values["stage"]) != 1 || !validStage(values.Get("stage")) || len(values["sourceKind"]) > 1 || values.Has("sourceKind") && values.Get("sourceKind") != "own" && values.Get("sourceKind") != "acquisition" {
 					supplyError(c, preparation.ErrInvalid)
 					return
 				}
-				storeID, stage := values.Get("storeId"), values.Get("stage")
+				storeID, stage, sourceKind := values.Get("storeId"), values.Get("stage"), values.Get("sourceKind")
 				values.Del("storeId")
 				values.Del("stage")
+				values.Del("sourceKind")
 				request := c.Request.Clone(ctx)
 				request.URL.RawQuery = values.Encode()
 				q, e := supplyQuery(request)
@@ -97,7 +99,7 @@ func SupplyRoutes(app *Application, bind func(context.Context, string) (context.
 					supplyError(c, e)
 					return
 				}
-				output, err = app.Stages(ctx, c.Param("preparation_id"), storeID, stage, q)
+				output, err = app.Stages(ctx, c.Param("preparation_id"), storeID, stage, q, sourceKind)
 			case "operations":
 				values, e := url.ParseQuery(c.Request.URL.RawQuery)
 				if e != nil || len(values["storeId"]) != 1 || !collection.ValidID(values.Get("storeId")) {
@@ -161,7 +163,7 @@ func SupplyRoutes(app *Application, bind func(context.Context, string) (context.
 					output, err = app.QueryRules(ctx, in)
 				}
 			case "resolve-upload":
-				var in ResolveUploadInput
+				var in supplyapp.ResolveUploadInput
 				_, e := supplyBody(c.Request, &in, false)
 				if e != nil {
 					supplyError(c, e)
@@ -315,4 +317,12 @@ func supplyError(c *gin.Context, err error) {
 		status, code = http.StatusConflict, "OUTCOME_UNKNOWN"
 	}
 	c.JSON(status, gin.H{"code": code})
+}
+
+func validStage(v string) bool {
+	switch v {
+	case "all", "waiting", "missing", "ready", "review", "uploaded":
+		return true
+	}
+	return false
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
+	officialstore "task-processor/internal/integration/persistence/listing/official"
 	"testing"
 	"time"
 
@@ -86,7 +87,7 @@ func testSupplyAgentOwners(t *testing.T, mode string, f *acquisitionHTTPFixture,
 	collectionAuth, err := collection.NewContextAuthorizer(live, permissions)
 	require.NoError(t, err)
 	require.NoError(t, collectionstore.InstallSchema(f.owner))
-	for _, install := range []func(*gorm.DB) error{prepstore.InstallSchema, recordstore.InstallSchema, prepstore.InstallOperationSchema, submissionstore.InstallSchema, submissionstore.InstallOfficialSchema} {
+	for _, install := range []func(*gorm.DB) error{prepstore.InstallSchema, recordstore.InstallSchema, prepstore.InstallOperationSchema, submissionstore.InstallSchema, officialstore.InstallOfficialSchema} {
 		require.NoError(t, install(f.owner))
 	}
 	collectionRepo, err := collectionstore.NewRepository(ctx, f.owner, func(*gorm.DB) (collectionstore.OwnPublisher, error) { return nil, collection.ErrUnavailable })
@@ -163,21 +164,42 @@ func testSupplyAgentOwners(t *testing.T, mode string, f *acquisitionHTTPFixture,
 	require.NoError(t, err)
 	if mode == "supply first reconstruction" {
 		require.Equal(t, preparation.ItemPending, items.Items[0].Status)
+		// Simulate a crash after the immutable Create commit but before pinning.
+		adaptKey := preparation.ItemCommandID(operation.Operation.ID, page.Items[0].ID, preparation.OperationAdapt)
+		created, err := targets.CreateForExecution(ctx, scope, adaptKey, record.TargetInput{SourceID: page.Items[0].ID, StoreID: storeID, EffectiveVersion: 1})
+		require.NoError(t, err)
+		proof, err := operations.AuthorizeExecution(ctx, "B", operation.Operation.ID)
+		require.NoError(t, err)
+		_, err = operationsRepo.BeginOperationItem(ctx, proof, page.Items[0].ID)
+		require.NoError(t, err)
+		// The composite FK rejects moving the original record to another actor.
+		require.Error(t, f.owner.Exec("UPDATE listing_target_records SET actor_id='another-actor' WHERE id=?", created.Record.ID).Error)
+		otherRules := rules
+		otherRules.merchant.StoreID = uuid.NewString()
+		otherTargets, err := record.NewTargetService(record.TargetDependencies{Sources: selector, ExecutionSources: selector, ExecutionAuthorization: authority, Products: effective, Assets: assets, Rules: otherRules, Records: records, Images: supplyAgentUnusedProbe{}, Authorizer: prepAuth})
+		require.NoError(t, err)
+		foreign, err := otherTargets.CreateForExecution(ctx, scope, uuid.NewString(), record.TargetInput{SourceID: page.Items[0].ID, StoreID: otherRules.merchant.StoreID, EffectiveVersion: 1})
+		require.NoError(t, err)
+		proof, err = operations.AuthorizeExecution(ctx, "B", operation.Operation.ID)
+		require.NoError(t, err)
+		_, err = operationsRepo.BindOperationTarget(ctx, proof, page.Items[0].ID, foreign.Record.ID, foreign.Record.Revision)
+		require.ErrorIs(t, err, preparation.ErrConflict)
 		activity := supplyapp.OperationActivities{Operations: operations, Repository: operationsRepo, Sources: selector, Products: effective, Targets: records, Creator: targets, Optimizer: bridge}
 		out, err := activity.Process(ctx, supplyapp.OperationExecution{OrganizationID: "B", OperationID: operation.Operation.ID}, page.Items[0].ID)
 		require.NoError(t, err)
 		require.Equal(t, preparation.ItemReview, out.Status)
-		require.NotEmpty(t, out.RecordID)
+		require.Equal(t, created.Record.ID, out.RecordID, "restart must reuse the committed original record")
+		require.EqualValues(t, 1, out.RecordRevision)
 		_, err = activity.Process(ctx, supplyapp.OperationExecution{OrganizationID: "B", OperationID: operation.Operation.ID}, page.Items[0].ID)
 		require.NoError(t, err)
 		require.EqualValues(t, 4, calls.Load(), "same operation cannot invoke the model twice")
-		proof, err := operations.AuthorizeExecution(ctx, "B", operation.Operation.ID)
+		proof, err = operations.AuthorizeExecution(ctx, "B", operation.Operation.ID)
 		require.NoError(t, err)
 		_, err = operationsRepo.BindOperationTarget(ctx, proof, out.SourceID, uuid.NewString(), out.RecordRevision)
 		require.ErrorIs(t, err, preparation.ErrConflict)
 		_, err = operationsRepo.BindOperationTarget(ctx, proof, uuid.NewString(), out.RecordID, out.RecordRevision)
 		require.Error(t, err)
-		facts, err := app.Stages(actor, transferred.Preparation.ID, storeID, "review", collection.Query{Limit: 20})
+		facts, err := app.Stages(actor, transferred.Preparation.ID, storeID, "review", collection.Query{Limit: 20}, "")
 		require.NoError(t, err)
 		require.EqualValues(t, 1, facts.Counts["review"])
 		require.NotNil(t, facts.Items[0].Review)

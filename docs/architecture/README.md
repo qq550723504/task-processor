@@ -122,6 +122,8 @@ source of truth for long-lived rules.
 
 ## Supporting Context
 
+- [`my-supply-chain-shein-v1.md`](./my-supply-chain-shein-v1.md): #605 的已评审冻结 Design Basis，Collection → Preparation → Target → Submission 完整交付及三种官方应用类型；运行说明见 [operations](../operations/my-supply-chain-shein-v1.md)。
+
 - [`issue-36-local-trial-runtime.md`](./issue-36-local-trial-runtime.md)
   - IMPLEMENTATION_READY #36 durable loopback runtime and independently reviewed
     post-#590 Task Center entry correction for existing Review/Apply and Listing

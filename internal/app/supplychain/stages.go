@@ -79,9 +79,9 @@ type StagePage struct {
 func validStage(v string) bool {
 	return v == "all" || v == "waiting" || v == "missing" || v == "ready" || v == "review" || v == "uploaded"
 }
-func (a *Application) Stages(ctx context.Context, id, storeID, stage string, q collection.Query) (StagePage, error) {
+func (a *Application) Stages(ctx context.Context, id, storeID, stage string, q collection.Query, sourceKind string) (StagePage, error) {
 	out := StagePage{Items: []StageItem{}, Counts: map[string]int64{"all": 0, "waiting": 0, "missing": 0, "ready": 0, "review": 0, "uploaded": 0}}
-	if a.StageProjection.Facts == nil || !collection.ValidID(id) || !collection.ValidID(storeID) || !validStage(stage) || q.Validate() != nil {
+	if sourceKind != "" && sourceKind != "own" && sourceKind != "acquisition" || a.StageProjection.Facts == nil || !collection.ValidID(id) || !collection.ValidID(storeID) || !validStage(stage) || q.Validate() != nil {
 		return out, preparation.ErrInvalid
 	}
 	ctx, cancel := context.WithTimeout(ctx, 18*time.Second)
@@ -149,7 +149,7 @@ func (a *Application) Stages(ctx context.Context, id, storeID, stage string, q c
 			if q.After == f.SourceID {
 				cursorFound = true
 			}
-			if stage != "all" && stage != current.Stage || q.Keyword != "" && !strings.Contains(strings.ToLower(f.Title+" "+f.ProductKey), strings.ToLower(q.Keyword)) {
+			if !matchesStageFilter(f, current.Stage, stage, q, sourceKind, prep.Name) {
 				continue
 			}
 			out.Total++
@@ -178,4 +178,8 @@ func (a *Application) Stages(ctx context.Context, id, storeID, stage string, q c
 		err = record.ErrForbidden
 	}
 	return out, err
+}
+
+func matchesStageFilter(f preparation.SourceStageFacts, currentStage, stage string, q collection.Query, sourceKind, batch string) bool {
+	return (stage == "all" || stage == currentStage) && (sourceKind == "" || f.SourceKind == sourceKind) && (q.Keyword == "" || strings.Contains(strings.ToLower(f.Title+" "+f.ProductKey+" "+f.SKUs+" "+batch), strings.ToLower(q.Keyword)))
 }

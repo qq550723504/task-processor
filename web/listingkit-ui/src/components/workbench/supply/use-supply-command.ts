@@ -24,6 +24,7 @@ export function useSupplyCommand(scope:SupplyScope,onSaved:(result:unknown,inten
    if(!alive.current)return;
    if(!context.setPendingSupplyIntent(null)){setError("BROWSER_STORAGE_UNAVAILABLE");return}
    saved.current(result,intent);
+   return result;
   }catch(failure){
    if(!alive.current)return;
    const code=failure instanceof SupplyAPIError?failure.code:"OUTCOME_UNKNOWN";
@@ -36,7 +37,7 @@ export function useSupplyCommand(scope:SupplyScope,onSaved:(result:unknown,inten
  function execute(route:SupplyIntent["route"],command:unknown){
   if(pending||active.current||!context.supplyIntentReady)return;
   const intent=parseSupplyIntent(JSON.stringify({...scope,key:crypto.randomUUID(),route,command}));
-  if(!intent){setError("INVALID_REQUEST");return}void dispatch(intent,false);
+  if(!intent){setError("INVALID_REQUEST");return}return dispatch(intent,false);
  }
  return {execute,pending,busy,error,foreign,ready:context.supplyIntentReady,verify:()=>{if(pending)void dispatch(pending,true)},retry:()=>{if(pending)void dispatch(pending,false)}};
 }

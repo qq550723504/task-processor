@@ -3734,6 +3734,9 @@ func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
 	catalogAdapterOnly := map[string]struct{}{catalogAdapterDirectory: {}, filepath.Clean(filepath.Join("..", "internal", "integration", "persistence", "product", "review", "repository.go")): {}}
 	submissionAdapterDirectory := filepath.Clean(filepath.Join("..", "internal", "integration", "persistence", "listing", "submission")) + string(os.PathSeparator)
 	submissionAdapterOnly := map[string]struct{}{submissionAdapterDirectory: {}}
+	for path := range supplyAdapterBusinessPorts() {
+		submissionAdapterOnly[path] = struct{}{}
+	}
 	for _, infraRoot := range []string{
 		filepath.Join("..", "internal", "infra"),
 		filepath.Join("..", "internal", "integration"),
@@ -3990,6 +3993,8 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "accountallocation", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "commercial", "billing", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "subjectverification", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "app", "supplychain", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "product", "collection", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	return allowedHTTPPackages
 }
 
@@ -5703,4 +5708,73 @@ func currentOwnerLegacyListingKitRootViolations(sources []listingKitImageBoundar
 	}
 	sort.Strings(violations)
 	return violations, nil
+}
+
+// #605 frozen design admits current persistence ports and three official DTO
+// transport files. Every admitted edge is separately checked below.
+func supplyAdapterBusinessPorts() map[string][]string {
+	base := filepath.Join("..", "internal", "integration")
+	return map[string][]string{
+		filepath.Join(base, "persistence", "listing", "preparation") + string(os.PathSeparator): {"task-processor/internal/listing/preparation", "task-processor/internal/product/collection"},
+		filepath.Join(base, "persistence", "listing", "record") + string(os.PathSeparator):      {"task-processor/internal/listing/record/target", "task-processor/internal/product/collection"},
+		filepath.Join(base, "persistence", "listing", "official") + string(os.PathSeparator):    {"task-processor/internal/listing/submission", "task-processor/internal/product/collection"},
+		filepath.Join(base, "shein", "official_goods.go"):                                       {"task-processor/internal/marketplace/shein/goods", "task-processor/internal/marketplace/shein/model"},
+		filepath.Join(base, "shein", "official_goods_rules.go"):                                 {"task-processor/internal/marketplace/shein/model"},
+		filepath.Join(base, "shein", "official_readback.go"):                                    {"task-processor/internal/marketplace/shein/goods", "task-processor/internal/marketplace/shein/model"},
+	}
+}
+func supplyAdapterPortAllowed(path, imported string) bool {
+	for admitted, ports := range supplyAdapterBusinessPorts() {
+		if path != admitted && !(strings.HasSuffix(admitted, string(os.PathSeparator)) && strings.HasPrefix(path, admitted)) {
+			continue
+		}
+		for _, port := range ports {
+			if imported == port {
+				return true
+			}
+		}
+	}
+	return false
+}
+func TestSupplyPersistenceAndOfficialTransportOnlyImportAdmittedPorts(t *testing.T) {
+	root := filepath.Join("..", "internal", "integration")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		admitted := false
+		for entry := range supplyAdapterBusinessPorts() {
+			if path == entry || strings.HasSuffix(entry, string(os.PathSeparator)) && strings.HasPrefix(path, entry) {
+				admitted = true
+				break
+			}
+		}
+		if !admitted || strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		for quoted := range facts.imports {
+			imp := strings.Trim(quoted, `"`)
+			if (importMatchesPrefix(imp, "task-processor/internal/listing") || importMatchesPrefix(imp, "task-processor/internal/marketplace") || importMatchesPrefix(imp, "task-processor/internal/product")) && !supplyAdapterPortAllowed(path, imp) {
+				t.Errorf("%s has unadmitted business port %s", path, imp)
+			}
+		}
+	}
+	good := filepath.Join(root, "shein", "official_goods.go")
+	bad := filepath.Join(root, "shein", "other.go")
+	if !supplyAdapterPortAllowed(good, "task-processor/internal/marketplace/shein/goods") || supplyAdapterPortAllowed(bad, "task-processor/internal/marketplace/shein/goods") || supplyAdapterPortAllowed(good, "task-processor/internal/marketplace/shein/goods/child") {
+		t.Fatal("official DTO admission must be exact")
+	}
+}
+func TestSupplyAndCollectionHTTPRegistrationKeepsBusinessSiblingsFrameworkFree(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowed := businessHTTPPackages(root)
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{{"app/supplychain/httpapi/http_routes.go", true}, {"app/supplychain/operations.go", false}, {"app/supplychain/httpapi_extra/other.go", false}, {"product/collection/httpapi/handler.go", true}, {"product/collection/service.go", false}, {"product/collection/httpapi_extra/other.go", false}} {
+		if pathAllowed(filepath.Join(root, filepath.FromSlash(tc.path)), allowed) != tc.want {
+			t.Errorf("registration %s", tc.path)
+		}
+	}
 }

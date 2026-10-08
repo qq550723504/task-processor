@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	supplyruntime "task-processor/internal/app/runtime/supplychain"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -151,8 +152,11 @@ func execute() error {
 			if features.ProductCollections {
 				options = append(options, httpapi.WithProductCollections())
 			}
+			if features.SourceMediaStorage != nil {
+				options = append(options, httpapi.WithCollectionSourceMedia(features.SourceMediaStorage))
+			}
 			if features.SupplyAssetDB != nil {
-				options = append(options, httpapi.WithSupplyChain(httpapi.SupplyChainDependencies{AssetDB: features.SupplyAssetDB, Workflow: features.SupplyWorkflow, Worker: features.SupplyWorker}))
+				options = append(options, httpapi.WithSupplyChain(httpapi.SupplyChainDependencies{AssetDB: features.SupplyAssetDB, Starter: supplyruntime.TemporalOperationStarter{Client: features.SupplyWorkflow}, NewWorker: supplyruntime.WorkerFactory(features.SupplyWorkflow), Worker: features.SupplyWorker}))
 			}
 			if features.ImageAgentDB != nil {
 				options = append(options, httpapi.WithAcquisitionImageAgent(features.ImageAgentDB, features.ImageAgentWorkflow))

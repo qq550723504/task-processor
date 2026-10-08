@@ -506,11 +506,11 @@ export async function buildWorkbenchUpstreamRequest(
         body=JSON.stringify(checked.data);headers.set("Content-Type","application/json");if(key)headers.set("Idempotency-Key",key);
       }else{
         if(request.headers.has("Idempotency-Key") || !(await requestHasNoBody(request)))return protocolError(400,"INVALID_REQUEST","Body or command key is not allowed");
-        const allowed=["list","sources","stages","operation-items","operations","optimization-options"].includes(action)?new Set(["limit","after",...action==="stages"?["storeId","stage","keyword"]:action==="operations"?["storeId"]:action==="optimization-options"?[]:["keyword"]]):new Set<string>();
+        const allowed=["list","sources","stages","operation-items","operations","optimization-options"].includes(action)?new Set(["limit","after",...action==="stages"?["storeId","stage","keyword","sourceKind"]:action==="operations"?["storeId"]:action==="optimization-options"?[]:["keyword"]]):new Set<string>();
         if(/%(?![0-9A-Fa-f]{2})/.test(url.search)||(action==="operations"||action==="stages")&&!isAcquisitionUUID(url.searchParams.get("storeId")??"")||action==="stages"&&!["all","waiting","missing","ready","review","uploaded"].includes(url.searchParams.get("stage")??""))return protocolError(400,"INVALID_REQUEST","Supply query invalid");
         for(const key of url.searchParams.keys()){
           const values=url.searchParams.getAll(key);if(!allowed.has(key)||values.length!==1||!values[0])return protocolError(400,"INVALID_REQUEST","Supply query invalid");
-          const value=values[0];if(key==="limit"&&(!/^[1-9][0-9]*$/.test(value)||Number(value)>100)||(key==="after"||key==="storeId")&&!isAcquisitionUUID(value)||key==="keyword"&&(new TextEncoder().encode(value).length>80||/[\0\r\n]/.test(value)))return protocolError(400,"INVALID_REQUEST","Supply query invalid");
+          const value=values[0];if(key==="limit"&&(!/^[1-9][0-9]*$/.test(value)||Number(value)>100)||(key==="after"||key==="storeId")&&!isAcquisitionUUID(value)||key==="sourceKind"&&!["own","acquisition"].includes(value)||key==="keyword"&&(new TextEncoder().encode(value).length>80||/[\0\r\n]/.test(value)))return protocolError(400,"INVALID_REQUEST","Supply query invalid");
         }
         query=url.search;
       }

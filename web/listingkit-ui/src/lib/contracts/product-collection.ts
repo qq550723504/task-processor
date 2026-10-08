@@ -33,7 +33,7 @@ export const collectionCommandSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create_product"), batchId: collectionID.optional(), product: ownProductSchema }).strict(),
 ]);
 export type CollectionCommand = z.infer<typeof collectionCommandSchema>;
-export const collectionBatchSchema = z.object({ id: collectionID, name, kind: z.enum(["acquisition", "own", "manual"]),
+const collectionBatchSchema = z.object({ id: collectionID, name, kind: z.enum(["acquisition", "own", "manual"]),
   revision, count, createdAt: timestamp, archivedAt: timestamp.optional() });
 export const collectionItemSchema = z.object({ id: collectionID, batchId: collectionID, revision, createdAt: timestamp, archivedAt: timestamp.optional(), title: bytes(2000).optional(), thumbnailUrl: bytes(2048).optional(),
   source: z.object({ productKey: bytes(128).min(1), publicationId: bytes(128).min(1), version,
@@ -59,7 +59,6 @@ export const collectionDetailSchema = z.object({ item: collectionItemSchema, pro
 export type CollectionBatch = z.infer<typeof collectionBatchSchema>;
 export type CollectionItem = z.infer<typeof collectionItemSchema>;
 export type CollectionDetail = z.infer<typeof collectionDetailSchema>;
-export type CollectionReceipt = z.infer<typeof collectionReceiptSchema>;
 
 export function collectionPath(method: string, path: string[]): CollectionRoute | null {
   if (path[0] !== "collections") return null;

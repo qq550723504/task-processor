@@ -1,4 +1,4 @@
-package supplychainapp
+package supplychainruntime
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/testsuite"
+	supplyapp "task-processor/internal/app/supplychain"
 	"task-processor/internal/listing/preparation"
 	"testing"
 )
@@ -22,47 +23,47 @@ func TestSupplyWorkflowReadsEveryPageAndSkipsTerminalUnknownItems(t *testing.T) 
 	seen := []string{}
 	sourceIDs := []string{uuid.NewString(), uuid.NewString(), uuid.NewString()}
 	id := uuid.NewString()
-	env.RegisterActivityWithOptions(func(_ context.Context, input OperationExecution) (OperationPage, error) {
+	env.RegisterActivityWithOptions(func(_ context.Context, input supplyapp.OperationExecution) (supplyapp.OperationPage, error) {
 		require.Equal(t, "org-a", input.OrganizationID)
 		require.Equal(t, id, input.OperationID)
 		switch input.After {
 		case "":
-			return OperationPage{Items: []preparation.OperationItem{{SourceID: sourceIDs[0], Status: preparation.ItemPending}, {SourceID: sourceIDs[1], Status: preparation.ItemUnknown}}, NextCursor: sourceIDs[1]}, nil
+			return supplyapp.OperationPage{Items: []preparation.OperationItem{{SourceID: sourceIDs[0], Status: preparation.ItemPending}, {SourceID: sourceIDs[1], Status: preparation.ItemUnknown}}, NextCursor: sourceIDs[1]}, nil
 		case sourceIDs[1]:
-			return OperationPage{Items: []preparation.OperationItem{{SourceID: sourceIDs[2], Status: preparation.ItemPending}}}, nil
+			return supplyapp.OperationPage{Items: []preparation.OperationItem{{SourceID: sourceIDs[2], Status: preparation.ItemPending}}}, nil
 		default:
 			t.Fatalf("unexpected cursor %s", input.After)
-			return OperationPage{}, nil
+			return supplyapp.OperationPage{}, nil
 		}
 	}, activity.RegisterOptions{Name: supplyListActivity})
-	env.RegisterActivityWithOptions(func(_ context.Context, input OperationExecution, source string) (preparation.OperationItem, error) {
+	env.RegisterActivityWithOptions(func(_ context.Context, input supplyapp.OperationExecution, source string) (preparation.OperationItem, error) {
 		seen = append(seen, source)
 		return preparation.OperationItem{SourceID: source, Status: preparation.ItemSucceeded}, nil
 	}, activity.RegisterOptions{Name: supplyItemActivity})
-	env.ExecuteWorkflow(SupplyOperationWorkflow, OperationExecution{OrganizationID: "org-a", OperationID: id})
+	env.ExecuteWorkflow(SupplyOperationWorkflow, supplyapp.OperationExecution{OrganizationID: "org-a", OperationID: id})
 	require.NoError(t, env.GetWorkflowError())
 	require.Equal(t, []string{sourceIDs[0], sourceIDs[2]}, seen)
 }
 func TestSupplyWorkflowStopsAtDurableCancellation(t *testing.T) {
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()
-	env.RegisterActivityWithOptions(func(context.Context, OperationExecution) (OperationPage, error) {
-		return OperationPage{Cancelled: true}, nil
+	env.RegisterActivityWithOptions(func(context.Context, supplyapp.OperationExecution) (supplyapp.OperationPage, error) {
+		return supplyapp.OperationPage{Cancelled: true}, nil
 	}, activity.RegisterOptions{Name: supplyListActivity})
-	env.ExecuteWorkflow(SupplyOperationWorkflow, OperationExecution{OrganizationID: "org-a", OperationID: uuid.NewString()})
+	env.ExecuteWorkflow(SupplyOperationWorkflow, supplyapp.OperationExecution{OrganizationID: "org-a", OperationID: uuid.NewString()})
 	require.NoError(t, env.GetWorkflowError())
 }
 
 type operationTemporalFixture struct {
 	options     []client.StartWorkflowOptions
-	inputs      []OperationExecution
+	inputs      []supplyapp.OperationExecution
 	startErr    error
 	description *workflowservice.DescribeWorkflowExecutionResponse
 }
 
 func (f *operationTemporalFixture) ExecuteWorkflow(_ context.Context, options client.StartWorkflowOptions, name interface{}, args ...interface{}) (client.WorkflowRun, error) {
 	f.options = append(f.options, options)
-	f.inputs = append(f.inputs, args[0].(OperationExecution))
+	f.inputs = append(f.inputs, args[0].(supplyapp.OperationExecution))
 	return nil, f.startErr
 }
 func (f *operationTemporalFixture) DescribeWorkflowExecution(_ context.Context, id, run string) (*workflowservice.DescribeWorkflowExecutionResponse, error) {

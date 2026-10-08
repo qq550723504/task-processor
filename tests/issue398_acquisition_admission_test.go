@@ -17,30 +17,49 @@ import (
 
 const issue398Database = "task-processor/internal/platform/database"
 const issue398HTTP = "task-processor/internal/integration/httpimage"
+const issue605SourceStorage = "task-processor/internal/integration/s3"
 
 func issue398CurrentLeafImporter(importer, target string) bool {
-	return importer == "task-processor/internal/app/productsourcing" && target == issue398Database ||
-		importer == "task-processor/internal/integration/acquisition/a1688" && target == issue398HTTP
+	if importer == "task-processor/internal/app/productsourcing" && target == issue398Database {
+		return true
+	}
+	if importer == "task-processor/internal/app/runtime/currentapplication" && target == issue605SourceStorage {
+		return true
+	}
+	if target != issue398HTTP {
+		return false
+	}
+	switch importer {
+	case "task-processor/internal/integration/acquisition/a1688", "task-processor/internal/app/productsourcing", "task-processor/internal/app/supplychain", "task-processor/internal/integration/shein", "task-processor/internal/app/runtime/currentapplication":
+		return true
+	}
+	return false
 }
 
 func issue398AcquisitionAPIViolations(sources []listingKitImageBoundarySource) ([]string, error) {
 	// This current-edge register does not exempt directories from the legacy
 	// scans. Parse all tracked production text, including other OS/build tags.
 	rules := []struct {
-		root, file, target string
-		apis               []string
+		root, target string
+		files        map[string][]string
 	}{
-		{"internal/app/productsourcing", "internal/app/productsourcing/acquisition_initialization.go", issue398Database, []string{"OpenExistingWritableContext", "Close", "Config"}},
-		{"internal/integration/acquisition/a1688", "internal/integration/acquisition/a1688/public.go", issue398HTTP, []string{"NewPublicImageHTTPClient"}},
-		{"cmd/product-acquisition-init", "cmd/product-acquisition-init/main.go", "task-processor/internal/app/productsourcing", []string{"InitializeAcquisitionDatabase"}},
-		// Narrow #399 constructor admission; no new root, target or directory exemption.
-		// https://github.com/qq550723504/task-processor/issues/399#issuecomment-5643701012
-		// Narrow #399 constructor admission; no new root, target or directory exemption.
-		// NewBrowserPublicAcquisition is the same admitted constructor surface for the
-		// server-side browser provider (design D13); it introduces no new root or target.
-		// #561 frozen member-resource design admits the read-only published-result and
-		// native charge-proof constructors in this same Product composition owner.
-		{"internal/app/httpapi/product_acquisition_application.go", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", []string{"NewPublicAcquisition", "NewBrowserAcquisition", "NewBrowserPublicAcquisition", "PublishedAcquisition", "NewPublishedAcquisitionReader", "NewAcquisitionChargeOwner"}},
+		{"internal/app/productsourcing", issue398Database, map[string][]string{"internal/app/productsourcing/acquisition_initialization.go": {"OpenExistingWritableContext", "Close", "Config"}}},
+		{"internal/integration/acquisition/a1688", issue398HTTP, map[string][]string{"internal/integration/acquisition/a1688/public.go": {"NewPublicImageHTTPClient"}}},
+		{"cmd/product-acquisition-init", "task-processor/internal/app/productsourcing", map[string][]string{"cmd/product-acquisition-init/main.go": {"InitializeAcquisitionDatabase"}}},
+		// #399/#561 constructor edges; #605 adds only current Collection publication.
+		{"internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", map[string][]string{"internal/app/httpapi/product_acquisition_application.go": {"NewPublicAcquisition", "NewBrowserAcquisition", "NewBrowserPublicAcquisition", "PublishedAcquisition", "NewPublishedAcquisitionReader", "NewAcquisitionChargeOwner", "AcquisitionPublicationOption", "WithCollectionPublication"}}},
+		// #605 frozen CURRENT helpers: exact files/APIs, all source text, ceiling=8.
+		{"internal/app/productsourcing", issue398HTTP, map[string][]string{
+			"internal/app/productsourcing/source_media.go": {"InspectGeneratedArtifact", "ValidatePublicHTTPSURL"},
+		}},
+		{"internal/app/runtime/currentapplication", issue605SourceStorage, map[string][]string{"internal/app/runtime/currentapplication/source_media_storage.go": {"NewClient", "ClientConfig", "NewUploaderWithOptions", "UploaderOptions", "AdaptLogrus", "ArtifactStorageCapabilities", "ArtifactStorageMode"}}},
+		{"internal/app/runtime/currentapplication", issue398HTTP, map[string][]string{"internal/app/runtime/currentapplication/source_media_storage.go": {"ValidatePublicHTTPSURL"}}},
+		{"internal/app/supplychain", issue398HTTP, map[string][]string{"internal/app/supplychain/image_probe.go": {"NewPublicImageHTTPClient", "ValidatePublicHTTPSURL", "Download", "InspectGeneratedArtifact"}}},
+		{"internal/integration/shein", issue398HTTP, map[string][]string{"internal/integration/shein/official_goods.go": {"ValidatePublicHTTPSURL"}}},
+		{"internal/app/httpapi/collection_source_media.go", "task-processor/internal/app/productsourcing", map[string][]string{"internal/app/httpapi/collection_source_media.go": {"SourceMedia", "SourceMediaStorage"}}},
+		{"internal/app/httpapi/product_collection_application.go", "task-processor/internal/app/productsourcing", map[string][]string{"internal/app/httpapi/product_collection_application.go": {"NewOwnProductWriter", "NewPublishedAcquisitionReader"}}},
+		{"internal/app/httpapi/supply_chain_agents.go", "task-processor/internal/app/productsourcing", map[string][]string{"internal/app/httpapi/supply_chain_agents.go": {"NewExecutionPublicationGateway", "NewTransactionReader"}}},
+		{"internal/app/runtime/currentapplication", "task-processor/internal/app/productsourcing", map[string][]string{"internal/app/runtime/currentapplication/source_media_storage.go": {"SourceMediaStorage"}, "internal/app/runtime/currentapplication/runtime.go": {"SourceMediaStorage"}}},
 	}
 	var violations []string
 	for _, source := range sources {
@@ -64,7 +83,8 @@ func issue398AcquisitionAPIViolations(sources []listingKitImageBoundarySource) (
 				if !importMatchesPrefix(target, rule.target) {
 					continue
 				}
-				if path != rule.file || target != rule.target {
+				apis, admitted := rule.files[path]
+				if !admitted || target != rule.target {
 					violations = append(violations, path+" has an unadmitted current import: "+target)
 					continue
 				}
@@ -85,7 +105,7 @@ func issue398AcquisitionAPIViolations(sources []listingKitImageBoundarySource) (
 					if !ok || qualifier.Name != alias || qualifier.Obj != nil {
 						return true
 					}
-					for _, allowed := range rule.apis {
+					for _, allowed := range apis {
 						if selector.Sel.Name == allowed {
 							return true
 						}
@@ -126,7 +146,7 @@ func TestIssue398CurrentLeafEdgesAreExact(t *testing.T) {
 		{"task-processor/internal/app/productsourcing/child", issue398Database, false},
 		{"task-processor/internal/app/productsourcingfake", issue398Database, false},
 		{"task-processor/internal/app/productsourcing", issue398Database + "/child", false},
-		{"task-processor/internal/app/productsourcing", issue398HTTP, false},
+		{"task-processor/internal/app/productsourcing", issue398HTTP, true},
 		{"task-processor/internal/integration/acquisition/a1688/child", issue398HTTP, false},
 		{"task-processor/internal/integration/acquisition/a1688", issue398Database, false},
 		{"task-processor/internal/worker", issue398HTTP, false},
@@ -148,6 +168,18 @@ func TestIssue398CurrentLeafAndInitializerAPIGuard(t *testing.T) {
 		{"database sibling", "internal/app/productsourcing/other.go", issue398Database, "Close", false},
 		{"database nested", "internal/app/productsourcing/child/acquisition_initialization.go", issue398Database, "Close", false},
 		{"database target subpackage", "internal/app/productsourcing/acquisition_initialization.go", issue398Database + "/child", "Close", false},
+		{"source media validator", "internal/app/runtime/currentapplication/source_media_storage.go", issue398HTTP, "ValidatePublicHTTPSURL", true},
+		{"source media legacy provider", "internal/app/runtime/currentapplication/source_media_storage.go", issue398HTTP, "NewProductImageDownloader", false},
+		{"source media sibling", "internal/app/productsourcing/other.go", issue398HTTP, "ValidatePublicHTTPSURL", false},
+		{"probe current reader", "internal/app/supplychain/image_probe.go", issue398HTTP, "Download", true},
+		{"probe sibling", "internal/app/supplychain/other.go", issue398HTTP, "Download", false},
+		{"official exact validator", "internal/integration/shein/official_goods.go", issue398HTTP, "ValidatePublicHTTPSURL", true},
+		{"official sibling", "internal/integration/shein/other.go", issue398HTTP, "ValidatePublicHTTPSURL", false},
+		{"storage current constructor", "internal/app/runtime/currentapplication/source_media_storage.go", issue605SourceStorage, "NewUploaderWithOptions", true},
+		{"storage sibling", "internal/app/runtime/currentapplication/other.go", issue605SourceStorage, "NewUploaderWithOptions", false},
+		{"storage unadmitted API", "internal/app/runtime/currentapplication/source_media_storage.go", issue605SourceStorage, "Upload", false},
+		{"runtime storage port", "internal/app/runtime/currentapplication/source_media_storage.go", "task-processor/internal/app/productsourcing", "SourceMediaStorage", true},
+		{"runtime producer forbidden", "internal/app/runtime/currentapplication/config.go", "task-processor/internal/app/productsourcing", "NewPublicAcquisition", false},
 		{"HTTP leaf", "internal/integration/acquisition/a1688/public.go", issue398HTTP, "NewPublicImageHTTPClient", true},
 		{"HTTP wrong API", "internal/integration/acquisition/a1688/public.go", issue398HTTP, "Fetch", false},
 		{"HTTP sibling", "internal/integration/acquisition/a1688/other.go", issue398HTTP, "NewPublicImageHTTPClient", false},

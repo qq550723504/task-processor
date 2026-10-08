@@ -1,4 +1,4 @@
-package supplychainapp
+package supplychainruntime
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
+	supplyapp "task-processor/internal/app/supplychain"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/listing/preparation"
 	"task-processor/internal/product/collection"
@@ -22,13 +23,13 @@ const SupplyWorkflowName = "SupplyPreparationOperationV1"
 const supplyListActivity = "SupplyPreparationListV1"
 const supplyItemActivity = "SupplyPreparationItemV1"
 
-func SupplyOperationWorkflow(ctx workflow.Context, in OperationExecution) error {
+func SupplyOperationWorkflow(ctx workflow.Context, in supplyapp.OperationExecution) error {
 	if !authidentity.IsBoundedIdentifier(in.OrganizationID) || !collection.ValidID(in.OperationID) || in.After != "" && !collection.ValidID(in.After) {
 		return temporal.NewNonRetryableApplicationError("invalid supply operation identity", "invalid", nil)
 	}
 	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{StartToCloseTimeout: 9 * time.Minute, RetryPolicy: &temporal.RetryPolicy{InitialInterval: time.Second, MaximumInterval: 5 * time.Minute}})
 	for pages := 0; pages < 10; pages++ {
-		var page OperationPage
+		var page supplyapp.OperationPage
 		if err := workflow.ExecuteActivity(ctx, supplyListActivity, in).Get(ctx, &page); err != nil {
 			return err
 		}
@@ -63,7 +64,7 @@ func (s TemporalOperationStarter) Ensure(ctx context.Context, org, id string) er
 		return preparation.ErrInvalid
 	}
 	workflowID := preparation.WorkflowID(org, id)
-	_, err := s.Client.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: workflowID, TaskQueue: SupplyTaskQueue, WorkflowExecutionTimeout: 7 * 24 * time.Hour, WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING, WorkflowIDReusePolicy: enums.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE}, SupplyWorkflowName, OperationExecution{OrganizationID: org, OperationID: id})
+	_, err := s.Client.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: workflowID, TaskQueue: SupplyTaskQueue, WorkflowExecutionTimeout: 7 * 24 * time.Hour, WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING, WorkflowIDReusePolicy: enums.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE}, SupplyWorkflowName, supplyapp.OperationExecution{OrganizationID: org, OperationID: id})
 	var exists *serviceerror.WorkflowExecutionAlreadyStarted
 	if err != nil && !errors.As(err, &exists) {
 		return preparation.ErrUnknown
@@ -81,7 +82,7 @@ func (s TemporalOperationStarter) Ensure(ctx context.Context, org, id string) er
 	}
 	return nil
 }
-func NewSupplyWorker(client client.Client, activities *OperationActivities) (worker.Worker, error) {
+func NewSupplyWorker(client client.Client, activities *supplyapp.OperationActivities) (supplyapp.OperationWorker, error) {
 	if client == nil || activities == nil || activities.Operations == nil || activities.Repository == nil || activities.Sources == nil || activities.Targets == nil || activities.Products == nil || activities.Creator == nil || activities.Uploader == nil {
 		return nil, preparation.ErrUnavailable
 	}
@@ -90,4 +91,10 @@ func NewSupplyWorker(client client.Client, activities *OperationActivities) (wor
 	current.RegisterActivityWithOptions(activities.List, activity.RegisterOptions{Name: supplyListActivity})
 	current.RegisterActivityWithOptions(activities.Process, activity.RegisterOptions{Name: supplyItemActivity})
 	return current, nil
+}
+
+func WorkerFactory(c client.Client) supplyapp.OperationWorkerFactory {
+	return func(activities *supplyapp.OperationActivities) (supplyapp.OperationWorker, error) {
+		return NewSupplyWorker(c, activities)
+	}
 }

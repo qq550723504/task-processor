@@ -1,9 +1,10 @@
-package submissionpersistence
+package officialpersistence
 
 import (
 	"context"
 	"gorm.io/gorm"
 	recordstore "task-processor/internal/integration/persistence/listing/record"
+	submissionstore "task-processor/internal/integration/persistence/listing/submission"
 	"task-processor/internal/listing/submission"
 )
 
@@ -28,7 +29,7 @@ CREATE TABLE IF NOT EXISTS listing_submission_official_receipts (
  FOREIGN KEY(organization_id,attempt_id) REFERENCES listing_submission_execution_attempts(organization_id,attempt_id));`).Error
 }
 func VerifyOfficialSchema(ctx context.Context, db *gorm.DB) error {
-	if ctx == nil || db == nil || db.Dialector.Name() != "postgres" || VerifySchema(ctx, db) != nil || recordstore.VerifySchema(ctx, db) != nil {
+	if ctx == nil || db == nil || db.Dialector.Name() != "postgres" || submissionstore.VerifySchema(ctx, db) != nil || recordstore.VerifySchema(ctx, db) != nil {
 		return submission.ErrExecutionUnavailable
 	}
 	for _, query := range []string{

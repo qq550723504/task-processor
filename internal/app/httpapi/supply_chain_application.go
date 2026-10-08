@@ -3,16 +3,16 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"go.temporal.io/sdk/client"
-	"go.temporal.io/sdk/worker"
 	"gorm.io/gorm"
 	"net/http"
 	storeapp "task-processor/internal/app/storecenter"
 	supplyapp "task-processor/internal/app/supplychain"
+	supplyhttp "task-processor/internal/app/supplychain/httpapi"
 	"task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
+	officialstore "task-processor/internal/integration/persistence/listing/official"
 	prepstore "task-processor/internal/integration/persistence/listing/preparation"
 	recordstore "task-processor/internal/integration/persistence/listing/record"
 	submissionstore "task-processor/internal/integration/persistence/listing/submission"
@@ -31,9 +31,10 @@ import (
 )
 
 type SupplyChainDependencies struct {
-	AssetDB  *gorm.DB
-	Workflow client.Client
-	Worker   *worker.Worker
+	AssetDB   *gorm.DB
+	Starter   supplyapp.OperationStarter
+	NewWorker supplyapp.OperationWorkerFactory
+	Worker    *supplyapp.OperationWorker
 }
 
 func WithSupplyChain(d SupplyChainDependencies) CurrentApplicationOption {
@@ -42,7 +43,7 @@ func WithSupplyChain(d SupplyChainDependencies) CurrentApplicationOption {
 
 type supplyChainModule struct {
 	app    *supplyapp.Application
-	worker worker.Worker
+	worker supplyapp.OperationWorker
 	routes []httproute.Descriptor
 }
 
@@ -56,7 +57,7 @@ func (s supplyChainModule) Register(r *kernelmodule.Registry) error {
 func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d SupplyChainDependencies, deps routeAuthDependencies, permissions *authz.ListingKitAuthorizer, apps *storeapp.OfficialApplicationRegistry, cfg *config.Config, productAgent *productAgentApplication) (supplyChainModule, error) {
 	var empty supplyChainModule
 	resolver, ok := deps.organizationResolver.(*workbenchcontext.Resolver)
-	if !ok || resolver == nil || permissions == nil || d.AssetDB == nil || d.Workflow == nil || d.Worker == nil || apps == nil || productDB == nil || storeDB == nil || cfg == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "" {
+	if !ok || resolver == nil || permissions == nil || d.AssetDB == nil || d.Starter == nil || d.NewWorker == nil || d.Worker == nil || apps == nil || productDB == nil || storeDB == nil || cfg == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "" {
 		return empty, preparation.ErrUnavailable
 	}
 	if err := assetstore.VerifySourceRuntimePermissions(ctx, d.AssetDB); err != nil {
@@ -149,7 +150,7 @@ func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d 
 	if err != nil {
 		return empty, err
 	}
-	official, err := submissionstore.NewOfficialRepository(ctx, productDB)
+	official, err := officialstore.NewOfficialRepository(ctx, productDB)
 	if err != nil {
 		return empty, err
 	}
@@ -166,7 +167,7 @@ func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d 
 	if err != nil {
 		return empty, err
 	}
-	app := &supplyapp.Application{Preparations: preparations, Sources: sources, Operations: operations, Execution: supplyapp.OperationApplication{Service: operations, Repository: operationsRepo, Starter: supplyapp.TemporalOperationStarter{Client: d.Workflow}}, Targets: targets, Records: records, Products: effective, Rules: rules, Assets: assets, Approvals: approvals, Authorization: auth, PublicationReceipts: official, PublicationStores: supplyapp.OfficialRuleStore{Access: access}}
+	app := &supplyapp.Application{Preparations: preparations, Sources: sources, Operations: operations, Execution: supplyapp.OperationApplication{Service: operations, Repository: operationsRepo, Starter: d.Starter}, Targets: targets, Records: records, Products: effective, Rules: rules, Assets: assets, Approvals: approvals, Authorization: auth, PublicationReceipts: official, PublicationStores: supplyapp.OfficialRuleStore{Access: access}}
 	var optimizer supplyapp.OperationOptimizer
 	app.StageProjection = stageProjection
 	app.Uploader = uploader
@@ -179,15 +180,15 @@ func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d 
 		app.AuthorizeOptimization = bridge.authorizeRequest
 		app.OptimizationOptions = bridge.options
 	}
-	currentWorker, err := supplyapp.NewSupplyWorker(d.Workflow, &supplyapp.OperationActivities{Operations: operations, Repository: operationsRepo, Sources: sources, Products: effective, Targets: records, Creator: targets, Uploader: uploader, Optimizer: optimizer})
+	currentWorker, err := d.NewWorker(&supplyapp.OperationActivities{Operations: operations, Repository: operationsRepo, Sources: sources, Products: effective, Targets: records, Creator: targets, Uploader: uploader, Optimizer: optimizer})
 	if err != nil {
 		return empty, err
 	}
 	binder := productReviewCapabilityBinder{now: time.Now}
-	return supplyChainModule{app: app, worker: currentWorker, routes: supplyapp.SupplyRoutes(app, binder.Bind)}, nil
+	return supplyChainModule{app: app, worker: currentWorker, routes: supplyhttp.SupplyRoutes(app, binder.Bind)}, nil
 }
 func validateSupplyDescriptor(route httproute.Descriptor) error {
-	for _, expected := range supplyapp.SupplyRoutes(nil, nil) {
+	for _, expected := range supplyhttp.SupplyRoutes(nil, nil) {
 		if route.Method == expected.Method && route.Path == expected.Path {
 			if route.Module != expected.Module || route.Permission != expected.Permission || route.AuthPolicy != expected.AuthPolicy || route.OrganizationAccessPolicy != expected.OrganizationAccessPolicy || route.OrganizationTargetResolver != nil || route.RequestTimeout != expected.RequestTimeout || route.RejectUnreadRequestBody != expected.RejectUnreadRequestBody || route.Handler == nil {
 				return errors.New("supply route loses live private source boundary")

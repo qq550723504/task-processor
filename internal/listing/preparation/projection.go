@@ -7,6 +7,8 @@ type SourceStageFacts struct {
 	SourceID                string
 	ProductKey              string
 	Title                   string
+	SourceKind              string
+	SKUs                    string
 	RecordID                string
 	RecordRevision          int64
 	EffectiveVersion        uint64

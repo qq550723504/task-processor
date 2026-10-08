@@ -2,7 +2,7 @@ package httpapi
 
 import (
 	"github.com/stretchr/testify/require"
-	supplyapp "task-processor/internal/app/supplychain"
+	supplyhttp "task-processor/internal/app/supplychain/httpapi"
 	"task-processor/internal/httproute"
 	"testing"
 )
@@ -12,7 +12,7 @@ func TestSupplyRouteAdmissionRetainsExactPrivatePermissions(t *testing.T) {
 	for _, r := range currentWorkbenchApplicationRoutes {
 		routes = append(routes, httproute.Descriptor{Method: r.Method, Path: r.Path})
 	}
-	routes = append(routes, supplyapp.SupplyRoutes(nil, nil)...)
+	routes = append(routes, supplyhttp.SupplyRoutes(nil, nil)...)
 	check := func(r []httproute.Descriptor, enabled bool) error {
 		return validateCurrentApplicationRoutesInternal(r, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{SupplyChain: enabled})
 	}

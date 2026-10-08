@@ -48,3 +48,11 @@ func TestSelectedOptimizationMustBeReviewedAndReboundBeforeUpload(t *testing.T) 
 		})
 	}
 }
+
+func TestStageFilterUsesOriginalSourceKindSKUAndBatchAcrossPages(t *testing.T) {
+	f := preparation.SourceStageFacts{Title: "T-shirt", ProductKey: "product-a", SourceKind: "own", SKUs: "SKU-SECOND-PAGE"}
+	require.True(t, matchesStageFilter(f, "review", "review", collection.Query{Keyword: "sku-second"}, "own", "batch"))
+	require.False(t, matchesStageFilter(f, "review", "review", collection.Query{Keyword: "sku-second"}, "acquisition", "batch"))
+	require.True(t, matchesStageFilter(f, "review", "review", collection.Query{Keyword: "summer batch"}, "", "Summer Batch"))
+	require.False(t, matchesStageFilter(f, "review", "uploaded", collection.Query{}, "", "batch"))
+}

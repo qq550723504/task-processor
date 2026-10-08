@@ -17,7 +17,7 @@ type ProductExecutionSubject struct {
 const (
 	ProductPurposeRules   = "product_rules"
 	ProductPurposePublish = "product_publish"
-	ProductPurposeImage   = "product_image"
+	ProductPurposeImage   = "supply_image_transform"
 )
 
 type ProductExecutionAuthorization struct {

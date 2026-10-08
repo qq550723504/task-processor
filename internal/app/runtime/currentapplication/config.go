@@ -32,26 +32,27 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
-	Knowledge                  *KnowledgeConfig              `json:"knowledge,omitempty"`
-	StoreCenter                *StoreCenterConfig            `json:"storeCenter,omitempty"`
-	LocalTrial                 *LocalTrialConfig             `json:"localTrial,omitempty"`
-	SchemaVersion              int                           `json:"schemaVersion"`
-	Listen                     ListenConfig                  `json:"listen"`
-	Identity                   IdentityConfig                `json:"identity"`
-	SourceAccountDatabase      DatabaseConfig                `json:"sourceAccountDatabase"`
-	CommercialOwnerDatabase    *DatabaseConfig               `json:"commercialOwnerDatabase,omitempty"`
-	MoneyOwnerDatabase         *DatabaseConfig               `json:"moneyOwnerDatabase,omitempty"`
-	WalletTopUp                topupconfig.Config            `json:"walletTopUp,omitempty"`
-	ProductAcquisitionDatabase *DatabaseConfig               `json:"productAcquisitionDatabase,omitempty"`
-	ProductCollections         bool                          `json:"productCollections,omitempty"`
-	SupplyChain                *SupplyChainConfig            `json:"supplyChain,omitempty"`
-	ImageAgent                 *ImageAgentConfig             `json:"imageAgent,omitempty"`
-	ProductAgent               *ProductAgentConfig           `json:"productAgent,omitempty"`
-	AIWorkbench                *AIWorkbenchConfig            `json:"aiWorkbench,omitempty"`
-	AccountAuditUsage          *AccountAuditUsageConfig      `json:"accountAuditUsage,omitempty"`
-	Membership                 *MembershipConfig             `json:"membership,omitempty"`
-	ListingKitAuthorization    ListingKitAuthorizationConfig `json:"listingKitAuthorization,omitempty"`
-	Referrals                  ReferralsConfig               `json:"referrals"`
+	Knowledge                  *KnowledgeConfig                          `json:"knowledge,omitempty"`
+	StoreCenter                *StoreCenterConfig                        `json:"storeCenter,omitempty"`
+	LocalTrial                 *LocalTrialConfig                         `json:"localTrial,omitempty"`
+	SchemaVersion              int                                       `json:"schemaVersion"`
+	Listen                     ListenConfig                              `json:"listen"`
+	Identity                   IdentityConfig                            `json:"identity"`
+	SourceAccountDatabase      DatabaseConfig                            `json:"sourceAccountDatabase"`
+	CommercialOwnerDatabase    *DatabaseConfig                           `json:"commercialOwnerDatabase,omitempty"`
+	MoneyOwnerDatabase         *DatabaseConfig                           `json:"moneyOwnerDatabase,omitempty"`
+	WalletTopUp                topupconfig.Config                        `json:"walletTopUp,omitempty"`
+	ProductAcquisitionDatabase *DatabaseConfig                           `json:"productAcquisitionDatabase,omitempty"`
+	ProductCollections         bool                                      `json:"productCollections,omitempty"`
+	SupplyChain                *SupplyChainConfig                        `json:"supplyChain,omitempty"`
+	SourceMedia                *coreconfig.ImageAgentArtifactStoreConfig `json:"sourceMedia,omitempty"`
+	ImageAgent                 *ImageAgentConfig                         `json:"imageAgent,omitempty"`
+	ProductAgent               *ProductAgentConfig                       `json:"productAgent,omitempty"`
+	AIWorkbench                *AIWorkbenchConfig                        `json:"aiWorkbench,omitempty"`
+	AccountAuditUsage          *AccountAuditUsageConfig                  `json:"accountAuditUsage,omitempty"`
+	Membership                 *MembershipConfig                         `json:"membership,omitempty"`
+	ListingKitAuthorization    ListingKitAuthorizationConfig             `json:"listingKitAuthorization,omitempty"`
+	Referrals                  ReferralsConfig                           `json:"referrals"`
 	// BrowserCollector enables the standalone anonymous public 1688 browser
 	// collector (design D13). Omitted means the application keeps the existing
 	// anonymous public HTTP provider unchanged.
@@ -348,6 +349,14 @@ func (cfg *Config) validate() error {
 	if err := cfg.validateSupplyChain(); err != nil {
 		return err
 	}
+	if cfg.SourceMedia != nil {
+		if !cfg.ProductCollections || cfg.SupplyChain == nil {
+			return errors.New("source media requires current collections and supply chain")
+		}
+		if err := ValidateSourceMediaStorage(*cfg.SourceMedia); err != nil {
+			return errors.New("source media storage configuration unavailable")
+		}
+	}
 	if product := cfg.ProductAcquisitionDatabase; product != nil {
 		if cfg.CommercialOwnerDatabase == nil {
 			return errors.New("product acquisition requires the canonical resource owner database")
@@ -561,6 +570,9 @@ func (cfg *Config) CoreConfig() *coreconfig.Config {
 		core.ImageAgent.Generation = image.Generation
 		core.ImageAgent.Admission = coreconfig.ImageAgentAdmissionConfig{Enabled: true, AllowedTenantIDs: append([]string(nil), image.AllowedOrganizationIDs...)}
 		core.ImageAgent.ArtifactStore = coreconfig.ImageAgentArtifactStoreConfig{Enabled: true, Provider: "s3", PublicBase: image.PublicBase, IsolatedTrialGeneratedURLs: image.IsolatedTrialGeneratedURLs, S3: coreconfig.ImageAgentArtifactStoreS3Config{Bucket: image.Bucket}}
+	}
+	if cfg.SourceMedia != nil {
+		core.ProductCollectionSourceMedia = *cfg.SourceMedia
 	}
 	return core
 }

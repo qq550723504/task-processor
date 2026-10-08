@@ -15,8 +15,8 @@ export function supplyIntentRequestSchema(route:SupplyIntent["route"]){
 }
 export {SupplyAPIError} from "./supply-error";
 const base="/api/workbench/supply-preparations";
-type Query={after?:string;keyword?:string;limit?:number};
-const query=(q:Query)=>{const p=new URLSearchParams({limit:String(q.limit??50)});if(q.after)p.set("after",q.after);if(q.keyword)p.set("keyword",q.keyword);return `?${p}`};
+type Query={after?:string;keyword?:string;limit?:number;sourceKind?:"own"|"acquisition"};
+const query=(q:Query)=>{const p=new URLSearchParams({limit:String(q.limit??50)});if(q.after)p.set("after",q.after);if(q.keyword)p.set("keyword",q.keyword);if(q.sourceKind)p.set("sourceKind",q.sourceKind);return `?${p}`};
 export const listSupplyPreparations=(scope:SupplyScope,q:Query={},signal?:AbortSignal)=>send(base+query(q),scope,c.preparationPageSchema,signal);
 export const readSupplyPreparation=async(scope:SupplyScope,id:string,signal?:AbortSignal)=>{
  const value=await send(`${base}/${collectionID.parse(id)}`,scope,c.preparationSchema,signal);if(value.id!==id)throw new SupplyAPIError("DEPENDENCY_UNAVAILABLE",502);return value;

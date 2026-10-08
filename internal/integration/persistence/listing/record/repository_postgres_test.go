@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+	officialstore "task-processor/internal/integration/persistence/listing/official"
 	"testing"
 	"time"
 
@@ -218,10 +219,10 @@ func TestPostgresTargetImmutableRevisionsCommandReplayAndConcurrentCAS(t *testin
 		intentProof, err := submission.PrepareOfficialIntent(ctx, sourceProof, completed.Record, intentKey, wire.SubmissionPayload, nil)
 		require.NoError(t, err)
 		require.NoError(t, submissionstore.InstallSchema(db))
-		_, err = submissionstore.NewOfficialRepository(ctx, db)
+		_, err = officialstore.NewOfficialRepository(ctx, db)
 		require.ErrorIs(t, err, submission.ErrExecutionUnavailable)
-		require.NoError(t, submissionstore.InstallOfficialSchema(db))
-		official, err := submissionstore.NewOfficialRepository(ctx, db)
+		require.NoError(t, officialstore.InstallOfficialSchema(db))
+		official, err := officialstore.NewOfficialRepository(ctx, db)
 		require.NoError(t, err)
 		intent, err := official.PrepareOfficial(ctx, intentProof)
 		require.NoError(t, err)

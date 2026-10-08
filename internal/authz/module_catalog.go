@@ -24,7 +24,7 @@ var enterpriseModules = []MenuModule{
 	{"supply-official", "供应市场", "硕米自营", false, nil},
 	{"supply-selected", "供应市场", "硕米优选", false, nil},
 	{"supply-catalogs", "供应市场", "货盘集成", false, nil},
-	{"supply-mine", "供应市场", "我的供应链", false, nil},
+	{"supply-mine", "供应市场", "我的供应链", true, []string{PermissionWorkbenchSupplyRead, PermissionWorkbenchSupplyManage, PermissionWorkbenchListingSubmit, PermissionWorkbenchCollectionRead, PermissionWorkbenchCollectionManage, PermissionWorkbenchStoreRead}},
 	{"agent-market", "智能市场", "智能体市场", true, []string{PermissionWorkbenchAgentRead}},
 	{"agents", "智能市场", "我的智能体", true, []string{PermissionLocalAgentWrite, PermissionWorkbenchAgentRead, PermissionWorkbenchAgentUse, PermissionWorkbenchTaskRead}},
 	{"agent-custom", "智能市场", "智能体定制", false, nil},

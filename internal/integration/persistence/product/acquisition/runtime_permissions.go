@@ -3,11 +3,11 @@ package acquisition
 import (
 	"context"
 	"strings"
+	officialstore "task-processor/internal/integration/persistence/listing/official"
 
 	"gorm.io/gorm"
 	preparationstore "task-processor/internal/integration/persistence/listing/preparation"
 	recordstore "task-processor/internal/integration/persistence/listing/record"
-	submissionstore "task-processor/internal/integration/persistence/listing/submission"
 	collectionstore "task-processor/internal/integration/persistence/product/collection"
 	"task-processor/internal/product/sourcing"
 )
@@ -247,7 +247,7 @@ func VerifyRuntimePermissions(ctx context.Context, db *gorm.DB, capabilities ...
 		if err := recordstore.VerifySchema(ctx, db); err != nil {
 			return err
 		}
-		if err := submissionstore.VerifyOfficialSchema(ctx, db); err != nil {
+		if err := officialstore.VerifyOfficialSchema(ctx, db); err != nil {
 			return err
 		}
 	}

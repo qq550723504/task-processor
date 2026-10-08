@@ -266,3 +266,11 @@ func (a OperationApplication) EnsureExecution(ctx context.Context, id string) (p
 	}
 	return op, nil
 }
+
+// OperationWorker is the runtime lifecycle consumed by assembly; no SDK types
+// cross the business or HTTP boundary.
+type OperationWorker interface {
+	Start() error
+	Stop()
+}
+type OperationWorkerFactory func(*OperationActivities) (OperationWorker, error)

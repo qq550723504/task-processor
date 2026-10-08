@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"task-processor/internal/authidentity"
+	officialstore "task-processor/internal/integration/persistence/listing/official"
 	recordstore "task-processor/internal/integration/persistence/listing/record"
 	submissionstore "task-processor/internal/integration/persistence/listing/submission"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
@@ -60,7 +61,7 @@ func TestPostgresTransferCapturesAllPagesAndReplaysOriginalMembership(t *testing
 	for index := 0; index < 205; index++ {
 		itemID, publication, product := uuid.NewString(), uuid.NewString(), uuid.NewString()
 		chosen = append(chosen, itemID)
-		snapshotJSON := []byte(`{"title":"商品"}`)
+		snapshotJSON := []byte(`{"title":"商品","variants":[{"sku":"SKU-SECOND-PAGE"}]}`)
 		hash := sha256.Sum256(snapshotJSON)
 		require.NoError(t, db.Create(&catalogstore.SnapshotVersionRecord{TenantID: scope.OrganizationID, ProductKey: product, Version: 1, PublicationID: publication, PayloadHash: hex.EncodeToString(hash[:]), SnapshotJSON: snapshotJSON}).Error)
 		require.NoError(t, db.Exec("INSERT INTO product_collection_items(organization_id,actor_id,member_id,id,batch_id,product_key,publication_id,original_version,source_kind,source_operation_id,revision,created_at) VALUES(?,?,?,?,?,?,?,1,'own','',1,now())", scope.OrganizationID, scope.ActorID, scope.MemberID, itemID, batchID, product, publication).Error)
@@ -82,7 +83,7 @@ func TestPostgresTransferCapturesAllPagesAndReplaysOriginalMembership(t *testing
 	require.NoError(t, err)
 	require.NoError(t, recordstore.InstallSchema(db))
 	require.NoError(t, submissionstore.InstallSchema(db))
-	require.NoError(t, submissionstore.InstallOfficialSchema(db))
+	require.NoError(t, officialstore.InstallOfficialSchema(db))
 	projected := []preparation.SourceStageFacts{}
 	projectionAfter := ""
 	for {
@@ -95,6 +96,10 @@ func TestPostgresTransferCapturesAllPagesAndReplaysOriginalMembership(t *testing
 		projectionAfter = facts[len(facts)-1].SourceID
 	}
 	require.Len(t, projected, 205, "projection must traverse the complete batch")
+	for _, f := range projected {
+		require.Equal(t, "own", f.SourceKind)
+		require.Equal(t, "SKU-SECOND-PAGE", f.SKUs)
+	}
 	opService, err := preparation.NewOperationService(service, collections, operations)
 	require.NoError(t, err)
 	opInput := preparation.OperationInput{PreparationID: receipt.Preparation.ID, ExpectedRevision: 1, StoreID: uuid.NewString(), Action: preparation.OperationAdapt}

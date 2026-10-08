@@ -38,6 +38,7 @@ func TestSupplyManifestRejectsIncompleteOwnerAssembly(t *testing.T) {
 
 func TestSupplyRuntimePassesCanonicalPoolsAndClosesWorkflowOnConstructionFailure(t *testing.T) {
 	c := supplyRuntimeConfig(t)
+	c.SourceMedia = &coreconfig.ImageAgentArtifactStoreConfig{Enabled: true, Provider: "s3", PublicBase: "https://files.example.org/products", S3: coreconfig.ImageAgentArtifactStoreS3Config{Bucket: "products", Region: "us-east-1", AccessKeyID: "synthetic", SecretAccessKey: "synthetic", ArtifactMode: "aws"}}
 	app := c.StoreCenter.OfficialApplications[0]
 	require.NoError(t, os.WriteFile(app.AppSecretFile, []byte(strings.Repeat("synthetic", 4)), 0600))
 	require.NoError(t, os.WriteFile(app.CredentialKeyFile, []byte(base64.StdEncoding.EncodeToString(make([]byte, 32))), 0600))
@@ -65,6 +66,8 @@ func TestSupplyRuntimePassesCanonicalPoolsAndClosesWorkflowOnConstructionFailure
 			require.Same(t, assets, f.SupplyAssetDB)
 			require.Same(t, workflow, f.SupplyWorkflow)
 			require.NotNil(t, f.SupplyWorker)
+			require.NotNil(t, f.SourceMediaStorage)
+			require.Contains(t, f.SourceMediaStorage.PublicURL("fixture"), "https://files.example.org/products/")
 			return nil, errors.New("fixture assembly failure")
 		},
 	})

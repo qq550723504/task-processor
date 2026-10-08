@@ -94,6 +94,8 @@ consider the applicable guards, including:
 - `TestInfrastructureCatalogGuardRejectsNonAdapterFixture`
 - `TestProductCatalogPersistenceAdapterImplementsOnlyApprovedBusinessPort`
 - `TestListingSubmissionPersistenceAdapterImplementsOnlySubmissionPort`
+- `TestSupplyPersistenceAndOfficialTransportOnlyImportAdmittedPorts`
+- `TestSupplyAndCollectionHTTPRegistrationKeepsBusinessSiblingsFrameworkFree`
 - `TestProductCatalogPersistenceGuardRejectsEverySiblingProductDomainFixture`
 - `depguard: infrastructure_business_boundaries`
 - `depguard: product_catalog_persistence_boundary`

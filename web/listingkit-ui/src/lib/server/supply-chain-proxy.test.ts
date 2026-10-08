@@ -27,6 +27,11 @@ describe("private supply chain proxy",()=>{
   const safe=await buildWorkbenchUpstreamRequest(request(input),path,"server-token","actor-a");expect(safe).not.toBeInstanceOf(Response);if(safe instanceof Response)return;expect(safe.sourceMutation).toBe(true);expect(new Headers(safe.init.headers).get("Idempotency-Key")).toBeNull();
   for(const r of [request({...input,evidence:{outcome:"succeeded"}}),request(input,"https://another.example")]){const rejected=await buildWorkbenchUpstreamRequest(r,path,"server-token","actor-a");expect(rejected).toBeInstanceOf(Response);if(rejected instanceof Response)expect(rejected.status).toBeGreaterThanOrEqual(400)}
  });
+ it("forwards only a bounded canonical source filter",async()=>{
+  const path=["supply-preparations",id,"stages"];
+  const result=await buildWorkbenchUpstreamRequest(new Request(`http://localhost/api/workbench/supply-preparations/${id}/stages?storeId=${id}&stage=review&sourceKind=own`,{headers:scope}),path,"server-token","actor-a");expect(result).not.toBeInstanceOf(Response);if(!(result instanceof Response))expect(result.url).toContain("sourceKind=own");
+  for(const filter of ["sourceKind=fake","sourceKind=own&sourceKind=acquisition"]){const rejected=await buildWorkbenchUpstreamRequest(new Request(`http://localhost/api/workbench/supply-preparations/${id}/stages?storeId=${id}&stage=review&${filter}`,{headers:scope}),path,"server-token","actor-a");expect(rejected).toBeInstanceOf(Response);if(rejected instanceof Response)expect(rejected.status).toBe(400);}
+ });
  it("bounds whole-batch stage queries before dispatch",async()=>{
   for(const query of [`storeId=${id}&stage=ready&stage=review`,`storeId=${id}&stage=fake`,`storeId=${id}&stage=ready&limit=101`]){
    const result=await buildWorkbenchUpstreamRequest(new Request(`http://localhost/api/workbench/supply-preparations/${id}/stages?${query}`,{headers:scope}),["supply-preparations",id,"stages"],"server-token","actor-a");expect(result).toBeInstanceOf(Response);if(result instanceof Response)expect(result.status).toBe(400);

@@ -67,7 +67,17 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
   const [pendingCollectionIntent, setPendingCollectionIntent] = useState<CollectionIntent | null>(null);
   const [pendingSupplyIntent,setSupplyIntent]=useState<SupplyIntent|null>(null);
   const [supplyIntentReady,setSupplyIntentReady]=useState(false);
-  useEffect(()=>{setSupplyIntent(loadSupplyIntent());setSupplyIntentReady(true)},[]);
+  useEffect(() => {
+    let active = true;
+    // Hydrate browser storage after the initial server-compatible render.
+    void Promise.resolve().then(() => {
+      if (active) {
+        setSupplyIntent(loadSupplyIntent());
+        setSupplyIntentReady(true);
+      }
+    });
+    return () => { active = false; };
+  }, []);
   const setPendingSupplyIntent=useCallback((intent:SupplyIntent|null)=>{if(!saveSupplyIntent(intent))return false;setSupplyIntent(intent);return true},[]);
   const guardsRef = useRef(new Set<(target: WorkbenchOrganization) => boolean | Promise<boolean>>());
   const currentContextRef = useRef<WorkbenchContext | null>(null);

@@ -14,10 +14,11 @@ import (
 // maintainedOperationalCommands is shared by classification, documentation and owner guards.
 func maintainedOperationalCommands() map[string]struct{} {
 	return map[string]struct{}{
+		"supply-asset-init":                   {},
 		"account-acceptance-fixture":          {},
 		"account-audit-ledger-schema-init":    {},
 		"agent-configuration-schema-init":     {},
-		"ai-workbench-schema-init":             {},
+		"ai-workbench-schema-init":            {},
 		"1688-batch-import":                   {},
 		"1688-local-agent":                    {},
 		"commercial-owner-schema-migrate":     {},

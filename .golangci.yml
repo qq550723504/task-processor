@@ -519,6 +519,15 @@ linters-settings:
           - "**/internal/integration/**/*.go"
           - "!**/internal/integration/persistence/listing/submission/*.go"
           - "!**/internal/integration/persistence/listing/submission/**/*.go"
+          - "!**/internal/integration/persistence/listing/preparation/*.go"
+          - "!**/internal/integration/persistence/listing/preparation/**/*.go"
+          - "!**/internal/integration/persistence/listing/record/*.go"
+          - "!**/internal/integration/persistence/listing/record/**/*.go"
+          - "!**/internal/integration/persistence/listing/official/*.go"
+          - "!**/internal/integration/persistence/listing/official/**/*.go"
+          - "!**/internal/integration/shein/official_goods.go"
+          - "!**/internal/integration/shein/official_goods_rules.go"
+          - "!**/internal/integration/shein/official_readback.go"
           - "!**/internal/integration/persistence/product/catalog/*.go"
           - "!**/internal/integration/persistence/product/catalog/**/*.go"
           - "**/internal/platform/*.go"
@@ -1094,6 +1103,67 @@ linters-settings:
         deny:
           - pkg: "task-processor/internal/listingkit$"
             desc: "1688 crawler production code must not depend on ListingKit root facade"
+
+      supply_preparation_persistence:
+        # #605 IMPLEMENTATION_READY: only these current ports/DTOs; no legacy admission.
+        list-mode: strict
+        files:
+          - "**/internal/integration/persistence/listing/preparation/*.go"
+          - "**/internal/integration/persistence/listing/preparation/**/*.go"
+          - "!**/*_test.go"
+        allow:
+          - "$gostd"
+          - "gorm.io/gorm$"
+          - "gorm.io/gorm/clause$"
+          - "task-processor/internal/authidentity$"
+          - "task-processor/internal/integration/persistence/product/collection$"
+          - "task-processor/internal/listing/preparation$"
+          - "task-processor/internal/product/collection$"
+
+      supply_target_persistence:
+        # #605 IMPLEMENTATION_READY: only these current ports/DTOs; no legacy admission.
+        list-mode: strict
+        files:
+          - "**/internal/integration/persistence/listing/record/*.go"
+          - "**/internal/integration/persistence/listing/record/**/*.go"
+          - "!**/*_test.go"
+        allow:
+          - "$gostd"
+          - "gorm.io/gorm$"
+          - "task-processor/internal/listing/record/target$"
+          - "task-processor/internal/product/collection$"
+
+      supply_official_uow_persistence:
+        # #605 IMPLEMENTATION_READY: only these current ports/DTOs; no legacy admission.
+        list-mode: strict
+        files:
+          - "**/internal/integration/persistence/listing/official/*.go"
+          - "**/internal/integration/persistence/listing/official/**/*.go"
+          - "!**/*_test.go"
+        allow:
+          - "$gostd"
+          - "gorm.io/gorm$"
+          - "gorm.io/gorm/clause$"
+          - "task-processor/internal/integration/persistence/listing/record$"
+          - "task-processor/internal/integration/persistence/listing/submission$"
+          - "task-processor/internal/listing/submission$"
+          - "task-processor/internal/product/collection$"
+
+      supply_official_goods_transport:
+        # #605 IMPLEMENTATION_READY: only these current ports/DTOs; no legacy admission.
+        list-mode: strict
+        files:
+          - "**/internal/integration/shein/official_goods.go"
+          - "**/internal/integration/shein/official_goods_rules.go"
+          - "**/internal/integration/shein/official_readback.go"
+          - "!**/*_test.go"
+        allow:
+          - "$gostd"
+          - "sigs.k8s.io/json$"
+          - "task-processor/internal/integration/httpimage$"
+          - "task-processor/internal/marketplace/shein/goods$"
+          - "task-processor/internal/marketplace/shein/model$"
+          - "task-processor/internal/storecenter$"
 
   govet:
     disable:

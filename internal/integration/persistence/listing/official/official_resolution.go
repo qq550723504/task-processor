@@ -1,9 +1,10 @@
-package submissionpersistence
+package officialpersistence
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	submissionstore "task-processor/internal/integration/persistence/listing/submission"
 	"task-processor/internal/listing/submission"
 	"task-processor/internal/product/collection"
 )
@@ -38,7 +39,7 @@ func (r *OfficialRepository) ResolveOfficial(ctx context.Context, proof submissi
 	if row.Error != nil || row.RowsAffected != 1 || original.BodyHash != data.RecordHash {
 		return submission.OfficialReceipt{}, submission.ErrExecutionEvidenceRequired
 	}
-	bound, err := NewTransactionFinalizer(ctx, tx)
+	bound, err := submissionstore.NewTransactionFinalizer(ctx, tx)
 	if err != nil {
 		return submission.OfficialReceipt{}, err
 	}
