@@ -1,6 +1,6 @@
 import {act,cleanup,fireEvent,render,renderHook,screen,waitFor} from "@testing-library/react";
 import {QueryClient,QueryClientProvider} from "@tanstack/react-query";
-import {afterEach,expect,it,vi} from "vitest";
+import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import type {ReactNode} from "react";
 import {ecoPolicy,ecoRequest,EcoservicesError,type EcoRequest} from "@/lib/api/ecoservices";
 import {RequestDetail} from "./request-detail";
@@ -11,7 +11,8 @@ const context=vi.hoisted(()=>({user:{id:"actor"},effectiveOrganization:{id:"org"
 vi.mock("@/components/providers/workbench-context-provider",()=>({useWorkbenchContext:()=>context}));
 vi.mock("@/components/workbench/resources/resource-dialog",()=>({ResourceDialog:({children}:{children:ReactNode})=><div>{children}</div>}));
 vi.mock("@/lib/api/ecoservices",async original=>({...await original<typeof import("@/lib/api/ecoservices")>(),ecoRequest:vi.fn()}));
-afterEach(()=>{cleanup();vi.clearAllMocks();context.isSwitching=false;context.permissions=["workbench.ecoservices.purchase"]});
+beforeEach(()=>{localStorage.clear();Object.defineProperty(navigator,"locks",{configurable:true,value:{request:async(_name:string,_options:unknown,run:(lock:unknown)=>Promise<unknown>)=>run({})}})});
+afterEach(()=>{cleanup();localStorage.clear();vi.clearAllMocks();context.isSwitching=false;context.permissions=["workbench.ecoservices.purchase"]});
 const scope={userId:"actor",organizationId:"org"},id="4841d296-ef14-4c16-8d25-a7667e534feb";
 function request():EcoRequest{return {id,listingId:id,listingVersion:"1",title:"原服务",category:"STORE_OPENING",description:"原需求",fileIds:[],state:"AWAITING_ACCEPTANCE",version:"8",quote:{commissionBps:1000,allocationBasis:"CUMULATIVE_NET_FLOOR_V1",policyVersion:ecoPolicy,amountMinor:"10000",scope:"交付店铺",acceptanceCriteria:"可登录",deliveryDays:7,version:"1"},delivery:{content:"原交付",fileIds:[],version:"1",submittedAt:"2026-10-08T00:00:00Z"},acceptedDeliveryVersion:"0",financialHold:false,financialState:"PAID",financialReason:"",createdAt:"2026-10-08T00:00:00Z",updatedAt:"2026-10-08T00:00:00Z",side:"buyer"}}
 function harness(){const client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});const wrapper=({children}:{children:ReactNode})=><QueryClientProvider client={client}>{children}</QueryClientProvider>;return {client,wrapper}}

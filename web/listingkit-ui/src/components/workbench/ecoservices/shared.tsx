@@ -2,6 +2,8 @@
 import {useEffect,useRef,useState,type ReactNode} from "react";
 import {useMutation,useQueryClient} from "@tanstack/react-query";
 import type {z} from "zod";
+import {useResourcePending} from "@/components/workbench/resources/resource-pending";
+import {ecoPendingSchema,intentRoute} from "./pending";
 import {useWorkbenchContext} from "@/components/providers/workbench-context-provider";
 import {ConsoleState} from "@/components/workbench/console/console-page";
 import {Button} from "@/components/ui/button";
@@ -25,21 +27,55 @@ export function EcoBoundary({children}:{children:(scope:EcoScope)=>ReactNode}){
 export type EcoIntent={path:string;key:string;body:string|FormData;version?:string;output?:"file"|"checkout"|"merchant"|"financial";admin?:boolean;method?:"POST"|"PUT"};
 export function useEcoCommands(scope:EcoScope){
  const client=useQueryClient(),context=useWorkbenchContext(),cacheKey=["ecoservices",scope.userId,scope.organizationId,"intent"];
- const [intent,setIntent]=useState<EcoIntent|null>(()=>client.getQueryData<EcoIntent>(cacheKey)??null),[message,setMessage]=useState("");
- const original=useRef(intent),running=useRef(false);
+ const liveContext=useRef(context);
+ useEffect(()=>{liveContext.current=context},[context]);
+ const pending=useResourcePending({expectedUserId:scope.userId,expectedOrganizationId:scope.organizationId},["ecoservices","json"],ecoPendingSchema,{storage:"local",maxLength:131072});
+ const [ephemeral,setEphemeral]=useState<EcoIntent|null>(()=>client.getQueryData<EcoIntent>(cacheKey)??null),[message,setMessage]=useState("");
+ const intent:EcoIntent|null=pending.command??ephemeral,running=useRef(false);
  const [resolved,setResolved]=useState<{intent:EcoIntent;data:unknown}|null>(null);
- const clear=()=>{client.removeQueries({queryKey:cacheKey,exact:true});original.current=null;setIntent(null)};
+ function current(i:EcoIntent){
+  const live=liveContext.current;
+  if(live.user?.id!==scope.userId)throw new EcoservicesError("IDENTITY_CONTEXT_CHANGED");
+  if(live.isLoading||live.isSwitching||live.error||live.blockingError||!i.admin&&live.effectiveOrganization?.id!==scope.organizationId)throw new EcoservicesError("ORGANIZATION_CONTEXT_CHANGED");
+ }
+ function clear(i:EcoIntent){
+  if(typeof i.body==="string"&&ecoPendingSchema.safeParse(i).success)pending.clear(ecoPendingSchema.parse(i));
+  client.removeQueries({queryKey:cacheKey,exact:true});setEphemeral(null);
+ }
  const mutation=useMutation({mutationKey:["ecoservices",scope.userId,scope.organizationId,"write"],mutationFn:(i:EcoIntent)=>{
+  current(i);
   const headers=new Headers();if(!(i.body instanceof FormData))headers.set("Content-Type","application/json");if(i.output!=="checkout")headers.set("Idempotency-Key",i.key);if(i.version)headers.set("If-Match",'"'+i.version+'"');
   const schema:z.ZodType<unknown>=i.output==="file"?ecoFileSchema:i.output==="checkout"?ecoCheckoutSchema:i.output==="merchant"?ecoMerchantSchema:i.output==="financial"?ecoFinancialSchema:ecoResultSchema;
   return ecoRequest(scope,i.path,schema,{method:i.method??"POST",headers,body:i.body},i.admin);
- },onSuccess:(data,i)=>{setResolved({intent:i,data});clear();setMessage("已保存，正在刷新真实状态。");void client.invalidateQueries({queryKey:["ecoservices",scope.userId,scope.organizationId]})},onError:(error)=>{setMessage(errorText(error));if(!(error instanceof EcoservicesError)||error.code!=="OUTCOME_UNKNOWN")clear()}});
+ },onSuccess:(data,i)=>{clear(i);setResolved({intent:i,data});setMessage("已保存，正在刷新真实状态。");void client.invalidateQueries({queryKey:["ecoservices",scope.userId,scope.organizationId]})},onError:(error,i)=>{
+  setMessage(errorText(error));
+  // These domain rejections prove that this exact operation was not applied.
+  // Identity/org drift, revocation and all uncertain responses retain it.
+  if(error instanceof EcoservicesError&&((error.code==="ECOSERVICES_INVALID"&&error.status===400)||(error.code==="ECOSERVICES_NOT_FOUND"&&error.status===404)||(error.code==="ECOSERVICES_CONFLICT"&&error.status===409)))clear(i);
+ }});
  const registerSwitchGuard=context.registerOrganizationSwitchGuard;
- useEffect(()=>registerSwitchGuard(()=>!intent&&!mutation.isPending),[registerSwitchGuard,intent,mutation.isPending]);
- async function execute(i:EcoIntent){if(context.isLoading||context.isSwitching||context.error||context.blockingError)throw new EcoservicesError("ORGANIZATION_CONTEXT_CHANGED");if(running.current||original.current&&original.current!==i)throw new EcoservicesError("ECOSERVICES_CONFLICT");original.current=i;running.current=true;client.setQueryData(cacheKey,i);setIntent(i);setMessage("");try{return await mutation.mutateAsync(i)}finally{running.current=false}}
+ useEffect(()=>registerSwitchGuard(()=>!intent&&!mutation.isPending&&!pending.error),[registerSwitchGuard,intent,mutation.isPending,pending.error]);
+ async function execute(i:EcoIntent){
+  try{
+   current(i);if(running.current||!pending.ready)throw new EcoservicesError("ECOSERVICES_CONFLICT");
+   const route=intentRoute(i);if(!route||route.path!==i.path||route.admin!==!!i.admin)throw new EcoservicesError("ECOSERVICES_INVALID",400);
+   const durable=!route.upload&&route.output!==ecoMerchantSchema;
+   if(durable&&!navigator.locks)throw new Error("当前浏览器暂不支持安全提交，请使用当前版本的 Edge 浏览器。");
+   const run=async()=>{
+    current(i);if(running.current)throw new EcoservicesError("ECOSERVICES_CONFLICT");
+    const saved=pending.read(),cached=client.getQueryData<EcoIntent>(cacheKey);
+    if(saved&&(typeof i.body!=="string"||JSON.stringify(saved)!==JSON.stringify(ecoPendingSchema.parse(i)))||cached&&cached!==i)throw new EcoservicesError("ECOSERVICES_CONFLICT");
+    if(durable){pending.persist(ecoPendingSchema.parse(i))}else{client.setQueryData(cacheKey,i);setEphemeral(i)}
+    running.current=true;setMessage("");try{return await mutation.mutateAsync(i)}finally{running.current=false}
+   };
+   if(durable)return await navigator.locks.request(pending.storageKey,{ifAvailable:true},lock=>{if(!lock)throw new EcoservicesError("ECOSERVICES_CONFLICT");return run()});
+   return await run();
+  }catch(error){setMessage(errorText(error));throw error}
+ }
  const json=(path:string,value:unknown,version?:string,admin=false,method:"POST"|"PUT"="POST")=>execute({path,key:crypto.randomUUID(),body:JSON.stringify(value),version,admin,method});
- const notice=message||intent?<Card className="eco-notice" role="status"><p>{message||"正在提交原操作…"}</p>{intent&&!mutation.isPending?<Button variant="outline" onClick={()=>void execute(intent).catch(()=>undefined)}>重试原操作</Button>:null}</Card>:null;
- return {execute,json,intent,notice,resolved,locked:!!intent||mutation.isPending,message,setMessage};
+ const storageMessage=pending.error?"无法读取已保存的待确认操作，已暂停新的提交。请保留浏览器数据并联系平台处理。":"";
+ const notice=message||intent||storageMessage?<Card className="eco-notice" role="status"><p>{storageMessage||message||"原操作尚未确认，请重试原操作。"}</p>{intent&&!mutation.isPending&&!pending.error?<Button variant="outline" onClick={()=>void execute(intent).catch(()=>undefined)}>重试原操作</Button>:null}</Card>:null;
+ return {execute,json,intent,notice,resolved,locked:!pending.ready||!!intent||mutation.isPending,message,setMessage};
 }
 export type EcoCommands=ReturnType<typeof useEcoCommands>;
 export function EcoPagination({page,total,onPage}:{page:number;total:string;onPage:(page:number)=>void}){return <div className="eco-pagination"><Button variant="outline" disabled={page===1} onClick={()=>onPage(page-1)}>上一页</Button><span>第 {page} 页 · 共 {total} 项</span><Button variant="outline" disabled={BigInt(page*20)>=BigInt(total)} onClick={()=>onPage(page+1)}>下一页</Button></div>}
