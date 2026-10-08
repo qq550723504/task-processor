@@ -198,6 +198,29 @@ UI的“已完成”表示已有客户验收，结算状态另列。取消/售�
 
 只有原平台配置下查询原out_request_no，得到匹配原申请且FINISH/签约完成的sub_mchid，才写入唯一merchant binding；NEED_SIGN返回商户号也不算已开通。响应丢失按原申请号查询，未知时不建第二申请。一个渠道收款绑定不得重复归属多个无关企业。平台与服务商的真实进件/签约操作仍需单独授权；本地替身不证明渠道资格。
 
+#### 11.3.1 渠道 REJECTED 后更正增量
+
+状态：`IMPLEMENTATION_READY`。评审4220555048的有界增量在两轮独立审查后冻结：第二轮绑定b33f0222d及本节23行增量，确认无剩余BLOCKER；后续生产实现只消费本节准入，验证余项为IMPLEMENTATION_TEST，不重复全局架构评审。商户更正尚未实现，不能把本节Ready写成流程或真实渠道PASS；此前已批准、未变化的合同保持原准入。
+
+用户结果与边界：原企业可按渠道拒绝原因修正资料，重新确认适用的平台审核与协议，再沿原渠道申请继续入驻。仍使用原企业、原申请、原平台配置和原 `out_request_no`；不允许换主体、换号、删除原 intent/拒绝证明、绕过平台审核、迁移旧数据或新增通用恢复平台。当前产品/Figma Authority 和 §11.2 入驻 owner 保持。
+
+渠道依据：[提交申请单](https://pay.wechatpay.cn/doc/v3/partner/4012713017) 明确被驳回时可沿同一业务申请编号修改原申请，成功应答给出 `applyment_id`/`out_request_no`；[原业务号查状态](https://pay.wechatpay.cn/doc/v3/partner/4012691376) 不回显本地资料版本或请求指纹。文档未证明更正会生成不同 `applyment_id`，不得把不同号或相同号作为版本证明的默认假设。
+
+拟复用 E 的 immutable versions、原 application/intent、私有文件和 claim/CAS：
+
+- 更正入口要求原企业当前 join 权限、精确当前 application 与资料版本，以及可信原 terminal REJECTED 证明；未绑定商户、无未知或可能在途的旧资料派发。相同 key/指纹回读原更正，异载荷冲突；原拒绝与文件保留。
+- 原 intent 原样保留（包括初始 sealed payload/指纹），不 UPDATE 或删除；它持有稳定申请/企业/profile/渠道号。当前资料的唯一消费依据是新增 immutable revision，不读取 root 初始 payload 作为缺版本时的 fallback。复用 `ecoservices_versions`：kind=`MERCHANT_DETAILS`、entity_id=原intent ID、version=单调资料版本，payload含sealed details、审核/协议引用、文件集合、指纹；progress继续位于 `ecoservices_merchant_progress`，ID=该资料revision ID，各自有media/dispatch/claim。新安装创建v1时即写该revision；不增加历史数据迁移/兼容路径。
+- `Application`既有payload保存唯一 `currentMerchantRevisionId`/版本。E锁原application及当前progress，同一事务校验actor/org、If-Match、current pointer、原terminal proof、无旧未知/在途派发，追加下一revision/progress和application版本/history、更新current pointer及操作receipt；同key回读原revision，异载荷冲突。claim以当前revision ID为单位；上传、mark dispatch、受理证明写入、query observation、release及binding写入均校验该current pointer及原claim/CAS。lease过期不证明旧派发没有发生。
+- 企业名称/登记主体保持原身份。改变平台已审核的内容或许可证时，原 application 回到 SUBMITTED 追加版本，重新审核、协议；仅渠道补充字段的更正仍绑定有效批准及协议版本。不能以渠道 REJECTED 代替平台批准。
+- 每次新派发前再次检查 live 权限、当前版本指针和原证明，在 E 保存 MAY_HAVE_DISPATCHED 后才调用 SDK。窄 `SubmitMerchant` 返回 typed `MerchantSubmissionAcceptance`：实际发送当前sealed revision的同一次SDK HTTP调用验证200签名后，构造revision ID/版本、资料指纹、原profile/outNo、响应applyment_id、verification version和签名响应摘要。revision/指纹是本地调用关联，不能宣称微信回显这些字段；错误、丢响应、错号或无签名均没有受理证明。
+- 受理证明在E事务中再次核对当前revision及claim，追加不可变 `ecoservices_versions(kind=MERCHANT_SUBMISSION_ACCEPTANCE, entity_id=原intent ID, version=资料版本)`，sealed payload及指纹保留原SDK证明；同证明重放回读，冲突证明拒绝。提交成功/E保存失败仍属UNKNOWN，不能用状态查单补造受理证明。原progress只保存该proof引用/投影，不成为第二受理事实源。
+- 更正revision只有在此受理证明durable以后发起的新可信查询，且原profile/outNo/响应applyment_id精确匹配，才可消费到该revision的状态/链接/资格；本地查询调用绑定当前revision及受理proof，旧查询/旧sealed observation不可重标新版本。新更正再次被拒绝时，下一个不同payload同样须以当前受理proof之后的匹配可信REJECTED为前提；无proof或只有旧拒绝保持UNKNOWN。原v1未发生更正时保留既有原号查询恢复合同，只有开始更正才引入这个更强的版本关联消费门槛；进入更正后不得退回v1查询规则。
+- 旧 version/claim 不能写当前 projection、签约链接或 merchant binding；读取只查询原号，不提交。只有已审核的当前资料、协议及可关联当前派发的可信 FINISH+SIGNED 才能 ACTIVE，merchant binding 仍唯一归属原企业。
+
+响应丢失的边界：同号状态响应不回显资料版本；受理证明缺失、只有旧REJECTED或不能确认当前派发关联时，只保存原号及本次sealed payload/dispatch与待核实原因。不能打开下一份不同资料、当前签约操作或ACTIVE，不自动重发、换号、删除证明、使用申请号/响应签名时间当版本证明或假设更正生成新申请号。UNKNOWN按现有安全合同保留，不承诺自动恢复；本增量不增加人工改绑/强制成功命令或通用恢复平台。
+
+验证范围限该增量：同企业/live/CAS、相同 key 异资料、版本/审核/附件原子保存、旧 worker 不写当前、新资料受理丢失与旧 REJECTED 不开放下一更正/ACTIVE，以及正确原号更正后 FINISH+SIGNED。沿用 Go/实际受限 PG/签名 SDK 与现有 Console/BFF；不追加专项验收系统。当前进件修正为 `NOT_RUN`，真实渠道及产品验收仍需独立授权。
+
 ### 11.4 资金目的和money合同
 
 money新增有界ServicePaymentInput、ServiceOperationReservation、ServiceEffectReceipt和ServiceFundsView，归既有money owner。输入/结果都包含service request/order、双方组织、原渠道交易、币种/金额、policy fingerprint及完整操作kind/ID。
