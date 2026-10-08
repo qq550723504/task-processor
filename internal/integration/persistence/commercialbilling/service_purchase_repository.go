@@ -107,6 +107,18 @@ func (r *Repository) ReadServicePurchase(ctx context.Context, id string) (billin
 	}
 	return decodeServicePurchase(row)
 }
+func (r *Repository) ReadServicePurchaseByTrade(ctx context.Context, trade string) (billing.ServicePurchaseOrder, error) {
+	if trade == "" || len(trade) > 32 {
+		return billing.ServicePurchaseOrder{}, billing.ErrInvalid
+	}
+	var row servicePurchaseRow
+	if err := r.db.WithContext(ctx).Where("trade_no=?", trade).Take(&row).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		return billing.ServicePurchaseOrder{}, billing.ErrNotFound
+	} else if err != nil {
+		return billing.ServicePurchaseOrder{}, err
+	}
+	return decodeServicePurchase(row)
+}
 func (r *Repository) ClaimServicePurchase(ctx context.Context, id, token string, until time.Time) (billing.ServicePurchaseOrder, error) {
 	var out billing.ServicePurchaseOrder
 	if token == "" || !until.After(r.now()) || until.After(r.now().Add(2*time.Minute)) {

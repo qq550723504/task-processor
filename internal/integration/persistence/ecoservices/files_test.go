@@ -13,6 +13,7 @@ type objectFixture struct {
 	metadata     map[string]e.File
 	lostResponse bool
 	puts         int
+	reads        int
 }
 
 func (o *objectFixture) Inspect(_ context.Context, f e.File) (e.ObjectInspection, error) {
@@ -33,7 +34,35 @@ func (o *objectFixture) PutImmutable(_ context.Context, f e.File, data []byte) e
 	return nil
 }
 func (o *objectFixture) ReadBounded(_ context.Context, f e.File) ([]byte, error) {
+	o.reads++
 	return append([]byte(nil), o.files[f.ObjectKey]...), nil
+}
+func TestPrivateApplicationFilesCannotUseRequestDownloadAction(t *testing.T) {
+	r, _ := fixture(t)
+	o := &objectFixture{files: map[string][]byte{}, metadata: map[string]e.File{}}
+	files, err := e.NewFileService(r, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := e.Scope{OrganizationID: "org", ActorID: "actor"}
+	ctx := context.Background()
+	app, err := files.Upload(ctx, scope, uuid.NewString(), "APPLICATION", "", "identity.txt", []byte("private merchant identity"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := files.DownloadForKind(ctx, scope, app.ID, "REQUEST"); !errors.Is(err, e.ErrForbidden) || o.reads != 0 {
+		t.Fatal("generic request action fetched merchant PII object", err)
+	}
+	if _, _, err := files.DownloadForKind(ctx, scope, app.ID, "APPLICATION"); err != nil || o.reads != 1 {
+		t.Fatal("join action cannot read its original proof", err)
+	}
+	req, err := files.Upload(ctx, scope, uuid.NewString(), "REQUEST", "", "request.txt", []byte("private request"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := files.DownloadForKind(ctx, scope, req.ID, "APPLICATION"); !errors.Is(err, e.ErrForbidden) || o.reads != 1 {
+		t.Fatal("join route bypassed original request action", err)
+	}
 }
 func TestPrivateUploadLostResponseAndSameKeyChangedContent(t *testing.T) {
 	repo, _ := fixture(t)

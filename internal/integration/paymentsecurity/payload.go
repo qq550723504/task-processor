@@ -15,7 +15,7 @@ type PayloadProtection struct {
 }
 
 func NewPayloadProtection(key []byte, namespace string) (*PayloadProtection, error) {
-	if len(key) != 32 || namespace != "wallet-topup:v1:" && namespace != "ecoservices-payment:v1:" {
+	if len(key) != 32 || namespace != "wallet-topup:v1:" && namespace != "ecoservices-payment:v1:" && namespace != "ecoservices-merchant:v1:" {
 		return nil, billing.ErrInvalid
 	}
 	block, err := aes.NewCipher(key)

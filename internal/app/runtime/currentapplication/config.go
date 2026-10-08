@@ -32,6 +32,7 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
+	Ecoservices                *EcoservicesConfig            `json:"ecoservices,omitempty"`
 	Knowledge                  *KnowledgeConfig              `json:"knowledge,omitempty"`
 	StoreCenter                *StoreCenterConfig            `json:"storeCenter,omitempty"`
 	LocalTrial                 *LocalTrialConfig             `json:"localTrial,omitempty"`
@@ -417,6 +418,9 @@ func (cfg *Config) validate() error {
 		return err
 	}
 	if err := cfg.validateKnowledge(); err != nil {
+		return err
+	}
+	if err := cfg.validateEcoservices(); err != nil {
 		return err
 	}
 	if cfg.ProductAgent != nil {

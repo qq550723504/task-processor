@@ -78,6 +78,10 @@ func (serviceProtectionFixture) Open(k string, v []byte) (string, error) {
 }
 
 type serviceProviderFixture struct {
+	unsplitQueries                                         int
+	unsplitMinor                                           *int64
+	unsplitError                                           bool
+	paidAt                                                 time.Time
 	replayAbsent                                           bool
 	profile                                                billing.ServiceMerchantProfile
 	enabled, paid, lostCheckout, lostEffect, refundPending bool
@@ -85,6 +89,94 @@ type serviceProviderFixture struct {
 	creates, closes                                        int
 	dispatched                                             map[string]int
 	effects                                                map[string]billing.ServiceOperationObservation
+}
+
+func (f *serviceProviderFixture) QueryServiceUnsplit(_ context.Context, o billing.ServicePurchaseOrder) (billing.ServiceUnsplitObservation, error) {
+	f.unsplitQueries++
+	if f.unsplitError {
+		return billing.ServiceUnsplitObservation{}, billing.ErrReconciliationRequired
+	}
+	amount := o.Source.AmountMinor
+	for _, effect := range f.effects {
+		if effect.State == "SUCCESS" && (effect.Kind == money.ServiceShare || effect.Kind == money.ServiceFinish || effect.Kind == money.ServiceRefundRelease || effect.Kind == money.ServiceRefund) {
+			amount -= effect.AmountMinor
+		}
+	}
+	if amount < 0 {
+		amount = 0
+	}
+	if f.unsplitMinor != nil {
+		amount = *f.unsplitMinor
+	}
+	return billing.ServiceUnsplitObservation{ProfileVersion: o.Profile.Version, ProviderMerchantID: o.Source.ProviderMerchantID, TransactionID: o.Payment.TransactionID, UnsplitMinor: amount, ProofID: "verified-unsplit", VerificationVersion: "fixture-verified", OccurredAt: time.Now().UTC()}, nil
+}
+
+func TestServiceExpiredPaidOriginalBypassesCachedResultAndFencesChangedFunds(t *testing.T) {
+	svc, _, funds, src, p := servicePurchaseFixture(t)
+	ctx := context.Background()
+	p.paid = true
+	p.paidAt = time.Now().AddDate(0, 0, -181)
+	if _, err := svc.Execute(ctx, src.original); err != nil {
+		t.Fatal(err)
+	}
+	zero := int64(0)
+	p.unsplitMinor = &zero
+	result, err := svc.Execute(ctx, src.original)
+	if err != nil || p.unsplitQueries != 1 || result.State != "RECONCILIATION_REQUIRED" {
+		t.Fatalf("cached payment hid channel change: %+v %v queries=%d", result, err, p.unsplitQueries)
+	}
+	got, _ := funds.ReadServiceFunds(ctx, src.original.OrderID)
+	if got.AutomaticReleasedMinor != 0 || got.ReconciliationReason == "" {
+		t.Fatalf("invented channel release %+v", got)
+	}
+	_, _ = svc.Execute(ctx, serviceCommand(src, "SETTLE", "expired-accept", 101))
+	if len(p.dispatched) != 0 {
+		t.Fatal("expired changed funds dispatched a new share")
+	}
+}
+
+func TestServiceExpiredOriginalWaitsForLostShareReadback(t *testing.T) {
+	svc, _, funds, src, p := servicePurchaseFixture(t)
+	ctx := context.Background()
+	p.paid = true
+	p.paidAt = time.Now().UTC().AddDate(0, 0, -181)
+	if _, err := svc.Execute(ctx, src.original); err != nil {
+		t.Fatal(err)
+	}
+	p.lostEffect = true
+	c := serviceCommand(src, "SETTLE", "expired-original-acceptance", 101)
+	if _, err := svc.Execute(ctx, c); err == nil {
+		t.Fatal("lost share acknowledgement not exercised")
+	}
+	p.unsplitQueries = 0
+	if _, err := svc.Execute(ctx, src.original); err != nil || p.unsplitQueries != 0 {
+		t.Fatal("cached original inferred release from the pending share", err)
+	}
+	result, err := svc.Execute(ctx, c)
+	if err != nil || result.State != "SETTLED" {
+		t.Fatalf("original readback blocked by expiry: %+v %v", result, err)
+	}
+	f, _ := funds.ReadServiceFunds(ctx, src.original.OrderID)
+	if f.ReconciliationReason != "" || f.SharedMinor != 10 || f.ReleasedMinor != 91 {
+		t.Fatalf("original recovery invented an anomaly: %+v", f)
+	}
+}
+
+func TestServiceExpiredUnknownBalanceCannotDispatchNewOperation(t *testing.T) {
+	svc, _, _, src, p := servicePurchaseFixture(t)
+	ctx := context.Background()
+	p.paid = true
+	p.paidAt = time.Now().UTC().AddDate(0, 0, -181)
+	if _, err := svc.Execute(ctx, src.original); err != nil {
+		t.Fatal(err)
+	}
+	p.unsplitError = true
+	if _, err := svc.Execute(ctx, serviceCommand(src, "SETTLE", "unknown-expired-acceptance", 101)); err == nil {
+		t.Fatal("unknown balance admitted")
+	}
+	if len(p.dispatched) != 0 {
+		t.Fatal("unknown original balance dispatched share")
+	}
 }
 
 func (f *serviceProviderFixture) Profile() billing.ServiceMerchantProfile { return f.profile }
@@ -108,6 +200,9 @@ func (f *serviceProviderFixture) QueryServicePayment(_ context.Context, o billin
 		p.TransactionID = "original-channel-payment"
 		p.AmountMinor = o.Source.AmountMinor
 		p.OccurredAt = time.Date(2026, 10, 8, 1, 0, 0, 0, time.UTC)
+		if !f.paidAt.IsZero() {
+			p.OccurredAt = f.paidAt
+		}
 	}
 	return p, nil
 }

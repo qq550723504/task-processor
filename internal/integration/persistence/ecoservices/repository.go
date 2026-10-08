@@ -48,6 +48,8 @@ type requestRow struct {
 	PaymentReceiptID                            string
 	FinancialFence                              bool
 	FinancialRevision                           int64
+	FinancialState                              string
+	FundsExpireAt                               *time.Time `gorm:"index"`
 	Payload                                     []byte
 	CreatedAt, UpdatedAt                        time.Time
 }
@@ -76,16 +78,18 @@ type versionRow struct {
 func (versionRow) TableName() string { return "ecoservices_versions" }
 
 type financialRow struct {
-	ID               string `gorm:"primaryKey"`
-	RequestID        string `gorm:"index;not null"`
-	OrderID          string `gorm:"index;not null"`
-	Kind             string
-	Fingerprint      string
-	Payload          []byte
-	State            string `gorm:"index"`
-	DispatchAdmitted bool
-	Result           []byte
-	CreatedAt        time.Time
+	RecoveryGeneration int64
+	NextAttemptAt      time.Time `gorm:"index"`
+	ID                 string    `gorm:"primaryKey"`
+	RequestID          string    `gorm:"index;not null"`
+	OrderID            string    `gorm:"index;not null"`
+	Kind               string
+	Fingerprint        string
+	Payload            []byte
+	State              string `gorm:"index"`
+	DispatchAdmitted   bool
+	Result             []byte
+	CreatedAt          time.Time
 }
 
 func (financialRow) TableName() string { return "ecoservices_financial_commands" }
@@ -119,7 +123,7 @@ func Install(ctx context.Context, db *gorm.DB) error {
 	if db == nil {
 		return e.ErrUnavailable
 	}
-	return db.WithContext(ctx).AutoMigrate(&applicationRow{}, &listingRow{}, &requestRow{}, &operationRow{}, &versionRow{}, &financialRow{}, &merchantBindingRow{}, &fileRow{})
+	return db.WithContext(ctx).AutoMigrate(&applicationRow{}, &listingRow{}, &requestRow{}, &operationRow{}, &versionRow{}, &financialRow{}, &merchantBindingRow{}, &fileRow{}, &merchantIntentRow{}, &merchantProgressRow{})
 }
 func listingRecord(v e.Listing) *listingRow {
 	p, _ := json.Marshal(v)
@@ -132,7 +136,7 @@ func requestRecord(v e.Request) *requestRow {
 		o := v.OrderID
 		order = &o
 	}
-	return &requestRow{ID: v.ID, BuyerOrganizationID: v.BuyerOrganizationID, ProviderOrganizationID: v.ProviderOrganizationID, State: v.State, Title: v.Title, Category: string(v.Category), Version: v.Version, OrderID: order, PaymentReceiptID: v.PaymentReceiptID, FinancialFence: v.FinancialFence, FinancialRevision: v.FinancialRevision, Payload: p, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+	return &requestRow{ID: v.ID, BuyerOrganizationID: v.BuyerOrganizationID, ProviderOrganizationID: v.ProviderOrganizationID, State: v.State, Title: v.Title, Category: string(v.Category), Version: v.Version, OrderID: order, PaymentReceiptID: v.PaymentReceiptID, FinancialFence: v.FinancialFence, FinancialRevision: v.FinancialRevision, FinancialState: v.FinancialState, FundsExpireAt: v.FundsExpireAt, Payload: p, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func applicationRecord(v e.Application) *applicationRow {
 	p, _ := json.Marshal(v)
@@ -338,6 +342,13 @@ func (r *Repository) Apply(ctx context.Context, c e.Command, freezeDays int) (e.
 			payload, _ = json.Marshal(item)
 		case "request_create":
 			var listing listingRow
+			if err := tx.Where("id=? AND state=?", c.ID, "PUBLISHED").Take(&listing).Error; err != nil {
+				return e.ErrNotFound
+			}
+			var qualified applicationRow
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id=? AND state=?", listing.ProviderOrganizationID, "ACTIVE").Take(&qualified).Error; err != nil || qualified.MerchantID == "" {
+				return e.ErrNotQualified
+			}
 			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=? AND state=?", c.ID, "PUBLISHED").Take(&listing).Error; errors.Is(err, gorm.ErrRecordNotFound) {
 				return e.ErrNotFound
 			} else if err != nil {
@@ -392,6 +403,9 @@ func (r *Repository) Apply(ctx context.Context, c e.Command, freezeDays int) (e.
 					return e.ErrNotQualified
 				}
 				if app.MerchantID == "" {
+					return e.ErrNotQualified
+				}
+				if fc.Kind == "CREATE_PURCHASE" && app.State != "ACTIVE" {
 					return e.ErrNotQualified
 				}
 				fc.MerchantID = app.MerchantID
@@ -477,18 +491,33 @@ func (r *Repository) Read(ctx context.Context, q e.Query) (e.Page, error) {
 	case "catalog", "provider_listings":
 		query := db.Model(&listingRow{})
 		if q.Kind == "catalog" {
-			query = query.Where("state=?", "PUBLISHED")
+			query = query.Where("state=?", "PUBLISHED").Where("EXISTS (SELECT 1 FROM ecoservices_applications a WHERE a.organization_id=ecoservices_listings.provider_organization_id AND a.state=? AND a.merchant_id<>'')", "ACTIVE")
 		} else {
 			query = query.Where("provider_organization_id=?", q.Scope.OrganizationID)
 		}
 		if q.ID != "" {
 			query = query.Where("id=?", q.ID)
 		}
+		if q.Search != "" {
+			query = query.Where("title LIKE ?", "%"+q.Search+"%")
+		}
+		var categories []struct {
+			Category string
+			Count    int64
+		}
+		if err := query.Session(&gorm.Session{}).Select("category,COUNT(*) AS count").Group("category").Scan(&categories).Error; err != nil {
+			return out, err
+		}
+		for _, v := range categories {
+			out.Counts[v.Category] = v.Count
+		}
 		if q.Category != "" {
 			query = query.Where("category=?", q.Category)
 		}
-		if q.Search != "" {
-			query = query.Where("title LIKE ?", "%"+q.Search+"%")
+		if q.Group == "enterprise" {
+			query = query.Where("category IN ?", []e.Category{e.CompanyRegistration, e.TrademarkRegistration})
+		} else if q.Group == "shop" {
+			query = query.Where("category IN ?", []e.Category{e.StoreOpening, e.StoreOperation})
 		}
 		if err := query.Count(&out.Total).Error; err != nil {
 			return out, err
@@ -507,6 +536,9 @@ func (r *Repository) Read(ctx context.Context, q e.Query) (e.Page, error) {
 		}
 	case "requests", "due_orders":
 		query := db.Model(&requestRow{})
+		if q.Kind == "due_orders" {
+			query = query.Where("funds_expire_at IS NOT NULL AND funds_expire_at<=? AND state<>? AND financial_state NOT IN ?", time.Now().UTC().AddDate(0, 0, 7), "CANCELLED", []string{"SETTLED", "REFUNDED", "CLOSED_UNPAID"})
+		}
 		if !q.Scope.Platform {
 			if q.Side == "buyer" {
 				query = query.Where("buyer_organization_id=?", q.Scope.OrganizationID)
@@ -540,6 +572,10 @@ func (r *Repository) Read(ctx context.Context, q e.Query) (e.Page, error) {
 		}
 		for _, v := range counts {
 			out.Counts[v.State] = v.Count
+		}
+		stages := map[string][]string{"pending": {"REQUESTED", "QUOTED", "ORDER_PENDING", "PAID_READY"}, "servicing": {"SERVICING"}, "acceptance": {"AWAITING_ACCEPTANCE"}, "completed": {"ACCEPTED"}, "cancelled": {"CANCEL_REQUESTED", "CANCELLED"}}
+		if q.Stage != "" {
+			query = query.Where("state IN ?", stages[q.Stage])
 		}
 		if q.State != "" {
 			query = query.Where("state=?", q.State)
@@ -575,20 +611,33 @@ func (r *Repository) PendingFinancialCommands(ctx context.Context, limit int) ([
 	if limit < 1 || limit > 100 {
 		return nil, e.ErrInvalid
 	}
-	var rows []financialRow
-	if err := r.db.WithContext(ctx).Where("state IN ?", []string{"PENDING", "PROCESSING"}).Order("created_at,id").Limit(limit).Find(&rows).Error; err != nil {
-		return nil, err
-	}
-	out := make([]e.FinancialCommand, 0, len(rows))
-	for _, row := range rows {
-		var command e.FinancialCommand
-		if json.Unmarshal(row.Payload, &command) != nil {
-			return nil, e.ErrConflict
+	out := make([]e.FinancialCommand, 0, limit)
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now := time.Now().UTC()
+		var rows []financialRow
+		dueOrders := tx.Model(&requestRow{}).Select("order_id").Where("funds_expire_at<=? AND payment_receipt_id<>'' AND financial_fence=false AND state NOT IN ? AND financial_state NOT IN ?", now, []string{"CANCELLED"}, []string{"SETTLED", "REFUNDED"})
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).Where("next_attempt_at<=? AND (state IN ? OR (state='DONE' AND kind='CREATE_PURCHASE' AND order_id IN (?)))", now, []string{"PENDING", "PROCESSING"}, dueOrders).Order("next_attempt_at,created_at,id").Limit(limit).Find(&rows).Error; err != nil {
+			return err
 		}
-		command.DispatchAdmitted = row.DispatchAdmitted
-		out = append(out, command)
-	}
-	return out, nil
+		for _, row := range rows {
+			command, err := financialFact(row)
+			if err != nil {
+				return err
+			}
+			command.RecoveryGeneration = row.RecoveryGeneration
+			out = append(out, command)
+			// Rotate before external work, including timeout/UNKNOWN/error paths.
+			delay := 15 * time.Second
+			if row.State == "DONE" {
+				delay = 30 * time.Minute
+			}
+			if err := tx.Model(&row).Update("next_attempt_at", now.Add(delay)).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	return out, err
 }
 func (r *Repository) FinancialCommand(ctx context.Context, id string) (e.FinancialCommand, error) {
 	var row financialRow
@@ -720,8 +769,18 @@ func (r *Repository) CompleteFinancialCommand(ctx context.Context, in e.Financia
 		if err != nil {
 			return err
 		}
+		terminal := result.State == "SETTLED" || result.State == "REFUNDED" || result.State == "CLOSED_UNPAID" || result.State == "CHANNEL_OPERATION_FAILED" || in.Kind == "CREATE_PURCHASE" && result.PaymentReceiptID != ""
+		state := "PROCESSING"
+		if terminal {
+			state = "DONE"
+		}
+		// A newer verified notification must not be erased by a worker that
+		// selected the original command before that notification was persisted.
+		if row.RecoveryGeneration > in.RecoveryGeneration {
+			state = "PROCESSING"
+		}
 		if string(row.Result) == string(data) {
-			return nil
+			return tx.Model(&row).Update("state", state).Error
 		}
 		if err := e.ApplyFinancialResult(&req, result, time.Now().UTC()); err != nil {
 			return err
@@ -729,11 +788,20 @@ func (r *Repository) CompleteFinancialCommand(ctx context.Context, in e.Financia
 		if err := tx.Save(requestRecord(req)).Error; err != nil {
 			return err
 		}
-		terminal := result.State == "SETTLED" || result.State == "REFUNDED" || result.State == "CLOSED_UNPAID" || result.State == "CHANNEL_OPERATION_FAILED" || in.Kind == "CREATE_PURCHASE" && result.PaymentReceiptID != ""
-		state := "PROCESSING"
-		if terminal {
-			state = "DONE"
-		}
 		return tx.Model(&row).Updates(map[string]any{"state": state, "result": data}).Error
 	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+}
+func (r *Repository) WakeOriginalServicePurchase(ctx context.Context, orderID string) error {
+	original, err := r.OriginalFinancialCommand(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	updated := r.db.WithContext(ctx).Model(&financialRow{}).Where("id=? AND kind=?", original.ID, "CREATE_PURCHASE").Updates(map[string]any{"state": "PROCESSING", "next_attempt_at": time.Time{}, "recovery_generation": gorm.Expr("recovery_generation+1")})
+	if updated.Error != nil {
+		return updated.Error
+	}
+	if updated.RowsAffected != 1 {
+		return e.ErrNotFound
+	}
+	return nil
 }

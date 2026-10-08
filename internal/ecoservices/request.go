@@ -146,7 +146,8 @@ func TransitionRequest(r *Request, c Command, now time.Time) (*FinancialCommand,
 		}
 		if c.Kind == "refund_review_reject" {
 			r.Refund.State = "REJECTED"
-			r.FinancialFence = false
+			// Closing this dispute cannot clear an independent channel money hold.
+			r.FinancialFence = r.FinancialState == "RECONCILIATION_REQUIRED"
 			break
 		}
 		r.Refund.State = "APPROVED"

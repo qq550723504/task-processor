@@ -148,6 +148,15 @@ func (s *ServicePurchases) Execute(ctx context.Context, c ServicePurchaseCommand
 		return serviceResult(o), nil
 	}
 	if r, ok := o.CompletedCommands[c.ID]; ok {
+		if c.Kind == "CREATE_PURCHASE" {
+			if o.Operation != nil && o.Operation.Dispatched {
+				return serviceResult(o), nil
+			}
+			confirmed, e := s.observeExpiredFunds(ctx, &o)
+			if e != nil || !confirmed {
+				return serviceResult(o), e
+			}
+		}
 		return r, nil
 	}
 	if c.Kind == "CREATE_PURCHASE" {
@@ -365,6 +374,12 @@ func (s *ServicePurchases) advanceOperation(ctx context.Context, o *ServicePurch
 		if op.Reservation.Kind == money.ServiceShare && s.now().Before(o.Payment.OccurredAt.Add(30*time.Second)) {
 			return nil
 		}
+		if serviceReleaseOperation(op) {
+			confirmed, err := s.observeExpiredFunds(ctx, o)
+			if err != nil || !confirmed {
+				return err
+			}
+		}
 		if err := s.funds.AdmitServiceOperation(ctx, op.Reservation); err != nil {
 			return err
 		}
@@ -404,6 +419,12 @@ func (s *ServicePurchases) advanceOperation(ctx context.Context, o *ServicePurch
 		if p.State == "REPLAY_ALLOWED" {
 			// A proof of absence permits only the original identity. It cannot
 			// bypass a newer canonical money uncertainty fence.
+			if serviceReleaseOperation(op) {
+				confirmed, err := s.observeExpiredFunds(ctx, o)
+				if err != nil || !confirmed {
+					return err
+				}
+			}
 			if err := s.funds.AdmitServiceOperation(ctx, op.Reservation); err != nil {
 				return err
 			}

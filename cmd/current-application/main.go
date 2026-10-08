@@ -55,6 +55,10 @@ func execute() error {
 	return currentapplication.Run(ctx, cfg, logger, currentapplication.Dependencies{
 		IdentityPreflight: currentapplication.VerifyIdentityProvider,
 		NewKnowledge:      prepareKnowledge,
+		NewEcoservices:    prepareEcoservices,
+		OpenEcoservices: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
 		OpenKnowledge: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
@@ -101,6 +105,10 @@ func execute() error {
 		},
 		NewApplicationWithFeatures: func(ctx context.Context, source *gorm.DB, features currentapplication.ApplicationFeatures, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
 			options := make([]httpapi.CurrentApplicationOption, 0, 6)
+			if features.Ecoservices != nil {
+				e := features.Ecoservices
+				options = append(options, httpapi.WithEcoservices(httpapi.EcoservicesDependencies{DB: e.DB, Objects: e.Objects, Channel: e.Channel, Protection: e.Protection, MerchantProtection: e.MerchantProtection}))
+			}
 			if features.Knowledge != nil {
 				options = append(options, httpapi.WithKnowledge(features.Knowledge))
 			}

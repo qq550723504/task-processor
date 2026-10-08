@@ -116,7 +116,7 @@ type Request struct {
 	PaymentReceiptID        string           `json:"-"`
 	AcceptanceID            string           `json:"acceptanceId,omitempty"`
 	AcceptedDeliveryVersion int64            `json:"acceptedDeliveryVersion,string"`
-	FinancialFence          bool             `json:"-"`
+	FinancialFence          bool             `json:"financialHold"`
 	FinancialState          string           `json:"financialState"`
 	FinancialRevision       int64            `json:"-"`
 	FinancialReason         string           `json:"financialReason"`
@@ -149,6 +149,7 @@ type Result struct {
 	Request     *Request     `json:"request,omitempty"`
 }
 type FinancialCommand struct {
+	RecoveryGeneration                                      int64 `json:"-"`
 	ID, RequestID, OrderID, Kind, SourceProofID, ActorID    string
 	BuyerOrganizationID, ProviderOrganizationID, MerchantID string
 	Quote                                                   Quote
@@ -159,6 +160,7 @@ type FinancialCommand struct {
 	DispatchOperationID                                     string
 }
 type Query struct {
+	Group, Stage            string
 	Scope                   Scope
 	Kind, ID, Search, State string
 	Category                Category
@@ -181,6 +183,7 @@ type Repository interface {
 	CompleteFinancialCommand(context.Context, FinancialCommand, FinancialResult) error
 	FinancialCommand(context.Context, string) (FinancialCommand, error)
 	OriginalFinancialCommand(context.Context, string) (FinancialCommand, error)
+	VerifyProviderQualification(context.Context, string, string) error
 }
 type FinancialResult struct {
 	OrderID, PaymentReceiptID, ReceiptID, State, Reason string

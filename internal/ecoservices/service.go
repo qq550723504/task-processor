@@ -104,6 +104,12 @@ func ValidateListing(l *Listing, freezeDays int) error {
 	return nil
 }
 func (s *Service) Read(ctx context.Context, q Query) (Page, error) {
+	if q.Group != "" && (q.Group != "enterprise" && q.Group != "shop" || q.Kind != "catalog" && q.Kind != "provider_listings") {
+		return Page{}, ErrInvalid
+	}
+	if q.Stage != "" && (q.Kind != "requests" || q.Stage != "pending" && q.Stage != "servicing" && q.Stage != "acceptance" && q.Stage != "completed" && q.Stage != "cancelled") {
+		return Page{}, ErrInvalid
+	}
 	if !validText(q.Scope.ActorID, 256) || !q.Scope.Platform && !validText(q.Scope.OrganizationID, 128) || len(q.Search) > 200 || q.Page < 1 || q.PageSize < 1 || q.PageSize > 100 || q.Page > 100000 || q.Category != "" && !validCategory(q.Category) || q.ID != "" && !ValidID(q.ID) || q.Side != "" && q.Side != "buyer" && q.Side != "provider" {
 		return Page{}, ErrInvalid
 	}

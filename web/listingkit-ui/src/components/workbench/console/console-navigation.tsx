@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useId, useState } from "react";
 import { consoleNavigation, findConsoleRoute, type ConsoleNavNode } from "@/lib/workbench/console-navigation";
 
-export function ConsoleNavigation({ pathname, ariaLabel, onNavigate, productAcquisitionAvailable = false, knowledgeAvailable = false, aiWorkbenchAvailable = false, productReviewAvailable = false, sheinRecordsAvailable = false }: { pathname: string; ariaLabel: string; onNavigate?: () => void; productAcquisitionAvailable?: boolean; knowledgeAvailable?: boolean; aiWorkbenchAvailable?: boolean; productReviewAvailable?: boolean; sheinRecordsAvailable?: boolean }) {
+export function ConsoleNavigation({ pathname, ariaLabel, onNavigate, productAcquisitionAvailable = false, knowledgeAvailable = false, aiWorkbenchAvailable = false, productReviewAvailable = false, ecoservicesAvailable = false, sheinRecordsAvailable = false }: { pathname: string; ariaLabel: string; onNavigate?: () => void; productAcquisitionAvailable?: boolean; knowledgeAvailable?: boolean; aiWorkbenchAvailable?: boolean; productReviewAvailable?: boolean; ecoservicesAvailable?: boolean; sheinRecordsAvailable?: boolean }) {
   const trail = findConsoleRoute(pathname)?.trail ?? [];
   const navigation = productAcquisitionAvailable ? consoleNavigation : consoleNavigation.map(node => node.href === "/workbench/supply" ? { ...node, children: node.children?.filter(child => child.href !== "/workbench/supply/acquisition") } : node);
   const independentAIEntries: ConsoleNavNode[] = [];
@@ -12,6 +12,7 @@ export function ConsoleNavigation({ pathname, ariaLabel, onNavigate, productAcqu
   if (sheinRecordsAvailable) independentAIEntries.push({ label: "历史工作记录", href: "/workbench/ai/tasks/completed/history", availability: "connected" });
   const independentTaskAvailable = productReviewAvailable || sheinRecordsAvailable;
   const nodes = navigation.map(node => {
+    if(node.href==="/workbench/services"&&ecoservicesAvailable)return {...node,availability:"connected" as const,children:node.children?.map(child=>({...child,availability:"connected" as const}))};
     if (node.href !== "/workbench/ai") return node;
     const children = (node.children ?? [])
       .filter(child => aiWorkbenchAvailable || child.href !== "/workbench/ai/chat" && (child.href !== "/workbench/ai/tasks" || independentTaskAvailable))

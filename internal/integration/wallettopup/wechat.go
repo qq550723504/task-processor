@@ -14,6 +14,7 @@ import (
 	wechat "github.com/go-pay/gopay/wechat/v3"
 
 	"task-processor/internal/commercial/billing"
+	"task-processor/internal/integration/paymentsecurity"
 )
 
 type WeChatConfig struct {
@@ -190,40 +191,12 @@ func (p *WeChat) QueryRefund(ctx context.Context, r billing.TopUpRefundIntent) (
 }
 func (p *WeChat) VerifyNotification(req *http.Request) (billing.ProviderObservation, error) {
 	var empty billing.ProviderObservation
-	raw, err := callbackBody(req, "application/json")
+	eventID, eventType, plain, err := paymentsecurity.VerifiedWeChatNotification(req, p.config.PublicKeyID, p.publicKey, p.config.APIv3Key, p.now())
 	if err != nil {
 		return empty, err
 	}
-	for _, name := range []string{"Wechatpay-Timestamp", "Wechatpay-Nonce", "Wechatpay-Signature", "Wechatpay-Serial"} {
-		if len(req.Header.Values(name)) != 1 || req.Header.Get(name) == "" {
-			return empty, billing.ErrInvalid
-		}
-	}
-	if req.Header.Get("Wechatpay-Serial") != p.config.PublicKeyID {
-		return empty, billing.ErrInvalid
-	}
-	ts, err := strconv.ParseInt(req.Header.Get("Wechatpay-Timestamp"), 10, 64)
-	if err != nil || time.Unix(ts, 0).Before(p.now().Add(-5*time.Minute)) || time.Unix(ts, 0).After(p.now().Add(5*time.Minute)) {
-		return empty, billing.ErrInvalid
-	}
-	if wechat.V3VerifySignByPK(req.Header.Get("Wechatpay-Timestamp"), req.Header.Get("Wechatpay-Nonce"), string(raw), req.Header.Get("Wechatpay-Signature"), p.publicKey) != nil {
-		return empty, billing.ErrInvalid
-	}
-	var envelope struct {
-		ID           string           `json:"id"`
-		EventType    string           `json:"event_type"`
-		ResourceType string           `json:"resource_type"`
-		Resource     *wechat.Resource `json:"resource"`
-	}
-	if strictJSON(raw, &envelope) != nil || envelope.ResourceType != "encrypt-resource" || envelope.Resource == nil || envelope.Resource.Algorithm != "AEAD_AES_256_GCM" || len(envelope.Resource.Nonce) != 12 {
-		return empty, billing.ErrInvalid
-	}
-	plain, err := wechat.V3DecryptNotifyCipherTextToBytes(envelope.Resource.Ciphertext, envelope.Resource.Nonce, envelope.Resource.AssociatedData, p.config.APIv3Key)
-	if err != nil {
-		return empty, billing.ErrInvalid
-	}
 	var o billing.ProviderObservation
-	switch envelope.EventType {
+	switch eventType {
 	case "TRANSACTION.SUCCESS":
 		var v wechat.QueryOrder
 		if strictJSON(plain, &v) != nil || v.TradeState != "SUCCESS" {
@@ -232,7 +205,7 @@ func (p *WeChat) VerifyNotification(req *http.Request) (billing.ProviderObservat
 		o, err = p.payment(v)
 	case "REFUND.SUCCESS", "REFUND.CLOSED", "REFUND.ABNORMAL":
 		var v wechat.V3DecryptRefundResult
-		if strictJSON(plain, &v) != nil || v.Mchid != p.Merchant().MerchantID || v.Amount == nil || envelope.EventType != "REFUND."+v.RefundStatus {
+		if strictJSON(plain, &v) != nil || v.Mchid != p.Merchant().MerchantID || v.Amount == nil || eventType != "REFUND."+v.RefundStatus {
 			return empty, billing.ErrInvalid
 		}
 		// Native CNY refund notifications omit appid and currency. This callback
@@ -244,7 +217,7 @@ func (p *WeChat) VerifyNotification(req *http.Request) (billing.ProviderObservat
 	if err != nil {
 		return empty, err
 	}
-	o.EventID = envelope.ID
+	o.EventID = eventID
 	if o.Validate() != nil {
 		return empty, billing.ErrInvalid
 	}

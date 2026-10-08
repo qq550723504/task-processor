@@ -22,6 +22,8 @@ type channelPaymentClaimRow struct {
 func (channelPaymentClaimRow) TableName() string { return "ledger_channel_payment_claims" }
 
 type servicePaymentRow struct {
+	ChannelFeeMinor                                                                                                int64
+	ChannelFeeObserved                                                                                             bool
 	OrderID                                                                                                        string `gorm:"primaryKey;size:128"`
 	RequestID                                                                                                      string `gorm:"uniqueIndex;size:128;not null"`
 	ClaimID                                                                                                        string `gorm:"uniqueIndex;size:64;not null"`
@@ -250,7 +252,7 @@ func serviceFunds(row servicePaymentRow) m.ServiceFundsView {
 		reversed += row.ChargedBackMinor
 	}
 	p, s, _ := m.ServiceAllocation(row.GrossMinor, reversed)
-	return m.ServiceFundsView{OrderID: row.OrderID, PaymentID: row.PaymentID, BuyerOrganizationID: row.BuyerOrganizationID, ProviderOrganizationID: row.ProviderOrganizationID, Currency: m.WalletCurrencyCNY, GrossMinor: row.GrossMinor, RefundedMinor: row.RefundedMinor, ChargedBackMinor: row.ChargedBackMinor, PlatformMinor: p, ProviderMinor: s, SharedMinor: row.SharedMinor, ReturnedMinor: row.ReturnedMinor, ReleasedMinor: row.ReleasedMinor, AutomaticReleasedMinor: row.AutomaticReleasedMinor, PendingOperationID: row.PendingOperationID, ReconciliationReason: row.ReconciliationReason}
+	return m.ServiceFundsView{ChannelFeeMinor: row.ChannelFeeMinor, ChannelFeeObserved: row.ChannelFeeObserved, OrderID: row.OrderID, PaymentID: row.PaymentID, BuyerOrganizationID: row.BuyerOrganizationID, ProviderOrganizationID: row.ProviderOrganizationID, Currency: m.WalletCurrencyCNY, GrossMinor: row.GrossMinor, RefundedMinor: row.RefundedMinor, ChargedBackMinor: row.ChargedBackMinor, PlatformMinor: p, ProviderMinor: s, SharedMinor: row.SharedMinor, ReturnedMinor: row.ReturnedMinor, ReleasedMinor: row.ReleasedMinor, AutomaticReleasedMinor: row.AutomaticReleasedMinor, PendingOperationID: row.PendingOperationID, ReconciliationReason: row.ReconciliationReason}
 }
 func (r *Repository) ReadServiceFunds(ctx context.Context, orderID string) (m.ServiceFundsView, error) {
 	var row servicePaymentRow

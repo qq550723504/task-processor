@@ -112,11 +112,57 @@ func (e ServiceEffect) Fingerprint() string {
 }
 
 type ServiceFundsView struct {
+	ChannelFeeMinor                                                           int64
+	ChannelFeeObserved                                                        bool
 	OrderID, PaymentID, BuyerOrganizationID, ProviderOrganizationID, Currency string
 	GrossMinor, RefundedMinor, ChargedBackMinor, PlatformMinor, ProviderMinor int64
 	SharedMinor, ReturnedMinor, ReleasedMinor, AutomaticReleasedMinor         int64
 	PendingOperationID, ReconciliationReason                                  string
 }
+
+type ServiceChannelFee struct {
+	Payment                     ServicePaymentInput
+	FlowID, BusinessID, ProofID string
+	AmountMinor                 int64
+	Returned                    bool
+	OccurredAt                  time.Time
+}
+
+func (in ServiceChannelFee) Validate() error {
+	if in.Payment.Validate() != nil || !isCanonicalWalletIdentifier(in.FlowID) || !isCanonicalWalletIdentifier(in.BusinessID) || !isCanonicalWalletIdentifier(in.ProofID) || in.AmountMinor < 0 || in.AmountMinor > in.Payment.Payment.GrossAmountMinor || in.OccurredAt.IsZero() {
+		return ErrInvalid
+	}
+	return nil
+}
+func (in ServiceChannelFee) Fingerprint() string {
+	in.ProofID = ""
+	in.OccurredAt = NormalizeTimestamp(in.OccurredAt)
+	return ServiceFingerprint(in)
+}
+
+// A signed remaining-balance query is not proof of the cause of a release.
+type ServiceUnsplitObservation struct {
+	Payment                                           ServicePaymentInput
+	ProfileVersion, ExpectedFundsFingerprint, ProofID string
+	UnsplitMinor                                      int64
+	OccurredAt                                        time.Time
+}
+
+func (in ServiceUnsplitObservation) Validate() error {
+	if in.Payment.Validate() != nil || !isCanonicalWalletIdentifier(in.ProfileVersion) || !isCanonicalWalletIdentifier(in.ProofID) || len(in.ExpectedFundsFingerprint) != 64 || in.UnsplitMinor < 0 || in.UnsplitMinor > in.Payment.Payment.GrossAmountMinor || in.OccurredAt.IsZero() {
+		return ErrInvalid
+	}
+	return nil
+}
+func (f ServiceFundsView) ExpectedUnsplitMinor() int64 {
+	remaining := f.GrossMinor - f.RefundedMinor - f.ChargedBackMinor - f.SharedMinor - f.ReleasedMinor - f.AutomaticReleasedMinor
+	// Commission returns go to available balance, never back to frozen funds.
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
 type ServiceReceipt struct {
 	ReceiptID, OrderID, OperationID, RequestFingerprint, ResultFingerprint string
 	Kind                                                                   ServiceEffectKind
@@ -153,6 +199,8 @@ type ServiceFundsStore interface {
 	ObserveServiceChargeback(context.Context, string, ChargebackSettlement) error
 	ResolveFailedServiceOperation(context.Context, ServiceOperationFailure) (ServiceReceipt, error)
 	ObserveServiceRefundUncertainty(context.Context, ServicePaymentInput, string) (ServiceReceipt, error)
+	ObserveServiceUnsplit(context.Context, ServiceUnsplitObservation) (ServiceFundsView, error)
+	ObserveServiceChannelFee(context.Context, ServiceChannelFee) (ServiceReceipt, error)
 }
 
 func ValidateServiceUncertaintyProof(proof string) error {

@@ -18,6 +18,7 @@ import (
 )
 
 type WeChatConfig struct {
+	NewMerchantApplications                                               bool
 	Profile                                                               billing.ServiceMerchantProfile
 	NewPayments, ProductQualified, PlatformPaysFees                       bool
 	PrivateKey, SerialNumber, APIv3Key, PublicKeyID, PublicKey, NotifyURL string

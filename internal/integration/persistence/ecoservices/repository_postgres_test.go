@@ -65,6 +65,107 @@ func postgresFixture(t *testing.T) (context.Context, *gorm.DB, *Repository, *e.S
 	}
 	return ctx, db, repo, service
 }
+func TestEcoservicesPostgresMerchantOriginalClaimAndImmutableIntent(t *testing.T) {
+	ctx, _, r, _ := postgresFixture(t)
+	scope, in := merchantFixture(t, r, "provider")
+	var wg sync.WaitGroup
+	out := make(chan error, 2)
+	for n := 0; n < 2; n++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			a, err := r.CreateMerchantAttempt(ctx, in)
+			if err == nil && a.Intent.ID != in.ID {
+				err = e.ErrConflict
+			}
+			out <- err
+		}()
+	}
+	wg.Wait()
+	close(out)
+	for err := range out {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	claims := make(chan bool, 2)
+	for n := 0; n < 2; n++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, claimed, err := r.ClaimMerchantAttempt(ctx, scope, in.ApplicationID)
+			if err != nil {
+				t.Error(err)
+			}
+			claims <- claimed
+		}()
+	}
+	wg.Wait()
+	close(claims)
+	count := 0
+	for claimed := range claims {
+		if claimed {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatal("concurrent human entries acquired multiple dispatch claims")
+	}
+	a, err := r.ReadMerchantAttempt(ctx, scope, in.ApplicationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.db.Model(&merchantIntentRow{}).Where("id=?", a.Intent.ID).Update("payload", []byte("changed-private-intent")).Error; err == nil {
+		t.Fatal("runtime can modify immutable onboarding payload")
+	}
+	if err = r.ReleaseMerchantClaim(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	newer, claimed, err := r.ClaimMerchantAttempt(ctx, scope, in.ApplicationID)
+	if err != nil || !claimed || newer.ClaimToken == a.ClaimToken {
+		t.Fatal("next human original claim not fenced", err)
+	}
+	if err = r.SaveMerchantMedia(ctx, a, in.FileIDs[0], "late-media"); !errors.Is(err, e.ErrConflict) {
+		t.Fatal("stale writer overwrote new original claim", err)
+	}
+}
+func TestEcoservicesPostgresRecoveryWorkersRotatePastUnpaidHead(t *testing.T) {
+	ctx, _, r, _ := postgresFixture(t)
+	for n := 0; n < 21; n++ {
+		c := e.FinancialCommand{ID: uuid.NewString(), RequestID: uuid.NewString(), OrderID: uuid.NewString(), Kind: "CREATE_PURCHASE", State: "PROCESSING"}
+		raw, _ := json.Marshal(c)
+		if err := r.db.Create(&financialRow{ID: c.ID, RequestID: c.RequestID, OrderID: c.OrderID, Kind: c.Kind, Fingerprint: e.Fingerprint(c), Payload: raw, State: c.State, CreatedAt: time.Now().UTC()}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	selected := make(chan []e.FinancialCommand, 2)
+	var wg sync.WaitGroup
+	for n := 0; n < 2; n++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, err := r.PendingFinancialCommands(ctx, 20)
+			if err != nil {
+				t.Error(err)
+			}
+			selected <- c
+		}()
+	}
+	wg.Wait()
+	close(selected)
+	seen := map[string]bool{}
+	for list := range selected {
+		for _, c := range list {
+			if seen[c.ID] {
+				t.Fatal("workers selected same due command instead of leased rotation")
+			}
+			seen[c.ID] = true
+		}
+	}
+	if len(seen) != 21 {
+		t.Fatal("unpaid first page prevented later paid command selection")
+	}
+}
 func TestEcoservicesPostgresStartCancelExclusiveAndCounts(t *testing.T) {
 	ctx, db, repo, service := postgresFixture(t)
 	app := e.Application{ID: uuid.NewString(), OrganizationID: "provider", CompanyName: "qualified fixture", State: "ACTIVE", Version: 1, MerchantID: "fixture-submerchant", AgreementAccepted: true, OnboardingState: "FINISH"}

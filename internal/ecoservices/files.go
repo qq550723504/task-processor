@@ -95,6 +95,15 @@ func (s *FileService) Upload(ctx context.Context, scope Scope, key, parentKind, 
 	return s.repo.ConfirmFile(ctx, in)
 }
 func (s *FileService) Download(ctx context.Context, scope Scope, id string) (File, []byte, error) {
+	return s.download(ctx, scope, id, "")
+}
+func (s *FileService) DownloadForKind(ctx context.Context, scope Scope, id, kind string) (File, []byte, error) {
+	if kind != "APPLICATION" && kind != "REQUEST" && !(kind == "" && scope.Platform) {
+		return File{}, nil, ErrForbidden
+	}
+	return s.download(ctx, scope, id, kind)
+}
+func (s *FileService) download(ctx context.Context, scope Scope, id, kind string) (File, []byte, error) {
 	if !ValidID(id) || !validText(scope.ActorID, 256) || !scope.Platform && !validText(scope.OrganizationID, 128) {
 		return File{}, nil, ErrInvalid
 	}
@@ -104,6 +113,9 @@ func (s *FileService) Download(ctx context.Context, scope Scope, id string) (Fil
 	}
 	if file.State != "CONFIRMED" {
 		return file, nil, ErrConflict
+	}
+	if kind != "" && file.ParentKind != kind {
+		return File{}, nil, ErrForbidden
 	}
 	data, err := s.objects.ReadBounded(ctx, file)
 	if err != nil {

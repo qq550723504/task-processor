@@ -1,0 +1,24 @@
+"use client";
+import {useState} from "react";
+import {useQuery} from "@tanstack/react-query";
+import {useWorkbenchContext} from "@/components/providers/workbench-context-provider";
+import {ConsolePage,ConsoleState} from "@/components/workbench/console/console-page";
+import {ResourceDialog} from "@/components/workbench/resources/resource-dialog";
+import {Button} from "@/components/ui/button";
+import {Card} from "@/components/ui/card";
+import {ecoRequest,ecoPageSchema,type EcoScope,type EcoApplication} from "@/lib/api/ecoservices";
+import {EcoPagination,ReadFailure,useEcoCommands,categories,date,serviceStates,financialStates} from "./shared";
+import {FileLinks} from "./files";
+import {RequestDetail} from "./request-detail";
+export function EcoservicesReview(){const c=useWorkbenchContext();return c.user?<Review key={c.user.id} scope={{userId:c.user.id,organizationId:""}}/>:<ConsoleState kind="unavailable" title="请先登录平台审核身份"/>;}
+function Review({scope}:{scope:EcoScope}){
+ const [tab,setTab]=useState("applications"),[page,setPage]=useState(1),[application,setApplication]=useState<EcoApplication|null>(null),[selected,setSelected]=useState(""),[reason,setReason]=useState("");const commands=useEcoCommands(scope);
+ const query=useQuery({queryKey:["ecoservices",scope.userId,"","platform",tab,page],queryFn:({signal})=>ecoRequest(scope,tab+"?page="+page+"&pageSize=20",ecoPageSchema,{signal},true)});
+ return <ConsolePage className="eco-page" title="生态服务审核" description="审核机构资质、双方退款协议和临期订单。平台操作独立核实权限。" breadcrumbs={[{label:"生态服务"},{label:"平台审核"}]}>
+  {commands.notice}<Card className="eco-filter">{[["applications","入驻申请"],["requests","服务与退款"],["due-orders","临期人工审核"]].map(([id,label])=><Button key={id} variant="outline" aria-pressed={tab===id} onClick={()=>{setTab(id);setPage(1)}} disabled={commands.locked}>{label}</Button>)}</Card>
+  {tab==="due-orders"?<p>显示冻结到期前7天内及已超期的未结资金订单。平台人工跟进，不自动验收、不自动退款；到期时间不代表渠道已解冻。</p>:null}
+  {query.isPending?<ConsoleState kind="loading" title="正在核实平台权限并读取待审事项"/>:query.error?<ReadFailure error={query.error} retry={()=>void query.refetch()}/>:<Card className="eco-table-card"><h2>审核事项 · {query.data?.total??"0"} 项</h2><div className="eco-table-wrap"><table className="eco-table"><thead><tr><th>申请 / 服务</th><th>状态</th><th>{tab==="applications"?"资料提交时间":"资金状态"}</th><th>冻结到期</th><th>操作</th></tr></thead><tbody>{query.data?.applications?.map(a=><tr key={a.id}><td>{a.companyName}<small>{a.registrationNumber}</small></td><td>{({SUBMITTED:"平台待审",APPROVED:"已批准，待渠道准入",ACTIVE:"服务商已开通",REJECTED:"已拒绝"} as Record<string,string>)[a.state]}</td><td>{date(a.updatedAt)}</td><td>—</td><td><Button variant="outline" onClick={()=>{setApplication(a);setReason("")}}>审阅原资料</Button></td></tr>)}{query.data?.requests?.map(r=><tr key={r.id}><td>{r.title}<small>{r.refund?"退款："+r.refund.reason:r.description.slice(0,50)}</small></td><td>{serviceStates[r.state]}</td><td>{financialStates[r.financialState]??"尚未收款"}</td><td>{r.fundsExpireAt?date(r.fundsExpireAt):"尚未付款"}</td><td><Button variant="outline" onClick={()=>setSelected(r.id)}>查看与审核</Button></td></tr>)}</tbody></table></div><EcoPagination page={page} total={query.data?.total??"0"} onPage={setPage}/></Card>}
+  {application?<ResourceDialog title="审阅原入驻资料" onClose={()=>setApplication(null)} locked={commands.locked}><div className="eco-detail"><dl><dt>机构</dt><dd>{application.companyName}</dd><dt>登记号</dt><dd>{application.registrationNumber}</dd><dt>服务范围</dt><dd>{application.categories.map(c=>categories.find(v=>v.id===c)?.name).join("、")}</dd><dt>地区</dt><dd>{application.regions.join("、")}</dd><dt>协议</dt><dd>{application.agreementAccepted?"已同意":"待确认"}</dd><dt>渠道状态</dt><dd>{application.onboardingState||"尚未進件"}</dd></dl><FileLinks scope={scope} ids={application.fileIds} admin/>{application.reviewReason?<p>已记录审核意见：{application.reviewReason}</p>:null}{application.state==="SUBMITTED"?<fieldset disabled={commands.locked}><label>审核理由<textarea required maxLength={2000} value={reason} onChange={e=>setReason(e.target.value)}/></label><p>业务批准不会代替微信商户审核、账户验证或签约。</p><div className="eco-actions">{["approve","reject"].map(action=><Button key={action} variant={action==="reject"?"outline":"default"} disabled={!reason.trim()} onClick={()=>void commands.json("applications/"+application.id+"/"+action,{reason},application.version,true).then(()=>setApplication(null)).catch(()=>undefined)}>{action==="approve"?"批准机构资质":"拒绝当前申请"}</Button>)}</div></fieldset>:null}{commands.notice}</div></ResourceDialog>:null}
+  {selected?<RequestDetail key={selected} scope={scope} id={selected} admin onClose={()=>{setSelected("");void query.refetch()}}/>:null}
+ </ConsolePage>;
+}

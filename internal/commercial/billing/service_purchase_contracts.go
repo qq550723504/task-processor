@@ -123,6 +123,20 @@ type ServiceOperationObservation struct {
 	OccurredAt                                                                    time.Time
 }
 
+type ServiceUnsplitObservation struct {
+	ProfileVersion, ProviderMerchantID, TransactionID, ProofID, VerificationVersion string
+	UnsplitMinor                                                                    int64
+	OccurredAt                                                                      time.Time
+}
+
+func (p ServiceUnsplitObservation) Matches(o ServicePurchaseOrder) bool {
+	return o.Payment != nil && p.ProfileVersion == o.Profile.Version && p.ProviderMerchantID == o.Source.ProviderMerchantID && p.TransactionID == o.Payment.TransactionID && p.UnsplitMinor >= 0 && p.UnsplitMinor <= o.Source.AmountMinor && p.ProofID != "" && p.VerificationVersion != "" && !p.OccurredAt.IsZero()
+}
+
+type ServiceUnsplitProvider interface {
+	QueryServiceUnsplit(context.Context, ServicePurchaseOrder) (ServiceUnsplitObservation, error)
+}
+
 func (p ServiceOperationObservation) Matches(o ServicePurchaseOrder, op ServiceFinancialOperation) bool {
 	return p.EventID != "" && p.VerificationVersion != "" && p.ProfileVersion == o.Profile.Version && p.ProviderMerchantID == o.Source.ProviderMerchantID && o.Payment != nil && p.TransactionID == o.Payment.TransactionID && p.ProviderRequestID == op.ProviderRequestID && p.Kind == op.Reservation.Kind && p.AmountMinor == op.Reservation.AmountMinor && (p.State == "PENDING" || p.State == "WAITING_FUNDS" || p.State == "FAILED" || p.State == "REPLAY_ALLOWED" && p.ProviderReference != "" && !p.OccurredAt.IsZero() || p.State == "SUCCESS" && p.ProviderReference != "" && !p.OccurredAt.IsZero())
 }

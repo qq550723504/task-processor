@@ -91,6 +91,9 @@ func (s Source) AuthorizeServiceCheckout(ctx context.Context, org, actor, order 
 	if len(page.Requests) != 1 || page.Requests[0].State != "ORDER_PENDING" || page.Requests[0].FinancialFence {
 		return billing.ErrOrderCancelled
 	}
+	if err := s.Repository.VerifyProviderQualification(ctx, original.ProviderOrganizationID, original.MerchantID); err != nil {
+		return billing.ErrAuthorizationRevoked
+	}
 	return nil
 }
 

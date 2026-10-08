@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var runtimeTables = map[string]bool{"ecoservices_applications": true, "ecoservices_listings": true, "ecoservices_requests": true, "ecoservices_financial_commands": true, "ecoservices_files": true, "ecoservices_operations": false, "ecoservices_versions": false, "ecoservices_merchant_bindings": false}
+var runtimeTables = map[string]bool{"ecoservices_applications": true, "ecoservices_listings": true, "ecoservices_requests": true, "ecoservices_financial_commands": true, "ecoservices_files": true, "ecoservices_operations": false, "ecoservices_versions": false, "ecoservices_merchant_bindings": false, "ecoservices_merchant_intents": false, "ecoservices_merchant_progress": true}
 
 // NewRepository consumes an already provisioned, dedicated owner pool. It does
 // not install tables or borrow a shared/default business database.

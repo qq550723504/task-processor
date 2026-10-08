@@ -32,7 +32,7 @@ export function isWorkbenchRoute(pathname: string | null): boolean {
   );
 }
 
-export function ApplicationFrame({ children, productAcquisitionAvailable = false, knowledgeAvailable = false, productReviewAvailable = false, sheinRecordsAvailable = false }: Readonly<{ children: React.ReactNode; productAcquisitionAvailable?: boolean; knowledgeAvailable?: boolean; productReviewAvailable?: boolean; sheinRecordsAvailable?: boolean }>) {
+export function ApplicationFrame({ children, productAcquisitionAvailable = false, knowledgeAvailable = false, productReviewAvailable = false, ecoservicesAvailable = false, sheinRecordsAvailable = false }: Readonly<{ children: React.ReactNode; productAcquisitionAvailable?: boolean; knowledgeAvailable?: boolean; productReviewAvailable?: boolean; ecoservicesAvailable?: boolean; sheinRecordsAvailable?: boolean }>) {
   const pathname = usePathname();
 
   // Public marketing, legal, and login routes must not initialize the authenticated
@@ -54,7 +54,7 @@ export function ApplicationFrame({ children, productAcquisitionAvailable = false
           <QueryProvider>
             <ToastProvider>
               <WorkbenchContextProvider>
-                <WorkspaceAppShell productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable} productReviewAvailable={productReviewAvailable} sheinRecordsAvailable={sheinRecordsAvailable}>{children}</WorkspaceAppShell>
+                <WorkspaceAppShell productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable} productReviewAvailable={productReviewAvailable} ecoservicesAvailable={ecoservicesAvailable} sheinRecordsAvailable={sheinRecordsAvailable}>{children}</WorkspaceAppShell>
               </WorkbenchContextProvider>
             </ToastProvider>
           </QueryProvider>

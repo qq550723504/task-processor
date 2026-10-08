@@ -1,0 +1,30 @@
+import {act,cleanup,fireEvent,render,renderHook,screen,waitFor} from "@testing-library/react";
+import {QueryClient,QueryClientProvider} from "@tanstack/react-query";
+import {afterEach,expect,it,vi} from "vitest";
+import type {ReactNode} from "react";
+import {ecoRequest,EcoservicesError,type EcoRequest} from "@/lib/api/ecoservices";
+import {RequestDetail} from "./request-detail";
+import {useEcoCommands} from "./shared";
+
+const context=vi.hoisted(()=>({permissions:["workbench.ecoservices.purchase"],isLoading:false,isSwitching:false,error:null,blockingError:null,registerOrganizationSwitchGuard:vi.fn(()=>()=>undefined)}));
+vi.mock("@/components/providers/workbench-context-provider",()=>({useWorkbenchContext:()=>context}));
+vi.mock("@/components/workbench/resources/resource-dialog",()=>({ResourceDialog:({children}:{children:ReactNode})=><div>{children}</div>}));
+vi.mock("@/lib/api/ecoservices",async original=>({...await original<typeof import("@/lib/api/ecoservices")>(),ecoRequest:vi.fn()}));
+afterEach(()=>{cleanup();vi.clearAllMocks();context.isSwitching=false});
+const scope={userId:"actor",organizationId:"org"},id="4841d296-ef14-4c16-8d25-a7667e534feb";
+function request():EcoRequest{return {id,listingId:id,listingVersion:"1",title:"原服务",category:"STORE_OPENING",description:"原需求",fileIds:[],state:"AWAITING_ACCEPTANCE",version:"8",quote:{amountMinor:"10000",scope:"交付店铺",acceptanceCriteria:"可登录",deliveryDays:7,version:"1"},delivery:{content:"原交付",fileIds:[],version:"1",submittedAt:"2026-10-08T00:00:00Z"},acceptedDeliveryVersion:"0",financialHold:false,financialState:"PAID",financialReason:"",createdAt:"2026-10-08T00:00:00Z",updatedAt:"2026-10-08T00:00:00Z",side:"buyer"}}
+function harness(){const client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});const wrapper=({children}:{children:ReactNode})=><QueryClientProvider client={client}>{children}</QueryClientProvider>;return {client,wrapper}}
+it("requires fresh customer consent when the original delivery version changes",async()=>{
+ const {client,wrapper}=harness(),r=request();vi.mocked(ecoRequest).mockResolvedValue({requests:[r],total:"1"});render(<RequestDetail scope={scope} id={id} onClose={()=>undefined}/>,{wrapper});
+ const consent=await screen.findByRole("checkbox",{name:/已检查并确认交付版本 1/});fireEvent.click(consent);expect(screen.getByRole("button",{name:"确认验收并结算"})).toBeEnabled();
+ act(()=>client.setQueryData(["ecoservices",scope.userId,scope.organizationId,"request",id,false,context.permissions.join("|")],{requests:[{...r,version:"9",delivery:{...r.delivery!,version:"2"}}],total:"1"}));
+ await waitFor(()=>expect(screen.getByRole("checkbox",{name:/已检查并确认交付版本 2/})).not.toBeChecked());expect(screen.getByRole("button",{name:"确认验收并结算"})).toBeDisabled();expect(vi.mocked(ecoRequest).mock.calls.every(v=>!v[3]?.method)).toBe(true);client.clear();
+});
+it("keeps the same key, exact body and CAS after an unknown write and refuses a new intent",async()=>{
+ const {client,wrapper}=harness();vi.mocked(ecoRequest).mockRejectedValueOnce(new EcoservicesError("OUTCOME_UNKNOWN"));const {result}=renderHook(()=>useEcoCommands(scope),{wrapper});
+ await act(async()=>{await result.current.json("requests/"+id+"/accept",{deliveryVersion:"3"},"7").catch(()=>undefined)});
+ const original=result.current.intent!;expect(original).toBeTruthy();const sent=vi.mocked(ecoRequest).mock.calls[0][3]!;const key=new Headers(sent.headers).get("Idempotency-Key");
+ await expect(result.current.json("requests/"+id+"/accept",{deliveryVersion:"4"},"8")).rejects.toMatchObject({code:"ECOSERVICES_CONFLICT"});expect(ecoRequest).toHaveBeenCalledTimes(1);
+ vi.mocked(ecoRequest).mockResolvedValueOnce({request:request()});await act(async()=>{await result.current.execute(original)});
+ const retried=vi.mocked(ecoRequest).mock.calls[1][3]!;expect(new Headers(retried.headers).get("Idempotency-Key")).toBe(key);expect(new Headers(retried.headers).get("If-Match")).toBe('"7"');expect(retried.body).toBe(sent.body);expect(result.current.intent).toBeNull();client.clear();
+});

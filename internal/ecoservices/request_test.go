@@ -92,6 +92,21 @@ func TestRefundUnknownPaymentProjectionCannotStartService(t *testing.T) {
 		t.Fatalf("unknown refund service started: %v", err)
 	}
 }
+func TestRejectingRefundDoesNotClearIndependentChannelReconciliation(t *testing.T) {
+	r := serviceRequest()
+	r.State, r.FinancialState, r.FinancialFence = "SERVICING", "RECONCILIATION_REQUIRED", true
+	r.Refund = &RefundAgreement{Version: 1, AmountMinor: 40, Reason: "partial delivery", BuyerConfirmed: true, ProviderConfirmed: true, State: "NEGOTIATING"}
+	_, err := TransitionRequest(&r, Command{Scope: Scope{ActorID: "platform", Platform: true}, Kind: "refund_review_reject", Version: r.Version, RefundVersion: 1, Reason: "proposal rejected"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.FinancialFence {
+		t.Fatal("dispute rejection cleared an independent channel money hold")
+	}
+	if _, err := TransitionRequest(&r, Command{Scope: Scope{ActorID: "provider", OrganizationID: "provider"}, Kind: "deliver", Version: r.Version, Delivery: &Delivery{Content: "delivery"}}, time.Now()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("unverified money allowed delivery: %v", err)
+	}
+}
 func TestLatePaymentProjectionCannotOverwriteCompletedRefund(t *testing.T) {
 	r := serviceRequest()
 	r.State = "CANCEL_REQUESTED"
