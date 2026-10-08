@@ -180,6 +180,10 @@ func TestExpiredPaidOriginalCommandRemainsObservableWithoutChangingAcceptance(t 
 
 type originalPaymentRecovery struct{ paidOrder string }
 
+func (t originalPaymentRecovery) ReadServiceRefundableAmount(context.Context, string) (int64, error) {
+	return 0, e.ErrUnavailable
+}
+
 func (t originalPaymentRecovery) ExecuteServiceCommand(_ context.Context, c e.FinancialCommand) (e.FinancialResult, error) {
 	r := e.FinancialResult{OrderID: c.OrderID, State: "AWAITING_PAYMENT", Revision: 3}
 	if c.OrderID == t.paidOrder {

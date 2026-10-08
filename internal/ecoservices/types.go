@@ -84,10 +84,17 @@ type Quote struct {
 	Version            int64  `json:"version,string"`
 }
 type Delivery struct {
-	Version     int64     `json:"version,string"`
-	Content     string    `json:"content"`
-	FileIDs     []string  `json:"fileIds"`
-	SubmittedAt time.Time `json:"submittedAt"`
+	Version     int64              `json:"version,string"`
+	Content     string             `json:"content"`
+	FileIDs     []string           `json:"fileIds"`
+	SubmittedAt time.Time          `json:"submittedAt"`
+	Rejection   *DeliveryRejection `json:"rejection,omitempty"`
+}
+type DeliveryRejection struct {
+	DeliveryVersion int64     `json:"deliveryVersion,string"`
+	Reason          string    `json:"reason"`
+	ActorID         string    `json:"actorId"`
+	RejectedAt      time.Time `json:"rejectedAt"`
 }
 type RefundAgreement struct {
 	Version           int64  `json:"version,string"`
@@ -126,6 +133,7 @@ type Request struct {
 	Side                    string           `json:"side" gorm:"-"`
 }
 type Command struct {
+	RefundableAmount  *int64 `json:"-"`
 	Scope             Scope
 	Key, Kind, ID     string
 	Version           int64
@@ -176,6 +184,7 @@ type Page struct {
 	Counts       map[string]int64 `json:"counts,omitempty"`
 }
 type Repository interface {
+	ReadMutationResult(context.Context, Command) (Result, bool, error)
 	Apply(context.Context, Command, int) (Result, error)
 	Read(context.Context, Query) (Page, error)
 	PendingFinancialCommands(context.Context, int) ([]FinancialCommand, error)
@@ -192,6 +201,7 @@ type FinancialResult struct {
 	FullRefund                                          bool
 }
 type TradingPort interface {
+	ReadServiceRefundableAmount(context.Context, string) (int64, error)
 	ExecuteServiceCommand(context.Context, FinancialCommand) (FinancialResult, error)
 }
 type Service struct {

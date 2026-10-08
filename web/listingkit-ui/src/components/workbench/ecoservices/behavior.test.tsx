@@ -4,16 +4,30 @@ import {afterEach,expect,it,vi} from "vitest";
 import type {ReactNode} from "react";
 import {ecoRequest,EcoservicesError,type EcoRequest} from "@/lib/api/ecoservices";
 import {RequestDetail} from "./request-detail";
+import {EcoservicesJoin} from "./join";
 import {useEcoCommands} from "./shared";
 
-const context=vi.hoisted(()=>({permissions:["workbench.ecoservices.purchase"],isLoading:false,isSwitching:false,error:null,blockingError:null,registerOrganizationSwitchGuard:vi.fn(()=>()=>undefined)}));
+const context=vi.hoisted(()=>({user:{id:"actor"},effectiveOrganization:{id:"org"},permissions:["workbench.ecoservices.purchase"],isLoading:false,isSwitching:false,error:null,blockingError:null,registerOrganizationSwitchGuard:vi.fn(()=>()=>undefined)}));
 vi.mock("@/components/providers/workbench-context-provider",()=>({useWorkbenchContext:()=>context}));
 vi.mock("@/components/workbench/resources/resource-dialog",()=>({ResourceDialog:({children}:{children:ReactNode})=><div>{children}</div>}));
 vi.mock("@/lib/api/ecoservices",async original=>({...await original<typeof import("@/lib/api/ecoservices")>(),ecoRequest:vi.fn()}));
-afterEach(()=>{cleanup();vi.clearAllMocks();context.isSwitching=false});
+afterEach(()=>{cleanup();vi.clearAllMocks();context.isSwitching=false;context.permissions=["workbench.ecoservices.purchase"]});
 const scope={userId:"actor",organizationId:"org"},id="4841d296-ef14-4c16-8d25-a7667e534feb";
 function request():EcoRequest{return {id,listingId:id,listingVersion:"1",title:"原服务",category:"STORE_OPENING",description:"原需求",fileIds:[],state:"AWAITING_ACCEPTANCE",version:"8",quote:{amountMinor:"10000",scope:"交付店铺",acceptanceCriteria:"可登录",deliveryDays:7,version:"1"},delivery:{content:"原交付",fileIds:[],version:"1",submittedAt:"2026-10-08T00:00:00Z"},acceptedDeliveryVersion:"0",financialHold:false,financialState:"PAID",financialReason:"",createdAt:"2026-10-08T00:00:00Z",updatedAt:"2026-10-08T00:00:00Z",side:"buyer"}}
 function harness(){const client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});const wrapper=({children}:{children:ReactNode})=><QueryClientProvider client={client}>{children}</QueryClientProvider>;return {client,wrapper}}
+it("limits the reviewed original license upload to channel compatible images",async()=>{
+ const {client,wrapper}=harness();context.permissions=["workbench.ecoservices.join"];vi.mocked(ecoRequest).mockResolvedValue({total:"0"});render(<EcoservicesJoin/>,{wrapper});
+ const open=screen.getByRole("button",{name:"提交机构入驻申请 →"});await waitFor(()=>expect(open).toBeEnabled());fireEvent.click(open);
+ const input=screen.getByLabelText(/私有材料/);expect(input).toHaveAttribute("accept",".png,.jpg,.jpeg");
+ fireEvent.change(input,{target:{files:[new File([new Uint8Array(2*1024*1024+1)],"oversized.png",{type:"image/png"})]}});
+ expect(await screen.findAllByText("每份材料不能超过2 MiB")).not.toHaveLength(0);expect(vi.mocked(ecoRequest).mock.calls.every(v=>!v[3]?.method)).toBe(true);client.clear();
+});
+it("shows the durable rejection reason to the correcting provider",async()=>{
+ const {client,wrapper}=harness(),r=request();context.permissions=["workbench.ecoservices.manage"];
+ const corrected={...r,state:"SERVICING",side:"provider",delivery:{...r.delivery!,rejection:{deliveryVersion:"1",reason:"缺少注册证明",actorId:"buyer-user",rejectedAt:"2026-10-08T01:00:00Z"}}};
+ vi.mocked(ecoRequest).mockResolvedValue({requests:[corrected],total:"1"});render(<RequestDetail scope={scope} id={id} onClose={()=>undefined}/>,{wrapper});
+ expect(await screen.findByText("缺少注册证明")).toBeVisible();expect(screen.getByText(/客户拒收交付版本 1/)).toBeVisible();client.clear();
+});
 it("requires fresh customer consent when the original delivery version changes",async()=>{
  const {client,wrapper}=harness(),r=request();vi.mocked(ecoRequest).mockResolvedValue({requests:[r],total:"1"});render(<RequestDetail scope={scope} id={id} onClose={()=>undefined}/>,{wrapper});
  const consent=await screen.findByRole("checkbox",{name:/已检查并确认交付版本 1/});fireEvent.click(consent);expect(screen.getByRole("button",{name:"确认验收并结算"})).toBeEnabled();

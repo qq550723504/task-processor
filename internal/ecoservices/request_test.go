@@ -42,18 +42,19 @@ func TestStartCancelAndExactCustomerAcceptance(t *testing.T) {
 	}
 }
 func TestRefundAgreementNeedsBothExactVersionsAndPlatformReview(t *testing.T) {
+	remaining := int64(101)
 	r := serviceRequest()
 	r.State = "SERVICING"
 	buyer := Scope{OrganizationID: "buyer", ActorID: "b"}
 	provider := Scope{OrganizationID: "provider", ActorID: "p"}
 	admin := Scope{ActorID: "a", Platform: true}
-	if _, err := TransitionRequest(&r, Command{Scope: buyer, Kind: "refund_propose", Version: r.Version, RefundAmountMinor: 40, Reason: "partial delivery"}, time.Now()); err != nil {
+	if _, err := TransitionRequest(&r, Command{Scope: buyer, Kind: "refund_propose", Version: r.Version, RefundAmountMinor: 40, Reason: "partial delivery", RefundableAmount: &remaining}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := TransitionRequest(&r, Command{Scope: admin, Kind: "refund_review", Version: r.Version, RefundVersion: 1, Reason: "approved"}, time.Now()); !errors.Is(err, ErrConflict) {
 		t.Fatalf("single-side agreement reviewed: %v", err)
 	}
-	if _, err := TransitionRequest(&r, Command{Scope: provider, Kind: "refund_propose", Version: r.Version, RefundAmountMinor: 50, Reason: "counteroffer"}, time.Now()); err != nil {
+	if _, err := TransitionRequest(&r, Command{Scope: provider, Kind: "refund_propose", Version: r.Version, RefundAmountMinor: 50, Reason: "counteroffer", RefundableAmount: &remaining}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if r.Refund.BuyerConfirmed {
@@ -65,7 +66,7 @@ func TestRefundAgreementNeedsBothExactVersionsAndPlatformReview(t *testing.T) {
 	if _, err := TransitionRequest(&r, Command{Scope: buyer, Kind: "refund_confirm", Version: r.Version, RefundVersion: r.Refund.Version}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	fc, err := TransitionRequest(&r, Command{Scope: admin, Kind: "refund_review", Key: "review", Version: r.Version, RefundVersion: r.Refund.Version, Reason: "approved"}, time.Now())
+	fc, err := TransitionRequest(&r, Command{Scope: admin, Kind: "refund_review", Key: "review", Version: r.Version, RefundVersion: r.Refund.Version, Reason: "approved", RefundableAmount: &remaining}, time.Now())
 	if err != nil || fc == nil || fc.Kind != "REFUND" || fc.AmountMinor != 50 {
 		t.Fatalf("approved agreed refund missing: %+v %v", fc, err)
 	}

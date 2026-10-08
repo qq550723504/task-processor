@@ -99,6 +99,10 @@ func (s Source) AuthorizeServiceCheckout(ctx context.Context, org, actor, order 
 
 type Trading struct{ Purchases *billing.ServicePurchases }
 
+func (t Trading) ReadServiceRefundableAmount(ctx context.Context, order string) (int64, error) {
+	return t.Purchases.ReadServiceRefundableAmount(ctx, order)
+}
+
 func (t Trading) ExecuteServiceCommand(ctx context.Context, in e.FinancialCommand) (e.FinancialResult, error) {
 	r, err := t.Purchases.Execute(ctx, command(in))
 	return e.FinancialResult{OrderID: r.OrderID, PaymentReceiptID: r.PaymentReceiptID, ReceiptID: r.ReceiptID, State: r.State, Reason: r.Reason, FundsExpireAt: r.FundsExpireAt, Revision: r.Revision, FullRefund: r.FullRefund}, err

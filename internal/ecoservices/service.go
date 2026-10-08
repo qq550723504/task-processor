@@ -88,6 +88,27 @@ func (s *Service) Mutate(ctx context.Context, c Command) (Result, error) {
 	}
 	c.Fingerprint = ""
 	c.Fingerprint = Fingerprint(c)
+	if c.Kind == "refund_propose" || c.Kind == "refund_review" {
+		// A replay returns the immutable original result before querying money.
+		if result, found, err := s.repo.ReadMutationResult(ctx, c); err != nil || found {
+			return result, err
+		}
+		page, err := s.repo.Read(ctx, Query{Scope: c.Scope, Kind: "requests", ID: c.ID, Page: 1, PageSize: 1})
+		if err != nil {
+			return Result{}, err
+		}
+		if len(page.Requests) != 1 {
+			return Result{}, ErrNotFound
+		}
+		if s.trading == nil {
+			return Result{}, ErrUnavailable
+		}
+		remaining, err := s.trading.ReadServiceRefundableAmount(ctx, page.Requests[0].OrderID)
+		if err != nil {
+			return Result{}, ErrUnavailable
+		}
+		c.RefundableAmount = &remaining
+	}
 	return s.repo.Apply(ctx, c, s.freezeDays)
 }
 func ValidateListing(l *Listing, freezeDays int) error {

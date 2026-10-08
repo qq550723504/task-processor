@@ -227,7 +227,11 @@ func TestEcoservicesPostgresStartCancelExclusiveAndCounts(t *testing.T) {
 	}
 }
 func TestEcoservicesPostgresEachFinancialStageHonorsNewDispute(t *testing.T) {
-	ctx, db, repo, service := postgresFixture(t)
+	ctx, db, repo, _ := postgresFixture(t)
+	service, err := e.NewService(repo, &refundCapacityTrading{remaining: 101}, 180)
+	if err != nil {
+		t.Fatal(err)
+	}
 	app := e.Application{ID: uuid.NewString(), OrganizationID: "provider", CompanyName: "qualified fixture", State: "ACTIVE", Version: 1, MerchantID: "original-sub", AgreementAccepted: true, OnboardingState: "FINISH"}
 	if err := db.Create(applicationRecord(app)).Error; err != nil {
 		t.Fatal(err)

@@ -16,6 +16,22 @@ type serviceSourceFixture struct {
 	denySettle     bool
 }
 
+func TestServiceRefundableAmountUsesCanonicalCumulativeRefund(t *testing.T) {
+	svc, _, _, src, p := servicePurchaseFixture(t)
+	ctx := context.Background()
+	p.paid = true
+	if _, err := svc.Execute(ctx, src.original); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Execute(ctx, serviceCommand(src, "REFUND", "first-partial-refund", 60)); err != nil {
+		t.Fatal(err)
+	}
+	remaining, err := svc.ReadServiceRefundableAmount(ctx, src.original.OrderID)
+	if err != nil || remaining != 41 {
+		t.Fatalf("remaining refundable amount=%d err=%v", remaining, err)
+	}
+}
+
 func (f *serviceSourceFixture) OriginalServicePurchase(context.Context, string) (billing.ServicePurchaseCommand, error) {
 	return f.original, nil
 }

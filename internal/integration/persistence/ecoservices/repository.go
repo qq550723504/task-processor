@@ -13,6 +13,34 @@ import (
 )
 
 type Repository struct{ db *gorm.DB }
+
+func (r *Repository) ReadMutationResult(ctx context.Context, c e.Command) (e.Result, bool, error) {
+	var row operationRow
+	var result e.Result
+	err := r.db.WithContext(ctx).Where("organization_id=? AND kind=? AND key=?", c.Scope.OrganizationID, c.Kind, c.Key).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return result, false, nil
+	}
+	if err != nil {
+		return result, false, err
+	}
+	if row.Fingerprint != c.Fingerprint || json.Unmarshal(row.Result, &result) != nil {
+		return result, true, e.ErrConflict
+	}
+	return result, true, nil
+}
+
+func requireMerchantEvidence(tx *gorm.DB, ids []string, org string) error {
+	var count int64
+	if err := tx.Model(&fileRow{}).Where("id IN ? AND organization_id=? AND parent_kind=? AND state=? AND content_type IN ? AND size_bytes BETWEEN 1 AND ?", ids, org, "APPLICATION", "CONFIRMED", []string{"image/png", "image/jpeg"}, 2<<20).Count(&count).Error; err != nil {
+		return err
+	}
+	if count < 1 {
+		return e.ErrInvalid
+	}
+	return nil
+}
+
 type applicationRow struct {
 	ID             string `gorm:"primaryKey"`
 	OrganizationID string `gorm:"uniqueIndex;not null"`
@@ -225,6 +253,9 @@ func (r *Repository) Apply(ctx context.Context, c e.Command, freezeDays int) (e.
 			app.MerchantID = ""
 			app.OnboardingState = "NOT_STARTED"
 			app.UpdatedAt = now
+			if err := requireMerchantEvidence(tx, app.FileIDs, c.Scope.OrganizationID); err != nil {
+				return err
+			}
 			if err := attachFiles(tx, app.FileIDs, c.Scope.OrganizationID, "APPLICATION", app.ID); err != nil {
 				return err
 			}
@@ -264,6 +295,11 @@ func (r *Repository) Apply(ctx context.Context, c e.Command, freezeDays int) (e.
 					return e.ErrConflict
 				}
 				app.State = "APPROVED"
+				if c.Kind == "application_review" {
+					if err := requireMerchantEvidence(tx, app.FileIDs, app.OrganizationID); err != nil {
+						return err
+					}
+				}
 				if c.Kind == "application_reject" {
 					app.State = "REJECTED"
 				}

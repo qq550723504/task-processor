@@ -8,6 +8,19 @@ import (
 type ServiceFeeProvider interface {
 	QueryServiceFees(context.Context, ServicePurchaseOrder, string) ([]money.ServiceChannelFee, error)
 }
+
+// ReadServiceRefundableAmount is a fresh read of M facts, never an E balance.
+func (s *ServicePurchases) ReadServiceRefundableAmount(ctx context.Context, order string) (int64, error) {
+	f, err := s.funds.ReadServiceFunds(ctx, order)
+	if err != nil {
+		return 0, err
+	}
+	if f.OrderID != order || f.GrossMinor <= 0 || f.RefundedMinor < 0 || f.ChargedBackMinor < 0 || f.RefundedMinor > f.GrossMinor || f.ChargedBackMinor > f.GrossMinor-f.RefundedMinor {
+		return 0, ErrConflict
+	}
+	return f.GrossMinor - f.RefundedMinor - f.ChargedBackMinor, nil
+}
+
 type ServiceFinancialView struct {
 	GrossMinor           int64  `json:"grossMinor,string"`
 	RefundedMinor        int64  `json:"refundedMinor,string"`

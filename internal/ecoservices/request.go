@@ -76,6 +76,7 @@ func TransitionRequest(r *Request, c Command, now time.Time) (*FinancialCommand,
 			return nil, ErrInvalid
 		}
 		d := *c.Delivery
+		d.Rejection = nil
 		d.Version = 1
 		if r.Delivery != nil {
 			d.Version = r.Delivery.Version + 1
@@ -93,6 +94,7 @@ func TransitionRequest(r *Request, c Command, now time.Time) (*FinancialCommand,
 				return nil, ErrInvalid
 			}
 			r.State = "SERVICING"
+			r.Delivery.Rejection = &DeliveryRejection{DeliveryVersion: r.Delivery.Version, Reason: c.Reason, ActorID: c.Scope.ActorID, RejectedAt: now}
 			break
 		}
 		financial = makeCommand("SETTLE", r.Quote.AmountMinor)
@@ -125,6 +127,12 @@ func TransitionRequest(r *Request, c Command, now time.Time) (*FinancialCommand,
 		if r.Quote == nil || c.RefundAmountMinor <= 0 || c.RefundAmountMinor > r.Quote.AmountMinor || !validText(c.Reason, 2000) {
 			return nil, ErrInvalid
 		}
+		if c.RefundableAmount == nil {
+			return nil, ErrUnavailable
+		}
+		if c.RefundAmountMinor > *c.RefundableAmount {
+			return nil, ErrInvalid
+		}
 		version := int64(1)
 		if r.Refund != nil {
 			version = r.Refund.Version + 1
@@ -149,6 +157,12 @@ func TransitionRequest(r *Request, c Command, now time.Time) (*FinancialCommand,
 			// Closing this dispute cannot clear an independent channel money hold.
 			r.FinancialFence = r.FinancialState == "RECONCILIATION_REQUIRED"
 			break
+		}
+		if c.RefundableAmount == nil {
+			return nil, ErrUnavailable
+		}
+		if r.Refund.AmountMinor > *c.RefundableAmount {
+			return nil, ErrInvalid
 		}
 		r.Refund.State = "APPROVED"
 		r.FinancialFence = true
