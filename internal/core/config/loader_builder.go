@@ -204,6 +204,7 @@ func BuildConfig(v *viper.Viper) *Config {
 			PausedTaskRecoveryInterval: v.GetDuration("listingControlPlane.pausedTaskRecoveryInterval"),
 		},
 		ListingKit: ListingKitConfig{
+			RolePolicyDatabase:             rolePolicyDatabase(v),
 			SheinSubmitDebugDumpDir:        v.GetString("listingkit.sheinSubmitDebugDumpDir"),
 			GenerationUsageLedgerEnabled:   v.GetBool("listingkit.generationUsageLedgerEnabled"),
 			GenerationUsageLedgerTenantIDs: getStringSlice(v, "listingkit.generationUsageLedgerTenantIDs"),
@@ -477,4 +478,15 @@ func buildSplitByLevelConfig(v *viper.Viper) []logger.LevelFileConfig {
 	}
 
 	return configs
+}
+
+func rolePolicyDatabase(v *viper.Viper) *DatabaseConfig {
+	if !v.IsSet("listingkit.rolePolicyDatabase") {
+		return nil
+	}
+	var cfg DatabaseConfig
+	if v.UnmarshalKey("listingkit.rolePolicyDatabase", &cfg) != nil {
+		return &DatabaseConfig{}
+	}
+	return &cfg
 }

@@ -27,7 +27,7 @@ export function StoreListPage() {
   const data = stores.data;
   const hasFilters = Boolean(filters.platform || filters.status);
   const deletedNotice = searchParams.getAll("notice").length === 1 && searchParams.get("notice") === "store-deleted";
-  const canCreateByRole = canCreateWorkbenchStore(context.roles);
+  const canCreateByRole = canCreateWorkbenchStore(context.permissions);
   const canCreate = Boolean(data && canCreateByRole);
 
   const updateFilters = (next: WorkbenchStoreListFilters) => {

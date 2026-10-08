@@ -92,6 +92,9 @@ func NewRepository(ctx context.Context, db *gorm.DB, projectID string) (*Reposit
 	if err := verifySchema(ctx, sqlDB); err != nil {
 		return nil, domain.ErrUnavailable
 	}
+	if err := verifyRoleSchema(ctx, sqlDB); err != nil {
+		return nil, domain.ErrUnavailable
+	}
 	return &Repository{db: sqlDB, projectID: projectID}, nil
 }
 

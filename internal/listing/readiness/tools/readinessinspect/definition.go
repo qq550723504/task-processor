@@ -12,7 +12,7 @@ func Definition() commercetool.Definition {
 		Capability: "product.readiness", Owner: "listing.readiness",
 		Description: "Diagnose exact Product input readiness; marketplace rules remain not evaluated. This does not authorize publication.",
 		InputSchema: InputSchema(), OutputSchema: OutputSchema(), Risk: commercetool.RiskRead,
-		Permission:  commercetool.PermissionRequirement{Permission: authz.PermissionListingKitAdminRead},
+		Permission:  commercetool.PermissionRequirement{Permission: authz.PermissionLocalAgentWrite},
 		SideEffects: commercetool.SideEffectPolicy{Mode: commercetool.SideEffectNone},
 		Idempotency: commercetool.IdempotencyPolicy{Mode: commercetool.IdempotencyDeterministic},
 		Timeout:     commercetool.TimeoutPolicy{Duration: 3 * time.Second},

@@ -122,6 +122,13 @@ openai:
       baseURL: http://127.0.0.1:18080/v1
       timeout: 5
 listingkit:
+  rolePolicyDatabase:
+    host: 127.0.0.1
+    port: 5433
+    user: organization_role_policy_reader
+    password: "$(tr -d '\r\n' < /secrets/role-policy-reader/password)"
+    database: membership
+    max_connections: 2
   platformAdminUsers: ["${operator_id}"]
   zitadel:
     issuerURL: https://localhost:${identity_port}

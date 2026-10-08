@@ -3,6 +3,48 @@
 Optional ZITADEL/Tencent SMS delivery configuration and the remaining local
 provider connection prerequisite are documented in [SMS.md](SMS.md).
 
+## Enterprise custom roles and members (#598)
+
+The entry is `/workbench/account/organization/members`. **角色权限** shows the
+system administrator and the current enterprise's custom roles; **成员管理**
+shows native members, real totals, filtering, invitations and the member drawer.
+Create a role, select available modules and save. Assign that role from a member's
+drawer. The administrator role is read-only; protected subjects and native roles
+cannot be changed or removed through this page.
+
+The module catalog binds existing permissions. Unopened modules are disabled.
+Enterprise membership management, finance writes, Agent configuration, platform
+administration, Store deletion and optional SHEIN diagnostics are not granted
+by custom roles. Module availability does not imply that provider credentials,
+pricing, SMTP or real Store connections are configured. The invitation button
+uses the live service's management and mail availability.
+
+Use a **new isolated Compose project** with the startup commands below. The native
+initializer serially registers 64 organization-specific slots and writes a verified
+`enterprise-role-slots.json`. The schema owner installs this exact inventory using
+`organization-membership-schema-init -role-slots-file <private-manifest>`.
+Serving never registers native roles, replaces project grants or performs DDL.
+Existing projects are not upgraded or migrated by these commands.
+
+ZITADEL remains the sole owner of identities and member role assignments. The
+Membership database stores role names, module selections, revisions and local
+mutation receipts. Definitions and receipts are committed in one transaction.
+A lost response retains its original operation key; **核实原保存** retries that same
+payload. Saving permissions uses the displayed revision and refuses stale edits.
+Permission checks reread the definitions; native assignment revocation still
+follows the existing native authorization freshness contract.
+
+The explicit Image worker can configure `listingkit.rolePolicyDatabase` with the
+`organization_role_policy_reader` login, SELECT access to only role slots and
+role definitions, and its own bounded connection pool. Broader credentials are
+rejected. The worker closes that pool and rereads policy before execution/recovery.
+Without this explicit reader, enterprise custom roles fail closed.
+
+Role definitions and receipts persist in the Membership named volume; native
+assignments persist in the identity database. Use the existing **Operate and retain**
+commands to stop/restart without deleting those volumes. Developer checks are not
+user acceptance; normal login and user trial remain the delivery handoff.
+
 ## Current base plan and resources (#564)
 
 The current entries are `/workbench/account`, `/workbench/plans/options`,
@@ -610,8 +652,10 @@ Sign in at the application URL as `local-bootstrap-operator@localhost`,
 `local-acceptance-viewer@localhost`, or
 `local-acceptance-insufficient@localhost` using the matching private password
 file. The first user receives `listingkit_admin` in Organization A and
-`listingkit_viewer` in Organization B; the other two receive viewer and
-operator-only grants in Organization A for negative authorization checks. Use
+the custom **查看成员** role in Organization B; the other two receive **查看成员**
+and **未开放业务** (no enabled modules) in Organization A. The fixture obtains native
+organization IDs before deriving their exact role keys; it does not substitute
+fixed viewer/operator roles. Use
 only local addresses such as
 `member@example.test` for invitations. New referral registrations use the
 official Login V2 verification email delivered to this instance's Mailpit;

@@ -71,6 +71,8 @@ func buildMembershipModule(ctx context.Context, cfg *config.Config, deps Members
 		return nil, err
 	}
 	service := membership.NewService(directory, authorizer, cfg.ListingKit.Zitadel.ProjectID, cfg.ListingKit.PlatformAdminRoles...)
+	service.SetRoleStore(store)
+	authorizer.SetRolePolicyReader(store)
 	handler := memberhttp.NewCommandHandler(service, func(request *http.Request) (memberhttp.CommandService, error) {
 		initial, ok := authidentity.AuthenticatedIdentityFromContext(request.Context())
 		if !ok {

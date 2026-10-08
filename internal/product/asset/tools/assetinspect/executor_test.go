@@ -52,7 +52,7 @@ func (principalFixture) ResolvePrincipal(context.Context) (commercetool.Principa
 type readOnlyAuthorizer struct{}
 
 func (readOnlyAuthorizer) Authorize(_ context.Context, _ commercetool.Principal, p commercetool.PermissionRequirement) error {
-	if p.Permission != authz.PermissionListingKitAdminRead {
+	if p.Permission != authz.PermissionLocalAgentWrite {
 		return errors.New("only read allowed")
 	}
 	return nil

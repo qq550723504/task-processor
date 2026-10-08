@@ -25,12 +25,13 @@ func TestHistoryUsesExistingReadAuthorizationAndExactOrganization(t *testing.T) 
 	now := time.Now().UTC()
 	reader := &historyReaderStub{}
 	auth, _ := authz.NewListingKitAuthorizer(nil, nil)
+	auth.SetRolePolicyReader(sourceRoleFixture{})
 	source := newTestService(t, &fakeStore{}, auth, now)
 	history, err := NewHistoryService(source, reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, role := range []string{"listingkit_viewer", "listingkit_operator", "listingkit_admin"} {
+	for _, role := range []string{authz.EnterpriseRoleKey("B", 1), "listingkit_admin"} {
 		got, err := history.List(identityContext(now, "B", "actor", role), HistoryRequest{Limit: 20})
 		if err != nil || got.Items == nil || reader.org != "B" {
 			t.Fatalf("role=%s page=%+v err=%v", role, got, err)
@@ -78,4 +79,16 @@ func TestHistoryRejectsBoundsForeignAndUnorderedSourceFacts(t *testing.T) {
 	if _, err := history.List(ctx, HistoryRequest{Limit: 20}); !errors.Is(err, ErrUnavailable) {
 		t.Fatal("failure became empty")
 	}
+}
+
+type sourceRoleFixture struct{}
+
+func (sourceRoleFixture) RoleModules(_ context.Context, org string, keys []string) (map[string][]string, error) {
+	r := map[string][]string{}
+	for _, k := range keys {
+		if k == authz.EnterpriseRoleKey(org, 1) {
+			r[k] = []string{"source-accounts"}
+		}
+	}
+	return r, nil
 }

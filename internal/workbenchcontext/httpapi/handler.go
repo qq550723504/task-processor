@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -145,12 +146,14 @@ func (h *Handler) writeContext(c *gin.Context) {
 
 	organizations := make([]organizationResponse, 0, len(identity.OrganizationGrants))
 	for _, grant := range identity.OrganizationGrants {
-		canManageSourceAccount := h.workbenchAuthorizer != nil && h.workbenchAuthorizer.Authorize(identity.UserID, grant.Roles, authz.PermissionWorkbenchSourceAccountManage)
-		canUseChat := h.workbenchAuthorizer != nil && h.workbenchAuthorizer.Authorize(identity.UserID, grant.Roles, authz.PermissionWorkbenchChatUse)
-		roles := append([]string(nil), grant.Roles...)
-		if h.workbenchAuthorizer != nil && h.workbenchAuthorizer.Authorize(identity.UserID, roles, authz.PermissionWorkbenchStoreDelete) && !containsRole(roles, "platform_admin") {
-			roles = append(roles, "platform_admin")
+		permissions, err := authz.PermissionsInOrganization(c.Request.Context(), h.workbenchAuthorizer, identity.UserID, grant.OrganizationID, grant.Roles)
+		if err != nil {
+			writeProtocolError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Organization permissions are unavailable")
+			return
 		}
+		canManageSourceAccount := slices.Contains(permissions, authz.PermissionWorkbenchSourceAccountManage)
+		canUseChat := slices.Contains(permissions, authz.PermissionWorkbenchChatUse)
+		roles := append([]string(nil), grant.Roles...)
 		if roles == nil {
 			roles = []string{}
 		}
@@ -158,6 +161,7 @@ func (h *Handler) writeContext(c *gin.Context) {
 			ID:           grant.OrganizationID,
 			Name:         grant.OrganizationName,
 			Roles:        roles,
+			Permissions:  permissions,
 			Capabilities: organizationCapabilitiesResponse{SourceAccountManage: canManageSourceAccount, ChatUse: canUseChat},
 		})
 	}
@@ -234,6 +238,7 @@ type organizationResponse struct {
 	ID           string                           `json:"id"`
 	Name         string                           `json:"name"`
 	Roles        []string                         `json:"roles"`
+	Permissions  []string                         `json:"permissions"`
 	Capabilities organizationCapabilitiesResponse `json:"capabilities"`
 }
 

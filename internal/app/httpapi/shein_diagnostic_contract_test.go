@@ -62,7 +62,7 @@ func TestSheinDiagnosticTypedFailureHTTP(t *testing.T) {
 				return contract.DiagnosticResult{}, &contract.Error{Code: contract.StaleInput, Message: "must not leak secret", Freshness: &contract.FreshnessFailure{Status: contract.FreshnessStale, Coverage: []string{"template_only"}, Causes: []string{cause}}}
 			})
 			ts := diagnosticSeamServer(t, reader, evaluator, time.Second)
-			status, body := diagnosticGet(t, ts, "00000000-0000-0000-0000-000000000001", "action=publish", "operator", "200")
+			status, body := diagnosticGet(t, ts, "00000000-0000-0000-0000-000000000001", "action=publish", "admin", "200")
 			require.Equal(t, 409, status)
 			require.JSONEq(t, `{"error":"stale_input","freshness":{"status":"stale","coverage":["template_only"],"causes":["`+cause+`"]}}`, string(body))
 		})
@@ -99,7 +99,7 @@ func TestSheinDiagnosticBoundaryFailuresHTTP(t *testing.T) {
 				return got, nil
 			})
 			ts := diagnosticSeamServer(t, reader, evaluator, 100*time.Millisecond)
-			status, body := diagnosticGet(t, ts, "00000000-0000-0000-0000-000000000001", "action=publish", "operator", "200")
+			status, body := diagnosticGet(t, ts, "00000000-0000-0000-0000-000000000001", "action=publish", "admin", "200")
 			want, code := 500, "evaluation_failed"
 			if scenario == "reader unavailable" {
 				want, code = 503, "unavailable"

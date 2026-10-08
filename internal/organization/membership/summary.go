@@ -2,6 +2,7 @@ package membership
 
 import (
 	"context"
+	"strings"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	"time"
@@ -57,12 +58,17 @@ func (s *Service) InvitationManager(ctx context.Context, role string) (authident
 	if err != nil {
 		return identity, err
 	}
-	if role != "" && !s.assignable(role) {
+	if role != "" && !s.assignable(ctx, identity.EffectiveOrganizationID, role) {
 		return identity, ErrPermission
 	}
 	return identity, nil
 }
-func (s *Service) AssignableInvitationRole(role string) bool { return s != nil && s.assignable(role) }
+func (s *Service) AssignableInvitationRole(role string) bool {
+	return s != nil && (role == "listingkit_admin" || strings.HasPrefix(role, "sumi_role_")) && !s.protectedRoles[role]
+}
+func (s *Service) ValidInvitationRole(ctx context.Context, organization, role string) bool {
+	return s != nil && s.assignable(ctx, organization, role)
+}
 func (s *Service) InvitationReader(ctx context.Context) (authidentity.AuthenticatedIdentity, error) {
 	return s.authorize(ctx, authz.PermissionWorkbenchOrganizationMemberRead)
 }

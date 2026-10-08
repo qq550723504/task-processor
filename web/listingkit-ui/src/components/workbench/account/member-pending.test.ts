@@ -3,7 +3,7 @@ import { MemberOperation } from "@/lib/api/members";
 import { Pending, readPending, retainAdvancedReceipt, savePending } from "./member-pending";
 
 const key='membership.pending:["actor","org"]';
-const a:Pending={key:"ea0390e6-6fd0-4834-8e9c-277caf59c122",kind:"invite",input:{email:"original@example.test",firstName:"Original",lastName:"Member",role:"listingkit_viewer"}};
+const a:Pending={key:"ea0390e6-6fd0-4834-8e9c-277caf59c122",kind:"invite",input:{email:"original@example.test",firstName:"Original",lastName:"Member",role:"sumi_role_e87cb45c05ad389dff6dea6e7bf581ee_01"}};
 const b:Pending={...a,key:"fa0390e6-6fd0-4834-8e9c-277caf59c122",input:{...a.input,email:"other@example.test"}};
 afterEach(()=>{sessionStorage.clear();vi.restoreAllMocks();});
 it("preserves the current single command while adding and closing independent keys",()=>{

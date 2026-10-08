@@ -75,8 +75,8 @@ func TestAccountAuditHTTPProjectsImagePointsUnderLiveOrgPermission(t *testing.T)
 	if err := (accountAuditModule{query: query}).Register(modules); err != nil {
 		t.Fatal(err)
 	}
-	grants := &auditHTTPGrants{role: "listingkit_viewer"}
-	authorizer, _ := authz.NewListingKitAuthorizer(nil, nil)
+	grants := &auditHTTPGrants{role: authz.EnterpriseRoleKey("B", 1)}
+	authorizer, _ := newCurrentRoleTestAuthorizer(nil, nil)
 	server := buildIsolatedApplicationHTTPServer(modules.Routes(), routeAuthDependencies{workbenchVerifier: applicationVerifier{}, organizationResolver: workbenchcontext.NewResolver(grants, "project", "v1", nil), authorizer: authorizer}, registry.Timeout)
 	get := func(org string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("GET", accountAuditPath+"?actor=safe-actor", nil)
@@ -146,8 +146,8 @@ func TestAccountAuditHTTPUsesFreshOrgReadPermission(t *testing.T) {
 	if err := module.Register(modules); err != nil {
 		t.Fatal(err)
 	}
-	grants := &auditHTTPGrants{role: "listingkit_viewer"}
-	authorizer, _ := authz.NewListingKitAuthorizer(nil, nil)
+	grants := &auditHTTPGrants{role: authz.EnterpriseRoleKey("B", 1)}
+	authorizer, _ := newCurrentRoleTestAuthorizer(nil, nil)
 	server := buildIsolatedApplicationHTTPServer(modules.Routes(), routeAuthDependencies{workbenchVerifier: applicationVerifier{}, organizationResolver: workbenchcontext.NewResolver(grants, "project", "v1", nil), authorizer: authorizer}, registry.Timeout)
 	get := func(org, query string, token bool) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("GET", "/api/v1/account/audit"+query, nil)
@@ -159,7 +159,7 @@ func TestAccountAuditHTTPUsesFreshOrgReadPermission(t *testing.T) {
 		server.Handler.ServeHTTP(w, r)
 		return w
 	}
-	for _, role := range []string{"listingkit_viewer", "listingkit_operator", "listingkit_admin"} {
+	for _, role := range []string{authz.EnterpriseRoleKey("B", 1), authz.EnterpriseRoleKey("B", 1), "listingkit_admin"} {
 		grants.role = role
 		w := get("B", "?limit=20", true)
 		if w.Code != 200 || !strings.Contains(w.Body.String(), `"effectiveOrganizationId":"B"`) {
@@ -185,7 +185,7 @@ func TestAccountAuditHTTPUsesFreshOrgReadPermission(t *testing.T) {
 	if w := get("B", "", true); w.Code != 403 {
 		t.Fatalf("role %d", w.Code)
 	}
-	grants.role = "listingkit_viewer"
+	grants.role = authz.EnterpriseRoleKey("B", 1)
 	grants.revoked = true
 	if w := get("B", "", true); w.Code != 403 {
 		t.Fatalf("revoke %d", w.Code)

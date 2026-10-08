@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { assignableRole } from "./enterprise-roles";
 import {
   MemberError,
   MemberScope,
@@ -15,11 +16,7 @@ export const invitationInput = z
       .email()
       .max(200)
       .refine((v) => !v.toLowerCase().endsWith("@phone.invalid")),
-    role: z.enum([
-      "listingkit_viewer",
-      "listingkit_operator",
-      "listingkit_admin",
-    ]),
+    role: assignableRole,
   })
   .strict();
 const invitation = z

@@ -35,7 +35,7 @@ export function AccountPage({ page, expectedUserId }: { page: AccountPageKind; e
   const identityChanged = !!context.user && context.user.id !== expectedUserId;
   const organization = context.effectiveOrganization;
   // A keyed request subtree discards both visible data and consumed query signals on context changes.
-  const scope = JSON.stringify([expectedUserId, context.user?.id, organization?.id, context.roles, context.error?.code, context.blockingError?.code, context.selectionRequired, context.isLoading, context.isSwitching]);
+  const scope = JSON.stringify([expectedUserId, context.user?.id, organization?.id, context.roles, page === "organization" ? context.permissions : null, context.error?.code, context.blockingError?.code, context.selectionRequired, context.isLoading, context.isSwitching]);
   let content;
   if (leaving || authError || identityChanged) content = <ReadError page={page} code={identityChanged ? "IDENTITY_CONTEXT_CHANGED" : "AUTHENTICATION_REQUIRED"} />;
   else if ((context.isSwitching && page !== "profile-verification") || ((page === "organization" || page === "overview" || page === "profile-business") && context.isLoading)) content = <ConsoleState kind="loading" title="正在确认当前上下文">旧资料已清除。</ConsoleState>;
@@ -76,7 +76,7 @@ function AccountRequest({ page, scope, expectedUserId, organizationId, sequence,
   }, gcTime: 0, staleTime: 0, retry: false, refetchOnWindowFocus: true, refetchOnReconnect: true });
   if (response.isPending || response.isFetching) return <ConsoleState kind="loading" title="正在读取资料">正在确认当前身份和访问权限。</ConsoleState>;
   if (response.isError) return <ReadError code={response.error instanceof AccountReadError ? response.error.code : "UNKNOWN"} page={page} />;
-  if (response.data.kind === "organization") return <OrganizationView data={response.data.organization} />;
+  if (response.data.kind === "organization") return <OrganizationView data={response.data.organization} scope={scope} />;
   if (response.data.kind === "overview") return <AccountOverviewView profile={response.data.profile} business={response.data.business} organization={response.data.organization} />;
   return <ProfileView data={response.data.profile} business={response.data.business} organization={response.data.organization} organizationId={organizationId} section={profileSection(page)} identityVerificationOutcomeUnknown={identityVerificationOutcomeUnknown} onIdentityVerificationOutcomeUnknown={onIdentityVerificationOutcomeUnknown} identityContactOutcomeUnknown={identityContactOutcomeUnknown} onIdentityContactOutcomeUnknown={onIdentityContactOutcomeUnknown} />;
 }

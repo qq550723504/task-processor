@@ -16,7 +16,7 @@ vi.mock("@/lib/api/member-resources", async (original) => ({
 const member = {
   memberId: "member",
   displayName: "保留成员",
-  roles: [],
+  roles: [], permissions: [],
   state: "departed",
 } as unknown as MemberResourceEntry;
 const store = {

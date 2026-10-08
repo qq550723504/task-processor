@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -29,7 +30,7 @@ func TestSourceAccountCapabilityUsesConfiguredAuthorityForEachVerifiedGrant(t *t
 		want, chatUse    bool
 	}{
 		{"viewer", "viewer", "listingkit_viewer", configured, false, false},
-		{"operator", "operator", "listingkit_operator", configured, true, true},
+		{"retired operator", "operator", "listingkit_operator", configured, false, false},
 		{"admin", "admin", "listingkit_admin", configured, true, true},
 		{"configured role", "support", "support-role", configured, true, true},
 		{"configured user", "support-user", "custom-viewer", configured, true, true},
@@ -41,6 +42,10 @@ func TestSourceAccountCapabilityUsesConfiguredAuthorityForEachVerifiedGrant(t *t
 				UserID: tc.user, HomeOrganizationID: "home", EffectiveOrganizationID: "org-b",
 				OrganizationGrants: []authidentity.OrganizationGrant{{OrganizationID: "org-b", OrganizationName: "B", Roles: []string{tc.role}}},
 			}, NewHandlerWithWorkbenchAuthorizer(tc.authorizer).GetContext)
+			if tc.authorizer == nil {
+				require.Equal(t, http.StatusServiceUnavailable, response.Code)
+				return
+			}
 			require.Equal(t, http.StatusOK, response.Code)
 			var result struct {
 				Organizations []struct {
@@ -181,7 +186,12 @@ func TestWorkbenchContextExposesConfiguredPlatformAdminToBrowserRoleChecks(t *te
 	}, NewHandlerWithWorkbenchAuthorizer(authorizer).GetContext)
 
 	require.Equal(t, http.StatusOK, response.Code)
-	require.JSONEq(t, `{"user":{"id":"configured-user"},"homeOrganizationId":"org-a","effectiveOrganizationId":"org-a","selectionRequired":false,"organizations":[{"id":"org-a","name":"Organization A","roles":["custom-role","platform_admin"],"capabilities":{"workbench.source_account.manage":true,"workbench.chat.use":true}}]}`, response.Body.String())
+	var result contextResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
+	require.Equal(t, []string{"custom-role"}, result.Organizations[0].Roles)
+	require.Contains(t, result.Organizations[0].Permissions, authz.PermissionWorkbenchStoreDelete)
+	require.Contains(t, result.Organizations[0].Permissions, authz.PermissionWorkbenchKnowledgeManage)
+
 }
 
 func TestKnowledgeManagementRoleProjectionMatchesAuthorityPerOrganization(t *testing.T) {
@@ -206,8 +216,8 @@ func TestKnowledgeManagementRoleProjectionMatchesAuthorityPerOrganization(t *tes
 			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
 			require.Len(t, result.Organizations, len(grants))
 			for i, organization := range result.Organizations {
-				visible := containsRole(organization.Roles, "listingkit_admin") || containsRole(organization.Roles, "platform_admin")
-				require.Equal(t, authorizer.Authorize(tc.user, grants[i].Roles, authz.PermissionWorkbenchKnowledgeManage), visible, organization.ID)
+				visible := slices.Contains(organization.Permissions, authz.PermissionWorkbenchKnowledgeManage)
+				require.Equal(t, authz.AllowedOrganization(context.Background(), authorizer, tc.user, organization.ID, grants[i].Roles, authz.PermissionWorkbenchKnowledgeManage), visible, organization.ID)
 			}
 		})
 	}
@@ -356,7 +366,7 @@ func TestWorkbenchContextGetProjectsOnlyPublicIdentityContract(t *testing.T) {
 		OrganizationGrants: []authidentity.OrganizationGrant{
 			{OrganizationID: "org-a", OrganizationName: "Organization A", ProjectID: "project-secret", Roles: []string{"listingkit_admin"}},
 		},
-	}, NewHandler().GetContext)
+	}, NewHandlerWithWorkbenchAuthorizer(&authz.ListingKitAuthorizer{}).GetContext)
 
 	require.Equal(t, http.StatusOK, response.Code)
 	require.JSONEq(t, `{
@@ -364,7 +374,7 @@ func TestWorkbenchContextGetProjectsOnlyPublicIdentityContract(t *testing.T) {
 		"homeOrganizationId":"org-a",
 		"effectiveOrganizationId":"org-b",
 		"selectionRequired":false,
-		"organizations":[{"id":"org-a","name":"Organization A","roles":["listingkit_admin"],"capabilities":{"workbench.source_account.manage":false,"workbench.chat.use":false}}]
+		"organizations":[{"id":"org-a","name":"Organization A","roles":["listingkit_admin"],"permissions":[],"capabilities":{"workbench.source_account.manage":false,"workbench.chat.use":false}}]
 	}`, response.Body.String())
 	for _, forbidden := range []string{"project-secret", "tokenExpiresAt", "authorizationId", `"source":`, "bearer"} {
 		require.NotContains(t, response.Body.String(), forbidden)
@@ -379,7 +389,7 @@ func TestWorkbenchContextGetReturnsSelectionRequiredWithNullEffectiveOrganizatio
 			{OrganizationID: "org-a", OrganizationName: "Organization A", Roles: []string{"role-a"}},
 			{OrganizationID: "org-b", OrganizationName: "Organization B", Roles: []string{"role-b"}},
 		},
-	}, NewHandler().GetContext)
+	}, NewHandlerWithWorkbenchAuthorizer(&authz.ListingKitAuthorizer{}).GetContext)
 
 	require.Equal(t, http.StatusOK, response.Code)
 	require.JSONEq(t, `{
@@ -388,8 +398,8 @@ func TestWorkbenchContextGetReturnsSelectionRequiredWithNullEffectiveOrganizatio
 		"effectiveOrganizationId":null,
 		"selectionRequired":true,
 		"organizations":[
-			{"id":"org-a","name":"Organization A","roles":["role-a"],"capabilities":{"workbench.source_account.manage":false,"workbench.chat.use":false}},
-			{"id":"org-b","name":"Organization B","roles":["role-b"],"capabilities":{"workbench.source_account.manage":false,"workbench.chat.use":false}}
+			{"id":"org-a","name":"Organization A","roles":["role-a"],"permissions":[],"capabilities":{"workbench.source_account.manage":false,"workbench.chat.use":false}},
+			{"id":"org-b","name":"Organization B","roles":["role-b"],"permissions":[],"capabilities":{"workbench.source_account.manage":false,"workbench.chat.use":false}}
 		]
 	}`, response.Body.String())
 }
@@ -398,7 +408,7 @@ func TestWorkbenchContextGetReturnsExplicitNoAccessWithOrganizationsArray(t *tes
 	response := serveHandler(t, http.MethodGet, "/api/v1/workbench/context", "", authidentity.AuthenticatedIdentity{
 		UserID:             "user-1",
 		HomeOrganizationID: "org-a",
-	}, NewHandler().GetContext)
+	}, NewHandlerWithWorkbenchAuthorizer(&authz.ListingKitAuthorizer{}).GetContext)
 
 	require.Equal(t, http.StatusOK, response.Code)
 	require.JSONEq(t, `{
@@ -418,7 +428,7 @@ func TestWorkbenchContextPutReturnsSamePublicContractAfterLiveSwitch(t *testing.
 		OrganizationGrants: []authidentity.OrganizationGrant{
 			{OrganizationID: "org-b", OrganizationName: "Organization B", Roles: []string{"listingkit_admin"}},
 		},
-	}, NewHandler().SwitchEffectiveOrganization)
+	}, NewHandlerWithWorkbenchAuthorizer(&authz.ListingKitAuthorizer{}).SwitchEffectiveOrganization)
 
 	require.Equal(t, http.StatusOK, response.Code)
 	require.JSONEq(t, `{
@@ -426,7 +436,7 @@ func TestWorkbenchContextPutReturnsSamePublicContractAfterLiveSwitch(t *testing.
 		"homeOrganizationId":"org-a",
 		"effectiveOrganizationId":"org-b",
 		"selectionRequired":false,
-		"organizations":[{"id":"org-b","name":"Organization B","roles":["listingkit_admin"],"capabilities":{"workbench.source_account.manage":false,"workbench.chat.use":false}}]
+		"organizations":[{"id":"org-b","name":"Organization B","roles":["listingkit_admin"],"permissions":[],"capabilities":{"workbench.source_account.manage":false,"workbench.chat.use":false}}]
 	}`, response.Body.String())
 }
 

@@ -38,8 +38,8 @@ func TestCommercialReadActualGrantAndLedgerWindow(t *testing.T) {
 		_, commitErr := ledger.Commit(ctx, reserved.Event.EventID)
 		require.NoError(t, commitErr)
 	}
-	reader := NewCommercialReadService(repo, authz.DefaultListingKitAuthorizer())
-	got, err := reader.Read(commercialIdentity("org-B", "listingkit_operator"))
+	reader := NewCommercialReadService(repo, commercialRoleAuthorizer())
+	got, err := reader.Read(commercialIdentity("org-B", authz.EnterpriseRoleKey("org-B", 1)))
 	require.NoError(t, err)
 	require.Equal(t, "org-B", got.OrganizationID)
 	require.Equal(t, PlanProfessional, got.Subscription.PlanCode)
@@ -87,7 +87,7 @@ func TestCommercialReadDoesNotSynthesizeMissingOSSOrWriteCatalog(t *testing.T) {
 	repo := NewGormRepository(db)
 	_, err := repo.UpsertEntitlement(context.Background(), &Entitlement{TenantID: "org-B", ModuleCode: ModuleListingKit, Status: StatusActive})
 	require.NoError(t, err)
-	reader := NewCommercialReadService(repo, authz.DefaultListingKitAuthorizer())
+	reader := NewCommercialReadService(repo, commercialRoleAuthorizer())
 	got, err := reader.Read(commercialIdentity("org-B", "listingkit_admin"))
 	require.NoError(t, err)
 	require.Len(t, got.Entitlements, 1)
@@ -108,13 +108,13 @@ func (s *commercialSpy) ReadCommercialOverview(context.Context, string, time.Tim
 
 func TestCommercialReadAuthorizationPrecedesPersistence(t *testing.T) {
 	spy := &commercialSpy{}
-	reader := NewCommercialReadService(spy, authz.DefaultListingKitAuthorizer())
+	reader := NewCommercialReadService(spy, commercialRoleAuthorizer())
 	for _, ctx := range []context.Context{context.Background(), commercialIdentity("org-B", "listingkit_viewer"), commercialIdentity("", "listingkit_admin")} {
 		_, err := reader.Read(ctx)
 		require.Error(t, err)
 	}
 	require.Zero(t, spy.calls)
-	_, err := reader.Read(commercialIdentity("org-B", "listingkit_operator"))
+	_, err := reader.Read(commercialIdentity("org-B", authz.EnterpriseRoleKey("org-B", 1)))
 	require.ErrorIs(t, err, ErrCommercialUnavailable)
 	require.NotContains(t, err.Error(), "private")
 	require.Equal(t, 1, spy.calls)
@@ -152,6 +152,24 @@ func TestCommercialReadInvalidPersistenceDoesNotBecomeEmpty(t *testing.T) {
 	_, err := repo.UpsertEntitlement(context.Background(), &Entitlement{TenantID: "org-B", ModuleCode: ModuleListingKit, Status: StatusActive})
 	require.NoError(t, err)
 	require.NoError(t, db.Model(&tenantEntitlementRow{}).Where("tenant_id = ?", "org-B").Update("limits", `{"bad":-1}`).Error)
-	_, err = NewCommercialReadService(repo, authz.DefaultListingKitAuthorizer()).Read(commercialIdentity("org-B", "listingkit_admin"))
+	_, err = NewCommercialReadService(repo, commercialRoleAuthorizer()).Read(commercialIdentity("org-B", "listingkit_admin"))
 	require.ErrorIs(t, err, ErrCommercialUnavailable)
+}
+
+func commercialRoleAuthorizer() *authz.ListingKitAuthorizer {
+	a, _ := authz.NewListingKitAuthorizer(nil, nil)
+	a.SetRolePolicyReader(commercialRolePolicyFixture{})
+	return a
+}
+
+type commercialRolePolicyFixture struct{}
+
+func (commercialRolePolicyFixture) RoleModules(_ context.Context, org string, keys []string) (map[string][]string, error) {
+	r := map[string][]string{}
+	for _, k := range keys {
+		if k == authz.EnterpriseRoleKey(org, 1) {
+			r[k] = []string{"plans"}
+		}
+	}
+	return r, nil
 }

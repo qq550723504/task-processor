@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getMembers, parseMembers, invitationInput, getMemberOperations, parseMemberOperations, getMemberOperation, verifyMemberOperation, changeMemberRole, removeMember } from "./members";
 
-const empty = { schemaVersion: "membership-v1", userId: "actor", organizationId: "org", items: [], total: 0, canManage: false, assignableRoles: [] };
+const empty = { schemaVersion: "membership-v1", userId: "actor", organizationId: "org", items: [], total: 0, canManage: false, assignableRoles:[],roleDefinitions:[] };
 afterEach(() => vi.unstubAllGlobals());
 describe("membership read boundary", () => {
   it("sends encoded directory filters and resets only the requested page",async()=>{
     const fetch=vi.fn().mockResolvedValue(Response.json(empty));vi.stubGlobal("fetch",fetch);
-    await getMembers({expectedUserId:"actor",expectedOrganizationId:"org"},20,{q:"  目标+&%  ",role:"listingkit_operator",state:"inactive"});
+    await getMembers({expectedUserId:"actor",expectedOrganizationId:"org"},20,{q:"  目标+&%  ",role:"sumi_role_e87cb45c05ad389dff6dea6e7bf581ee_02",state:"inactive"});
     const url=new URL(fetch.mock.calls[0][0],"http://localhost");
     expect(url.searchParams.get("q")).toBe("目标+&%");
-    expect(url.searchParams.get("role")).toBe("listingkit_operator");
+    expect(url.searchParams.get("role")).toBe("sumi_role_e87cb45c05ad389dff6dea6e7bf581ee_02");
     expect(url.searchParams.get("state")).toBe("inactive");
     expect(url.searchParams.get("offset")).toBe("20");
   });
@@ -22,7 +22,7 @@ describe("membership read boundary", () => {
     fetch.mockResolvedValue(Response.json(empty));await getMembers(scope,0,{q:"目".repeat(66)+"ab"});expect(fetch).toHaveBeenCalledTimes(1);
   });
   it("rejects invalid invitation identity before storing a command", () => {
-    const input = {email:"test@example.com",firstName:"Test",lastName:"Member",role:"listingkit_viewer"};
+    const input = {email:"test@example.com",firstName:"Test",lastName:"Member",role:"sumi_role_e87cb45c05ad389dff6dea6e7bf581ee_01"};
     for (const fields of [{email:"test@phone.invalid"},{firstName:"   "},{lastName:"Member\u0001"}]) expect(invitationInput.safeParse({...input,...fields}).success).toBe(false);
   });
   it("rejects a response for another organization", async () => {
@@ -34,7 +34,7 @@ describe("membership read boundary", () => {
     await expect(getMembers({ expectedUserId: "actor", expectedOrganizationId: "org" })).rejects.toMatchObject({ code: "DEPENDENCY_UNAVAILABLE" });
   });
   it("rejects management options without backend manage permission", () => {
-    expect(() => parseMembers({ ...empty, assignableRoles: ["listingkit_admin"] })).toThrow();
+    expect(() => parseMembers({ ...empty, assignableRoles:["listingkit_admin"],roleDefinitions:[] })).toThrow();
     expect(parseMembers(empty).canManage).toBe(false);
   });
   it("does not send a canceled scope request", async () => {
@@ -52,7 +52,7 @@ it("binds every single receipt to its requested operation ID",async()=>{
   const scope={expectedUserId:"actor",expectedOrganizationId:"org"}, key="4841d296-ef14-4c16-8d25-a7667e534feb";
   for(const read of [
     ()=>getMemberOperation(scope,key),()=>verifyMemberOperation(scope,key),
-    ()=>changeMemberRole(scope,key,"grant",{role:"listingkit_viewer",expectedVersion:"a".repeat(64)}),
+    ()=>changeMemberRole(scope,key,"grant",{role:"sumi_role_e87cb45c05ad389dff6dea6e7bf581ee_01",expectedVersion:"a".repeat(64)}),
     ()=>removeMember(scope,key,"grant",{expectedVersion:"a".repeat(64)}),
   ]) await expect(read()).rejects.toMatchObject({code:"INVALID_UPSTREAM_RESPONSE"});
 });

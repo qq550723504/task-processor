@@ -112,7 +112,10 @@ func (s *CommercialReadService) Read(ctx context.Context) (*CommercialOverview, 
 	if !ok || !commercialID.MatchString(identity.EffectiveOrganizationID) || identity.TenantID != identity.EffectiveOrganizationID || identity.UserID == "" || !time.Now().Before(identity.TokenExpiresAt) {
 		return nil, ErrCommercialForbidden
 	}
-	if s == nil || s.authorizer == nil || !s.authorizer.Authorize(identity.UserID, identity.Roles, authz.PermissionListingKitAdminRead) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if s == nil || s.authorizer == nil || !authz.AllowedOrganization(ctx, s.authorizer, identity.UserID, identity.EffectiveOrganizationID, identity.Roles, authz.PermissionWorkbenchCommercialRead) {
 		return nil, ErrCommercialForbidden
 	}
 	if s.repository == nil {

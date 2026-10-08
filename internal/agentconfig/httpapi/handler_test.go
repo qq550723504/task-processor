@@ -96,3 +96,18 @@ func TestDefaultClearAndStrongPreconditions(t *testing.T) {
 	require.Equal(t, 428, call(r, "POST", "/product.title.agent/disable", `{}`, headers).Code)
 	require.Equal(t, 400, call(r, "GET", "/market?%zz=1", "", nil).Code)
 }
+
+func TestRequiredEvidenceReadinessControlsUseWithoutHidingRuns(t *testing.T) {
+	h := &Handler{Repository: &repoFixture{}, Authorize: func(context.Context, ...string) (agent.Scope, error) {
+		return agent.Scope{OrganizationID: "B", ActorID: "actor"}, nil
+	}}
+	for _, readiness := range []string{"REQUIRES_AUTHORIZATION", "AVAILABLE", "REQUIRES_AUTHORIZATION"} {
+		h.Capabilities = func(context.Context, agentconfig.CatalogEntry) []agentconfig.Capability {
+			return []agentconfig.Capability{{ID: "text.generate", Support: "REQUIRED", Readiness: "AVAILABLE"}, {ID: "product.source-evidence", Support: "REQUIRED", Readiness: readiness}}
+		}
+		entry, err := h.project(context.Background(), agent.Scope{OrganizationID: "B", ActorID: "actor"}, agentconfig.CatalogEntry{Definition: commercetool.AgentDefinition{ID: "product.title.agent", Version: "v1.0.0"}})
+		require.NoError(t, err)
+		require.Equal(t, readiness == "AVAILABLE", entry["canUse"])
+		require.Equal(t, true, entry["canReadRuns"])
+	}
+}

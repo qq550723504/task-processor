@@ -20,11 +20,12 @@ export function ResourcesPage() {
   const context = useWorkbenchContext();
   const org = context.effectiveOrganization;
   const scope = JSON.stringify([context.user?.id, org?.id, context.roles]);
+  const readScope = JSON.stringify([context.user?.id, org?.id, context.roles, context.permissions]);
   const valid = context.user && org && !context.selectionRequired && !context.error && !context.blockingError;
   return <AccountShell pathname="/workbench/account/organization/resources" title="资源与额度" description="查看当前企业资源、已授予权益与可选资源管理。">
     {context.isLoading || context.isSwitching ? <ConsoleState kind="loading" title="正在确认当前企业">旧资源信息已清除。</ConsoleState>
       : !valid || !context.user ? <ConsoleState kind="error" title="企业或登录上下文不可用">请确认登录状态并重新选择企业。<Button variant="outline" onClick={() => void context.retry()}>重新确认上下文</Button></ConsoleState>
-      : <ScopedResources key={scope} scope={scope} userId={context.user.id} organizationId={org.id} organizationName={org.name} canManage={context.roles.some(role => ["listingkit_admin", "platform_admin", "admin"].includes(role))} />}
+      : <ScopedResources key={scope} scope={readScope} userId={context.user.id} organizationId={org.id} organizationName={org.name} canManage={context.roles.some(role => ["listingkit_admin", "platform_admin", "admin"].includes(role))} />}
   </AccountShell>;
 }
 
@@ -37,14 +38,14 @@ function ScopedResources({ scope, userId, organizationId, organizationName, canM
     <MemberPointLimits userId={userId} organizationId={organizationId} sequence={sequence} canManage={canManage} />
     <div className={styles.grid}>
       <Card role="region" aria-label="源账号资源" className={styles.panel}><h2>源账号</h2><p>可选企业资源，可登记和管理来源账号；匿名公开商品采集无需先登记或连接源账号。</p><Button asChild variant="outline"><Link href="/workbench/account/organization/resources/source-accounts" prefetch={false}>管理源账号</Link></Button></Card>
-      <StoreResources userId={userId} organizationId={organizationId} sequence={sequence} />
+      <StoreResources scope={scope} userId={userId} organizationId={organizationId} sequence={sequence} />
     </div>
     <ResourceRequest key={sequence} scope={scope} organizationId={organizationId} sequence={sequence} />
   </div>;
 }
 
-function StoreResources({ userId, organizationId, sequence }: { userId: string; organizationId: string; sequence: number }) {
-  const stores = useQuery({ queryKey: ["workbench", userId, organizationId, "account-store-count", sequence], queryFn: ({ signal }) => listWorkbenchStores({ page: 1, pageSize: 1 }, organizationId, signal), gcTime: 0, staleTime: 0, retry: false });
+function StoreResources({ scope, userId, organizationId, sequence }: { scope: string; userId: string; organizationId: string; sequence: number }) {
+  const stores = useQuery({ queryKey: ["workbench", userId, organizationId, "account-store-count", scope, sequence], queryFn: ({ signal }) => listWorkbenchStores({ page: 1, pageSize: 1 }, organizationId, signal), gcTime: 0, staleTime: 0, retry: false });
   return <Card role="region" aria-label="店铺资源" className={styles.panel}>
     <h2>店铺资源</h2>
     {stores.isPending || stores.isFetching ? <p role="status">正在读取店铺记录数…</p> :

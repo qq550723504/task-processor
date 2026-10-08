@@ -54,6 +54,10 @@ func buildInvitationFactory(deps MembershipDependencies, project string, auth ro
 			return authidentity.WithAuthenticatedIdentity(ctx, resolved), nil
 		}
 		dependencies := flow.Dependencies{Store: receipts.Invitations(), RoleAllowed: service.AssignableInvitationRole, Authorize: authorizer.Authorize,
+			ScopedRoleAllowed: service.ValidInvitationRole,
+			ScopedPermissions: func(ctx context.Context, org string, roles []string) ([]string, error) {
+				return authorizer.ScopedPermissions(ctx, "", org, roles)
+			},
 			Manager: func(ctx context.Context, role string) (authidentity.AuthenticatedIdentity, error) {
 				ctx, err := scoped(ctx)
 				if err != nil {
@@ -84,6 +88,9 @@ func buildInvitationFactory(deps MembershipDependencies, project string, auth ro
 				return flow.Grant{Found: grant.Found, ID: grant.AuthorizationID, State: state, Roles: grant.Roles}, err
 			},
 			WriteGrant: func(ctx context.Context, inv flow.Invitation) error {
+				if !service.ValidInvitationRole(ctx, inv.OrganizationID, inv.Role) {
+					return flow.ErrPermission
+				}
 				_, err := writer.Write(ctx, domain.Operation{Scope: domain.OperationScope{ProjectID: inv.ProjectID, OrganizationID: inv.OrganizationID, ActorID: inv.CreatorID}, Key: inv.ID, Kind: domain.CommandInvite, TargetUserID: inv.RecipientID, Role: inv.Role, Step: domain.StepGrant, Phase: domain.PhaseDispatched, DispatchID: inv.DispatchID})
 				return err
 			}}

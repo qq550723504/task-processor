@@ -35,7 +35,7 @@ func NewAuthorizer(resolver OrganizationResolver, policy *authz.ListingKitAuthor
 }
 func (a *Authorizer) AuthorizeKnowledge(ctx context.Context) (k.Scope, error) {
 	p, err := a.fresh.ResolveFreshPrincipal(ctx)
-	if err != nil || !a.policy.Authorize(p.UserID, p.Roles, authz.PermissionWorkbenchKnowledgeRead) {
+	if err != nil || !authz.AllowedOrganization(ctx, a.policy, p.UserID, p.TenantID, p.Roles, authz.PermissionWorkbenchKnowledgeRead) {
 		return k.Scope{}, k.ErrForbidden
 	}
 	return k.Scope{OrganizationID: p.TenantID, ActorID: p.UserID}, nil

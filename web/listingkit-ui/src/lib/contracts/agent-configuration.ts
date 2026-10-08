@@ -83,6 +83,7 @@ export const catalogEntrySchema = z.strictObject({
       z.strictObject({
         id: z.enum([
           "text.generate",
+          "product.source-evidence",
           "knowledge.context",
           "image.generate",
           "platform.write",
@@ -98,7 +99,7 @@ export const catalogEntrySchema = z.strictObject({
         observedAt: timestamp,
       }),
     )
-    .max(4),
+    .max(5),
 });
 const page = <T extends z.ZodType>(schema: T, max = 100) =>
   z.strictObject({

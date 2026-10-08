@@ -8,7 +8,7 @@ const item = {
   organizationName: "Target",
   creatorId: "admin",
   contact: "recipient@example.test",
-  role: "listingkit_viewer",
+  role: "sumi_role_e87cb45c05ad389dff6dea6e7bf581ee_01",
   permissions: [],
   state: "pending",
   revision: 1,

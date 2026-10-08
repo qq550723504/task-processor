@@ -39,8 +39,8 @@ const ACTIVE_CONTEXT = {
   effectiveOrganizationId: "org-a",
   selectionRequired: false,
   organizations: [
-    { id: "org-a", name: "硕米科技", roles: ["role-a"] },
-    { id: "org-b", name: "星海贸易", roles: ["role-b"] },
+    { id: "org-a", name: "硕米科技", roles: ["role-a"], permissions: [] },
+    { id: "org-b", name: "星海贸易", roles: ["role-b"], permissions: [] },
   ],
 };
 
@@ -72,7 +72,7 @@ describe("WorkspaceAppShell", () => {
     window.history.replaceState(null, "", "/");
   });
   function injectProfileContext(overrides: Record<string, unknown> = {}) {
-    injectedWorkbenchContext.value = { user: { id: "stale-user" }, homeOrganizationId: "org-a", organizations: [], effectiveOrganization: null, roles: [], selectionRequired: false, isLoading: false, isSwitching: false, error: null, blockingError: null, retry: vi.fn(), switchOrganization: vi.fn(), ...overrides };
+    injectedWorkbenchContext.value = { user: { id: "stale-user" }, homeOrganizationId: "org-a", organizations: [], effectiveOrganization: null, roles: [], permissions: [], selectionRequired: false, isLoading: false, isSwitching: false, error: null, blockingError: null, retry: vi.fn(), switchOrganization: vi.fn(), ...overrides };
   }
   it.each([{}, { isLoading: true }, { selectionRequired: true }, { error: { code: "DEPENDENCY_UNAVAILABLE" } }, { blockingError: { code: "ORGANIZATION_ACCESS_REVOKED" } }])("allows only exact profile through enterprise gates: %j", overrides => {
     navigation.pathname = "/workbench/account/profile"; injectProfileContext(overrides);
@@ -145,7 +145,7 @@ describe("WorkspaceAppShell", () => {
     expect(screen.queryByText("personal referrals")).not.toBeInTheDocument(); expect(screen.getByRole("alert")).toBeVisible();
   });
   it("hides stale identity, enterprise switcher and delegation metadata on grant failure", () => {
-    navigation.pathname = "/workbench/account/profile"; injectProfileContext({ error: { code: "DEPENDENCY_UNAVAILABLE" }, effectiveOrganization: { id: "org-b", name: "旧企业", roles: [] } });
+    navigation.pathname = "/workbench/account/profile"; injectProfileContext({ error: { code: "DEPENDENCY_UNAVAILABLE" }, effectiveOrganization: { id: "org-b", name: "旧企业", roles: [], permissions: [] } });
     render(<WorkspaceAppShell><p>personal profile</p></WorkspaceAppShell>);
     expect(screen.getByText("personal profile")).toBeVisible(); expect(screen.queryByText("stale-user")).not.toBeInTheDocument(); expect(screen.queryByRole("combobox")).not.toBeInTheDocument(); expect(screen.queryByLabelText("企业代管状态")).not.toBeInTheDocument();
   });
@@ -286,11 +286,11 @@ describe("WorkspaceAppShell", () => {
       user: { id: "user-1" },
       homeOrganizationId: "org-a",
       organizations: [
-        { id: "org-a", name: "硕米科技", roles: ["role-a"] },
-        { id: "org-b", name: "", roles: ["role-b"] },
+        { id: "org-a", name: "硕米科技", roles: ["role-a"], permissions: [] },
+        { id: "org-b", name: "", roles: ["role-b"], permissions: [] },
       ],
-      effectiveOrganization: { id: "org-b", name: "", roles: ["role-b"] },
-      roles: ["role-b"],
+      effectiveOrganization: { id: "org-b", name: "", roles: ["role-b"], permissions: [] },
+      roles: ["role-b"], permissions: [],
       selectionRequired: false,
       isLoading: false,
       isSwitching: false,
@@ -375,9 +375,9 @@ describe("WorkspaceAppShell", () => {
     injectedWorkbenchContext.value = {
       user: { id: "user-1" },
       homeOrganizationId: "org-a",
-      organizations: [{ id: "org-a", name: "硕米科技", roles: ["role-a"] }],
-      effectiveOrganization: { id: "org-a", name: "硕米科技", roles: ["role-a"] },
-      roles: ["role-a"],
+      organizations: [{ id: "org-a", name: "硕米科技", roles: ["role-a"], permissions: [] }],
+      effectiveOrganization: { id: "org-a", name: "硕米科技", roles: ["role-a"], permissions: [] },
+      roles: ["role-a"], permissions: [],
       selectionRequired: false,
       isLoading: false,
       isSwitching: false,
@@ -432,7 +432,7 @@ describe("WorkspaceAppShell", () => {
       homeOrganizationId: null,
       organizations: [],
       effectiveOrganization: null,
-      roles: [],
+      roles: [], permissions: [],
       selectionRequired: false,
       isLoading: false,
       isSwitching: false,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { assignableRole, roleDefinition } from "./enterprise-role-schema";
 import { accountErrorCode } from "./account";
 import {
   InvalidStrictJSONResponseError,
@@ -8,11 +9,7 @@ import {
 export const memberId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
 const text = (max: number) =>
   z.string().refine((value) => new TextEncoder().encode(value).length <= max);
-const role = z.enum([
-  "listingkit_viewer",
-  "listingkit_operator",
-  "listingkit_admin",
-]);
+const role = assignableRole;
 const timestamp = z.string().max(40).datetime({ precision: null });
 const version = z.string().regex(/^[a-f0-9]{64}$/);
 const memberSchema = z
@@ -41,7 +38,8 @@ const listSchema = z
     items: z.array(memberSchema).max(100),
     total: z.number().int().min(0).max(10000),
     canManage: z.boolean(),
-    assignableRoles: z.array(role).max(3),
+    assignableRoles: z.array(role).max(65),
+    roleDefinitions: z.array(roleDefinition).max(65),
   })
   .strict()
   .refine(

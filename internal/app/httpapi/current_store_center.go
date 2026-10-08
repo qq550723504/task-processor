@@ -99,7 +99,7 @@ type currentStoreMemberAuthorizer struct{ authorizer *authz.ListingKitAuthorizer
 
 func (a currentStoreMemberAuthorizer) AuthorizeStoreMember(ctx context.Context, organizationID string) (storecenter.StoreMemberAccess, error) {
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
-	if !ok || identity.EffectiveOrganizationID != organizationID || identity.TenantID != organizationID || !authidentity.IsBoundedIdentifier(identity.EffectiveMemberID) || !a.authorizer.Authorize(identity.UserID, identity.Roles, authz.PermissionWorkbenchStoreRead) {
+	if !ok || identity.EffectiveOrganizationID != organizationID || identity.TenantID != organizationID || !authidentity.IsBoundedIdentifier(identity.EffectiveMemberID) || !authz.AllowedOrganization(ctx, a.authorizer, identity.UserID, organizationID, identity.Roles, authz.PermissionWorkbenchStoreRead) {
 		return storecenter.StoreMemberAccess{}, storecenter.ErrNotFound
 	}
 	granted := false
@@ -112,7 +112,7 @@ func (a currentStoreMemberAuthorizer) AuthorizeStoreMember(ctx context.Context, 
 	if !granted {
 		return storecenter.StoreMemberAccess{}, storecenter.ErrNotFound
 	}
-	return storecenter.StoreMemberAccess{OrganizationID: organizationID, ActorID: identity.UserID, MemberID: identity.EffectiveMemberID, Administrator: a.authorizer.IsTenantAdmin(identity.UserID, identity.Roles), CanWrite: a.authorizer.Authorize(identity.UserID, identity.Roles, authz.PermissionWorkbenchStoreUpdate)}, nil
+	return storecenter.StoreMemberAccess{OrganizationID: organizationID, ActorID: identity.UserID, MemberID: identity.EffectiveMemberID, Administrator: a.authorizer.IsTenantAdmin(identity.UserID, identity.Roles), CanWrite: authz.AllowedOrganization(ctx, a.authorizer, identity.UserID, organizationID, identity.Roles, authz.PermissionWorkbenchStoreUpdate)}, nil
 }
 
 var currentStoreCenterRoutes = []struct{ method, path, permission string }{

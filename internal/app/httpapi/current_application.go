@@ -418,6 +418,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, errors.New("current application workbench dependencies unavailable")
 	}
 	workbench.authDependencies.authorizer = authorizer
+	if workbench.handler != nil {
+		workbench.handler.SetWorkbenchAuthorizer(authorizer)
+	}
 	sourceAccount, err := factories.buildSourceAccount(sourceAccountDB, authorizer)
 	if err != nil {
 		return nil, fmt.Errorf("build current source account module: %w", err)
@@ -980,7 +983,7 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 		if (descriptor.Path == commercialResourcesPath || descriptor.Path == commercialResourceEventsPath) && (descriptor.Module != commercialResourcesModuleName || descriptor.Method != http.MethodGet || descriptor.AuthPolicy != httproute.AuthPolicyCurrentIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.OrganizationTargetResolver != nil || descriptor.Permission != authz.PermissionWorkbenchCommercialRead || descriptor.RequestTimeout != 15*time.Second || !descriptor.RejectUnreadRequestBody || descriptor.Handler == nil) {
 			return errors.New("commercial resources route loses live read boundary")
 		}
-		if strings.HasPrefix(descriptor.Path, productAgentBase) && (descriptor.Module != "product-agent" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionListingKitAdminWrite || descriptor.RequestTimeout != 2*time.Minute) {
+		if strings.HasPrefix(descriptor.Path, productAgentBase) && (descriptor.Module != "product-agent" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionLocalAgentWrite || descriptor.RequestTimeout != 2*time.Minute) {
 			return errors.New("product agent loses fresh permission boundary")
 		}
 		if strings.HasPrefix(descriptor.Path, workbenchChatBase) || strings.HasPrefix(descriptor.Path, workbenchTaskBase) {

@@ -63,6 +63,8 @@ func TestPostgresReservationDispatchAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Run("formal invitations", func(t *testing.T) { testInvitations(t, ctx, repo) })
+	t.Run("enterprise roles", func(t *testing.T) { testEnterpriseRoles(t, ctx, repo, repo) })
+	t.Run("read only role policy", func(t *testing.T) { testRolePolicyReader(t, ctx, db, dsn, repo) })
 	original := domain.Operation{Scope: domain.OperationScope{ProjectID: "p", OrganizationID: "org", ActorID: "actor-a"}, Key: uuid.NewString(), Fingerprint: strings.Repeat("a", 64), Kind: domain.CommandRole, TargetUserID: "target", AuthorizationID: "grant", Role: "listingkit_viewer", ExpectedVersion: strings.Repeat("b", 64), Step: domain.StepRole, Phase: domain.PhaseReady, Revision: 1}
 	other := original
 	other.Scope.ActorID = "actor-b"
@@ -258,6 +260,9 @@ func TestPostgresReservationDispatchAndRestart(t *testing.T) {
  GRANT USAGE ON SCHEMA public TO organization_membership_runtime;
  GRANT SELECT,INSERT,UPDATE ON public.organization_member_operations,public.organization_member_invitations TO organization_membership_runtime;
  GRANT SELECT,INSERT ON public.organization_member_audit_events TO organization_membership_runtime;
+ GRANT SELECT ON public.organization_role_slots TO organization_membership_runtime;
+ GRANT SELECT,INSERT,UPDATE ON public.organization_roles TO organization_membership_runtime;
+ GRANT SELECT,INSERT ON public.organization_role_mutations TO organization_membership_runtime;
  CREATE TABLE public.unrelated_facts (id integer);`).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -278,6 +283,16 @@ func TestPostgresReservationDispatchAndRestart(t *testing.T) {
 	if err := VerifyRuntimePermissions(ctx, runtimeDB); err != nil {
 		t.Fatalf("minimum runtime rejected: %v", err)
 	}
+	t.Run("enterprise roles with runtime credentials", func(t *testing.T) {
+		runtimeRepo, err := NewRepository(ctx, runtimeDB, "runtime-p")
+		if err != nil {
+			t.Fatal(err)
+		}
+		testEnterpriseRoles(t, ctx, runtimeRepo, repo)
+		if err := runtimeDB.Exec(`UPDATE public.organization_role_slots SET slot=slot`).Error; err == nil {
+			t.Fatal("runtime must not modify native role inventory")
+		}
+	})
 	for _, extra := range []struct{ grant, revoke string }{
 		{`GRANT SELECT(id) ON public.unrelated_facts TO organization_membership_runtime`, `REVOKE SELECT(id) ON public.unrelated_facts FROM organization_membership_runtime`},
 		{`GRANT SELECT ON public.unrelated_facts TO PUBLIC`, `REVOKE SELECT ON public.unrelated_facts FROM PUBLIC`},

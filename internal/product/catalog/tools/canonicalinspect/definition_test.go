@@ -18,7 +18,7 @@ func TestDefinitionMetadata(t *testing.T) {
 		definition.Risk != commercetool.RiskRead || definition.SideEffects.Mode != commercetool.SideEffectNone ||
 		definition.Idempotency.Mode != commercetool.IdempotencyDeterministic ||
 		definition.Retry.Owner != commercetool.RetryOwnerCaller || definition.Usage.Owner != commercetool.UsageOwnerUnmetered ||
-		definition.Permission.Permission != authz.PermissionListingKitAdminRead || definition.Timeout.Duration != 3*time.Second {
+		definition.Permission.Permission != authz.PermissionLocalAgentWrite || definition.Timeout.Duration != 3*time.Second {
 		t.Fatalf("Definition() metadata = %#v", definition)
 	}
 }

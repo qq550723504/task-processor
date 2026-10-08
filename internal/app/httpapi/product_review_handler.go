@@ -23,10 +23,10 @@ func productReviewRoutes(s *review.Service, bind func(context.Context, string) (
 	specs := []struct{ method, path, kind string }{{"POST", base, "create"}, {"GET", base, "list"}, {"GET", base + "/:proposal_id", "get"}, {"POST", base + "/:proposal_id/decisions", "decision"}, {"POST", base + "/:proposal_id/apply", "apply"}}
 	routes := make([]httproute.Descriptor, 0, len(specs))
 	for _, spec := range specs {
-		policy, permission := httproute.OrganizationAccessPolicyLiveWrite, authz.PermissionListingKitAdminWrite
+		policy, permission := httproute.OrganizationAccessPolicyLiveWrite, authz.PermissionLocalAgentWrite
 		if spec.kind == "get" || spec.kind == "list" {
 			policy = httproute.OrganizationAccessPolicyCachedRead
-			permission = authz.PermissionListingKitAdminRead
+			permission = authz.PermissionLocalAgentWrite
 		}
 		routes = append(routes, httproute.Descriptor{Method: spec.method, Path: spec.path, Module: "product-review", Permission: permission, AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: policy, Handler: func(c *gin.Context) {
 			if spec.kind != "get" && spec.kind != "list" {

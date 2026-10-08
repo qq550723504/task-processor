@@ -141,6 +141,9 @@ source of truth for long-lived rules.
     Production Writer waits for PR #578 merge and execution-Issue admission;
     final-head merge checks and separate rollout/provider permissions still apply.
 
+- [`enterprise-custom-roles-v1.md`](./enterprise-custom-roles-v1.md)
+  - IMPLEMENTATION_READY #598 Figma members and enterprise custom roles, native slot inventory, scoped permission consumers and atomic mutation receipts.
+
 - [`member-directory-query-v1.md`](./member-directory-query-v1.md)
   - #575 bounded current Membership query increment: complete display-name/login
     search, native role/state filtering, filtered totals and paging. IMPLEMENTATION_READY;

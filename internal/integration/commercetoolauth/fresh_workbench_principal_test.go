@@ -42,7 +42,7 @@ func TestFreshWorkbenchActualResolverInvocation(t *testing.T) {
 	for _, scenario := range []string{"two-calls", "permission-revoked", "organization-revoked", "provider-failed", "expired", "canceled", "selected-org-drift"} {
 		t.Run(scenario, func(t *testing.T) {
 			now := time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC)
-			client := &freshAuthorizationFixture{grants: []authidentity.OrganizationGrant{{OrganizationID: "org-a", ProjectID: "project", Roles: []string{"listingkit_operator"}}}}
+			client := &freshAuthorizationFixture{grants: []authidentity.OrganizationGrant{{OrganizationID: "org-a", ProjectID: "project", Roles: []string{authz.EnterpriseRoleKey("org-a", 1)}}}}
 			grants := workbenchcontext.NewGrantResolver(client, workbenchcontext.NewGrantCache(func() time.Time { return now }))
 			owner := workbenchcontext.NewResolver(grants, "project", "v1", nil, workbenchcontext.WithResolverClock(func() time.Time { return now }))
 			request := OrganizationRequest{Identity: authidentity.AuthenticatedIdentity{UserID: "actor", HomeOrganizationID: "org-home", TokenExpiresAt: now.Add(time.Minute)}, BearerToken: "secret-fixture-bearer", RequestedOrganizationID: "org-a"}
@@ -60,6 +60,7 @@ func TestFreshWorkbenchActualResolverInvocation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			policy.SetRolePolicyReader(commerceRoleFixture{})
 			authorizer, err := NewCasbinAuthorizer(policy)
 			if err != nil {
 				t.Fatal(err)
@@ -68,7 +69,7 @@ func TestFreshWorkbenchActualResolverInvocation(t *testing.T) {
 			definition := commercetool.Definition{
 				Ref: commercetool.ToolRef{ID: "fixture.facts.read", Version: "v1.0.0"}, Capability: "fixture.facts", Owner: "fixture", Description: "Read controlled facts.",
 				InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false}`), OutputSchema: json.RawMessage(`{"type":"object","additionalProperties":false}`),
-				Risk: commercetool.RiskRead, Permission: commercetool.PermissionRequirement{Permission: authz.PermissionListingKitAdminRead},
+				Risk: commercetool.RiskRead, Permission: commercetool.PermissionRequirement{Permission: authz.PermissionLocalAgentWrite},
 				SideEffects: commercetool.SideEffectPolicy{Mode: commercetool.SideEffectNone}, Idempotency: commercetool.IdempotencyPolicy{Mode: commercetool.IdempotencyDeterministic},
 				Timeout: commercetool.TimeoutPolicy{Duration: time.Second}, Retry: commercetool.RetryPolicy{Owner: commercetool.RetryOwnerCaller}, Usage: commercetool.UsagePolicy{Owner: commercetool.UsageOwnerUnmetered},
 			}
@@ -106,7 +107,7 @@ func TestFreshWorkbenchActualResolverInvocation(t *testing.T) {
 				client.grants[0].Roles = []string{"listingkit_viewer"}
 				want = commercetool.ErrorPermissionDenied
 			case "organization-revoked":
-				client.grants = []authidentity.OrganizationGrant{{OrganizationID: "org-home", ProjectID: "project", Roles: []string{"listingkit_operator"}}}
+				client.grants = []authidentity.OrganizationGrant{{OrganizationID: "org-home", ProjectID: "project", Roles: []string{authz.EnterpriseRoleKey("org-a", 1)}}}
 			case "provider-failed":
 				client.err = errors.New("secret-fixture-bearer provider failed")
 			case "expired":
@@ -148,7 +149,7 @@ func TestFreshWorkbenchRejectsInvalidConstructionAndRequest(t *testing.T) {
 			defer cancel()
 			request := OrganizationRequest{Identity: authidentity.AuthenticatedIdentity{UserID: "actor", TokenExpiresAt: now.Add(time.Minute)}, BearerToken: "secret", RequestedOrganizationID: "org-a"}
 			resolver, _ := NewFreshWorkbenchPrincipalResolver(FreshOrganizationResolverFunc(func(context.Context, OrganizationRequest) (authidentity.AuthenticatedIdentity, error) {
-				identity := authidentity.AuthenticatedIdentity{UserID: "actor", TenantID: "org-a", EffectiveOrganizationID: "org-a", TokenExpiresAt: request.Identity.TokenExpiresAt, Roles: []string{"listingkit_operator"}}
+				identity := authidentity.AuthenticatedIdentity{UserID: "actor", TenantID: "org-a", EffectiveOrganizationID: "org-a", TokenExpiresAt: request.Identity.TokenExpiresAt, Roles: []string{authz.EnterpriseRoleKey("org-a", 1)}}
 				switch scenario {
 				case "actor-drift":
 					identity.UserID = "other"
@@ -178,7 +179,7 @@ func TestFreshWorkbenchConcurrentRequestIdentityIsolation(t *testing.T) {
 		if err := ctx.Err(); err != nil {
 			return authidentity.AuthenticatedIdentity{}, err
 		}
-		return authidentity.AuthenticatedIdentity{UserID: request.Identity.UserID, TenantID: request.RequestedOrganizationID, EffectiveOrganizationID: request.RequestedOrganizationID, TokenExpiresAt: request.Identity.TokenExpiresAt, Roles: []string{"listingkit_operator"}}, nil
+		return authidentity.AuthenticatedIdentity{UserID: request.Identity.UserID, TenantID: request.RequestedOrganizationID, EffectiveOrganizationID: request.RequestedOrganizationID, TokenExpiresAt: request.Identity.TokenExpiresAt, Roles: []string{authz.EnterpriseRoleKey("org-a", 1)}}, nil
 	}), func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
@@ -207,7 +208,7 @@ func TestFreshWorkbenchConcurrentRequestIdentityIsolation(t *testing.T) {
 
 func TestFreshWorkbenchRequiresExplicitSelectedOrganizationBeforeProvider(t *testing.T) {
 	now := time.Now()
-	client := &freshAuthorizationFixture{grants: []authidentity.OrganizationGrant{{OrganizationID: "org-home", ProjectID: "project", Roles: []string{"listingkit_operator"}}}}
+	client := &freshAuthorizationFixture{grants: []authidentity.OrganizationGrant{{OrganizationID: "org-home", ProjectID: "project", Roles: []string{authz.EnterpriseRoleKey("org-a", 1)}}}}
 	owner := workbenchcontext.NewResolver(workbenchcontext.NewGrantResolver(client, nil), "project", "v1", nil)
 	resolver, _ := NewFreshWorkbenchPrincipalResolver(FreshOrganizationResolverFunc(func(ctx context.Context, request OrganizationRequest) (authidentity.AuthenticatedIdentity, error) {
 		return owner.Resolve(ctx, httproute.OrganizationAccessPolicyLiveWrite, workbenchcontext.ResolveInput{Identity: request.Identity, BearerToken: request.BearerToken, RequestedOrganizationID: request.RequestedOrganizationID})

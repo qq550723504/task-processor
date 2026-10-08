@@ -6,7 +6,7 @@ import { diagnosticFixture } from "@/test/fixtures/shein-diagnostic";
 import { SheinDiagnosticPage } from "./diagnostic-page";
 
 vi.mock("@/components/providers/workbench-context-provider", () => ({
-  useWorkbenchContext: () => ({ user: { id: "reader" }, effectiveOrganization: { id: "200", name: "受控企业" }, roles: [], retry: vi.fn() }),
+  useWorkbenchContext: () => ({ user: { id: "reader" }, effectiveOrganization: { id: "200", name: "受控企业" }, roles: [], permissions: [], retry: vi.fn() }),
 }));
 let client: QueryClient;
 beforeEach(() => { client = new QueryClient(); });

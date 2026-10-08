@@ -121,7 +121,11 @@ func (a *ContextAuthorizer) Authorize(ctx context.Context) (PublicationScope, er
 	if err != nil {
 		return PublicationScope{}, err
 	}
-	if !a.permissions.Authorize(identity.UserID, roles, authz.PermissionProductSourcingWrite) {
+	allowed, policyErr := authz.AuthorizeOrganization(ctx, a.permissions, identity.UserID, identity.EffectiveOrganizationID, roles, authz.PermissionProductSourcingWrite)
+	if policyErr != nil {
+		return PublicationScope{}, ErrSourcePublicationUnavailable
+	}
+	if !allowed {
 		return PublicationScope{}, ErrPublicationForbidden
 	}
 	return PublicationScope{OrganizationID: identity.EffectiveOrganizationID, ActorID: identity.UserID}, nil

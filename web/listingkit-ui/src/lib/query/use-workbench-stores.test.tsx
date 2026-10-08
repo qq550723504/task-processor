@@ -55,7 +55,7 @@ const mocks = vi.hoisted(() => ({
   disable: vi.fn(),
   remove: vi.fn(),
   context: {
-    effectiveOrganization: null as { id: string; name: string; roles: string[] } | null,
+    effectiveOrganization: null as { id: string; name: string; permissions?: string[]; roles: string[] } | null,
   },
 }));
 
@@ -78,6 +78,7 @@ vi.mock("@/lib/api/workbench-stores", async (importOriginal) => {
 vi.mock("@/components/providers/workbench-context-provider", () => ({
   useWorkbenchContext: () => ({
     effectiveOrganization: mocks.context.effectiveOrganization,
+    permissions: mocks.context.effectiveOrganization?.permissions ?? [],
   }),
 }));
 
@@ -96,7 +97,7 @@ function createHarness() {
 
 function selectOrganization(id: string | null) {
   mocks.context.effectiveOrganization = id
-    ? { id, name: `Organization ${id}`, roles: [] }
+    ? { id, name: `Organization ${id}`, roles: [], permissions: [] }
     : null;
 }
 
@@ -118,6 +119,21 @@ describe("Organization-scoped workbench Store queries", () => {
         .mockReturnValueOnce(CREATE_KEY_2)
         .mockReturnValueOnce(DELETE_KEY),
     });
+  });
+
+  it.each(["list", "item"])("drops cached %s facts when permissions change with the same native role", async (kind) => {
+    mocks.context.effectiveOrganization!.roles = ["sumi_role_0123456789abcdef0123456789abcdef_01"];
+    mocks.context.effectiveOrganization!.permissions = ["workbench.store.read"];
+    const request = kind === "list" ? mocks.list : mocks.get;
+    request.mockReturnValueOnce(Promise.resolve(kind === "list" ? list : store)).mockReturnValue(new Promise(() => {}));
+    const { client, wrapper } = createHarness();
+    const { result, rerender } = renderHook(() => kind === "list" ? useWorkbenchStores({ page: 1, pageSize: 20 }) : useWorkbenchStore(STORE_ID), { wrapper });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    mocks.context.effectiveOrganization!.permissions = [];
+    rerender();
+    expect(result.current.data).toBeUndefined();
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    client.clear();
   });
 
   it("partitions root, list, and item keys by effective Organization", () => {

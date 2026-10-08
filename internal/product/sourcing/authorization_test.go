@@ -101,12 +101,14 @@ func publicationIdentityContext(identity authidentity.AuthenticatedIdentity) con
 func TestContextAuthorizerUsesTrustedEffectiveOrganizationAndFreshRoles(t *testing.T) {
 	permissions, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
+	key := authz.EnterpriseRoleKey("org-a", 1)
+	permissions.SetRolePolicyReader(sourcingRolePolicies{key: {"acquisition"}})
 	calls := 0
 	authorizer, err := NewContextAuthorizer(liveRolesFunc(func(_ context.Context, org, actor string) ([]string, error) {
 		calls++
 		require.Equal(t, "org-a", org)
 		require.Equal(t, "actor-a", actor)
-		return []string{"listingkit_operator"}, nil
+		return []string{key}, nil
 	}), permissions)
 	require.NoError(t, err)
 
@@ -182,4 +184,44 @@ func TestContextAuthorizerRejectsInvalidContextRevocationAndDependencyFailure(t 
 			}
 		})
 	}
+}
+
+type sourcingRolePolicies map[string][]string
+
+func (p sourcingRolePolicies) RoleModules(_ context.Context, org string, keys []string) (map[string][]string, error) {
+	result := map[string][]string{}
+	for _, key := range keys {
+		if authz.IsEnterpriseRoleKey(org, key) {
+			result[key] = p[key]
+		}
+	}
+	return result, nil
+}
+func TestContextAuthorizerUsesCurrentEnterpriseRolePolicy(t *testing.T) {
+	permissions, err := authz.NewListingKitAuthorizer(nil, nil)
+	require.NoError(t, err)
+	key := authz.EnterpriseRoleKey("org-a", 1)
+	policies := sourcingRolePolicies{key: {"acquisition"}}
+	permissions.SetRolePolicyReader(policies)
+	liveRoles := []string{key}
+	authorizer, err := NewContextAuthorizer(liveRolesFunc(func(_ context.Context, org, actor string) ([]string, error) {
+		require.Equal(t, "org-a", org)
+		require.Equal(t, "actor-a", actor)
+		return liveRoles, nil
+	}), permissions)
+	require.NoError(t, err)
+	ctx := publicationIdentityContext(authidentity.AuthenticatedIdentity{TenantID: "org-a", EffectiveOrganizationID: "org-a", UserID: "actor-a", Roles: []string{key}, TokenExpiresAt: time.Now().Add(time.Hour)})
+	scope, err := authorizer.Authorize(ctx)
+	require.NoError(t, err)
+	require.Equal(t, PublicationScope{OrganizationID: "org-a", ActorID: "actor-a"}, scope)
+	policies[key] = []string{}
+	_, err = authorizer.Authorize(ctx)
+	require.ErrorIs(t, err, ErrPublicationForbidden)
+	policies[key] = []string{"acquisition"}
+	liveRoles = []string{authz.EnterpriseRoleKey("org-b", 1)}
+	_, err = authorizer.Authorize(ctx)
+	require.ErrorIs(t, err, ErrPublicationForbidden)
+	liveRoles = nil
+	_, err = authorizer.Authorize(ctx)
+	require.ErrorIs(t, err, ErrPublicationForbidden)
 }

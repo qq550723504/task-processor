@@ -1,0 +1,37 @@
+.layout { display: grid; grid-template-columns: 260px minmax(0,1fr); gap: 12px; min-height: 572px; }
+.roleList, .configuration { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 18px; min-width: 0; }
+.roleList h2, .configuration h2 { font-size: 16px; font-weight: 600; }
+.roleList p, .configuration p { color: var(--muted-foreground); font-size: 12px; line-height: 1.7; margin: 8px 0 14px; }
+.roleList > p:not(:first-of-type) { margin-top: 20px; }
+.roleList small { display: block; color: var(--muted-foreground); font-size: 12px; margin: 12px 0; }
+.roleButton { display: block; width: 100%; min-height: 50px; text-align: left; padding: 12px 14px; margin: 8px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--background); font-size: 13px; overflow-wrap: anywhere; }
+.roleButton[aria-pressed="true"] { color: var(--primary); border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, var(--card)); }
+.newRole { width: 100%; justify-content: flex-start; margin-top: 8px; color: var(--primary); }
+.configuration > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.configuration > header p { margin-bottom: 4px; }
+.moduleTree { columns: 2; column-gap: 12px; }
+.group { break-inside: avoid; margin-bottom: 8px; }
+.group summary { display: flex; align-items: center; gap: 12px; cursor: pointer; min-height: 42px; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12px; }
+.group summary::before { content: "›"; color: var(--muted-foreground); }
+.group[open] summary::before { content: "⌄"; }
+.group summary span { margin-left: auto; color: var(--muted-foreground); }
+.module { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 38px; padding: 5px 12px 5px 24px; font-size: 12px; }
+.module button { min-width: 72px; height: 28px; color: var(--primary); }
+.module small { color: var(--muted-foreground); }
+.module label { display: flex; gap: 10px; align-items: center; }
+.modal, .drawer { background: var(--card); color: var(--foreground); border: 1px solid var(--border); padding: 24px; }
+.modal { width: min(480px, calc(100vw - 32px)); border-radius: 12px; margin: auto; max-height: calc(100dvh - 32px); overflow-y: auto; }
+.drawer { width: min(420px,100vw); height: 100dvh; max-height: 100dvh; margin: 0 0 0 auto; overflow-y: auto; border-radius: 0; }
+.modal::backdrop, .drawer::backdrop { background: rgb(0 0 0 / .55); }
+.modal > header, .drawer > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.modal h2, .drawer h2 { font-size: 18px; font-weight: 600; }
+.modal h3 { font-size: 13px; margin: 18px 0 10px; }
+.modal footer { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
+.nameField { display: grid; position: relative; gap: 10px; font-size: 13px; }
+.nameField input { min-height: 40px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); padding: 10px 60px 10px 12px; }
+.nameField small { position: absolute; right: 12px; bottom: 12px; color: var(--muted-foreground); font-size: 12px; }
+.modalTree { max-height: 192px; overflow-y: auto; border: 1px solid var(--border); padding: 10px; border-radius: 8px; }
+.notice { padding: 12px 16px; font-size: 13px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; }
+.roleButton:focus-visible, .group summary:focus-visible, .nameField input:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+@media(max-width:900px) { .layout { grid-template-columns: 200px minmax(0,1fr); } .moduleTree { columns: 1; } }
+@media(max-width:640px) { .layout { grid-template-columns: 1fr; } .roleList { max-height: 300px; overflow: auto; } }

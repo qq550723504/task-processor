@@ -16,7 +16,7 @@ func Definition() commercetool.Definition {
 		InputSchema:  InputSchema(),
 		OutputSchema: OutputSchema(),
 		Risk:         commercetool.RiskRead,
-		Permission:   commercetool.PermissionRequirement{Permission: authz.PermissionListingKitAdminRead},
+		Permission:   commercetool.PermissionRequirement{Permission: authz.PermissionLocalAgentWrite},
 		SideEffects:  commercetool.SideEffectPolicy{Mode: commercetool.SideEffectNone},
 		Idempotency:  commercetool.IdempotencyPolicy{Mode: commercetool.IdempotencyDeterministic},
 		Timeout:      commercetool.TimeoutPolicy{Duration: 3 * time.Second},

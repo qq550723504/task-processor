@@ -77,7 +77,7 @@ it("retains an aborted A-scope submission for explicit original-key verification
 });
 
 it("blocks an organization switch while a submission is still in flight", async () => {
-  let guard: ((target: { id: string; name: string; roles: string[] }) => boolean) | undefined;
+  let guard: ((target: { id: string; name: string; permissions?: string[]; roles: string[] }) => boolean) | undefined;
   const late = deferred<{ outcome: "published"; operationId: string; productKey: string }>();
   calls.acquire.mockReturnValue(late.promise);
   (calls.context.registerOrganizationSwitchGuard as ReturnType<typeof vi.fn>).mockImplementation((next: typeof guard) => {
@@ -88,7 +88,7 @@ it("blocks an organization switch while a submission is still in flight", async 
   await userEvent.type(screen.getByLabelText("1688 商品页或 offer ID"), "https://detail.1688.com/offer/123.html");
   await userEvent.click(screen.getByRole("button", { name: "提交采集" }));
   await waitFor(() => expect(calls.acquire).toHaveBeenCalledOnce());
-  expect(guard?.({ id: "organization-B", name: "企业 B", roles: [] })).toBe(false);
+  expect(guard?.({ id: "organization-B", name: "企业 B", roles: [], permissions: [] })).toBe(false);
   await act(async () => late.resolve({ outcome: "published", operationId: operationID, productKey: "crawler:1688:123" }));
 });
 

@@ -89,7 +89,7 @@ func (c *Commands) Execute(ctx context.Context, key string, input CommandInput) 
 	if input.Kind != CommandRole && input.Kind != CommandRemove && input.Kind != CommandInvite {
 		return Operation{}, ErrInvalidRequest
 	}
-	if ((input.Kind == CommandRole || input.Kind == CommandInvite) && !c.service.assignable(input.Role)) || (input.Kind == CommandRemove && input.Role != "") {
+	if ((input.Kind == CommandRole || input.Kind == CommandInvite) && !c.service.assignable(ctx, identity.EffectiveOrganizationID, input.Role)) || (input.Kind == CommandRemove && input.Role != "") {
 		return Operation{}, ErrInvalidRequest
 	}
 	if input.Kind == CommandInvite {
@@ -173,7 +173,7 @@ func (c *Commands) resume(ctx context.Context, op Operation) (Operation, error) 
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return op, err
 	}
-	if errors.Is(err, ErrNotFound) || member.UserID != op.TargetUserID || observedVersion(member) != op.ExpectedVersion || !c.service.editable(member) || (op.Kind == CommandRole && !c.service.assignable(op.Role)) {
+	if errors.Is(err, ErrNotFound) || member.UserID != op.TargetUserID || observedVersion(member) != op.ExpectedVersion || !c.service.editable(ctx, op.Scope.OrganizationID, member) || (op.Kind == CommandRole && !c.service.assignable(ctx, op.Scope.OrganizationID, op.Role)) {
 		rejected, saveErr := c.store.Apply(ctx, op.Scope, op.Key, op.Revision, OperationChange{Event: EventReject})
 		if saveErr != nil {
 			return op, saveErr

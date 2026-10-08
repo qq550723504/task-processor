@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 const context = vi.hoisted(() => ({
-  effectiveOrganization: { id: "org-a", name: "企业 A", roles: [] as string[] },
+  effectiveOrganization: { id: "org-a", name: "企业 A", roles: [], permissions: [] as string[] },
   isSwitching: false,
   registerOrganizationSwitchGuard: vi.fn(() => vi.fn()),
 }));
@@ -28,7 +28,7 @@ const STORE = {
 };
 
 describe("StoreForm", () => {
-  afterEach(() => { vi.restoreAllMocks(); router.push.mockReset(); router.replace.mockReset(); create.mutate.mockReset(); create.retryLast.mockReset(); create.canRetryLast = false; create.isPending = false; update.mutate.mockReset(); update.isPending = false; context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [] }; context.isSwitching = false; context.registerOrganizationSwitchGuard.mockClear(); });
+  afterEach(() => { vi.restoreAllMocks(); router.push.mockReset(); router.replace.mockReset(); create.mutate.mockReset(); create.retryLast.mockReset(); create.canRetryLast = false; create.isPending = false; update.mutate.mockReset(); update.isPending = false; context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [], permissions: [] }; context.isSwitching = false; context.registerOrganizationSwitchGuard.mockClear(); });
 
   it("validates and canonicalizes create input while keeping SHEIN trusted and read-only", async () => {
     const user = userEvent.setup();
@@ -147,18 +147,18 @@ describe("StoreForm", () => {
   });
 
   it("guards dirty Organization switches and waits for the actual context change before navigating", async () => {
-    let guard: ((target: { id: string; name: string; roles: string[] }) => boolean) | undefined;
-    context.registerOrganizationSwitchGuard.mockImplementation(((next: (target: { id: string; name: string; roles: string[] }) => boolean) => { guard = next; return vi.fn(); }) as never);
+    let guard: ((target: { id: string; name: string; permissions?: string[]; roles: string[] }) => boolean) | undefined;
+    context.registerOrganizationSwitchGuard.mockImplementation(((next: (target: { id: string; name: string; permissions?: string[]; roles: string[] }) => boolean) => { guard = next; return vi.fn(); }) as never);
     const confirm = vi.fn(() => false); vi.stubGlobal("confirm", confirm);
     const user = userEvent.setup(); const view = render(<StoreForm mode="create" />);
     await user.type(screen.getByLabelText("店铺名称"), "草稿");
     await waitFor(() => expect(guard).toBeDefined());
-    expect(guard?.({ id: "org-b", name: "企业 B", roles: [] })).toBe(false);
+    expect(guard?.({ id: "org-b", name: "企业 B", roles: [], permissions: [] })).toBe(false);
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining("企业 A → 企业 B"));
     confirm.mockReturnValue(true);
-    expect(guard?.({ id: "org-b", name: "企业 B", roles: [] })).toBe(true);
+    expect(guard?.({ id: "org-b", name: "企业 B", roles: [], permissions: [] })).toBe(true);
     expect(router.replace).not.toHaveBeenCalled();
-    context.effectiveOrganization = { id: "org-b", name: "企业 B", roles: [] };
+    context.effectiveOrganization = { id: "org-b", name: "企业 B", roles: [], permissions: [] };
     view.rerender(<StoreForm mode="create" />);
     expect(screen.getByRole("status")).toHaveTextContent("正在切换企业");
     expect(screen.queryByDisplayValue("草稿")).not.toBeInTheDocument();

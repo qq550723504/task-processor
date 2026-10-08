@@ -41,8 +41,8 @@ func TestDispatchCommitRechecksExpiryAndCancellationBeforeEveryProviderStep(t *t
 		for _, mode := range []string{"expiry", "cancel", "deadline"} {
 			t.Run(string(step)+"/"+mode, func(t *testing.T) {
 				a, _ := authz.NewListingKitAuthorizer(nil, nil)
-				member := Member{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{"listingkit_viewer"}}
-				s := NewService(&directoryStub{page: Page{Items: []Member{member}, Total: 1}}, a, "project")
+				member := Member{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{testReadRole}}
+				s := testService(&directoryStub{page: Page{Items: []Member{member}, Total: 1}}, a, "project")
 				identity, _ := authidentity.AuthenticatedIdentityFromContext(scopedContext("listingkit_admin"))
 				deadline := time.Now().Add(100 * time.Millisecond)
 				if mode == "expiry" {
@@ -69,13 +69,13 @@ func TestDispatchCommitRechecksExpiryAndCancellationBeforeEveryProviderStep(t *t
 				writer := &inviteProvider{}
 				refresh := func(ctx context.Context) (context.Context, error) { return ctx, nil }
 				commands := NewCommands(s, store, writer, refresh)
-				input := CommandInput{Kind: CommandRole, AuthorizationID: "grant", ExpectedVersion: observedVersion(member), Role: "listingkit_operator"}
+				input := CommandInput{Kind: CommandRole, AuthorizationID: "grant", ExpectedVersion: observedVersion(member), Role: testOperateRole}
 				if step == StepRemove {
 					input.Kind = CommandRemove
 					input.Role = ""
 				}
 				if step == StepUser || step == StepGrant {
-					input = CommandInput{Kind: CommandInvite, Role: "listingkit_viewer", Invitation: &Invitation{Email: "new@example.com", FirstName: "New", LastName: "Member"}}
+					input = CommandInput{Kind: CommandInvite, Role: testReadRole, Invitation: &Invitation{Email: "new@example.com", FirstName: "New", LastName: "Member"}}
 				}
 				key := uuid.NewString()
 				_, _ = commands.Execute(ctx, key, input)

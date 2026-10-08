@@ -35,6 +35,7 @@ type Config struct {
 	BootstrapLoginName string
 	// AcceptanceOrganizationIDs are stable, provisioner-owned IDs for the two
 	// disposable local acceptance organizations. Name-only adoption is unsafe.
+	EnterpriseRoleSlots       bool
 	AcceptanceOrganizationIDs []string
 	HTTPClient                *http.Client
 }
@@ -381,10 +382,19 @@ func ProvisionLocalMultiOrganizationAcceptance(ctx context.Context, cfg Config, 
 		organizationIDs[requested.Name] = organizationID
 	}
 
-	for _, requested := range normalizedSpec.Organizations {
-		organizationID := organizationIDs[requested.Name]
-		if ensureErr := client.ensureProjectGrant(ctx, projectID, organizationID, requested.ProjectRoleKeys); ensureErr != nil {
-			return MultiOrganizationAcceptanceResult{}, ensureErr
+	for index, requested := range normalizedSpec.Organizations {
+		organization := organizationIDs[requested.Name]
+		if cfg.EnterpriseRoleSlots {
+			keys, err := client.ensureEnterpriseRoleSlots(ctx, projectID, organization)
+			if err != nil {
+				return MultiOrganizationAcceptanceResult{}, err
+			}
+			normalizedSpec.Organizations[index].ProjectRoleKeys = keys
+			if err = client.ensureInitialEnterpriseGrant(ctx, projectID, organization, keys); err != nil {
+				return MultiOrganizationAcceptanceResult{}, err
+			}
+		} else if err := client.ensureProjectGrant(ctx, projectID, organization, requested.ProjectRoleKeys); err != nil {
+			return MultiOrganizationAcceptanceResult{}, err
 		}
 	}
 

@@ -45,6 +45,7 @@ const labels: Record<string, string> = {
 };
 const capabilityNames: Record<string, string> = {
   "text.generate": "文本生成",
+  "product.source-evidence": "采集证据读取",
   "knowledge.context": "企业知识引用",
   "image.generate": "图片生成",
   "platform.write": "平台写入",
@@ -132,7 +133,7 @@ export function AgentPage({
     return <ConsoleState kind="unavailable" title="请先选择企业" />;
   return (
     <ScopedPage
-      key={`${ctx.user.id}:${ctx.effectiveOrganization.id}:${[...ctx.roles].sort().join(":")}:${mode}:${id ?? ""}`}
+      key={`${ctx.user.id}:${ctx.effectiveOrganization.id}:${[...ctx.permissions].sort().join(":")}:${mode}:${id ?? ""}`}
       scope={{
         userId: ctx.user.id,
         organizationId: ctx.effectiveOrganization.id,
@@ -329,6 +330,18 @@ function ScopedPage({
             )}
           </div>
         )}
+        {!entry.canUse &&
+          entry.capabilities
+            .filter(
+              (cap) =>
+                cap.support === "REQUIRED" && cap.readiness !== "AVAILABLE",
+            )
+            .map((cap) => (
+              <p key={cap.id} className="text-muted-foreground">
+                <strong>{capabilityNames[cap.id]}</strong>：
+                <span>{cap.reason}</span>
+              </p>
+            ))}
       </Card>
     );
   }

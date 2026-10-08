@@ -23,7 +23,7 @@ type directory struct {
 }
 
 func TestDirectoryQueryParameterBounds(t *testing.T) {
-	for _, query := range []string{"q=a&q=b", "role=", "role=platform_admin", "role=listingkit_viewer&role=listingkit_admin", "state=pending", "state=", "q=%00", "q=%FF", "q=%zz", "q=" + url.QueryEscape(strings.Repeat("目", 67)), "q=" + strings.Repeat("a", 201), "q=x&projectId=other", "q=x;state=active", "q=" + strings.Repeat("a", 2049)} {
+	for _, query := range []string{"q=a&q=b", "role=", "role=platform_admin", "role=listingkit_admin&role=listingkit_admin", "state=pending", "state=", "q=%00", "q=%FF", "q=%zz", "q=" + url.QueryEscape(strings.Repeat("目", 67)), "q=" + strings.Repeat("a", 201), "q=x&projectId=other", "q=x;state=active", "q=" + strings.Repeat("a", 2049)} {
 		u := &url.URL{RawQuery: query}
 		if _, err := parsePage(u); err != membership.ErrInvalidRequest {
 			t.Fatalf("accepted query %q: %v", query, err)
@@ -34,8 +34,8 @@ func TestDirectoryQueryParameterBounds(t *testing.T) {
 			t.Fatalf("rejected valid query %q: %v", query, err)
 		}
 	}
-	p, err := parsePage(&url.URL{RawQuery: "limit=1&offset=20&q=%E7%9B%AE%E6%A0%87&role=listingkit_operator&state=inactive"})
-	if err != nil || p.Limit != 1 || p.Offset != 20 || p.Filter.Search != "目标" || p.Filter.Role != "listingkit_operator" || p.Filter.State != "inactive" {
+	p, err := parsePage(&url.URL{RawQuery: "limit=1&offset=20&q=%E7%9B%AE%E6%A0%87&role=listingkit_admin&state=inactive"})
+	if err != nil || p.Limit != 1 || p.Offset != 20 || p.Filter.Search != "目标" || p.Filter.Role != "listingkit_admin" || p.Filter.State != "inactive" {
 		t.Fatalf("lost query: %+v %v", p, err)
 	}
 }
@@ -47,10 +47,13 @@ func TestCommandRoutesHaveExactManagePermission(t *testing.T) {
 		t.Fatal(err)
 	}
 	routes := reg.Routes()
-	if len(routes) != 8 {
+	if len(routes) != 11 {
 		t.Fatalf("routes=%d", len(routes))
 	}
-	for _, route := range routes[3:] {
+	for _, route := range routes {
+		if route.Method == "GET" && route.Permission == authz.PermissionWorkbenchOrganizationMemberRead {
+			continue
+		}
 		if route.Permission != authz.PermissionWorkbenchOrganizationMemberManage || route.AuthPolicy != httproute.AuthPolicyCurrentIdentity || route.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || route.OrganizationTargetResolver == nil {
 			t.Fatalf("unprotected command: %+v", route)
 		}
@@ -75,17 +78,17 @@ func TestReadHTTPBoundary(t *testing.T) {
 		name, path, org, body, role string
 		status, calls               int
 	}{
-		{"list", "/api/v1/account/members", "org-b", "", "listingkit_viewer", 200, 1},
-		{"filtered list", "/api/v1/account/members?q=Member&role=listingkit_viewer&state=active", "org-b", "", "listingkit_viewer", 200, 1},
-		{"detail absent", "/api/v1/account/members/absent", "org-b", "", "listingkit_operator", 404, 1},
-		{"no selector", "/api/v1/account/members", "", "", "listingkit_viewer", 400, 0},
-		{"different selector", "/api/v1/account/members", "org-a", "", "listingkit_viewer", 403, 0},
-		{"unknown query", "/api/v1/account/members?organizationId=org-a", "org-b", "", "listingkit_viewer", 400, 0},
-		{"duplicate limit", "/api/v1/account/members?limit=20&limit=1", "org-b", "", "listingkit_viewer", 400, 0},
-		{"invalid escape", "/api/v1/account/members?limit=%zz", "org-b", "", "listingkit_viewer", 400, 0},
-		{"excess limit", "/api/v1/account/members?limit=101", "org-b", "", "listingkit_viewer", 400, 0},
-		{"body", "/api/v1/account/members", "org-b", "{}", "listingkit_viewer", 400, 0},
-		{"detail query", "/api/v1/account/members/absent?limit=20", "org-b", "", "listingkit_viewer", 400, 0},
+		{"list", "/api/v1/account/members", "org-b", "", "listingkit_admin", 200, 1},
+		{"filtered list", "/api/v1/account/members?q=Member&role=listingkit_admin&state=active", "org-b", "", "listingkit_admin", 200, 1},
+		{"detail absent", "/api/v1/account/members/absent", "org-b", "", "listingkit_admin", 404, 1},
+		{"no selector", "/api/v1/account/members", "", "", "listingkit_admin", 400, 0},
+		{"different selector", "/api/v1/account/members", "org-a", "", "listingkit_admin", 403, 0},
+		{"unknown query", "/api/v1/account/members?organizationId=org-a", "org-b", "", "listingkit_admin", 400, 0},
+		{"duplicate limit", "/api/v1/account/members?limit=20&limit=1", "org-b", "", "listingkit_admin", 400, 0},
+		{"invalid escape", "/api/v1/account/members?limit=%zz", "org-b", "", "listingkit_admin", 400, 0},
+		{"excess limit", "/api/v1/account/members?limit=101", "org-b", "", "listingkit_admin", 400, 0},
+		{"body", "/api/v1/account/members", "org-b", "{}", "listingkit_admin", 400, 0},
+		{"detail query", "/api/v1/account/members/absent?limit=20", "org-b", "", "listingkit_admin", 400, 0},
 		{"bare admin denied", "/api/v1/account/members", "org-b", "", "admin", 403, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -116,7 +119,7 @@ func TestMemberRoutesRequireCurrentIdentityAndLiveGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 	routes := reg.Routes()
-	if len(routes) != 3 {
+	if len(routes) != 4 {
 		t.Fatalf("routes=%d", len(routes))
 	}
 	for _, r := range routes {

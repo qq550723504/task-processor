@@ -14,7 +14,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 it("uses real context/switcher and commercial client, drops late HTTP response, and clears on role refresh", async () => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  let context = { user: { id: "reader" }, homeOrganizationId: "org-A", effectiveOrganizationId: "org-B", selectionRequired: false, organizations: [{ id: "org-B", name: "企业乙", roles: ["listingkit_admin"] }, { id: "org-C", name: "企业丙", roles: ["listingkit_admin"] }] };
+  let context = { user: { id: "reader" }, homeOrganizationId: "org-A", effectiveOrganizationId: "org-B", selectionRequired: false, organizations: [{ id: "org-B", name: "企业乙", roles: ["listingkit_admin"], permissions: ["listingkit.admin.read","listingkit.admin.write","product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.agent.configure","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.knowledge.manage","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.store.delete","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.organization_member.manage","workbench.commercial.read","workbench.commercial.purchase","workbench.commercial.wallet_topup"] }, { id: "org-C", name: "企业丙", roles: ["listingkit_admin"], permissions: ["listingkit.admin.read","listingkit.admin.write","product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.agent.configure","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.knowledge.manage","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.store.delete","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.organization_member.manage","workbench.commercial.read","workbench.commercial.purchase","workbench.commercial.wallet_topup"] }] };
   let release!: (response: Response) => void;
   const late = new Promise<Response>(resolve => { release = resolve; });
   let releaseResources!: (response: Response) => void;
@@ -55,7 +55,7 @@ it("uses real context/switcher and commercial client, drops late HTTP response, 
   expect(screen.queryByText("企业实际合同")).not.toBeInTheDocument();
   expect(screen.queryByText("9007199254740993 点")).not.toBeInTheDocument();
   revoked = true;
-  context = { ...context, organizations: context.organizations.map(org => ({ ...org, roles: ["listingkit_viewer"] })) };
+  context = { ...context, organizations: context.organizations.map(org => ({ ...org, roles: ["listingkit_viewer"], permissions: ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"] })) };
   await act(async () => { await queryClient.invalidateQueries({ queryKey: WORKBENCH_CONTEXT_QUERY_KEY }); });
   expect(await screen.findByRole("heading", { name: "无查看权限" })).toBeVisible();
   expect(await screen.findByText(/无资源查看权限/)).toBeVisible();
@@ -69,7 +69,7 @@ it("uses real context/switcher and commercial client, drops late HTTP response, 
 it("validates component fixtures using the single actual wire parser and reauthorizes after cached context drift", async () => {
   expect(parseCommercialOverview(commercialOverviewFixture())).not.toBeNull();
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const context = { user: { id: "reader" }, homeOrganizationId: "org-B", effectiveOrganizationId: "org-B", selectionRequired: false, organizations: [{ id: "org-B", name: "企业乙", roles: ["listingkit_admin"] }] };
+  const context = { user: { id: "reader" }, homeOrganizationId: "org-B", effectiveOrganizationId: "org-B", selectionRequired: false, organizations: [{ id: "org-B", name: "企业乙", roles: ["listingkit_admin"], permissions: ["listingkit.admin.read","listingkit.admin.write","product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.agent.configure","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.knowledge.manage","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.store.delete","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.organization_member.manage","workbench.commercial.read","workbench.commercial.purchase","workbench.commercial.wallet_topup"] }] };
   const fetchMock = vi.fn(async (url: string) => url === "/api/workbench/context" ? Response.json(context) : Response.json({ code: "ORGANIZATION_ACCESS_REVOKED", message: "hidden", requestId: "test-request", fieldErrors: [] }, { status: 403 }));
   vi.stubGlobal("fetch", fetchMock);
   queryClient.setQueryData(WORKBENCH_CONTEXT_QUERY_KEY, context);

@@ -53,11 +53,12 @@ type Authorizer interface {
 }
 
 type Result struct {
-	SchemaVersion   string   `json:"schemaVersion"`
-	UserID          string   `json:"userId"`
-	OrganizationID  string   `json:"organizationId"`
-	Items           []Member `json:"items"`
-	Total           int      `json:"total"`
-	CanManage       bool     `json:"canManage"`
-	AssignableRoles []string `json:"assignableRoles"`
+	SchemaVersion   string           `json:"schemaVersion"`
+	UserID          string           `json:"userId"`
+	OrganizationID  string           `json:"organizationId"`
+	Items           []Member         `json:"items"`
+	Total           int              `json:"total"`
+	CanManage       bool             `json:"canManage"`
+	AssignableRoles []string         `json:"assignableRoles"`
+	RoleDefinitions []RoleDefinition `json:"roleDefinitions"`
 }

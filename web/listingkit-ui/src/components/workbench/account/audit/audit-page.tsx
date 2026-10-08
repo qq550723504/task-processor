@@ -29,7 +29,7 @@ export function AuditPage({ expectedUserId }: { expectedUserId: string }) {
   if (leaving || context.user && context.user.id !== expectedUserId) return <AuditError code="AUTHENTICATION_REQUIRED" />;
   if (context.isLoading || context.isSwitching) return <ConsoleState kind="loading" title="正在确认当前企业">旧企业记录已清除。</ConsoleState>;
   if (context.error || context.blockingError || !context.user || !context.effectiveOrganization || context.selectionRequired) return <AuditError code={context.blockingError?.code ?? context.error?.code ?? "ORGANIZATION_SELECTION_REQUIRED"} />;
-  const scope = JSON.stringify([expectedUserId, context.user.id, context.effectiveOrganization.id, context.roles]);
+  const scope = JSON.stringify([expectedUserId, context.user.id, context.effectiveOrganization.id, context.roles, context.permissions]);
   return <ScopedAudit key={scope} scope={scope} expectedUserId={expectedUserId} organizationId={context.effectiveOrganization.id} />;
 }
 function ScopedAudit({ scope, expectedUserId, organizationId }: { scope: string; expectedUserId: string; organizationId: string }) {

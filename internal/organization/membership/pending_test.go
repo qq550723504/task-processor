@@ -62,7 +62,7 @@ func TestPendingListAuthorityAndUntrustedResults(t *testing.T) {
 				}
 				return result, nil
 			}
-			commands := NewCommands(NewService(directory, a, "project"), store, writer, func(ctx context.Context) (context.Context, error) {
+			commands := NewCommands(testService(directory, a, "project"), store, writer, func(ctx context.Context) (context.Context, error) {
 				if revoked {
 					return nil, ErrPermission
 				}
@@ -85,7 +85,7 @@ func TestPendingListAuthorityAndUntrustedResults(t *testing.T) {
 				page.Limit = 101
 			}
 			if scenario == "viewer" {
-				ctx = scopedContext("listingkit_viewer")
+				ctx = scopedContext(testReadRole)
 			}
 			result, err := commands.ListPending(ctx, page)
 			if scenario == "valid" {

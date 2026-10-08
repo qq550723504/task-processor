@@ -8,8 +8,8 @@ const navigation = vi.hoisted(() => ({
   push: vi.fn(),
 }));
 const context = vi.hoisted(() => ({
-  roles: ["listingkit_operator"],
-  effectiveOrganization: { id: "org-a", name: "企业 A", roles: [] },
+  roles: ["listingkit_operator"], permissions: ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"],
+  effectiveOrganization: { id: "org-a", name: "企业 A", roles: [], permissions: [] },
   retry: vi.fn(),
 }));
 const storesQuery = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
@@ -64,8 +64,8 @@ describe("StoreListPage", () => {
     navigation.search = "";
     navigation.push.mockReset();
     useWorkbenchStores.mockClear();
-    context.roles = ["listingkit_operator"];
-    context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [] };
+    context.roles = ["listingkit_operator"]; context.permissions = ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"];
+    context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [], permissions: [] };
     context.retry.mockReset();
     storesQuery.value = {};
     table.props = [];
@@ -108,7 +108,7 @@ describe("StoreListPage", () => {
     storesQuery.value = listData();
     rerender(<StoreListPage />);
     expect(screen.getByText("企业 A 店铺")).toBeInTheDocument();
-    context.effectiveOrganization = { id: "org-b", name: "企业 B", roles: [] };
+    context.effectiveOrganization = { id: "org-b", name: "企业 B", roles: [], permissions: [] };
     storesQuery.value = { isPending: true, isError: false, data: undefined, refetch: vi.fn() };
     rerender(<StoreListPage />);
     await waitFor(() => expect(screen.queryByText("企业 A 店铺")).not.toBeInTheDocument());
@@ -120,7 +120,7 @@ describe("StoreListPage", () => {
     expect(screen.getByRole("link", { name: "新建店铺" })).toHaveAttribute("href", "/workbench/stores/new");
     expect(screen.queryByRole("link", { name: /升级|支付/ })).not.toBeInTheDocument();
 
-    context.roles = ["listingkit_viewer"];
+    context.roles = ["listingkit_viewer"]; context.permissions = ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"];
     storesQuery.value = listData();
     rerender(<StoreListPage />);
     expect(screen.queryByRole("link", { name: "新建店铺" })).not.toBeInTheDocument();

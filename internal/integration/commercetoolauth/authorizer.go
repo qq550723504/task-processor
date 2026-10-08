@@ -30,7 +30,7 @@ func (a *CasbinAuthorizer) Authorize(ctx context.Context, principal commercetool
 	if a == nil || a.delegate == nil {
 		return errPermissionDenied
 	}
-	if !a.delegate.Authorize(principal.UserID, append([]string(nil), principal.Roles...), requirement.Permission) {
+	if !authz.AllowedOrganization(ctx, a.delegate, principal.UserID, principal.TenantID, append([]string(nil), principal.Roles...), requirement.Permission) {
 		return errPermissionDenied
 	}
 	return nil

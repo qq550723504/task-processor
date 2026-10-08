@@ -41,7 +41,10 @@ func InstallSchemaTx(ctx context.Context, tx *sql.Tx) error {
 	if err != nil {
 		return err
 	}
-	return installInvitations(ctx, tx)
+	if err := installInvitations(ctx, tx); err != nil {
+		return err
+	}
+	return installRoles(ctx, tx)
 }
 
 type schemaReader interface {

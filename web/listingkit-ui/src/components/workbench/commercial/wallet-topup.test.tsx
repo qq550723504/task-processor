@@ -100,7 +100,7 @@ it("uses configured amounts and preserves the original intent across a lost crea
       <WalletTopUpEntry
         userId="admin-1"
         organizationId="org-1"
-        roles={["listingkit_admin"]}
+        permissions={["workbench.commercial.wallet_topup"]}
       />,
     ),
   );
@@ -160,7 +160,7 @@ it("does not dispatch on page load and removes checkout material when the origin
       <TopUpPaymentPanel
         userId="admin-1"
         organizationId="org-1"
-        roles={["listingkit_admin"]}
+        permissions={["workbench.commercial.wallet_topup"]}
         initialOrder={initial}
       />,
     ),
@@ -223,7 +223,7 @@ it("keeps missing channel configuration and non-admin actors unavailable", async
   });
   render(
     wrap(
-      <WalletTopUpEntry userId="reader" organizationId="org-1" roles={[]} />,
+      <WalletTopUpEntry userId="reader" organizationId="org-1" permissions={[]} />,
     ),
   );
   expect(await screen.findByText("仅企业管理员可发起充值。")).toBeVisible();

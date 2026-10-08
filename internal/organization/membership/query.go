@@ -1,6 +1,7 @@
 package membership
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"unicode"
@@ -19,9 +20,11 @@ func (p PageRequest) Normalize() (PageRequest, error) {
 		return PageRequest{}, ErrInvalidRequest
 	}
 	switch p.Filter.Role {
-	case "", "listingkit_viewer", "listingkit_operator", "listingkit_admin":
+	case "", "listingkit_admin":
 	default:
-		return PageRequest{}, ErrInvalidRequest
+		if !regexp.MustCompile(`^sumi_role_[a-f0-9]{32}_(0[1-9]|[1-5][0-9]|6[0-4])$`).MatchString(p.Filter.Role) {
+			return PageRequest{}, ErrInvalidRequest
+		}
 	}
 	if p.Filter.State != "" && p.Filter.State != "active" && p.Filter.State != "inactive" {
 		return PageRequest{}, ErrInvalidRequest

@@ -8,7 +8,7 @@ import { BusinessTaskPage } from "./task-page";
 
 const fixture = vi.hoisted(() => ({
   request: vi.fn(),
-  context: { user: { id: "user-a" }, effectiveOrganization: { id: "org-a", capabilities: { "workbench.chat.use": true } }, roles: ["listingkit_operator"],
+  context: { user: { id: "user-a" }, effectiveOrganization: { id: "org-a", capabilities: { "workbench.chat.use": true } }, roles: ["listingkit_operator"], permissions: ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"],
     aiWorkbenchAvailable: true, aiWorkbenchPlanningReadiness: "AVAILABLE", isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null },
 }));
 vi.mock("@/lib/api/ai-workbench", async original => ({ ...await original<typeof import("@/lib/api/ai-workbench")>(), requestAIWorkbench: fixture.request }));
@@ -35,6 +35,25 @@ it("shows freshly projected Knowledge and removes protected text after refresh",
   expect(screen.queryByText("受保护的品牌摘录")).not.toBeInTheDocument();
   expect(screen.queryByText(/品牌用语/)).not.toBeInTheDocument();
   client.clear();
+});
+
+it("clears loaded tasks when permissions change without changing the native role", async () => {
+  const taskId = "550e8400-e29b-41d4-a716-446655440000";
+  const original = fixture.context.permissions;
+  fixture.context.roles = ["sumi_role_0123456789abcdef0123456789abcdef_01"];
+  fixture.context.permissions = ["workbench.task.read"];
+  let reads = 0;
+  fixture.request.mockImplementation(() => ++reads === 1 ? Promise.resolve({ tasks: [{ id: taskId, conversationId: taskId, proposalId: taskId, title: "已授权任务", goalSummary: "原任务内容", createdAt: "2026-10-03T00:00:00Z", projectionAvailable: true, state: "COMPLETED", canStart: false, canReconcile: false, canResume: false, canReview: false, productDetailsAvailable: false }], next: "" }) : new Promise(() => {}));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const tree = () => <QueryClientProvider client={client}><BusinessTaskPage /></QueryClientProvider>;
+  const view = render(tree());
+  try {
+    await screen.findByText("已授权任务");
+    fixture.context.permissions = [];
+    view.rerender(tree());
+    await waitFor(() => expect(screen.queryByText("已授权任务")).not.toBeInTheDocument());
+    expect(reads).toBe(2);
+  } finally { fixture.context.permissions = original; fixture.context.roles = ["listingkit_operator"]; client.clear(); }
 });
 
 it("keeps the exact Task action key after an unknown response and page reload", async () => {

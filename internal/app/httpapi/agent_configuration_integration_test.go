@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"task-processor/internal/agent"
 	"task-processor/internal/agentconfig"
 	confighttp "task-processor/internal/agentconfig/httpapi"
 	"task-processor/internal/authz"
@@ -90,4 +91,32 @@ func TestAgentConfigurationUsesCurrentEnterpriseWithoutTextRuntime(t *testing.T)
 func TestAgentConfigurationRejectsDifferentServingPools(t *testing.T) {
 	_, e := buildAgentConfigurationModule(context.Background(), &gorm.DB{}, nil, nil, nil, &productAgentApplication{config: ProductAgentDependencies{RunDB: &gorm.DB{}}})
 	require.ErrorIs(t, e, agentconfig.ErrUnavailable)
+}
+
+func TestTitleAgentReportsSourceEvidencePermissionDependency(t *testing.T) {
+	sourcing := false
+	authorize := func(_ context.Context, permission ...string) (agent.Scope, error) {
+		if len(permission) == 1 && permission[0] == authz.PermissionProductSourcingWrite && sourcing {
+			return agent.Scope{OrganizationID: "org-a", ActorID: "actor"}, nil
+		}
+		return agent.Scope{}, agentconfig.ErrForbidden
+	}
+	for _, allowed := range []bool{false, true, false} {
+		sourcing = allowed
+		caps := productAgentCapabilities(context.Background(), nil, authorize, nil, nil)
+		var evidence *agentconfig.Capability
+		for i := range caps {
+			if caps[i].ID == "product.source-evidence" {
+				evidence = &caps[i]
+			}
+		}
+		require.NotNil(t, evidence, "title execution must report its source-evidence dependency")
+		require.Equal(t, "REQUIRED", evidence.Support)
+		if allowed {
+			require.Equal(t, "AVAILABLE", evidence.Readiness)
+		} else {
+			require.Equal(t, "REQUIRES_AUTHORIZATION", evidence.Readiness)
+			require.Contains(t, evidence.Reason, "1688采集")
+		}
+	}
 }

@@ -9,15 +9,18 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/authz"
 	domain "task-processor/internal/organization/membership"
 )
+
+var directoryQueryRole = authz.EnterpriseRoleKey("effective-b", 1)
 
 func queryRow(index int) map[string]any {
 	return map[string]any{
 		"id": fmt.Sprintf("grant-%03d", index), "creationDate": "2026-09-12T00:00:00Z", "changeDate": "2026-09-12T00:00:00Z",
 		"project": map[string]string{"id": "project"}, "organization": map[string]string{"id": "effective-b"},
 		"user":  map[string]string{"id": fmt.Sprintf("user-%03d", index), "organizationId": "home-a", "displayName": "ordinary", "preferredLoginName": fmt.Sprintf("member-%03d@example.invalid", index)},
-		"state": "STATE_INACTIVE", "roles": []map[string]string{{"key": "listingkit_viewer"}, {"key": "listingkit_operator"}},
+		"state": "STATE_INACTIVE", "roles": []map[string]string{{"key": authz.EnterpriseRoleKey("effective-b", 2)}, {"key": directoryQueryRole}},
 	}
 }
 
@@ -55,7 +58,7 @@ func TestDirectoryQuerySearchesCompleteFilteredDirectoryBeforePaging(t *testing.
 					return
 				}
 				filters, _ := json.Marshal(input.Filters)
-				if string(filters) != `[{"organizationId":{"id":"effective-b"}},{"projectId":{"id":"project"}},{"roleKey":{"key":"listingkit_operator"}},{"state":{"state":"STATE_INACTIVE"}}]` {
+				if string(filters) != fmt.Sprintf(`[{"organizationId":{"id":"effective-b"}},{"projectId":{"id":"project"}},{"roleKey":{"key":"%s"}},{"state":{"state":"STATE_INACTIVE"}}]`, directoryQueryRole) {
 					t.Errorf("wrong scope/filter: %s", filters)
 				}
 				if input.Pagination.Limit != 100 || input.Pagination.Offset != reads*100 || !input.Pagination.Asc || input.SortingColumn != "AUTHORIZATION_FIELD_NAME_ID" {
@@ -68,7 +71,7 @@ func TestDirectoryQuerySearchesCompleteFilteredDirectoryBeforePaging(t *testing.
 			}))
 			defer server.Close()
 			client, _ := NewClient(server.URL, "synthetic-read-token", "project", server.Client())
-			result, err := client.List(context.Background(), "effective-b", domain.PageRequest{Limit: 1, Offset: tc.offset, Filter: domain.ListFilter{Search: tc.search, Role: "listingkit_operator", State: "inactive"}})
+			result, err := client.List(context.Background(), "effective-b", domain.PageRequest{Limit: 1, Offset: tc.offset, Filter: domain.ListFilter{Search: tc.search, Role: directoryQueryRole, State: "inactive"}})
 			if err != nil || result.Total != tc.total || reads != 2 {
 				t.Fatalf("result=%+v reads=%d err=%v", result, reads, err)
 			}
@@ -145,7 +148,7 @@ func TestDirectoryQueryNeverPublishesIncompleteSearch(t *testing.T) {
 				return http.DefaultTransport.RoundTrip(r)
 			})
 			client, _ := NewClient(server.URL, "synthetic-read-token", "project", &http.Client{Transport: transport})
-			result, err := client.List(ctx, "effective-b", domain.PageRequest{Limit: 20, Filter: domain.ListFilter{Search: "ordinary", Role: "listingkit_operator", State: "inactive"}})
+			result, err := client.List(ctx, "effective-b", domain.PageRequest{Limit: 20, Filter: domain.ListFilter{Search: "ordinary", Role: directoryQueryRole, State: "inactive"}})
 			if err == nil || result.Total != 0 || len(result.Items) != 0 {
 				t.Fatalf("partial success: %+v %v", result, err)
 			}
@@ -163,7 +166,7 @@ func TestDirectoryQueryNativeFiltersUseOnePage(t *testing.T) {
 		}
 		_ = json.NewDecoder(r.Body).Decode(&input)
 		filters, _ := json.Marshal(input.Filters)
-		if input.Pagination.Limit != 20 || input.Pagination.Offset != 20 || string(filters) != `[{"organizationId":{"id":"effective-b"}},{"projectId":{"id":"project"}},{"roleKey":{"key":"listingkit_operator"}},{"state":{"state":"STATE_INACTIVE"}}]` {
+		if input.Pagination.Limit != 20 || input.Pagination.Offset != 20 || string(filters) != fmt.Sprintf(`[{"organizationId":{"id":"effective-b"}},{"projectId":{"id":"project"}},{"roleKey":{"key":"%s"}},{"state":{"state":"STATE_INACTIVE"}}]`, directoryQueryRole) {
 			t.Errorf("wrong native page: %+v", input)
 		}
 		rows := make([]map[string]any, 5)
@@ -174,7 +177,7 @@ func TestDirectoryQueryNativeFiltersUseOnePage(t *testing.T) {
 	}))
 	defer server.Close()
 	client, _ := NewClient(server.URL, "synthetic-read-token", "project", server.Client())
-	page, err := client.List(context.Background(), "effective-b", domain.PageRequest{Limit: 20, Offset: 20, Filter: domain.ListFilter{Role: "listingkit_operator", State: "inactive"}})
+	page, err := client.List(context.Background(), "effective-b", domain.PageRequest{Limit: 20, Offset: 20, Filter: domain.ListFilter{Role: directoryQueryRole, State: "inactive"}})
 	if err != nil || reads != 1 || page.Total != 25 || len(page.Items) != 5 {
 		t.Fatalf("page=%+v reads=%d err=%v", page, reads, err)
 	}

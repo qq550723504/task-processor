@@ -2,12 +2,21 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	"os"
 	"path/filepath"
 	"strings"
+	"task-processor/internal/authz"
+	memberstore "task-processor/internal/integration/persistence/organization/membership"
+	membership "task-processor/internal/organization/membership"
+	"time"
 
 	"task-processor/internal/zitadelprovision"
 )
@@ -110,18 +119,24 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	result, err := zitadelprovision.ProvisionLocalMultiOrganizationAcceptance(ctx, zitadelprovision.Config{
+	provisionConfig := zitadelprovision.Config{
 		IssuerURL: issuerURL, ManagementToken: managementToken, OrgID: homeOrganizationID,
-		ProjectID: projectID, AcceptanceOrganizationIDs: organizationIDs, HTTPClient: client,
-	}, zitadelprovision.MultiOrganizationAcceptanceSpec{
+		ProjectID: projectID, AcceptanceOrganizationIDs: organizationIDs, HTTPClient: client, EnterpriseRoleSlots: true,
+	}
+	organizationIDs, err = zitadelprovision.ResolveLocalAcceptanceOrganizations(ctx, provisionConfig, []string{acceptanceOrganizationA, acceptanceOrganizationB})
+	if err != nil {
+		return errors.New("resolve fresh native fixture organizations unavailable")
+	}
+	provisionConfig.AcceptanceOrganizationIDs = organizationIDs
+	result, err := zitadelprovision.ProvisionLocalMultiOrganizationAcceptance(ctx, provisionConfig, zitadelprovision.MultiOrganizationAcceptanceSpec{
 		UserID: operatorUserID,
 		Organizations: []zitadelprovision.AcceptanceOrganizationSpec{
-			{Name: acceptanceOrganizationA, RoleKeys: []string{"listingkit_admin"}, ProjectRoleKeys: []string{"listingkit_admin", "listingkit_operator", "listingkit_viewer"}},
-			{Name: acceptanceOrganizationB, RoleKeys: []string{"listingkit_viewer"}},
+			{Name: acceptanceOrganizationA, RoleKeys: []string{"listingkit_admin"}, ProjectRoleKeys: []string{"listingkit_admin", authz.EnterpriseRoleKey(organizationIDs[0], 1), authz.EnterpriseRoleKey(organizationIDs[0], 2)}},
+			{Name: acceptanceOrganizationB, RoleKeys: []string{authz.EnterpriseRoleKey(organizationIDs[1], 1)}, ProjectRoleKeys: []string{"listingkit_admin", authz.EnterpriseRoleKey(organizationIDs[1], 1)}},
 		},
 		AdditionalAuthorizations: []zitadelprovision.AcceptanceAuthorizationSpec{
-			{UserID: viewerUserID, OrganizationName: acceptanceOrganizationA, RoleKeys: []string{"listingkit_viewer"}},
-			{UserID: insufficientUserID, OrganizationName: acceptanceOrganizationA, RoleKeys: []string{"listingkit_operator"}},
+			{UserID: viewerUserID, OrganizationName: acceptanceOrganizationA, RoleKeys: []string{authz.EnterpriseRoleKey(organizationIDs[0], 1)}},
+			{UserID: insufficientUserID, OrganizationName: acceptanceOrganizationA, RoleKeys: []string{authz.EnterpriseRoleKey(organizationIDs[0], 2)}},
 		},
 	})
 	if err != nil {
@@ -129,6 +144,9 @@ func run(ctx context.Context) error {
 	}
 	if len(result.Organizations) != 2 || len(result.AdditionalAuthorizations) != 2 {
 		return errors.New("acceptance provisioner returned an incomplete fixture")
+	}
+	if err := installFixtureRoles(ctx, projectID, operatorUserID, organizationIDs); err != nil {
+		return err
 	}
 	if err := zitadelprovision.ProvisionLocalAcceptanceMembershipWriter(ctx, zitadelprovision.Config{
 		IssuerURL: issuerURL, ManagementToken: managementToken, OrgID: homeOrganizationID,
@@ -149,8 +167,8 @@ func run(ctx context.Context) error {
 		},
 		Identities: []manifestIdentity{
 			{Name: "operator", Login: "local-bootstrap-operator@localhost", UserID: operatorUserID, OrganizationName: acceptanceOrganizationA + " / " + acceptanceOrganizationB, RoleKeys: []string{"listingkit_admin", "listingkit_viewer"}},
-			{Name: "viewer", Login: viewerLogin, UserID: viewerUserID, OrganizationName: acceptanceOrganizationA, RoleKeys: []string{"listingkit_viewer"}},
-			{Name: "insufficient-role", Login: insufficientLogin, UserID: insufficientUserID, OrganizationName: acceptanceOrganizationA, RoleKeys: []string{"listingkit_operator"}},
+			{Name: "viewer", Login: viewerLogin, UserID: viewerUserID, OrganizationName: acceptanceOrganizationA, RoleKeys: []string{authz.EnterpriseRoleKey(organizationIDs[0], 1)}},
+			{Name: "insufficient-role", Login: insufficientLogin, UserID: insufficientUserID, OrganizationName: acceptanceOrganizationA, RoleKeys: []string{authz.EnterpriseRoleKey(organizationIDs[0], 2)}},
 		},
 	}
 	if err := writeManifest(output); err != nil {
@@ -223,4 +241,54 @@ func encodeManifest(value manifest) ([]byte, error) {
 		return nil, err
 	}
 	return append(data, '\n'), nil
+}
+
+// Explicit acceptance profile only, using its schema owner credential. This
+// fixture is not a serving path or a retained-instance upgrade.
+func installFixtureRoles(ctx context.Context, project, actor string, organizations []string) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	password, err := readRequiredFile("/secrets/membership-owner/membership-db-password")
+	if err != nil {
+		return errors.New("fresh membership fixture owner unavailable")
+	}
+	dsn := fmt.Sprintf("postgresql://membership_owner:%s@127.0.0.1:5433/membership?sslmode=disable", password)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{DisableAutomaticPing: true, Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		return errors.New("membership fixture database unavailable")
+	}
+	pool, err := db.DB()
+	if err != nil {
+		return errors.New("membership fixture pool unavailable")
+	}
+	defer pool.Close()
+	pool.SetMaxOpenConns(2)
+	tx, err := pool.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return errors.New("membership fixture role installation unavailable")
+	}
+	for _, org := range organizations {
+		if err = memberstore.InstallRoleSlotsTx(ctx, tx, project, org); err != nil {
+			tx.Rollback()
+			return errors.New("membership fixture role installation unavailable")
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return errors.New("membership fixture role installation unavailable")
+	}
+	repo, err := memberstore.NewRepository(ctx, db, project)
+	if err != nil {
+		return errors.New("membership fixture role installation unavailable")
+	}
+	for _, org := range organizations {
+		definitions := []membership.RoleMutation{{Name: "查看成员", Modules: []string{"members", "tasks"}}, {Name: "未开放业务", Modules: []string{}}}
+		for slot, input := range definitions {
+			operation := uuid.NewSHA1(uuid.NameSpaceOID, []byte(project+":"+org+":"+input.Name)).String()
+			result, err := repo.MutateRole(ctx, membership.OperationScope{ProjectID: project, OrganizationID: org, ActorID: actor}, operation, input)
+			if err != nil || result.ID != authz.EnterpriseRoleKey(org, slot+1) {
+				return errors.New("membership fixture role read-back mismatch")
+			}
+		}
+	}
+	return nil
 }

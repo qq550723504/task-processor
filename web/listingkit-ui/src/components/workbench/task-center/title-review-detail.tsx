@@ -34,14 +34,14 @@ export function TitleReviewDetail({ proposal: p }: { proposal: ProductTitlePropo
   </div>;
 }
 
-export function TitleReviewControls({ proposal, roles, userId, pending, decide, apply }: {
-  proposal: ProductTitleProposal; roles: readonly string[]; userId: string; pending: boolean;
+export function TitleReviewControls({ proposal, permissions, userId, pending, decide, apply }: {
+  proposal: ProductTitleProposal; roles: readonly string[]; permissions:readonly string[]; userId: string; pending: boolean;
   decide: (action: "accept" | "edit" | "reject", title?: string) => void; apply: () => void;
 }) {
   const [mode, setMode] = useState<"view" | "edit" | "confirm">("view");
   // Current effective-org role hints only; every write is authorized again by Go.
-  const admin = roles.includes("listingkit_admin") || roles.includes("platform_admin");
-  const editor = admin || (roles.includes("listingkit_operator") && proposal.owner === userId);
+  const admin = permissions.includes("listingkit.admin.write");
+  const editor = admin || (permissions.includes("local_agent.write") && proposal.owner === userId);
   if (proposal.state === "applied" || proposal.state === "rejected") return null;
   return <section className={styles.controls} aria-label="人工审核操作"><h3>等待你确认</h3>
     <p>{admin ? "接受仅表示批准此修订，之后仍需单独应用。操作时将重新校验权限。" : "仅当前企业具备读写权限的管理员可最终接受、拒绝和应用。"}</p>

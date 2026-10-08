@@ -23,6 +23,12 @@ type OrganizationExecutionAuthorizer struct {
 	OrganizationStatus workbenchcontext.OrganizationBusinessStatusChecker
 }
 
+func (a OrganizationExecutionAuthorizer) SetRolePolicyReader(reader authz.RolePolicyReader) {
+	if a.Authorizer != nil {
+		a.Authorizer.SetRolePolicyReader(reader)
+	}
+}
+
 func (a OrganizationExecutionAuthorizer) AuthorizeExecution(ctx context.Context, identity imageagent.ExecutionIdentity) error {
 	if a.Client == nil || a.ServiceToken == nil || a.Authorizer == nil || a.ProjectID == "" {
 		return imageagent.ErrIdentityRequired
@@ -44,7 +50,7 @@ func (a OrganizationExecutionAuthorizer) AuthorizeExecution(ctx context.Context,
 			return imageagent.ErrIdentityRequired
 		}
 	}
-	if grant.Found && grant.State == "STATE_ACTIVE" && grant.AuthorizationID == identity.MemberID && a.Authorizer.Authorize(identity.UserID, grant.Roles, authz.PermissionImageAgentWrite) {
+	if grant.Found && grant.State == "STATE_ACTIVE" && grant.AuthorizationID == identity.MemberID && authz.AllowedOrganization(ctx, a.Authorizer, identity.UserID, identity.TenantID, grant.Roles, authz.PermissionImageAgentWrite) {
 		return nil
 	}
 	return imageagent.ErrIdentityRequired

@@ -61,6 +61,7 @@ create_role commercial_owner_runtime /secrets/commercial-runtime/commercial-owne
 create_role money_owner_runtime /secrets/commercial-runtime/money-owner-password
 create_role referral_runtime /secrets/referral-runtime/referral-runtime-password
 create_role organization_membership_runtime /secrets/membership-runtime/membership-runtime-password
+create_role organization_role_policy_reader /secrets/role-policy-reader/password
 create_role source_acquisition_runtime /secrets/acquisition-runtime/acquisition-runtime-password
 create_role image_agent_runtime /secrets/image-runtime/image-runtime-password
 create_role image_agent_worker_runtime /secrets/image-worker/image-worker-password

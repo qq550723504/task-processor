@@ -53,15 +53,15 @@ function KnowledgeContent({scope,baseId}:{scope:KnowledgeScope;baseId?:string}) 
  // The verified current-organization roles include configured admin overrides.
  // Ordinary controls follow the same admin boundary as KnowledgeManage; the
  // server still authorizes every write with a fresh organization grant.
- const canManage=context.roles.some(role=>role==="listingkit_admin" || role==="platform_admin");
- const canRead=canManage || context.roles.includes("listingkit_operator");
+ const canManage=context.permissions.includes("workbench.knowledge.manage");
+ const canRead=context.permissions.includes("workbench.knowledge.read");
  const [page,setPage]=useState(1),[name,setName]=useState(""),[editing,setEditing]=useState(false),[file,setFile]=useState<File|null>(null),[sourceName,setSourceName]=useState(""),[replacement,setReplacement]=useState<KnowledgeSource|null>(null),[preview,setPreview]=useState<KnowledgeSource|null>(null),[intent,setIntent]=useState<Intent|null>(null),[message,setMessage]=useState("");
  const fileInput=useRef<HTMLInputElement>(null);
  const clearFile=()=>{setFile(null);if(fileInput.current)fileInput.current.value="";};
  const key=["knowledge",scope.userId,scope.organizationId];
  const [authorityError,setAuthorityError]=useState<KnowledgeError|null>(null),[readAttempt,setReadAttempt]=useState(0);
  const readable=canRead && !authorityError && !context.error && !context.blockingError && !context.isLoading && !context.isSwitching;
- const rolesKey=JSON.stringify([...context.roles].sort());
+ const rolesKey=JSON.stringify([...context.permissions].sort());
  const readKey=useMemo(()=>["knowledge",scope.userId,scope.organizationId,"read",rolesKey,readAttempt],[scope.userId,scope.organizationId,rolesKey,readAttempt]);
  // Authorization changes create fresh read observers and cancel old in-flight
  // responses. The write intent remains scoped to the same identity/org.

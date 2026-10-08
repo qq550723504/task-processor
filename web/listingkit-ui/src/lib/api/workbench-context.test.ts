@@ -13,8 +13,8 @@ const VALID_CONTEXT = {
   effectiveOrganizationId: "org-b",
   selectionRequired: false,
   organizations: [
-    { id: "org-a", name: "硕米科技", roles: ["listingkit_admin"] },
-    { id: "org-b", name: "星海贸易", roles: ["listingkit_viewer"] },
+    { id: "org-a", name: "硕米科技", roles: ["listingkit_admin"], permissions:["workbench.organization_member.manage"] },
+    { id: "org-b", name: "星海贸易", roles: ["sumi_role_00000000000000000000000000000000_01"], permissions:[] },
   ],
 };
 

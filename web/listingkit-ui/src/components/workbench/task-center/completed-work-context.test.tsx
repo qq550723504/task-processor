@@ -11,7 +11,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 it("actual provider/switcher and #340 client isolate an old organization HTTP response", async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const context = { user: { id: "reader" }, homeOrganizationId: "200", effectiveOrganizationId: "200", selectionRequired: false, organizations: [{ id: "200", name: "企业甲", roles: [] }, { id: "100", name: "企业乙", roles: [] }] };
+  const context = { user: { id: "reader" }, homeOrganizationId: "200", effectiveOrganizationId: "200", selectionRequired: false, organizations: [{ id: "200", name: "企业甲", roles: [], permissions: [] }, { id: "100", name: "企业乙", roles: [], permissions: [] }] };
   let release!: (response: Response) => void;
   const late = new Promise<Response>((resolve) => { release = resolve; });
   const requests: RequestInit[] = [];

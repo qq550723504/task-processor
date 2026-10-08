@@ -46,7 +46,7 @@ it("renders only real wallet data and delegates recharge to the configured payme
   render(
     <WalletView
       userId="reader"
-      roles={["listingkit_admin"]}
+      permissions={["listingkit_admin"]}
       wallet={{
         organization_id: "org-A",
         currency: "CNY",

@@ -53,8 +53,9 @@ type StoreUpdateInput = StoreVersionInput & {
 
 export function useWorkbenchStores(filters: WorkbenchStoreListFilters) {
   const organizationId = useEffectiveOrganizationId();
+  const { permissions } = useWorkbenchContext();
   return useQuery({
-    queryKey: workbenchStoreKeys.list(organizationId, filters),
+    queryKey: [...workbenchStoreKeys.list(organizationId, filters), permissions],
     queryFn: () => listWorkbenchStores(filters, organizationId),
     enabled: organizationId.length > 0,
     retry: retryWorkbenchRequest,
@@ -63,8 +64,9 @@ export function useWorkbenchStores(filters: WorkbenchStoreListFilters) {
 
 export function useWorkbenchStore(storeId: string) {
   const organizationId = useEffectiveOrganizationId();
+  const { permissions } = useWorkbenchContext();
   return useQuery({
-    queryKey: workbenchStoreKeys.item(organizationId, storeId),
+    queryKey: [...workbenchStoreKeys.item(organizationId, storeId), permissions],
     queryFn: () => getWorkbenchStore(storeId, organizationId),
     enabled: organizationId.length > 0 && storeId.length > 0,
     retry: retryWorkbenchRequest,

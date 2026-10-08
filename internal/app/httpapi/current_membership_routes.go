@@ -10,6 +10,9 @@ import (
 )
 
 var currentMembershipRoutes = []currentApplicationRoute{
+	{Method: "GET", Path: "/api/v1/account/roles"},
+	{Method: "POST", Path: "/api/v1/account/roles"},
+	{Method: "POST", Path: "/api/v1/account/roles/:role_id/permissions"},
 	{Method: "GET", Path: "/api/v1/account/members"},
 	{Method: "GET", Path: "/api/v1/account/members/summary"},
 	{Method: "GET", Path: "/api/v1/account/members/:member_id"},
@@ -33,7 +36,7 @@ func validateMembershipDescriptors(routes []httproute.Descriptor) error {
 	for _, want := range currentMembershipRoutes {
 		found := false
 		permission := authz.PermissionWorkbenchOrganizationMemberManage
-		if strings.HasPrefix(want.Path, "/api/v1/account/members") && want.Method == "GET" || want.Path == "/api/v1/account/member-invitations/summary" {
+		if (strings.HasPrefix(want.Path, "/api/v1/account/members") || want.Path == "/api/v1/account/roles") && want.Method == "GET" || want.Path == "/api/v1/account/member-invitations/summary" {
 			permission = authz.PermissionWorkbenchOrganizationMemberRead
 		}
 		policy := httproute.OrganizationAccessPolicyLiveWrite

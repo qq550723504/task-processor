@@ -119,7 +119,16 @@ func NewRouteRoleMiddlewareWithAuthorizerAndResponder(route httproute.Descriptor
 			respond(c, RoleAuthorizationIdentityRequired, requiredPermission)
 			return
 		}
-		if authorizer.Authorize(identity.UserID, identity.Roles, requiredPermission) {
+		allowed := authorizer.Authorize(identity.UserID, identity.Roles, requiredPermission)
+		if identity.EffectiveOrganizationID != "" {
+			var err error
+			allowed, err = authorizer.AuthorizeScoped(c.Request.Context(), identity.UserID, identity.EffectiveOrganizationID, identity.Roles, requiredPermission)
+			if err != nil {
+				respond(c, RoleAuthorizationDependencyUnavailable, requiredPermission)
+				return
+			}
+		}
+		if allowed {
 			c.Next()
 			return
 		}

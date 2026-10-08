@@ -69,6 +69,7 @@ services:
       - image-db-owner-secret:/secrets/image-owner:ro
       - image-runtime-secret:/secrets/image-runtime:ro
       - image-worker-secret:/secrets/image-worker:ro
+      - role-policy-reader-secret:/secrets/role-policy-reader:ro
       - acquisition-db-owner-secret:/secrets/acquisition-owner:ro
       - acquisition-runtime-secret:/secrets/acquisition-runtime:ro
       - image-minio-secret:/secrets/minio:ro

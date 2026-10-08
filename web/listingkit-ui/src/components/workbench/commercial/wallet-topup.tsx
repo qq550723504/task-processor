@@ -75,18 +75,18 @@ function errorMessage(e: unknown) {
   const code = e && typeof e === "object" && "code" in e ? String(e.code) : "";
   return labels[code] ?? "服务暂不可用，请查询原订单，勿重复提交。";
 }
-function canManage(roles: string[]) {
-  return roles.some((r) => r === "listingkit_admin" || r === "platform_admin");
+function canManage(permissions: string[]) {
+  return permissions.includes("workbench.commercial.wallet_topup");
 }
 
 export function WalletTopUpEntry({
   userId,
   organizationId,
-  roles,
+  permissions,
 }: {
   userId: string;
   organizationId: string;
-  roles: string[];
+  permissions: string[];
 }) {
   const router = useRouter();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -118,7 +118,7 @@ export function WalletTopUpEntry({
   const [message, setMessage] = useState("");
   useEffect(() => () => active.current?.abort(), []);
   const data = options.data;
-  const allowed = canManage(roles);
+  const allowed = canManage(permissions);
   const available = !options.isError && data?.channels.some((c) => c.available);
   const minor = yuanToMinor(amount);
   const amountValid =
@@ -358,12 +358,12 @@ const phaseLabels = {
 export function TopUpPaymentPanel({
   userId,
   organizationId,
-  roles,
+  permissions,
   initialOrder,
 }: {
   userId: string;
   organizationId: string;
-  roles: string[];
+  permissions: string[];
   initialOrder: TopUpOrder;
 }) {
   const client = useQueryClient();
@@ -472,7 +472,7 @@ export function TopUpPaymentPanel({
     client,
   ]);
   async function run(kind: "checkout" | "cancel") {
-    if (lock.current || !canManage(roles) || order.isError || !attempt) return;
+    if (lock.current || !canManage(permissions) || order.isError || !attempt) return;
     lock.current = true;
     setBusy(true);
     setMessage("");
@@ -507,7 +507,7 @@ export function TopUpPaymentPanel({
     attempt &&
     ["CREATED", "AWAITING_PAYMENT"].includes(attempt.phase) &&
     !attempt.close_requested &&
-    canManage(roles);
+    canManage(permissions);
   const showAction =
     paymentVisible &&
     action &&
@@ -582,7 +582,7 @@ export function TopUpPaymentPanel({
         {!terminal &&
         attempt &&
         !attempt.close_requested &&
-        canManage(roles) ? (
+        canManage(permissions) ? (
           <Button
             variant="outline"
             disabled={busy || order.isFetching || order.isError}

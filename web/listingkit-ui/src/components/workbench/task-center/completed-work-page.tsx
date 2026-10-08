@@ -23,7 +23,7 @@ export function CompletedWorkPageContent({ available, completed = false }: { ava
   if (context.error || context.blockingError || !context.user || !context.effectiveOrganization || context.selectionRequired || context.isLoading) {
     return <TaskCenterLayout completed={completed}><ConsoleState kind="unavailable" title="企业或登录上下文不可用">已停止读取工作记录并清空选择。</ConsoleState></TaskCenterLayout>;
   }
-  const scope = JSON.stringify([context.user.id, context.effectiveOrganization.id, context.roles]);
+  const scope = JSON.stringify([context.user.id, context.effectiveOrganization.id, context.roles, context.permissions]);
   return <ScopedWork key={scope} scope={scope} organizationId={context.effectiveOrganization.id} completed={completed} />;
 }
 

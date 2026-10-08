@@ -23,7 +23,7 @@ import (
 func TestMountedSourceAccountReportsIdentityExpiringAfterResolutionAsAuthenticationRequired(t *testing.T) {
 	now := time.Date(2026, 9, 9, 1, 2, 3, 0, time.UTC)
 	expiresAt := now.Add(time.Minute)
-	authorizer, err := authz.NewListingKitAuthorizer(nil, nil)
+	authorizer, err := newCurrentRoleTestAuthorizer(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestNewSourceAccountApplicationRequiresExplicitSchemaWithoutDDL(t *testing.
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	authorizer, err := authz.NewListingKitAuthorizer(nil, nil)
+	authorizer, err := newCurrentRoleTestAuthorizer(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestNewSourceAccountApplicationRequiresExplicitSchemaWithoutDDL(t *testing.
 }
 
 func TestNewSourceAccountApplicationRejectsNilDatabase(t *testing.T) {
-	authorizer, err := authz.NewListingKitAuthorizer(nil, nil)
+	authorizer, err := newCurrentRoleTestAuthorizer(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ type applicationOperatorGrantLoader struct{}
 
 func (applicationOperatorGrantLoader) Load(_ context.Context, source workbenchcontext.GrantSource, _ workbenchcontext.GrantRequest) (workbenchcontext.GrantResult, error) {
 	return workbenchcontext.GrantResult{Source: source, Grants: []authidentity.OrganizationGrant{{
-		OrganizationID: "org-b", ProjectID: "project", Roles: []string{"listingkit_operator"},
+		OrganizationID: "org-b", ProjectID: "project", Roles: []string{authz.EnterpriseRoleKey("org-b", 2)},
 	}}}, nil
 }
 

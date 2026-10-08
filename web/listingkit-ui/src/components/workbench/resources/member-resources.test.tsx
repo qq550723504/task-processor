@@ -34,7 +34,7 @@ const member = {
   displayName: "张琳",
   loginName: "member@example.test",
   state: "active",
-  roles: ["listingkit_operator"],
+  roles: ["listingkit_operator"], permissions: ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"],
   storeCount: "1",
   periods: position,
   dataRows: position,

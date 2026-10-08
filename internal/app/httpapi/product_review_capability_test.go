@@ -90,7 +90,9 @@ func TestProductReviewLiveRolesRejectChangedMembershipWithSameUserAndRoles(t *te
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), identity)
 	ctx, err := (productReviewCapabilityBinder{now: func() time.Time { return now }}).Bind(ctx, "Bearer request-secret")
 	require.NoError(t, err)
-	resolved := identity; resolved.EffectiveMemberID = "rejoined-membership"; resolved.Roles = []string{"listingkit_operator"}
+	resolved := identity
+	resolved.EffectiveMemberID = "rejoined-membership"
+	resolved.Roles = []string{"listingkit_operator"}
 	resolver := &productReviewResolverStub{value: resolved}
 	_, err = (&productReviewLiveOrganizationAccess{resolver: resolver, now: func() time.Time { return now }}).ResolveLiveRoles(ctx, "org", "actor")
 	require.ErrorIs(t, err, sourcing.ErrPublicationForbidden)

@@ -285,7 +285,7 @@ func (a *productAgentApplication) freshWorkbenchIdentity(ctx context.Context, pe
 			BearerToken: capability.bearerToken, RequestedOrganizationID: capability.effectiveOrganizationID})
 	if err != nil || identity.UserID != original.UserID || identity.TenantID != original.TenantID ||
 		identity.EffectiveOrganizationID != original.TenantID || !agent.ValidID(identity.EffectiveMemberID) ||
-		!a.authorizer.Authorize(identity.UserID, identity.Roles, permission) {
+		!authz.AllowedOrganization(ctx, a.authorizer, identity.UserID, identity.EffectiveOrganizationID, identity.Roles, permission) {
 		return authidentity.AuthenticatedIdentity{}, review.ErrForbidden
 	}
 	allowed := false
@@ -312,7 +312,7 @@ func (a *productAgentApplication) freshIdentity(ctx context.Context) (authidenti
 		return authidentity.AuthenticatedIdentity{}, agent.ErrUnavailable
 	}
 	identity, err := a.resolver.Resolve(ctx, httproute.OrganizationAccessPolicyLiveWrite, workbenchcontext.ResolveInput{Identity: authidentity.AuthenticatedIdentity{UserID: capability.actorID, HomeOrganizationID: capability.homeOrganizationID, TokenExpiresAt: capability.tokenExpiresAt}, BearerToken: capability.bearerToken, RequestedOrganizationID: capability.effectiveOrganizationID})
-	if err != nil || identity.UserID != original.UserID || identity.TenantID != original.TenantID || identity.EffectiveOrganizationID != original.TenantID || !agent.ValidID(identity.EffectiveMemberID) || !a.authorizer.Authorize("", identity.Roles, authz.PermissionListingKitAdminWrite) || !a.authorizer.Authorize(identity.UserID, identity.Roles, authz.PermissionWorkbenchAgentUse) {
+	if err != nil || identity.UserID != original.UserID || identity.TenantID != original.TenantID || identity.EffectiveOrganizationID != original.TenantID || !agent.ValidID(identity.EffectiveMemberID) || !authz.AllowedOrganization(ctx, a.authorizer, "", identity.EffectiveOrganizationID, identity.Roles, authz.PermissionLocalAgentWrite) || !authz.AllowedOrganization(ctx, a.authorizer, identity.UserID, identity.EffectiveOrganizationID, identity.Roles, authz.PermissionWorkbenchAgentUse) {
 		return authidentity.AuthenticatedIdentity{}, review.ErrForbidden
 	}
 	return identity, nil

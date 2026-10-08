@@ -29,10 +29,10 @@ func TestIssue36ReviewOnlyRoutesKeepDecisionAndApplyWithoutGeneration(t *testing
 		require.Equal(t, httproute.AuthPolicyVerifiedIdentity, route.AuthPolicy)
 		if route.Method == http.MethodGet {
 			require.Equal(t, httproute.OrganizationAccessPolicyCachedRead, route.OrganizationAccessPolicy)
-			require.Equal(t, authz.PermissionListingKitAdminRead, route.Permission)
+			require.Equal(t, authz.PermissionLocalAgentWrite, route.Permission)
 		} else {
 			require.Equal(t, httproute.OrganizationAccessPolicyLiveWrite, route.OrganizationAccessPolicy)
-			require.Equal(t, authz.PermissionListingKitAdminWrite, route.Permission)
+			require.Equal(t, authz.PermissionLocalAgentWrite, route.Permission)
 		}
 	}
 	require.Empty(t, want)

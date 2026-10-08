@@ -13,7 +13,7 @@ const tree = (available = true) => <QueryClientProvider client={client}><Complet
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { promise, resolve }; }
 beforeEach(() => {
   state.fetch.mockReset();
-  state.context = { user: { id: "reader" }, effectiveOrganization: { id: "200", name: "企业甲", roles: [] }, roles: [], retry: vi.fn() };
+  state.context = { user: { id: "reader" }, effectiveOrganization: { id: "200", name: "企业甲", roles: [], permissions: [] }, roles: [], permissions: [], retry: vi.fn() };
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
 afterEach(() => { cleanup(); client.clear(); });
@@ -111,15 +111,17 @@ it("cancels a delayed next page on refresh and rejects its late result", async (
   expect(screen.queryByRole("button", { name: /synthetic-product-2/ })).not.toBeInTheDocument();
 });
 
-it.each(["organization", "user", "roles", "switching", "revoked", "logout", "unmount"])("destroys old data/selection and cancels in-flight work on %s transition", async (kind) => {
+it.each(["organization", "user", "roles", "permissions", "switching", "revoked", "logout", "unmount"])("destroys old data/selection and cancels in-flight work on %s transition", async (kind) => {
+  state.context.permissions = ["workbench.task.read"];
   const late = deferred<ReturnType<typeof completedWorkFixture>>();
   state.fetch.mockResolvedValueOnce(completedWorkFixture("next")).mockReturnValueOnce(late.promise).mockResolvedValue(completedWorkFixture(null, "3"));
   const view = render(tree()); await userEvent.click(await screen.findByRole("button", { name: /synthetic-product-1/ }));
   await userEvent.click(screen.getByRole("button", { name: "下一页" }));
   await waitFor(() => expect(state.fetch).toHaveBeenCalledTimes(2)); const signal = state.fetch.mock.calls[1][0].signal;
-  if (kind === "organization") state.context.effectiveOrganization = { id: "100", name: "企业乙", roles: [] };
+  if (kind === "organization") state.context.effectiveOrganization = { id: "100", name: "企业乙", roles: [], permissions: [] };
   if (kind === "user") state.context.user = { id: "other" };
-  if (kind === "roles") state.context.roles = ["new-role"];
+  if (kind === "roles") { state.context.roles = ["new-role"]; state.context.permissions = []; }
+  if (kind === "permissions") state.context.permissions = ["workbench.store.read"];
   if (kind === "switching") state.context.isSwitching = true;
   if (kind === "revoked") state.context.blockingError = { code: "ORGANIZATION_ACCESS_REVOKED" };
   if (kind === "logout") state.context.user = null;
@@ -162,7 +164,7 @@ it.each([true, false])("continues only after a successful same-scope context rec
   await userEvent.click(await screen.findByRole("button", { name: "重新加载企业上下文" }));
   expect(screen.getByRole("button", { name: "正在恢复企业上下文…" })).toBeDisabled();
   expect(state.fetch).toHaveBeenCalledTimes(1);
-  await act(async () => recovery.resolve(success ? { user: { id: "reader" }, effectiveOrganizationId: "200", selectionRequired: false, organizations: [{ id: "200", roles: [] }] } : null));
+  await act(async () => recovery.resolve(success ? { user: { id: "reader" }, effectiveOrganizationId: "200", selectionRequired: false, organizations: [{ id: "200", roles: [], permissions: [] }] } : null));
   if (success) {
     await screen.findByText("synthetic-product-1");
     expect(state.fetch).toHaveBeenCalledTimes(2);
@@ -175,12 +177,10 @@ it("does not restart an old scope when recovery returns late after an organizati
   state.fetch.mockRejectedValueOnce({ code: "ORGANIZATION_SUSPENDED" }).mockResolvedValue(completedWorkFixture(null, "3"));
   const view = render(tree());
   await userEvent.click(await screen.findByRole("button", { name: "重新加载企业上下文" }));
-  state.context = { ...state.context, effectiveOrganization: { id: "100", name: "企业乙", roles: [] } };
+  state.context = { ...state.context, effectiveOrganization: { id: "100", name: "企业乙", roles: [], permissions: [] } };
   view.rerender(tree());
   await screen.findByText("synthetic-product-3");
-  await act(async () => recovery.resolve({ user: { id: "reader" }, effectiveOrganizationId: "200", selectionRequired: false, organizations: [{ id: "200", roles: [] }] }));
+  await act(async () => recovery.resolve({ user: { id: "reader" }, effectiveOrganizationId: "200", selectionRequired: false, organizations: [{ id: "200", roles: [], permissions: [] }] }));
   expect(state.fetch).toHaveBeenCalledTimes(2);
   expect(state.fetch.mock.calls[1][0].organizationId).toBe("100");
 });
-
-

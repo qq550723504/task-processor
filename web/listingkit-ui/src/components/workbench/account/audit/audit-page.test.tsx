@@ -10,7 +10,7 @@ function stubAuditList(handler: (url: string, init: RequestInit) => Promise<Resp
     : handler(String(url), init ?? {})));
 }
 
-const state = vi.hoisted(() => ({ context: { user: { id: "u1" }, effectiveOrganization: { id: "B" }, roles: ["listingkit_viewer"], isLoading: false, isSwitching: false, selectionRequired: false, error: null as { code: string } | null, blockingError: null as { code: string } | null } }));
+const state = vi.hoisted(() => ({ context: { user: { id: "u1" }, effectiveOrganization: { id: "B" }, roles: ["listingkit_viewer"], permissions: ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"], isLoading: false, isSwitching: false, selectionRequired: false, error: null as { code: string } | null, blockingError: null as { code: string } | null } }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => state.context }));
 const reference = "0198d4f0-0000-7000-8000-000000000001";
 const event = { eventType: "source_account.operation_committed", actor: "operator-B", time: "2026-09-12T00:00:00Z", objectType: "source_account", objectReference: reference, operation: "disable", result: "succeeded", relation: { type: "source_account_version", reference, version: "2" } };
@@ -21,8 +21,16 @@ function mount() {
   const child = () => <QueryClientProvider client={client}><AuditPage expectedUserId="u1" /></QueryClientProvider>;
   const view = render(child()); return { ...view, update: () => view.rerender(child()) };
 }
-afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); state.context = { user: { id: "u1" }, effectiveOrganization: { id: "B" }, roles: ["listingkit_viewer"], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null }; });
+afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); state.context = { user: { id: "u1" }, effectiveOrganization: { id: "B" }, roles: ["listingkit_viewer"], permissions: ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null }; });
 describe("audit page", () => {
+  it("drops old audit facts when permissions change without changing the native role", async () => {
+    stubAuditList(vi.fn().mockResolvedValueOnce(Response.json({ ...empty, items: [event] })).mockReturnValue(new Promise(() => {})));
+    const view = mount();
+    expect(await screen.findByText("operator-B")).toBeVisible();
+    state.context.permissions = [];
+    view.update();
+    expect(screen.queryByText("operator-B")).not.toBeInTheDocument();
+  });
   it("starts at thirty days and applies content, all-time and historical target ID to the full query", async () => {
     const calls: string[] = [];
     stubAuditList(async url => { calls.push(url); return Response.json(empty); });

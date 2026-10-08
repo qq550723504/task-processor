@@ -14,7 +14,7 @@ it.each([true, false])("retries diagnostics only after same-scope context recove
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const context = {
     user: { id: "reader" }, homeOrganizationId: "200", effectiveOrganizationId: "200", selectionRequired: false,
-    organizations: [{ id: "200", name: "企业甲", roles: [] }],
+    organizations: [{ id: "200", name: "企业甲", roles: [], permissions: [] }],
   };
   let release!: (response: Response) => void;
   const recovery = new Promise<Response>((resolve) => { release = resolve; });
@@ -46,7 +46,7 @@ it("actual enterprise switcher/provider and diagnostic client discard the old te
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const context = {
     user: { id: "reader" }, homeOrganizationId: "200", effectiveOrganizationId: "200", selectionRequired: false,
-    organizations: [{ id: "200", name: "企业甲", roles: [] }, { id: "100", name: "企业乙", roles: [] }],
+    organizations: [{ id: "200", name: "企业甲", roles: [], permissions: [] }, { id: "100", name: "企业乙", roles: [], permissions: [] }],
   };
   let releaseOld!: (response: Response) => void;
   const old = new Promise<Response>((resolve) => { releaseOld = resolve; });

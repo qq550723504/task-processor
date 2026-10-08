@@ -36,8 +36,8 @@ func TestUnifiedOverviewUsesIndependentAvailabilityAndTrustedScope(t *testing.T)
 	module := unifiedCommercialModule{resources: resources, stores: stores}
 	routes := kernelmodule.NewRegistry()
 	require.NoError(t, module.Register(routes))
-	grants := &auditHTTPGrants{role: "listingkit_operator"}
-	server := buildIsolatedApplicationHTTPServer(routes.Routes(), routeAuthDependencies{workbenchVerifier: applicationVerifier{}, organizationResolver: workbenchcontext.NewResolver(grants, "project", "v1", nil), authorizer: authz.DefaultListingKitAuthorizer()}, 15*time.Second)
+	grants := &auditHTTPGrants{role: authz.EnterpriseRoleKey("B", 1)}
+	server := buildIsolatedApplicationHTTPServer(routes.Routes(), routeAuthDependencies{workbenchVerifier: applicationVerifier{}, organizationResolver: workbenchcontext.NewResolver(grants, "project", "v1", nil), authorizer: currentRoleTestAuthorizer()}, 15*time.Second)
 	get := func(path, org, body string) *httptest.ResponseRecorder {
 		request := httptest.NewRequest(http.MethodGet, path, strings.NewReader(body))
 		request.Header.Set("Authorization", "Bearer fixture")
@@ -90,9 +90,9 @@ func (r *resourceEventFixture) ListEvents(_ context.Context, q orgresource.Event
 }
 func TestResourceEventsUseBoundedFiltersAndLiveOrganization(t *testing.T) {
 	reader := &resourceEventFixture{}
-	grants := &auditHTTPGrants{role: "listingkit_operator"}
+	grants := &auditHTTPGrants{role: authz.EnterpriseRoleKey("B", 1)}
 	module := commercialResourcesModule{reader: &resourceBalanceFixture{}, events: reader}
-	server := buildIsolatedApplicationHTTPServer(module.routes(), routeAuthDependencies{workbenchVerifier: applicationVerifier{}, organizationResolver: workbenchcontext.NewResolver(grants, "project", "v1", nil), authorizer: authz.DefaultListingKitAuthorizer()}, 15*time.Second)
+	server := buildIsolatedApplicationHTTPServer(module.routes(), routeAuthDependencies{workbenchVerifier: applicationVerifier{}, organizationResolver: workbenchcontext.NewResolver(grants, "project", "v1", nil), authorizer: currentRoleTestAuthorizer()}, 15*time.Second)
 	get := func(suffix, org, body string) *httptest.ResponseRecorder {
 		request := httptest.NewRequest("GET", commercialResourceEventsPath+suffix, strings.NewReader(body))
 		request.Header.Set("Authorization", "Bearer fixture")

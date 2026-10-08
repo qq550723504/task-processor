@@ -660,7 +660,7 @@ describe("/api/workbench BFF", () => {
           {
             id: "org-canonical",
             name: "Canonical Organization",
-            roles: ["listingkit_viewer"],
+            roles: ["listingkit_viewer"], permissions: ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"],
           },
         ],
       }),

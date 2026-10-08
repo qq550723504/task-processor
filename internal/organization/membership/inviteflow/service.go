@@ -182,6 +182,13 @@ func (s *Service) Decline(ctx context.Context, id string) (Invitation, error) {
 	return s.Store.Change(ctx, id, inv.Revision, Change{State: Declined, RecipientID: identity.UserID, Now: s.now()})
 }
 func (s *Service) creatorAllowed(ctx context.Context, inv Invitation) bool {
+	if s.ScopedRoleAllowed != nil {
+		if !s.ScopedRoleAllowed(ctx, inv.OrganizationID, inv.Role) {
+			return false
+		}
+	} else if strings.HasPrefix(inv.Role, "sumi_role_") {
+		return false
+	}
 	if s.ReadGrant == nil || s.Authorize == nil || s.RoleAllowed == nil || !s.RoleAllowed(inv.Role) {
 		return false
 	}
