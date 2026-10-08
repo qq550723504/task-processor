@@ -505,10 +505,11 @@ export async function buildWorkbenchUpstreamRequest(
         body=JSON.stringify(checked.data);headers.set("Content-Type","application/json");if(key)headers.set("Idempotency-Key",key);
       }else{
         if(request.headers.has("Idempotency-Key") || !(await requestHasNoBody(request)))return protocolError(400,"INVALID_REQUEST","Body or command key is not allowed");
-        const allowed=["list","sources","operation-items"].includes(action)?new Set(["limit","after","keyword"]):new Set<string>();
+        const allowed=["list","sources","operation-items","operations"].includes(action)?new Set(["limit","after",...action==="operations"?["storeId"]:["keyword"]]):new Set<string>();
+        if(/%(?![0-9A-Fa-f]{2})/.test(url.search)||action==="operations"&&!isAcquisitionUUID(url.searchParams.get("storeId")??""))return protocolError(400,"INVALID_REQUEST","Supply query invalid");
         for(const key of url.searchParams.keys()){
           const values=url.searchParams.getAll(key);if(!allowed.has(key)||values.length!==1||!values[0])return protocolError(400,"INVALID_REQUEST","Supply query invalid");
-          const value=values[0];if(key==="limit"&&(!/^[1-9][0-9]*$/.test(value)||Number(value)>100)||key==="after"&&!isAcquisitionUUID(value)||key==="keyword"&&(new TextEncoder().encode(value).length>80||/[\0\r\n]/.test(value)))return protocolError(400,"INVALID_REQUEST","Supply query invalid");
+          const value=values[0];if(key==="limit"&&(!/^[1-9][0-9]*$/.test(value)||Number(value)>100)||(key==="after"||key==="storeId")&&!isAcquisitionUUID(value)||key==="keyword"&&(new TextEncoder().encode(value).length>80||/[\0\r\n]/.test(value)))return protocolError(400,"INVALID_REQUEST","Supply query invalid");
         }
         query=url.search;
       }
@@ -918,8 +919,8 @@ export async function buildWorkbenchUpstreamRequest(
     },
     responseContract: route.responseContract,
     expectedStoreId:
-      route.requestContract==="supply-target" ? `${path[2]}:${path[4]}` :
-      ["supply-source","supply-record","supply-operation","supply-ensure","supply-cancel"].includes(route.requestContract) ? path[2] :
+      (route.requestContract==="supply-target"||route.requestContract==="supply-publication") ? `${path[2]}:${path[4]}` :
+      ["supply-source","supply-preparation","supply-record","supply-operation","supply-ensure","supply-cancel"].includes(route.requestContract) ? (route.requestContract==="supply-preparation"?path[1]:path[2]) :
       route.requestContract === "collection-detail" ? path[2] :
       route.requestContract.startsWith("product-agent-") ? (path[6]??request.headers.get("Idempotency-Key")??undefined) :
       (route.requestContract === "acquisition-image-candidates") ? path[3] :

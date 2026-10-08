@@ -117,3 +117,16 @@ func (s *Service) ListSources(ctx context.Context, id string, query Query) (coll
 	}
 	return s.repository.ListSources(ctx, scope, id, query)
 }
+
+func (s *Service) Read(ctx context.Context, id string) (Preparation, error) {
+	if ctx == nil || !collection.ValidID(id) {
+		return Preparation{}, ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	defer cancel()
+	scope, err := s.authorize(ctx, PermissionRead)
+	if err != nil {
+		return Preparation{}, err
+	}
+	return s.repository.Read(ctx, scope, id)
+}

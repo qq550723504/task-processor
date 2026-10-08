@@ -5,6 +5,7 @@ import (
 	"errors"
 	"task-processor/internal/listing/preparation"
 	record "task-processor/internal/listing/record/target"
+	"task-processor/internal/listing/submission"
 	"task-processor/internal/marketplace/shein/goods"
 	"task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog"
@@ -24,6 +25,8 @@ type Application struct {
 	Assets                record.ApprovedAssetReader
 	Approvals             *asset.SourceApprovalService
 	Authorization         preparation.Authorizer
+	PublicationReceipts   submission.OfficialReceiptRepository
+	PublicationStores     RuleStore
 	AuthorizeOptimization func(context.Context, preparation.OperationInput) error
 }
 type SourceImageView struct {

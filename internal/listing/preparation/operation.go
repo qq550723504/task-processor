@@ -141,6 +141,7 @@ type OperationRepository interface {
 	FindOperation(context.Context, Scope, string, string) (OperationReceipt, error)
 	PrepareOperation(context.Context, OperationCommit) (OperationReceipt, error)
 	ReadOperation(context.Context, Scope, string) (Operation, error)
+	ListOperations(context.Context, Scope, string, string, Query) (collection.Page[Operation], error)
 	ListOperationItems(context.Context, Scope, string, Query) (collection.Page[OperationItem], error)
 	ReadExecutionOperation(context.Context, string, string) (Operation, error)
 	CancelOperation(context.Context, OperationAccess) (Operation, error)
@@ -225,6 +226,19 @@ func (s *OperationService) Read(ctx context.Context, id string) (Operation, erro
 		return Operation{}, err
 	}
 	return s.repository.ReadOperation(ctx, scope, id)
+}
+
+func (s *OperationService) List(ctx context.Context, preparationID, storeID string, q Query) (collection.Page[Operation], error) {
+	if ctx == nil || !collection.ValidID(preparationID) || !collection.ValidID(storeID) || q.Validate() != nil || q.Keyword != "" {
+		return collection.Page[Operation]{}, ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	defer cancel()
+	scope, err := s.base.authorize(ctx, PermissionRead)
+	if err != nil {
+		return collection.Page[Operation]{}, err
+	}
+	return s.repository.ListOperations(ctx, scope, preparationID, storeID, q)
 }
 func (s *OperationService) ListItems(ctx context.Context, id string, q Query) (collection.Page[OperationItem], error) {
 	if ctx == nil || !collection.ValidID(id) || q.Validate() != nil || q.Keyword != "" {

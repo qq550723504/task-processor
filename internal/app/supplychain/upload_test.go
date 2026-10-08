@@ -295,6 +295,8 @@ func uploadFixture(t *testing.T) (*UploadService, collection.Scope, *uploadRecor
 	input.Draft.Product.SKCs = []model.ProductSKC{{SupplierCode: "spu-a", SaleAttribute: model.AttributeValue{AttributeID: 12, AttributeValueID: uploadPointer(int64(34))}, SKUs: []model.ProductSKU{{SupplierSKU: "sku-a", Length: "10", Width: "10", Height: "10", Weight: uploadPointer(100.0), MallState: 1, Prices: []model.ProductPrice{{BasePrice: 12.5, Currency: "USD", SubSite: "shein-us"}}, Stock: []model.ProductStock{{Quantity: 5}}, SaleAttributes: []model.AttributeValue{}}}}}
 	input.Draft.Images = []goods.OfficialImageSlot{{Group: "skc", AssetID: "main", Type: 1, Sort: 1}, {Group: "skc", AssetID: "detail", Type: 2, Sort: 2}, {Group: "skc", AssetID: "square", Type: 5, Sort: 3}}
 	saved := record.TargetRecord{ID: uuid.NewString(), TargetID: record.TargetIdentity(scope, source.ID, binding.StoreID), Revision: 1, Source: source, EffectiveVersion: 1, ProductHash: collection.Digest(snapshot.Snapshot), InventoryHash: collection.Digest(inventory), RulesHash: collection.Digest(rules), Merchant: binding, Input: input, Result: goods.BuildOfficial(input.Draft, rules, inventory, nil), CreatedAt: time.Now().UTC()}
+	saved.ImageObservations, err = record.ProbeTargetImages(context.Background(), uploadProbe{}, input.Draft, inventory)
+	require.NoError(t, err)
 	require.True(t, saved.Result.ReadyForUpload, "%v", saved.Result.Issues)
 	records := &uploadRecords{saved: saved}
 	merchant := &uploadMerchant{binding: binding}

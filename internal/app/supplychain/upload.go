@@ -190,28 +190,15 @@ func (s *UploadService) Upload(ctx context.Context, scope collection.Scope, key,
 	if err != nil {
 		return UploadResult{}, err
 	}
-	observations := make([]goods.OfficialImageObservation, 0, len(saved.Input.Draft.Images))
-	for _, slot := range saved.Input.Draft.Images {
-		var selected asset.ApprovedAsset
-		found := false
-		for _, a := range inventory.Assets {
-			if a.ID == slot.AssetID {
-				selected, found = a, true
-				break
-			}
-		}
-		if !found {
-			return UploadResult{}, record.ErrNotReady
-		}
-		observation, err := s.dependencies.Images.Probe(ctx, selected, slot.Type)
-		if err != nil {
-			return UploadResult{}, err
-		}
-		// Validate actual dimensions and bytes before any image mutation. Other
-		// selected positions retain approved dimensions until their own probe.
-		if actual := goods.BuildOfficial(saved.Input.Draft, rules, inventory, append(observations, observation)); !actual.ReadyForUpload {
-			return UploadResult{}, record.ErrNotReady
-		}
+	actual, err := record.ProbeTargetImages(ctx, s.dependencies.Images, saved.Input.Draft, inventory)
+	if err != nil {
+		return UploadResult{}, err
+	}
+	if len(actual) == 0 || collection.Digest(actual) != collection.Digest(saved.ImageObservations) || !goods.BuildOfficial(saved.Input.Draft, rules, inventory, actual).ReadyForUpload {
+		return UploadResult{}, record.ErrNotReady
+	}
+	observations := make([]goods.OfficialImageObservation, 0, len(actual))
+	for _, observation := range actual {
 		confirmed, pending, err := s.transform(ctx, scope, saved, observation)
 		if err != nil {
 			return UploadResult{}, err

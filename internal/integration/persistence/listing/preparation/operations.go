@@ -384,3 +384,41 @@ func (r *OperationRepository) FinishOperationItem(ctx context.Context, proof pre
 }
 
 var _ preparation.OperationRepository = (*OperationRepository)(nil)
+
+func (r *OperationRepository) ListOperations(ctx context.Context, scope preparation.Scope, preparationID, storeID string, q preparation.Query) (collection.Page[preparation.Operation], error) {
+	page := collection.Page[preparation.Operation]{Items: []preparation.Operation{}}
+	if scope.Validate() != nil || !collection.ValidID(preparationID) || !collection.ValidID(storeID) || q.Validate() != nil || q.Keyword != "" {
+		return page, preparation.ErrInvalid
+	}
+	var parent preparationRow
+	if err := r.db.WithContext(ctx).Where("organization_id=? AND actor_id=? AND member_id=? AND id=?", scope.OrganizationID, scope.ActorID, scope.MemberID, preparationID).Take(&parent).Error; err != nil {
+		return page, operationError(err)
+	}
+	base := r.db.WithContext(ctx).Model(&operationRow{}).Where("organization_id=? AND actor_id=? AND member_id=? AND preparation_id=? AND store_id=?", scope.OrganizationID, scope.ActorID, scope.MemberID, preparationID, storeID)
+	if err := base.Count(&page.Total).Error; err != nil {
+		return page, operationError(err)
+	}
+	if q.After != "" {
+		var cursor operationRow
+		if err := base.Session(&gorm.Session{}).Where("id=?", q.After).Take(&cursor).Error; err != nil {
+			return page, operationError(err)
+		}
+		base = base.Where("(created_at,id)<(?,?::uuid)", cursor.CreatedAt, cursor.ID)
+	}
+	var rows []operationRow
+	if err := base.Order("created_at DESC,id DESC").Limit(q.Limit + 1).Find(&rows).Error; err != nil {
+		return page, operationError(err)
+	}
+	if len(rows) > q.Limit {
+		rows = rows[:q.Limit]
+		page.NextCursor = rows[len(rows)-1].ID
+	}
+	for _, row := range rows {
+		value, err := row.value()
+		if err != nil {
+			return page, err
+		}
+		page.Items = append(page.Items, value)
+	}
+	return page, nil
+}

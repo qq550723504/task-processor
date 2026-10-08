@@ -238,6 +238,7 @@ func BuildOfficial(input OfficialDraftInput, rules OfficialRuleSnapshot, invento
 		}
 	}
 	b.validateVariantMatrix()
+	b.managedFields()
 	b.validateLinkedRules()
 	allRemote := b.images(input.Images, observations)
 	b.fields()

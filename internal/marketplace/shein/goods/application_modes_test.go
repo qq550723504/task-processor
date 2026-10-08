@@ -20,7 +20,9 @@ func TestOfficialDraftUsesApplicationTypeInsteadOfSiteStoreType(t *testing.T) {
 		sku := &input.Product.SKCs[0].SKUs[0]
 		sku.Prices = nil
 		sku.Cost = &model.CostPrice{Price: "10.50", Currency: "CNY"}
+		input.Product.SKCs[0].ShelfWay = "1"
 		if mode == model.ModeFullyManaged {
+			input.Product.SKCs[0].ShelfRequire = "0"
 			rules.Sites = nil
 			sku.StopPurchase = rulePointer(1)
 		}

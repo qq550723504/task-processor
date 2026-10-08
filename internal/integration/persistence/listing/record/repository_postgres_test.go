@@ -128,7 +128,7 @@ func TestPostgresTargetImmutableRevisionsCommandReplayAndConcurrentCAS(t *testin
 	execution := executionAuth{scope}
 	selector, err = selector.WithExecution(execution, collection.ExecutionOwnerAuthority{Authorization: execution})
 	require.NoError(t, err)
-	service, err := record.NewTargetService(record.TargetDependencies{Sources: selector, ExecutionSources: selector, ExecutionAuthorization: execution, Products: record.OriginalTargetProduct{}, Assets: missingAssets{}, Rules: currentRules{}, Records: repository, Authorizer: authority})
+	service, err := record.NewTargetService(record.TargetDependencies{Sources: selector, ExecutionSources: selector, ExecutionAuthorization: execution, Products: record.OriginalTargetProduct{}, Assets: missingAssets{}, Rules: currentRules{}, Records: repository, Images: recordTestImages{}, Authorizer: authority})
 	require.NoError(t, err)
 	key := uuid.NewString()
 	input := record.TargetInput{SourceID: page.Items[0].ID, StoreID: uuid.NewString(), EffectiveVersion: 1, Draft: goods.OfficialDraftInput{Product: model.PublishProduct{Names: []model.LanguageContent{{Language: "en", Name: "Manual title"}}}}}
@@ -190,7 +190,7 @@ func TestPostgresTargetImmutableRevisionsCommandReplayAndConcurrentCAS(t *testin
 	_, err = service.CreateForExecution(ctx, collection.Scope{scope.OrganizationID, scope.ActorID, "replacement-member"}, uuid.NewString(), changed)
 	require.ErrorIs(t, err, record.ErrForbidden)
 	t.Run("official intent and full result share the existing execution transaction", func(t *testing.T) {
-		ready, err := record.NewTargetService(record.TargetDependencies{Sources: selector, ExecutionSources: selector, ExecutionAuthorization: execution, Products: record.OriginalTargetProduct{}, Assets: readyAssets{}, Rules: readyRules{}, Records: repository, Authorizer: authority})
+		ready, err := record.NewTargetService(record.TargetDependencies{Sources: selector, ExecutionSources: selector, ExecutionAuthorization: execution, Products: record.OriginalTargetProduct{}, Assets: readyAssets{}, Rules: readyRules{}, Records: repository, Images: recordTestImages{}, Authorizer: authority})
 		require.NoError(t, err)
 		input := record.TargetInput{SourceID: page.Items[0].ID, StoreID: uuid.NewString(), EffectiveVersion: 1}
 		input.Draft.Product = model.PublishProduct{CategoryID: 123, BrandCode: "brand-a", Names: []model.LanguageContent{{Language: "en", Name: "Manual complete title"}}, Descriptions: []model.LanguageContent{{Language: "en", Name: "Actual test product description"}}, Attributes: []model.AttributeValue{}}
@@ -300,4 +300,10 @@ func TestPostgresTargetImmutableRevisionsCommandReplayAndConcurrentCAS(t *testin
 			}
 		}
 	})
+}
+
+type recordTestImages struct{}
+
+func (recordTestImages) Probe(_ context.Context, a asset.ApprovedAsset, typ int) (goods.OfficialImageObservation, error) {
+	return goods.OfficialImageObservation{AssetID: a.ID, SourceURL: a.URL, Width: 900, Height: 900, Type: typ, ContentHash: collection.Digest(a.ID), Bytes: 1000, MediaType: "image/jpeg"}, nil
 }

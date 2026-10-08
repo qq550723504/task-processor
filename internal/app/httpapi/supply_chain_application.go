@@ -145,7 +145,7 @@ func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d 
 	if err != nil {
 		return empty, err
 	}
-	targets, err := record.NewTargetService(record.TargetDependencies{Sources: sources, Products: effective, Assets: assets, Rules: rules, Records: records, Authorizer: auth, ExecutionSources: sources, ExecutionAuthorization: executionAuth})
+	targets, err := record.NewTargetService(record.TargetDependencies{Sources: sources, Products: effective, Assets: assets, Rules: rules, Records: records, Images: supplyapp.NewPublicImageProbe(), Authorizer: auth, ExecutionSources: sources, ExecutionAuthorization: executionAuth})
 	if err != nil {
 		return empty, err
 	}
@@ -165,7 +165,7 @@ func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d 
 	if err != nil {
 		return empty, err
 	}
-	app := &supplyapp.Application{Preparations: preparations, Sources: sources, Operations: operations, Execution: supplyapp.OperationApplication{Service: operations, Repository: operationsRepo, Starter: supplyapp.TemporalOperationStarter{Client: d.Workflow}}, Targets: targets, Records: records, Products: effective, Rules: rules, Assets: assets, Approvals: approvals, Authorization: auth}
+	app := &supplyapp.Application{Preparations: preparations, Sources: sources, Operations: operations, Execution: supplyapp.OperationApplication{Service: operations, Repository: operationsRepo, Starter: supplyapp.TemporalOperationStarter{Client: d.Workflow}}, Targets: targets, Records: records, Products: effective, Rules: rules, Assets: assets, Approvals: approvals, Authorization: auth, PublicationReceipts: official, PublicationStores: supplyapp.OfficialRuleStore{Access: access}}
 	currentWorker, err := supplyapp.NewSupplyWorker(d.Workflow, &supplyapp.OperationActivities{Operations: operations, Repository: operationsRepo, Sources: sources, Products: effective, Targets: records, Creator: targets, Uploader: uploader})
 	if err != nil {
 		return empty, err

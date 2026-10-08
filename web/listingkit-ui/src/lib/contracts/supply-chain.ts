@@ -22,13 +22,13 @@ export const officialSKCSchema=z.object({supplier_code:text(200).optional(),sale
 export const officialProductSchema=z.object({category_id:integer,product_type_id:integer,brand_code:text(128).optional(),source_system:text(128),suit_flag:text(32),is_spu_pic:z.boolean(),supplier_code:text(200).optional(),multi_language_name_list:list(language,32),multi_language_desc_list:list(language,32).optional(),product_attribute_list:list(attribute,256),site_list:list(z.object({main_site:text(128),sub_site_list:list(text(128),20)}).strict(),20).optional(),skc_list:list(officialSKCSchema,40),image_info:imageInfo.optional(),size_attribute_list:list(z.object({attribute_id:integer,attribute_extra_value:text(8192),relate_sale_attribute_id:integer.optional(),relate_sale_attribute_value_id:integer.optional()}).strict(),256).optional(),
  sample_info:z.object({sample_spec:z.object({main_spec:z.object({attribute_id:integer,attribute_value_id:integer}).strict(),sub_spec_list:list(z.object({attribute_id:text(128),attribute_value_id:text(128)}).strict(),256)}).strict(),sample_judge_type:integer,reserve_sample_flag:integer,spot_flag:integer}).strict().optional(),fill_configuration_info:z.object({filled_quantity_to_sku:z.boolean()}).strict().optional(),fill_configuration_tags:list(text(256),256).optional()}).strict();
 const imageSlot=z.object({group:z.enum(["spu","skc","sku","detail"]),skc:integer,sku:integer,asset_id:text(128).min(1),sort:integer,type:integer}).strict();
-export const officialDraftInputSchema=z.object({product:officialProductSchema,images:list(imageSlot,40)}).strict();
+export const officialDraftInputSchema=z.object({product:officialProductSchema,images:list(imageSlot,10000)}).strict();
 export const targetInputSchema=z.object({sourceId:collectionID,storeId:collectionID,expectedRevision:integer,effectiveVersion:version,applyReceiptId:collectionID.optional(),draft:officialDraftInputSchema}).strict();
 export const merchantSchema=z.object({organization_id:text(128),store_id:collectionID,site:z.literal("shein-us"),store_version:revision,connection_revision:revision,application_revision:text(128),application_id:text(128),application_type:applicationModeSchema,supplier_identity_hash:z.string().regex(/^[0-9a-f]{64}$/),service_expires_at:time});
 export const preparationSchema=z.object({id:collectionID,sourceBatchId:collectionID,sourceRevision:revision,name:text(200),count:integer,revision,createdAt:time});
 export const sourceSchema=z.object({id:collectionID,preparationId:collectionID,collectionItemId:collectionID,collectionRevision:revision,source:collectionItemSchema.shape.source});
 export const sourceDetailSchema=z.object({source:sourceSchema,product:collectionDetailSchema.shape.product,images:list(z.object({id:collectionID,url:text(2048),width:integer,height:integer}),4096)});
-export const targetRecordSchema=z.object({id:collectionID,targetId:collectionID,revision,source:sourceSchema,effectiveVersion:version,applyReceiptId:collectionID.optional(),productHash:z.string().regex(/^[0-9a-f]{64}$/),inventoryHash:z.string().regex(/^[0-9a-f]{64}$/),rulesHash:z.string().regex(/^[0-9a-f]{64}$/),merchant:merchantSchema,input:targetInputSchema,result:z.object({product:officialProductSchema,images:list(imageSlot,40),issues:list(z.object({field:text(8192),code:text(128),message:text(8192)}),4096),ready_for_upload:z.boolean()}),createdAt:time});
+export const targetRecordSchema=z.object({id:collectionID,targetId:collectionID,revision,source:sourceSchema,effectiveVersion:version,applyReceiptId:collectionID.optional(),productHash:z.string().regex(/^[0-9a-f]{64}$/),inventoryHash:z.string().regex(/^[0-9a-f]{64}$/),rulesHash:z.string().regex(/^[0-9a-f]{64}$/),merchant:merchantSchema,input:targetInputSchema,result:z.object({product:officialProductSchema,images:list(imageSlot,10000),issues:list(z.object({field:text(8192),code:text(128),message:text(8192)}),4096),ready_for_upload:z.boolean()}),createdAt:time});
 export const targetReceiptSchema=z.object({record:targetRecordSchema,replayed:z.boolean()});
 export const transferInputSchema=z.object({batchId:collectionID,expectedRevision:revision,itemIds:z.array(collectionID).max(1000).optional()}).strict();
 export const transferReceiptSchema=z.object({preparation:preparationSchema,replayed:z.boolean()});
@@ -50,17 +50,21 @@ export const rulesSchema=z.object({merchant:merchantSchema,rules:z.object({appli
 export const preparationPageSchema=page(preparationSchema);
 export const sourcePageSchema=page(sourceSchema);
 export const operationItemPageSchema=page(operationItemSchema);
-export type SupplyRoute="list"|"transfer"|"transfer-read"|"sources"|"source"|"target"|"save-target"|"rules"|"target-command"|"record"|"approve"|"inventory"|"create-operation"|"operation-key"|"operation"|"operation-items"|"ensure"|"cancel";
-export const supplyRouteMethods:ReadonlyArray<readonly["GET"|"POST",SupplyRoute]>=[["GET","list"],["POST","transfer"],["GET","transfer-read"],["GET","sources"],["GET","source"],["GET","target"],["POST","save-target"],["POST","rules"],["GET","target-command"],["GET","record"],["POST","approve"],["POST","inventory"],["POST","create-operation"],["GET","operation-key"],["GET","operation"],["GET","operation-items"],["POST","ensure"],["POST","cancel"]];
+export const operationPageSchema=page(operationSchema);
+export const publicationSchema=z.object({sourceId:collectionID,storeId:collectionID,recordId:collectionID.optional(),receiptId:text(128).optional(),observedAt:time.optional(),product:z.object({spu_name:text(128).min(1),skc_list:list(z.object({skc_name:text(128).min(1),sku_list:list(z.object({sku_code:text(128).min(1),supplier_sku:text(200).min(1)}),400)}),40)}).optional()}).refine(v=>v.product?!!v.receiptId&&!!v.observedAt:!v.receiptId&&!v.observedAt&&!v.recordId);
+export type SupplyRoute="publication"|"preparation"|"operations"|"list"|"transfer"|"transfer-read"|"sources"|"source"|"target"|"save-target"|"rules"|"target-command"|"record"|"approve"|"inventory"|"create-operation"|"operation-key"|"operation"|"operation-items"|"ensure"|"cancel";
+export const supplyRouteMethods:ReadonlyArray<readonly["GET"|"POST",SupplyRoute]>=[["GET","publication"],["GET","preparation"],["GET","operations"],["GET","list"],["POST","transfer"],["GET","transfer-read"],["GET","sources"],["GET","source"],["GET","target"],["POST","save-target"],["POST","rules"],["GET","target-command"],["GET","record"],["POST","approve"],["POST","inventory"],["POST","create-operation"],["GET","operation-key"],["GET","operation"],["GET","operation-items"],["POST","ensure"],["POST","cancel"]];
 export function supplyPath(method:string,p:string[]):SupplyRoute|null{
  if(p[0]!=="supply-preparations")return null;
  if(method==="GET"){
   if(p.length===1)return "list";
+  if(p.length===2 && isAcquisitionUUID(p[1]!))return "preparation";
+  if(p.length===3 && isAcquisitionUUID(p[1]!) && p[2]==="operations")return "operations";
   if(p.length===3 && isAcquisitionUUID(p[1]!) && p[2]==="sources")return "sources";
   if(p.length===3 && isAcquisitionUUID(p[2]!))return p[1]==="sources"?"source":p[1]==="records"?"record":p[1]==="target-commands"?"target-command":p[1]==="operations"?"operation":null;
   if(p.length===4 && p[2]==="by-key" && isAcquisitionUUID(p[3]!))return p[1]==="transfers"?"transfer-read":p[1]==="operations"?"operation-key":null;
   if(p.length===4 && p[1]==="operations" && isAcquisitionUUID(p[2]!) && p[3]==="items")return "operation-items";
-  if(p.length===5 && p[1]==="sources" && isAcquisitionUUID(p[2]!) && p[3]==="targets" && isAcquisitionUUID(p[4]!))return "target";
+  if(p.length===5 && p[1]==="sources" && isAcquisitionUUID(p[2]!) && isAcquisitionUUID(p[4]!))return p[3]==="targets"?"target":p[3]==="publications"?"publication":null;
  }
  if(method==="POST"){
   if(p.length===2)return p[1]==="transfer"?"transfer":p[1]==="targets"?"save-target":p[1]==="target-rules"?"rules":p[1]==="operations"?"create-operation":null;
@@ -73,7 +77,7 @@ export const supplyRequestSchema=(route:SupplyRoute)=>route==="transfer"?transfe
 export const supplyUsesKey=(route:SupplyRoute)=>["transfer","save-target","approve","create-operation"].includes(route);
 export const supplyMutates=(route:SupplyRoute)=>supplyUsesKey(route)||route==="ensure"||route==="cancel";
 export function supplyResponseSchema(route:SupplyRoute):z.ZodType {
- return route==="list"?preparationPageSchema:route==="sources"?sourcePageSchema:route==="source"?sourceDetailSchema:route==="transfer"||route==="transfer-read"?transferReceiptSchema:route==="target"||route==="record"?targetRecordSchema:route==="save-target"||route==="target-command"?targetReceiptSchema:route==="rules"?rulesSchema:route==="approve"?imageApprovalReceiptSchema:route==="inventory"?inventorySchema:route==="create-operation"?operationReceiptSchema:route==="operation-items"?operationItemPageSchema:operationSchema;
+ return route==="publication"?publicationSchema:route==="preparation"?preparationSchema:route==="operations"?operationPageSchema:route==="list"?preparationPageSchema:route==="sources"?sourcePageSchema:route==="source"?sourceDetailSchema:route==="transfer"||route==="transfer-read"?transferReceiptSchema:route==="target"||route==="record"?targetRecordSchema:route==="save-target"||route==="target-command"?targetReceiptSchema:route==="rules"?rulesSchema:route==="approve"?imageApprovalReceiptSchema:route==="inventory"?inventorySchema:route==="create-operation"?operationReceiptSchema:route==="operation-items"?operationItemPageSchema:operationSchema;
 }
 export type SupplyPreparation=z.infer<typeof preparationSchema>;
 export type SupplySource=z.infer<typeof sourceSchema>;
@@ -88,10 +92,14 @@ export type OfficialProduct=z.infer<typeof officialProductSchema>;
 export function parseSupplyResponse(route:SupplyRoute,payload:unknown,expected?:string):unknown|null {
  const result=supplyResponseSchema(route).safeParse(payload);if(!result.success)return null;
  if(expected){
+  if(route==="preparation" && preparationSchema.parse(result.data).id!==expected)return null;
   if(route==="source" && sourceDetailSchema.parse(result.data).source.id!==expected)return null;
   if(route==="record" && targetRecordSchema.parse(result.data).id!==expected)return null;
   if((route==="operation"||route==="ensure"||route==="cancel") && operationSchema.parse(result.data).id!==expected)return null;
+  if(route==="publication"){const value=publicationSchema.parse(result.data);if(`${value.sourceId}:${value.storeId}`!==expected)return null;}
   if(route==="target"){const value=targetRecordSchema.parse(result.data);if(`${value.source.id}:${value.merchant.store_id}`!==expected)return null;}
  }
  return result.data;
 }
+
+export type SupplyPublication=z.infer<typeof publicationSchema>;

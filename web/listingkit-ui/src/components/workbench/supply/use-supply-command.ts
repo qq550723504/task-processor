@@ -6,29 +6,29 @@ import { parseSupplyIntent } from "@/lib/api/supply-intent";
 
 export function useSupplyCommand(scope:SupplyScope,onSaved:(result:unknown,intent:SupplyIntent)=>void){
  const context=useWorkbenchContext();
- const [pending,setPending]=useState<SupplyIntent|null>(context.pendingSupplyIntent);
+ const pending=context.pendingSupplyIntent;
  const [busy,setBusy]=useState(false);const [error,setError]=useState<string|null>(null);
  const alive=useRef(true);const active=useRef(false);const abort=useRef<AbortController|null>(null);
- const saved=useRef(onSaved);saved.current=onSaved;
+ const saved=useRef(onSaved);
+ useEffect(()=>{saved.current=onSaved},[onSaved]);
  const foreign=!!pending && (pending.userId!==scope.userId||pending.organizationId!==scope.organizationId);
- useEffect(()=>{setPending(context.pendingSupplyIntent)},[context.pendingSupplyIntent]);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;abort.current?.abort()}},[]);
  useEffect(()=>context.registerOrganizationSwitchGuard(()=>!active.current),[context]);
  async function dispatch(intent:SupplyIntent,verify:boolean){
   if(!alive.current||active.current||intent.userId!==scope.userId||intent.organizationId!==scope.organizationId)return;
   if(!context.setPendingSupplyIntent(intent)){setError("BROWSER_STORAGE_UNAVAILABLE");return}
-  setPending(intent);setBusy(true);setError(null);active.current=true;
+  setBusy(true);setError(null);active.current=true;
   const controller=new AbortController();abort.current=controller;
   try{
    const result=await(verify?readSupplyCommand(intent,controller.signal):supplyCommand(intent,controller.signal));
    if(!alive.current)return;
    if(!context.setPendingSupplyIntent(null)){setError("BROWSER_STORAGE_UNAVAILABLE");return}
-   setPending(null);saved.current(result,intent);
+   saved.current(result,intent);
   }catch(failure){
    if(!alive.current)return;
    const code=failure instanceof SupplyAPIError?failure.code:"OUTCOME_UNKNOWN";
    if(!verify && failure instanceof SupplyAPIError && failure.status>=400 && failure.status<500 && code!=="OUTCOME_UNKNOWN"){
-    if(context.setPendingSupplyIntent(null))setPending(null);
+    context.setPendingSupplyIntent(null);
    }
    setError(code);
   }finally{active.current=false;if(abort.current===controller)abort.current=null;if(alive.current)setBusy(false)}

@@ -171,6 +171,21 @@ func (r *Repository) Transfer(ctx context.Context, commit preparation.TransferCo
 func keyword(value string) string {
 	return "%" + strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(value) + "%"
 }
+
+func (r *Repository) Read(ctx context.Context, scope preparation.Scope, id string) (preparation.Preparation, error) {
+	if scope.Validate() != nil || !collection.ValidID(id) {
+		return preparation.Preparation{}, preparation.ErrInvalid
+	}
+	var row preparationRow
+	err := r.db.WithContext(ctx).Where("organization_id=? AND actor_id=? AND member_id=? AND id=?", scope.OrganizationID, scope.ActorID, scope.MemberID, id).Take(&row).Error
+	if err != nil {
+		return preparation.Preparation{}, operationError(err)
+	}
+	if row.ItemCount < 1 {
+		return preparation.Preparation{}, preparation.ErrUnavailable
+	}
+	return row.value(), nil
+}
 func (r *Repository) List(ctx context.Context, scope preparation.Scope, query preparation.Query) (collection.Page[preparation.Preparation], error) {
 	page := collection.Page[preparation.Preparation]{Items: []preparation.Preparation{}}
 	if scope.Validate() != nil || query.Validate() != nil {

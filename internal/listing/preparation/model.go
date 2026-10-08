@@ -81,6 +81,7 @@ type Repository interface {
 	FindTransfer(context.Context, Scope, string, TransferInput) (TransferReceipt, error)
 	ReadByKey(context.Context, Scope, string) (TransferReceipt, error)
 	List(context.Context, Scope, Query) (collection.Page[Preparation], error)
+	Read(context.Context, Scope, string) (Preparation, error)
 	ListSources(context.Context, Scope, string, Query) (collection.Page[SourceItem], error)
 }
 

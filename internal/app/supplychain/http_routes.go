@@ -27,6 +27,8 @@ func SupplyRoutes(app *Application, bind func(context.Context, string) (context.
 	specs := []struct{ method, path, action, permission string }{
 		{"GET", "", "list", preparation.PermissionRead}, {"POST", "/transfer", "transfer", preparation.PermissionManage}, {"GET", "/transfers/by-key/:key", "transfer-read", preparation.PermissionRead},
 		{"GET", "/:preparation_id/sources", "sources", preparation.PermissionRead}, {"GET", "/sources/:source_id", "source", preparation.PermissionRead},
+		{"GET", "/:preparation_id", "preparation", preparation.PermissionRead}, {"GET", "/:preparation_id/operations", "operations", preparation.PermissionRead},
+		{"GET", "/sources/:source_id/publications/:store_id", "publication", preparation.PermissionRead},
 		{"GET", "/sources/:source_id/targets/:store_id", "target", preparation.PermissionRead}, {"POST", "/targets", "save-target", preparation.PermissionManage}, {"POST", "/target-rules", "rules", preparation.PermissionRead}, {"GET", "/target-commands/:key", "target-command", preparation.PermissionRead}, {"GET", "/records/:record_id", "record", preparation.PermissionRead},
 		{"POST", "/images/approve", "approve", preparation.PermissionManage}, {"POST", "/images/inventory", "inventory", preparation.PermissionManage},
 		{"POST", "/operations", "create-operation", preparation.PermissionManage}, {"GET", "/operations/by-key/:key", "operation-key", preparation.PermissionRead}, {"GET", "/operations/:operation_id", "operation", preparation.PermissionRead}, {"GET", "/operations/:operation_id/items", "operation-items", preparation.PermissionRead}, {"POST", "/operations/:operation_id/ensure", "ensure", preparation.PermissionManage}, {"POST", "/operations/:operation_id/cancel", "cancel", preparation.PermissionManage},
@@ -51,11 +53,29 @@ func SupplyRoutes(app *Application, bind func(context.Context, string) (context.
 					return
 				}
 			}
-			if spec.action != "list" && spec.action != "sources" && spec.action != "operation-items" && c.Request.URL.RawQuery != "" {
+			if spec.action != "list" && spec.action != "sources" && spec.action != "operation-items" && spec.action != "operations" && c.Request.URL.RawQuery != "" {
 				supplyError(c, preparation.ErrInvalid)
 				return
 			}
 			switch spec.action {
+			case "preparation":
+				output, err = app.Preparations.Read(ctx, c.Param("preparation_id"))
+			case "operations":
+				values, e := url.ParseQuery(c.Request.URL.RawQuery)
+				if e != nil || len(values["storeId"]) != 1 || !collection.ValidID(values.Get("storeId")) {
+					supplyError(c, preparation.ErrInvalid)
+					return
+				}
+				storeID := values.Get("storeId")
+				values.Del("storeId")
+				request := c.Request.Clone(ctx)
+				request.URL.RawQuery = values.Encode()
+				q, e := supplyQuery(request)
+				if e != nil {
+					supplyError(c, e)
+					return
+				}
+				output, err = app.Operations.List(ctx, c.Param("preparation_id"), storeID, q)
 			case "list", "sources", "operation-items":
 				q, e := supplyQuery(c.Request)
 				if e != nil {
@@ -84,6 +104,8 @@ func SupplyRoutes(app *Application, bind func(context.Context, string) (context.
 				output, err = app.Source(ctx, c.Param("source_id"))
 			case "target":
 				output, err = app.ReadTarget(ctx, c.Param("source_id"), c.Param("store_id"))
+			case "publication":
+				output, err = app.Publication(ctx, c.Param("source_id"), c.Param("store_id"))
 			case "record":
 				output, err = app.ReadRecord(ctx, c.Param("record_id"))
 			case "target-command":

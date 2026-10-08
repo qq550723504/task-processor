@@ -97,7 +97,7 @@ func TestTargetRecordUsesRetainedSourceAndPreservesIncompleteFactsForUserComplet
 	selections, err := preparation.NewSourceSelector(preparations, collections, repo, targetCatalog{snapshot})
 	require.NoError(t, err)
 	records := &targetRecords{values: map[string]TargetReceipt{}, hashes: map[string]string{}}
-	service, err := NewTargetService(TargetDependencies{Sources: selections, Products: OriginalTargetProduct{}, Assets: targetAssets{}, Rules: targetRules{}, Records: records, Authorizer: authority})
+	service, err := NewTargetService(TargetDependencies{Sources: selections, Products: OriginalTargetProduct{}, Assets: targetAssets{}, Rules: targetRules{}, Records: records, Images: targetTestImages{}, Authorizer: authority})
 	require.NoError(t, err)
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: scope.OrganizationID, EffectiveOrganizationID: scope.OrganizationID, UserID: scope.ActorID, EffectiveMemberID: scope.MemberID, TokenExpiresAt: time.Now().Add(time.Minute)})
 	key := uuid.NewString()
@@ -124,4 +124,10 @@ func TestTargetRecordUsesRetainedSourceAndPreservesIncompleteFactsForUserComplet
 	require.ErrorIs(t, err, preparation.ErrNotFound)
 	_, _, _, _, err = (TargetPrepared{}).Read(ctx)
 	require.ErrorIs(t, err, ErrForbidden)
+}
+
+type targetTestImages struct{}
+
+func (targetTestImages) Probe(_ context.Context, a asset.ApprovedAsset, typ int) (goods.OfficialImageObservation, error) {
+	return goods.OfficialImageObservation{AssetID: a.ID, SourceURL: a.URL, Width: 900, Height: 900, Type: typ, ContentHash: collection.Digest(a.ID), Bytes: 1000, MediaType: "image/jpeg"}, nil
 }
