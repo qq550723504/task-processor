@@ -133,6 +133,8 @@ type ServiceFundsStore interface {
 	ReadServicePayment(context.Context, ServicePaymentInput) (ServiceReceipt, error)
 	ReadServiceFunds(context.Context, string) (ServiceFundsView, error)
 	PrepareServiceOperation(context.Context, ServiceOperation) (ServiceReceipt, error)
+	AdmitServiceOperation(context.Context, ServiceOperation) error
+	AbandonUndispatchedServiceOperation(context.Context, ServiceOperation, string) error
 	AcceptServiceEffect(context.Context, ServiceEffect) (ServiceReceipt, error)
 	ReadServiceEffect(context.Context, ServiceOperation) (ServiceReceipt, error)
 	ObserveServiceChargeback(context.Context, string, ChargebackSettlement) error

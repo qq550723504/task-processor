@@ -36,13 +36,15 @@ type servicePaymentRow struct {
 func (servicePaymentRow) TableName() string { return "ledger_service_payment_bindings" }
 
 type serviceReservationRow struct {
-	OperationID string `gorm:"primaryKey;size:128"`
-	OrderID     string `gorm:"index;size:128;not null"`
-	Kind        string
-	Fingerprint string
-	Operation   []byte
-	State       string
-	Receipt     []byte
+	OperationID   string `gorm:"primaryKey;size:128"`
+	OrderID       string `gorm:"index;size:128;not null"`
+	Kind          string
+	Fingerprint   string
+	Operation     []byte
+	State         string
+	Dispatched    bool
+	DenialProofID string
+	Receipt       []byte
 }
 
 func (serviceReservationRow) TableName() string { return "ledger_service_operation_reservations" }
@@ -231,6 +233,9 @@ func (r *Repository) PrepareServiceOperation(ctx context.Context, in m.ServiceOp
 			if existing.Fingerprint != m.ServiceFingerprint(in) {
 				return m.ErrConflict
 			}
+			if existing.State == "ABANDONED" {
+				return m.ErrConflict
+			}
 			return decodeServiceReceipt(existing.Receipt, &out)
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
@@ -281,7 +286,7 @@ func (r *Repository) AcceptServiceEffect(ctx context.Context, in m.ServiceEffect
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("operation_id=?", in.Operation.OperationID).Take(&reservation).Error; err != nil {
 			return m.ErrConflict
 		}
-		if reservation.Fingerprint != m.ServiceFingerprint(in.Operation) || reservation.OrderID != row.OrderID || reservation.State != "PREPARED" || row.PendingOperationID != in.Operation.OperationID {
+		if reservation.Fingerprint != m.ServiceFingerprint(in.Operation) || reservation.OrderID != row.OrderID || reservation.State != "PREPARED" || row.PendingOperationID != in.Operation.OperationID || in.Operation.AmountMinor > 0 && !reservation.Dispatched {
 			return m.ErrConflict
 		}
 		// A verified involuntary effect cannot erase a previously reserved
@@ -349,6 +354,66 @@ func (r *Repository) ReadServiceEffect(ctx context.Context, in m.ServiceOperatio
 		return m.ServiceReceipt{}, m.ErrConflict
 	}
 	return out, nil
+}
+
+func (r *Repository) AdmitServiceOperation(ctx context.Context, in m.ServiceOperation) error {
+	if r == nil || r.db == nil || in.Validate() != nil {
+		return m.ErrInvalid
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		row, err := lockServicePayment(tx, in.OrderID)
+		if err != nil {
+			return err
+		}
+		var reservation serviceReservationRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("operation_id=?", in.OperationID).Take(&reservation).Error; err != nil {
+			return m.ErrNotFound
+		}
+		if reservation.Fingerprint != m.ServiceFingerprint(in) || reservation.State == "ABANDONED" {
+			return m.ErrConflict
+		}
+		if reservation.Dispatched {
+			return nil
+		}
+		if reservation.State != "PREPARED" || row.PendingOperationID != in.OperationID || row.ReconciliationReason != "" {
+			return m.ErrConflict
+		}
+		return tx.Model(&reservation).Update("dispatched", true).Error
+	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+}
+
+// Only billing's durable proof that source admission was denied before any
+// dispatch can abandon a prepared reservation. Timeouts never supply that proof.
+func (r *Repository) AbandonUndispatchedServiceOperation(ctx context.Context, in m.ServiceOperation, denialProofID string) error {
+	if r == nil || r.db == nil || in.Validate() != nil || denialProofID == "" || len(denialProofID) > 128 {
+		return m.ErrInvalid
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		row, err := lockServicePayment(tx, in.OrderID)
+		if err != nil {
+			return err
+		}
+		var reservation serviceReservationRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("operation_id=?", in.OperationID).Take(&reservation).Error; err != nil {
+			return m.ErrNotFound
+		}
+		if reservation.Fingerprint != m.ServiceFingerprint(in) {
+			return m.ErrConflict
+		}
+		if reservation.State == "ABANDONED" {
+			if reservation.DenialProofID == denialProofID {
+				return nil
+			}
+			return m.ErrConflict
+		}
+		if reservation.Dispatched || reservation.State != "PREPARED" || row.PendingOperationID != in.OperationID {
+			return m.ErrConflict
+		}
+		if err := tx.Model(&reservation).Updates(map[string]any{"state": "ABANDONED", "denial_proof_id": denialProofID}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&row).Update("pending_operation_id", "").Error
+	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 }
 
 // This path consumes a verified involuntary channel fact, rather than inventing

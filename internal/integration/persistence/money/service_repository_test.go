@@ -62,6 +62,9 @@ func applyServiceEffect(t *testing.T, r *Repository, kind m.ServiceEffectKind, i
 		t.Fatal(err)
 	}
 	effect := m.ServiceEffect{Operation: op, ProviderReference: "verified-" + id, OccurredAt: time.Date(2026, 10, 8, 2, 0, 0, 0, time.UTC)}
+	if err := r.AdmitServiceOperation(ctx, op); err != nil {
+		t.Fatal(err)
+	}
 	a, err := r.AcceptServiceEffect(ctx, effect)
 	if err != nil {
 		t.Fatal(err)
@@ -156,6 +159,9 @@ func TestServiceInFlightShareSuccessAfterChargebackRetainsBothFacts(t *testing.T
 		t.Fatal(err)
 	}
 	cb := m.ChargebackSettlement{ChargebackID: "late-cb", PaymentID: in.Payment.PaymentID, AmountMinor: 101, OccurredAt: time.Now(), ProviderReference: "signed-cb"}
+	if err := r.AdmitServiceOperation(ctx, op); err != nil {
+		t.Fatal(err)
+	}
 	if err := r.ObserveServiceChargeback(ctx, in.OrderID, cb); err != nil {
 		t.Fatal(err)
 	}
@@ -165,5 +171,31 @@ func TestServiceInFlightShareSuccessAfterChargebackRetainsBothFacts(t *testing.T
 	funds, err := r.ReadServiceFunds(ctx, in.OrderID)
 	if err != nil || funds.SharedMinor != 10 || funds.ChargedBackMinor != 101 || funds.ReconciliationReason == "" {
 		t.Fatalf("lost original effects: %+v %v", funds, err)
+	}
+}
+
+func TestServiceSourceDenialReleasesOnlyUndispatchedReservation(t *testing.T) {
+	r := newMoneyRepository(t)
+	ctx := context.Background()
+	in := servicePayment()
+	if _, err := r.AcceptServicePayment(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	share := m.ServiceOperation{OrderID: in.OrderID, OperationID: "denied-share", Kind: m.ServiceShare, AmountMinor: 10, SourceProofID: "original-acceptance"}
+	if _, err := r.PrepareServiceOperation(ctx, share); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.AbandonUndispatchedServiceOperation(ctx, share, "source-denied-receipt"); err != nil {
+		t.Fatal(err)
+	}
+	refund := m.ServiceOperation{OrderID: in.OrderID, OperationID: "refund", Kind: m.ServiceRefund, AmountMinor: 101, SourceProofID: "approved-refund"}
+	if _, err := r.PrepareServiceOperation(ctx, refund); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.AdmitServiceOperation(ctx, refund); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.AbandonUndispatchedServiceOperation(ctx, refund, "claimed-no-response"); !errors.Is(err, m.ErrConflict) {
+		t.Fatalf("unknown dispatched refund reservation released: %v", err)
 	}
 }
