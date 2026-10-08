@@ -46,6 +46,25 @@ func TestCustomerAcceptanceUsesVerifiedScopeAndExactVersion(t *testing.T) {
 		t.Fatalf("acceptance lost trusted scope/version: code=%d cmd=%+v", w.Code, s.command)
 	}
 }
+
+func TestApplicationSubmitPreservesOptionalCorrectionVersion(t *testing.T) {
+	for _, cas := range []string{"", "\"2\"", "\"02\"", "2", "\"0\""} {
+		t.Run(cas, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest("POST", "/applications", nil)
+			c.Request.Header.Set("Idempotency-Key", "22222222-2222-4222-8222-222222222222")
+			if cas != "" {
+				c.Request.Header.Set("If-Match", cas)
+			}
+			cmd, ok := command(c, e.Scope{OrganizationID: "provider", ActorID: "provider-user"}, "application_submit")
+			valid := cas == "" || cas == "\"2\""
+			if ok != valid || cas == "\"2\"" && cmd.Version != 2 {
+				t.Fatalf("correction version parsed incorrectly: cas=%q ok=%v version=%d", cas, ok, cmd.Version)
+			}
+		})
+	}
+}
 func TestUntrustedOwnershipAndAmbiguousVersionsNeverReachDomain(t *testing.T) {
 	for _, body := range []string{`{"deliveryVersion":"3","organizationId":"other"}`, `{"DeliveryVersion":"3"}`, `{"deliveryVersion":"3","DeliveryVersion":"4"}`, `{"deliveryVersion":"3","deliveryVersion":"4"}`, `{"deliveryVersion":"03"}`, `{"deliveryVersion":3}`} {
 		s := &serviceFixture{}

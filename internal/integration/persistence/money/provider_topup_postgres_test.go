@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -43,10 +45,28 @@ func newMoneyPostgresRuntime(t *testing.T) (context.Context, *gorm.DB, *Reposito
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = pool.Close() })
-	if err := AutoMigrate(db); err != nil {
+	// Use the delivered canonical payment definition before AutoMigrate adds
+	// owner tables. The installer creates this table before the money owner;
+	// AutoMigrate-first would silently omit its business CHECK constraints.
+	schema, err := os.ReadFile("../../../../deployments/docker/referrals-compose/terraform/referral-economics-schema.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := strings.Index(string(schema), "CREATE TABLE IF NOT EXISTS public.ledger_payment_settlements (")
+	if start < 0 {
+		t.Fatal("delivered canonical payment definition missing")
+	}
+	statement, _, ok := strings.Cut(string(schema)[start:], ";")
+	if !ok {
+		t.Fatal("delivered canonical payment definition incomplete")
+	}
+	if err := db.Exec(statement).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := referralstore.Install(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	if err := AutoMigrate(db); err != nil {
 		t.Fatal(err)
 	}
 	runtimePassword := uuid.NewString()

@@ -82,8 +82,8 @@ func command(c *gin.Context, s e.Scope, kind string) (e.Command, bool) {
 		return cmd, false
 	}
 	cmd.Key = keys[0]
-	if kind != "application_submit" && kind != "listing_create" && kind != "request_create" {
-		values := c.Request.Header.Values("If-Match")
+	values := c.Request.Header.Values("If-Match")
+	if kind == "application_submit" && len(values) > 0 || kind != "application_submit" && kind != "listing_create" && kind != "request_create" {
 		if len(values) != 1 || len(values[0]) < 3 || values[0][0] != '"' || values[0][len(values[0])-1] != '"' {
 			failure(c, e.ErrInvalid)
 			return cmd, false

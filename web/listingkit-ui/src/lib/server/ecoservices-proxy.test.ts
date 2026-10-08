@@ -18,6 +18,12 @@ it("bounds original merchant resume and never exposes arbitrary channel fields o
 });
 const headers={"X-Expected-User-ID":"actor","X-Expected-Organization-ID":"org",cookie:WORKBENCH_COOKIE_NAME+"=org",Origin:"http://localhost:3000"};
 function configure(){vi.stubEnv("LISTINGKIT_SERVICE_API_BASE","http://127.0.0.1:9000/api/v1");vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL","http://localhost:3000")}
+it("forwards exact application correction versions and rejects malformed versions",async()=>{
+ configure();const application={id,companyName:"corrected",registrationNumber:"registration",categories:["COMPANY_REGISTRATION"],regions:["China"],fileIds:[id],state:"SUBMITTED",version:"3",agreementVersion:"current",agreementAccepted:false,onboardingState:"NOT_STARTED",reviewReason:"",updatedAt:"2026-10-08T00:00:00Z"};const fetch=vi.fn().mockImplementation(()=>Promise.resolve(Response.json({application})));vi.stubGlobal("fetch",fetch);const body=JSON.stringify({companyName:"corrected",registrationNumber:"registration",categories:["COMPANY_REGISTRATION"],regions:["China"],fileIds:[id]});
+ const make=(cas:string)=>new Request("http://localhost:3000/api/ecoservices/applications",{method:"POST",headers:{...headers,"Content-Type":"application/json","Idempotency-Key":id,"If-Match":cas},body});
+ expect((await proxyEcoservices(make('"2"'),"server-token","actor")).status).toBe(200);expect(new Headers(fetch.mock.calls[0][1].headers).get("If-Match")).toBe('"2"');
+ for(const cas of ['"02"','"0"','2','"9223372036854775808"'])expect((await proxyEcoservices(make(cas),"server-token","actor")).status).toBe(400);expect(fetch).toHaveBeenCalledTimes(1);
+});
 it("refuses stale scopes, arbitrary provider paths and cross-site mutations before dispatch",async()=>{
  configure();const fetch=vi.fn();vi.stubGlobal("fetch",fetch);
  for(const [path,options,status]of [["catalog?organizationId=other",{},400],["requests?page=1&page=2",{},400],["requests",{headers:{...headers,cookie:WORKBENCH_COOKIE_NAME+"=other"}},409],["provider/refund",{method:"POST"},400],["requests/"+id+"/accept",{method:"POST",headers:{...headers,Origin:"http://foreign.test"}},403]] as const){expect((await proxyEcoservices(new Request("http://localhost:3000/api/ecoservices/"+path,{headers,...options}),"server-token","actor")).status).toBe(status)}

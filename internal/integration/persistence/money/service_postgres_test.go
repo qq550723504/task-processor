@@ -4,6 +4,7 @@ package money
 
 import (
 	"errors"
+	"github.com/jackc/pgx/v5/pgconn"
 	"sync"
 	m "task-processor/internal/ledger/money"
 	"testing"
@@ -37,6 +38,26 @@ func TestServicePostgresOriginalClaimAndConcurrentRefundReservation(t *testing.T
 			first = v
 		} else if first != v {
 			t.Fatal("concurrent receipt changed")
+		}
+	}
+	// The fresh installer must admit service payments without admitting referral
+	// commission or a different payer ownership into the same canonical table.
+	for _, variant := range []string{"commission", "payer", "treatment", "binding"} {
+		invalid := paymentRowFromFact(in.Payment)
+		invalid.PaymentID += ":" + variant
+		switch variant {
+		case "commission":
+			invalid.CommissionableAmountMinor = 1
+		case "payer":
+			invalid.PayerUserID = "individual"
+		case "treatment":
+			invalid.CommissionTreatment = ""
+		case "binding":
+			invalid.PayerBinding = m.PayerUnattributedExternal
+		}
+		var pgErr *pgconn.PgError
+		if err := r.db.Create(&invalid).Error; !errors.As(err, &pgErr) || pgErr.Code != "23514" {
+			t.Fatalf("installer admitted invalid service %s: %v", variant, err)
 		}
 	}
 	if err := observer.ObservePaymentSettlement(ctx, in.Payment); err != nil {

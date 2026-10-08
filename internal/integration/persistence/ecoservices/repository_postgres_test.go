@@ -266,3 +266,49 @@ func TestEcoservicesPostgresCheckoutReplayHonorsCommittedCancellation(t *testing
 	ctx, _, repo, service := postgresFixture(t)
 	assertCheckoutReplayRejectsCommittedCancellation(t, ctx, repo, service)
 }
+
+func TestEcoservicesPostgresConcurrentRejectedApplicationCorrections(t *testing.T) {
+	ctx, _, repo, service := postgresFixture(t)
+	rejected, original, _ := correctedApplicationCommand(t, repo, service)
+	commands := []e.Command{original, original}
+	commands[1].Key = uuid.NewString()
+	results := make(chan e.Result, 2)
+	failures := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, c := range commands {
+		wg.Go(func() {
+			result, err := service.Mutate(ctx, c)
+			if err != nil {
+				failures <- err
+			} else {
+				results <- result
+			}
+		})
+	}
+	wg.Wait()
+	close(results)
+	close(failures)
+	if len(results) != 1 || len(failures) != 1 {
+		t.Fatalf("corrections both changed the original: successes=%d failures=%d", len(results), len(failures))
+	}
+	for err := range failures {
+		if !errors.Is(err, e.ErrConflict) {
+			t.Fatal(err)
+		}
+	}
+	for result := range results {
+		if result.Application.ID != rejected.ID || result.Application.Version != rejected.Version+1 {
+			t.Fatal("correction changed original identity or skipped versions", result.Application)
+		}
+	}
+	var applications, versions int64
+	if err := repo.db.Model(&applicationRow{}).Where("organization_id=?", original.Scope.OrganizationID).Count(&applications).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.db.Model(&versionRow{}).Where("id=? AND kind='APPLICATION'", rejected.ID).Count(&versions).Error; err != nil {
+		t.Fatal(err)
+	}
+	if applications != 1 || versions != 3 {
+		t.Fatalf("lost history or duplicated original: applications=%d versions=%d", applications, versions)
+	}
+}

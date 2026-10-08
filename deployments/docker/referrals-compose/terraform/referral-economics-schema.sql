@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS public.ledger_payment_settlements (
  settled_at timestamptz NOT NULL, provider_reference text NOT NULL, version bigint NOT NULL,
  CHECK(gross_amount_minor>0 AND discount_amount_minor>=0 AND discount_amount_minor<=gross_amount_minor AND commissionable_amount_minor<=gross_amount_minor-discount_amount_minor),
  CHECK((payment_purpose='' AND commission_treatment='' AND payer_binding='' AND payer_user_id<>'' AND commissionable_amount_minor>0)
- OR (payment_purpose='WALLET_TOP_UP' AND commission_treatment='NON_COMMISSIONABLE' AND payer_binding='UNATTRIBUTED_EXTERNAL' AND payer_user_id='' AND currency='CNY' AND discount_amount_minor=0 AND commissionable_amount_minor=0)));
+ OR (payment_purpose='WALLET_TOP_UP' AND commission_treatment='NON_COMMISSIONABLE' AND payer_binding='UNATTRIBUTED_EXTERNAL' AND payer_user_id='' AND currency='CNY' AND discount_amount_minor=0 AND commissionable_amount_minor=0)
+ OR (payment_purpose='SERVICE_PURCHASE' AND commission_treatment='NON_COMMISSIONABLE' AND payer_binding='ORGANIZATION_SERVICE_BUYER' AND payer_user_id='' AND currency='CNY' AND discount_amount_minor=0 AND commissionable_amount_minor=0)));
 CREATE TABLE IF NOT EXISTS public.ledger_refund_settlements (
  refund_id text PRIMARY KEY, payment_id text NOT NULL REFERENCES public.ledger_payment_settlements(payment_id),
  amount_minor bigint NOT NULL, occurred_at timestamptz NOT NULL, provider_reference text NOT NULL,

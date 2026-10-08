@@ -22,6 +22,15 @@ it("limits the reviewed original license upload to channel compatible images",as
  fireEvent.change(input,{target:{files:[new File([new Uint8Array(2*1024*1024+1)],"oversized.png",{type:"image/png"})]}});
  expect(await screen.findAllByText("每份材料不能超过2 MiB")).not.toHaveLength(0);expect(vi.mocked(ecoRequest).mock.calls.every(v=>!v[3]?.method)).toBe(true);client.clear();
 });
+it("lets a rejected provider correct the original version and returns to review",async()=>{
+ const {client,wrapper}=harness();context.permissions=["workbench.ecoservices.join"];
+ const rejected={id,companyName:"原机构",registrationNumber:"original-registration",categories:["COMPANY_REGISTRATION"],regions:["中国"],fileIds:[id],state:"REJECTED",version:"2",agreementVersion:ecoPolicy,agreementAccepted:false,onboardingState:"NOT_STARTED",reviewReason:"请更正登记号",updatedAt:"2026-10-08T00:00:00Z"};
+ let submitted=false;vi.mocked(ecoRequest).mockImplementation(async(_scope,_path,_schema,init)=>{if(init?.method){submitted=true;return {application:{...rejected,registrationNumber:"corrected-registration",state:"SUBMITTED",version:"3",reviewReason:""}}}return {applications:[submitted?{...rejected,state:"SUBMITTED",version:"3",reviewReason:""}:rejected],total:"1"}});
+ render(<EcoservicesJoin/>,{wrapper});const open=await screen.findByRole("button",{name:"修正资料并重新提交 →"});expect(open).toBeEnabled();fireEvent.click(open);
+ expect(screen.getByLabelText("机构法定名称")).toHaveValue("原机构");fireEvent.change(screen.getByLabelText("统一社会信用代码或登记号"),{target:{value:"corrected-registration"}});fireEvent.click(screen.getByRole("button",{name:"提交更正版本"}));
+ await waitFor(()=>expect(vi.mocked(ecoRequest).mock.calls.some(v=>v[3]?.method==="POST")).toBe(true));const sent=vi.mocked(ecoRequest).mock.calls.find(v=>v[3]?.method==="POST")!;expect(sent[1]).toBe("applications");expect(new Headers(sent[3]!.headers).get("If-Match")).toBe('"2"');expect(JSON.parse(sent[3]!.body as string)).toMatchObject({registrationNumber:"corrected-registration",fileIds:[id]});
+ await waitFor(()=>expect(screen.queryByRole("button",{name:"提交更正版本"})).not.toBeInTheDocument());expect(screen.getByRole("button",{name:"提交机构入驻申请 →"})).toBeDisabled();client.clear();
+});
 it("shows the durable rejection reason to the correcting provider",async()=>{
  const {client,wrapper}=harness(),r=request();context.permissions=["workbench.ecoservices.manage"];
  const corrected={...r,state:"SERVICING",side:"provider",delivery:{...r.delivery!,rejection:{deliveryVersion:"1",reason:"缺少注册证明",actorId:"buyer-user",rejectedAt:"2026-10-08T01:00:00Z"}}};

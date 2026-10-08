@@ -236,22 +236,35 @@ func (r *Repository) Apply(ctx context.Context, c e.Command, freezeDays int) (e.
 		var payload []byte
 		switch c.Kind {
 		case "application_submit":
-			var count int64
-			if err := tx.Model(&applicationRow{}).Where("organization_id=?", c.Scope.OrganizationID).Count(&count).Error; err != nil {
-				return err
-			}
-			if count != 0 {
-				return e.ErrConflict
+			var previous applicationRow
+			readErr := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id=?", c.Scope.OrganizationID).Take(&previous).Error
+			correction := readErr == nil
+			if readErr != nil && !errors.Is(readErr, gorm.ErrRecordNotFound) {
+				return readErr
 			}
 			app := *c.Application
 			app.ID = id
+			app.Version = 1
+			if correction {
+				old, err := applicationFact(previous)
+				if err != nil {
+					return err
+				}
+				if old.State != "REJECTED" || old.Version != c.Version || old.MerchantID != "" || old.OnboardingState != "NOT_STARTED" {
+					return e.ErrConflict
+				}
+				app.ID = old.ID
+				app.Version = old.Version + 1
+			} else if c.Version != 0 {
+				return e.ErrConflict
+			}
 			app.OrganizationID = c.Scope.OrganizationID
 			app.State = "SUBMITTED"
-			app.Version = 1
 			app.AgreementVersion = e.PolicyVersion
 			app.AgreementAccepted = false
 			app.MerchantID = ""
 			app.OnboardingState = "NOT_STARTED"
+			app.ReviewReason = ""
 			app.UpdatedAt = now
 			if err := requireMerchantEvidence(tx, app.FileIDs, c.Scope.OrganizationID); err != nil {
 				return err
@@ -259,8 +272,14 @@ func (r *Repository) Apply(ctx context.Context, c e.Command, freezeDays int) (e.
 			if err := attachFiles(tx, app.FileIDs, c.Scope.OrganizationID, "APPLICATION", app.ID); err != nil {
 				return err
 			}
-			if err := tx.Create(applicationRecord(app)).Error; err != nil {
-				return err
+			var saveErr error
+			if correction {
+				saveErr = tx.Save(applicationRecord(app)).Error
+			} else {
+				saveErr = tx.Create(applicationRecord(app)).Error
+			}
+			if saveErr != nil {
+				return saveErr
 			}
 			out.Application = &app
 			versionKind = "APPLICATION"
