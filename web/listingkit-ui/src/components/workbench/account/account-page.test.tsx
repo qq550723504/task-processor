@@ -19,6 +19,17 @@ function mount(page: "profile" | "profile-settings" | "profile-business" | "prof
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()); vi.unstubAllGlobals(); state.context = { user: { id: "u1" }, homeOrganizationId: "A", effectiveOrganization: { id: "B", name: "企业乙", roles: ["viewer"], permissions: [] }, roles: ["viewer"], permissions: [], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null }; });
 describe("AccountPage read-only projection", () => {
+  it("clears enterprise read projections when permissions change without changing the native role", async () => {
+    state.context.permissions = ["workbench.store.read"] as never[];
+    const fetcher = vi.fn().mockResolvedValue(Response.json(organization));
+    vi.stubGlobal("fetch", fetcher);
+    const view = mount("organization");
+    await screen.findByRole("heading", { name: "企业乙" });
+    fetcher.mockReturnValue(new Promise(() => {}));
+    state.context.permissions = [];
+    view.update();
+    expect(screen.queryByRole("heading", { name: "企业乙" })).not.toBeInTheDocument();
+  });
   it("shows all three entry cards without turning links into management authority", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
     expect(await screen.findByRole("link", { name: "管理成员" })).toHaveAttribute("href", "/workbench/account/organization/members");

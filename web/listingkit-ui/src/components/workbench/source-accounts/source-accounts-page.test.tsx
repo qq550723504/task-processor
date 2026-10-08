@@ -58,24 +58,26 @@ it("removes management when the same identity and organization capability is rev
   expect(screen.queryByRole("button", { name: "禁用源账号" })).not.toBeInTheDocument();
 });
 
-it("invalidates old read facts when roles change with management capability remaining false", async () => {
+it.each([true, false])("invalidates old read facts with management remaining false, role changed=%s", async (roleChanged) => {
   state.context.roles = ["listingkit_viewer"]; state.context.permissions = ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"];
   state.context.effectiveOrganization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": false } };
   const view = render(tree()); await openDetail();
   state.list.mockReturnValue(new Promise(() => {}));
-  state.context.roles = ["ordinary-custom-grant"]; state.context.permissions = [];
+  if (roleChanged) state.context.roles = ["ordinary-custom-grant"];
+  state.context.permissions = [];
   view.rerender(tree());
   expect(screen.queryByText("企业乙源账号")).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "源账号详情" })).not.toBeInTheDocument();
 });
 
-it("rejects a late read from roles that lost read access while manage remains false", async () => {
+it.each([true, false])("rejects a late revoked read while manage remains false, role changed=%s", async (roleChanged) => {
   let finish!: (value: unknown) => void;
   state.context.roles = ["listingkit_viewer"]; state.context.permissions = ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"];
   state.context.effectiveOrganization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": false } };
   state.list.mockReturnValueOnce(new Promise(resolve => { finish = resolve; })).mockRejectedValue(failure("PERMISSION_DENIED"));
   const view = render(tree()); await waitFor(() => expect(state.list).toHaveBeenCalledTimes(1));
-  state.context.roles = ["ordinary-custom-grant"]; state.context.permissions = []; view.rerender(tree());
+  if (roleChanged) state.context.roles = ["ordinary-custom-grant"];
+  state.context.permissions = []; view.rerender(tree());
   await act(async () => finish({ schemaVersion: 1, items: [account], nextCursor: null }));
   expect(screen.queryByText("企业乙源账号")).not.toBeInTheDocument();
   expect(await screen.findByRole("alert")).toHaveTextContent("无操作权限");

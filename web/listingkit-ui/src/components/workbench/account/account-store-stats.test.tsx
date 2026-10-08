@@ -17,7 +17,7 @@ afterEach(() => {
 function mount() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   clients.push(client);
-  return render(<QueryClientProvider client={client}><OrganizationView data={organization} /></QueryClientProvider>);
+  return render(<QueryClientProvider client={client}><OrganizationView data={organization} scope="test-scope" /></QueryClientProvider>);
 }
 function unavailable() {
   return Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 });

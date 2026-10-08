@@ -52,7 +52,7 @@ export function BusinessTaskPage({ mode = "all", taskId, productReviewAvailable 
   const context = useWorkbenchContext();
   const scope = context.user && context.effectiveOrganization && !context.selectionRequired && !context.isSwitching && !context.error && !context.blockingError
     ? { userId: context.user.id, organizationId: context.effectiveOrganization.id } : null;
-  const authorizationKey = context.roles.join(",");
+  const authorizationKey = JSON.stringify([context.roles, context.permissions]);
   const canUseChat = context.effectiveOrganization?.capabilities?.["workbench.chat.use"] === true && context.aiWorkbenchPlanningReadiness === "AVAILABLE";
   const path = taskId ? "/workbench/ai/tasks" : filters.find(item => item.mode === mode)?.href ?? "/workbench/ai/tasks";
   return <ConsolePage title={taskId ? "任务详情" : "任务中心"} breadcrumbs={findConsoleRoute(path)?.trail}

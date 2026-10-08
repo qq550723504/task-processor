@@ -23,6 +23,14 @@ function mount() {
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); state.context = { user: { id: "u1" }, effectiveOrganization: { id: "B" }, roles: ["listingkit_viewer"], permissions: ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null }; });
 describe("audit page", () => {
+  it("drops old audit facts when permissions change without changing the native role", async () => {
+    stubAuditList(vi.fn().mockResolvedValueOnce(Response.json({ ...empty, items: [event] })).mockReturnValue(new Promise(() => {})));
+    const view = mount();
+    expect(await screen.findByText("operator-B")).toBeVisible();
+    state.context.permissions = [];
+    view.update();
+    expect(screen.queryByText("operator-B")).not.toBeInTheDocument();
+  });
   it("starts at thirty days and applies content, all-time and historical target ID to the full query", async () => {
     const calls: string[] = [];
     stubAuditList(async url => { calls.push(url); return Response.json(empty); });

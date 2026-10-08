@@ -37,6 +37,25 @@ it("shows freshly projected Knowledge and removes protected text after refresh",
   client.clear();
 });
 
+it("clears loaded tasks when permissions change without changing the native role", async () => {
+  const taskId = "550e8400-e29b-41d4-a716-446655440000";
+  const original = fixture.context.permissions;
+  fixture.context.roles = ["sumi_role_0123456789abcdef0123456789abcdef_01"];
+  fixture.context.permissions = ["workbench.task.read"];
+  let reads = 0;
+  fixture.request.mockImplementation(() => ++reads === 1 ? Promise.resolve({ tasks: [{ id: taskId, conversationId: taskId, proposalId: taskId, title: "已授权任务", goalSummary: "原任务内容", createdAt: "2026-10-03T00:00:00Z", projectionAvailable: true, state: "COMPLETED", canStart: false, canReconcile: false, canResume: false, canReview: false, productDetailsAvailable: false }], next: "" }) : new Promise(() => {}));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const tree = () => <QueryClientProvider client={client}><BusinessTaskPage /></QueryClientProvider>;
+  const view = render(tree());
+  try {
+    await screen.findByText("已授权任务");
+    fixture.context.permissions = [];
+    view.rerender(tree());
+    await waitFor(() => expect(screen.queryByText("已授权任务")).not.toBeInTheDocument());
+    expect(reads).toBe(2);
+  } finally { fixture.context.permissions = original; fixture.context.roles = ["listingkit_operator"]; client.clear(); }
+});
+
 it("keeps the exact Task action key after an unknown response and page reload", async () => {
   const taskId = "550e8400-e29b-41d4-a716-446655440000";
   const item = { id: taskId, conversationId: taskId, proposalId: taskId, title: "标题任务", goalSummary: "优化标题",

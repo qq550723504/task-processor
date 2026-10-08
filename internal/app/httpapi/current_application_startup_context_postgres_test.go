@@ -176,7 +176,7 @@ func TestCurrentApplicationStartupSchemaContextPostgres(t *testing.T) {
 		db := open("source_account_runtime", nil)
 		startup, cancel := context.WithCancel(ctx)
 		defer cancel()
-		module, err := defaultCurrentApplicationFactories(startup).buildSourceAccount(db, authz.DefaultListingKitAuthorizer())
+		module, err := defaultCurrentApplicationFactories(startup).buildSourceAccount(db, currentRoleTestAuthorizer())
 		require.NoError(t, err)
 		cancel()
 		registry := kernelmodule.NewRegistry()
@@ -185,7 +185,7 @@ func TestCurrentApplicationStartupSchemaContextPostgres(t *testing.T) {
 		for _, route := range registry.Routes() {
 			router.Handle(route.Method, route.Path, route.Handler)
 		}
-		identity := authidentity.AuthenticatedIdentity{UserID: "fixture", HomeOrganizationID: "home-A", TenantID: "org-B", EffectiveOrganizationID: "org-B", Roles: []string{"listingkit_operator"}, TokenExpiresAt: time.Now().Add(time.Hour)}
+		identity := authidentity.AuthenticatedIdentity{UserID: "fixture", HomeOrganizationID: "home-A", TenantID: "org-B", EffectiveOrganizationID: "org-B", Roles: []string{authz.EnterpriseRoleKey("org-B", 2)}, TokenExpiresAt: time.Now().Add(time.Hour)}
 		request := httptest.NewRequest(http.MethodGet, "/api/v1/workbench/source-accounts", nil).WithContext(authidentity.WithAuthenticatedIdentity(ctx, identity))
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, request)
@@ -211,7 +211,7 @@ func TestCurrentApplicationStartupSchemaContextPostgres(t *testing.T) {
 		defer cancel()
 		done := make(chan error, 1)
 		go func() {
-			_, err := defaultCurrentApplicationFactories(parent).buildSourceAccount(db, authz.DefaultListingKitAuthorizer())
+			_, err := defaultCurrentApplicationFactories(parent).buildSourceAccount(db, currentRoleTestAuthorizer())
 			done <- err
 		}()
 		select {

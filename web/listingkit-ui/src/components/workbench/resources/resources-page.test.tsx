@@ -64,11 +64,12 @@ it.each(["PERMISSION_DENIED", "DEPENDENCY_UNAVAILABLE", "AUTHENTICATION_REQUIRED
   expect(screen.getByRole("link", { name: "管理源账号" })).toBeVisible();
 });
 
-it.each(["organization", "actor", "roles", "switching", "logout", "revoke"])("clears facts immediately on %s", async kind => {
+it.each(["organization", "actor", "roles", "permissions", "switching", "logout", "revoke"])("clears facts immediately on %s", async kind => {
   const view = render(tree()); await screen.findByText("基础方案");
   state.read.mockReturnValue(new Promise(() => {}));
   if (kind === "organization") state.context.effectiveOrganization = { id: "org-C", name: "企业丙" };
   if (kind === "actor") state.context.user = { id: "other" };
+  if (kind === "permissions") state.context.permissions = [];
   if (kind === "roles") state.context.roles = ["listingkit_viewer"]; state.context.permissions = ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"];
   if (kind === "switching") state.context.isSwitching = true;
   if (kind === "logout") state.context.user = null;

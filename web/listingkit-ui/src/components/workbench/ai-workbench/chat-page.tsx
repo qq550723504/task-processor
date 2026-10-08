@@ -40,7 +40,7 @@ export function ChatPage({ mode, conversationId }: { mode: ChatMode | "detail"; 
   const planningReadiness = context.aiWorkbenchPlanningReadiness;
   const titleReadiness = context.aiWorkbenchTitleReadiness;
   const canPlan = canUse && planningReadiness === "AVAILABLE";
-  const authorizationKey = `${context.roles.join(",")}:${canUse}:${planningReadiness}:${titleReadiness}`;
+  const authorizationKey = `${JSON.stringify([context.roles, context.permissions])}:${canUse}:${planningReadiness}:${titleReadiness}`;
   const title = mode === "home" ? "硕米Chat" : mode === "new" ? "新建会话" : mode === "recent" ? "最近会话" : mode === "saved" ? "收藏会话" : mode === "archived" ? "归档会话" : "业务会话";
   return <ConsolePage className="console-chat" title={title} breadcrumbs={route?.trail}
     description="围绕已保存商品讨论标题建议；方案需要确认后才会执行，结果仍须人工审核应用。">

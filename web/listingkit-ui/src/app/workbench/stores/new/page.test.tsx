@@ -23,6 +23,14 @@ describe("NewWorkbenchStorePage", () => {
     context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [], permissions: [] };
   });
 
+  it.each(["listingkit_admin", "sumi_role_0123456789abcdef0123456789abcdef_01"])("mounts the form for projected create permission with native role %s", (role) => {
+    context.roles = [role];
+    context.permissions = ["workbench.store.create"];
+    render(<NewWorkbenchStorePage />);
+    expect(screen.getByRole("form")).toHaveTextContent("新建店铺表单");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("does not mount the create form for an organization without create role", () => {
     context.roles = ["listingkit_viewer"]; context.permissions = ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"];
     render(<NewWorkbenchStorePage />);

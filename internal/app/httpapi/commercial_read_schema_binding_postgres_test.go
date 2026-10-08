@@ -66,7 +66,7 @@ func TestCommercialReadVerifiedPublicSchemaPostgres(t *testing.T) {
 	db := open()
 	build := func(t *testing.T, pool *gorm.DB) http.Handler {
 		t.Helper()
-		module, err := buildCommercialReadModuleFromDatabase(ctx, pool, authz.DefaultListingKitAuthorizer())
+		module, err := buildCommercialReadModuleFromDatabase(ctx, pool, currentRoleTestAuthorizer())
 		require.NoError(t, err, "actual public preflight must pass before returning the commercial module")
 		registry := kernelmodule.NewRegistry()
 		require.NoError(t, module.Register(registry))
@@ -76,7 +76,7 @@ func TestCommercialReadVerifiedPublicSchemaPostgres(t *testing.T) {
 		return router
 	}
 	read := func(handler http.Handler, requestContext context.Context) *httptest.ResponseRecorder {
-		identity := authidentity.AuthenticatedIdentity{UserID: "fixture", HomeOrganizationID: "home-A", TenantID: "org-B", EffectiveOrganizationID: "org-B", Roles: []string{"listingkit_operator"}, TokenExpiresAt: time.Now().Add(time.Hour)}
+		identity := authidentity.AuthenticatedIdentity{UserID: "fixture", HomeOrganizationID: "home-A", TenantID: "org-B", EffectiveOrganizationID: "org-B", Roles: []string{authz.EnterpriseRoleKey("org-B", 1)}, TokenExpiresAt: time.Now().Add(time.Hour)}
 		request := httptest.NewRequest(http.MethodGet, "/api/v1/workbench/commercial/overview", nil).WithContext(authidentity.WithAuthenticatedIdentity(requestContext, identity))
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
@@ -177,7 +177,7 @@ func TestCommercialReadVerifiedPublicSchemaPostgres(t *testing.T) {
 						require.NoError(t, owner.Exec(`ALTER TABLE public.`+table+`_unavailable RENAME TO `+table).Error)
 					}()
 				}
-				module, err := buildCommercialReadModuleFromDatabase(ctx, db, authz.DefaultListingKitAuthorizer())
+				module, err := buildCommercialReadModuleFromDatabase(ctx, db, currentRoleTestAuthorizer())
 				require.Error(t, err)
 				require.Nil(t, module, "must reject before serving, no shadow fallback")
 				response := read(handler, ctx) // Previously built reader also fails closed.

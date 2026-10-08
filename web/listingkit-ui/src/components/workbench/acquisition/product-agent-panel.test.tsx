@@ -132,16 +132,17 @@ it("restores the original normalized Start after refresh and explicitly retries 
 it.each(["other actor","other org","invalid selection"])("does not restore Start intent from another scope or malformed URL: %s",variant=>{
  fixture.params=new URLSearchParams({agent_key:op,agent_platform:"shein",agent_actor:variant==="other actor"?"other":"actor",agent_org:variant==="other org"?"other":"org",agent_knowledge_base:variant==="invalid selection"?"invalid":op});render(<ProductAgentPanel {...props}/>);expect(screen.queryByText("使用原请求核实启动")).toBeNull();expect(screen.getByText("读取当前结果")).toBeInTheDocument();expect(fixture.request).not.toHaveBeenCalled();
 });
-it.each([false,true])("hides protected results after same-org role downgrade including late response=%s without losing key",async(late)=>{
+it.each([false,true])("hides protected results after same-role permission downgrade including late response=%s without losing key",async(late)=>{
+ const original=fixture.context.permissions;
  const response={runId:op,requestKey:op,operationId:op,productKey:"product",catalogVersion:"1",targetPlatform:"shein",phase:"human_review_required",revision:"2",canSubmitReview:true,candidate:{Changes:[]},confidence:[],unresolved:[],steps:[],tokens:30,estimatedCostMicros:20,currency:"CNY",usageStatus:"observed",knowledge:{status:"available",originAgentRunId:op,citations:[{id:op,sourceId:op,revisionId:op,name:"Protected company guide",location:"text",excerpt:"Private wording",state:"AVAILABLE"}]}};
  let resolve!:(value:typeof response)=>void;fixture.request.mockImplementation(()=>new Promise(r=>{resolve=r}));
  const view=render(<ProductAgentPanel {...props}/>);fireEvent.change(screen.getByLabelText("素材查询平台"),{target:{value:"shein"}});fireEvent.click(screen.getByText("生成标题建议"));fireEvent.click(screen.getByText("确认生成"));
  const key=fixture.request.mock.calls[0][2];
  if(!late){resolve(response);await screen.findByText("Protected company guide · 可读")}
- fixture.context.roles=["listingkit_viewer"];view.rerender(<ProductAgentPanel {...props}/>);
+ fixture.context.permissions=original.filter(permission=>permission!=="workbench.knowledge.read");view.rerender(<ProductAgentPanel {...props}/>);
  if(late)resolve(response);
  await screen.findByText(/知识当前不可用/);expect(screen.queryByText("Protected company guide · 可读")).toBeNull();expect(screen.queryByText("Private wording")).toBeNull();expect(new URL(window.location.href).searchParams.get("agent_key")).toBe(key);
- fixture.context.roles=["listingkit_operator"];view.rerender(<ProductAgentPanel {...props}/>);expect(screen.queryByText("Protected company guide · 可读")).toBeNull();expect(fixture.request).toHaveBeenCalledTimes(1);
+ fixture.context.permissions=original;view.rerender(<ProductAgentPanel {...props}/>);expect(screen.queryByText("Protected company guide · 可读")).toBeNull();expect(fixture.request).toHaveBeenCalledTimes(1);
 });
 it("cannot revive an old protected response after downgrade and regrant before completion",async()=>{
  const response={runId:op,requestKey:op,operationId:op,productKey:"product",catalogVersion:"1",targetPlatform:"shein",phase:"human_review_required",revision:"2",canSubmitReview:true,candidate:{Changes:[]},confidence:[],unresolved:[],steps:[],tokens:30,estimatedCostMicros:20,currency:"CNY",usageStatus:"observed",knowledge:{status:"available",originAgentRunId:op,citations:[{id:op,sourceId:op,revisionId:op,name:"Old protected guide",location:"text",excerpt:"Old protected excerpt",state:"AVAILABLE"}]}};

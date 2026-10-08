@@ -370,7 +370,8 @@ it("reuses the confirmation key after a lost response and links to the committed
   expect(fixture.push).toHaveBeenCalledWith(`/workbench/ai/tasks/${taskId}`);
 });
 
-it("does not show a cached conversation when the current role set changes", async () => {
+it.each([true, false])("does not show a cached conversation after authorization changes, native role changes=%s", async (roleChanged) => {
+  fixture.context.roles = ["sumi_role_0123456789abcdef0123456789abcdef_01"];
   let reads = 0;
   fixture.request.mockImplementation(async ({ route }) => {
     if (route !== "conversation-read") throw new AIWorkbenchError("INVALID_REQUEST");
@@ -381,7 +382,8 @@ it("does not show a cached conversation when the current role set changes", asyn
   });
   const view = render(tree());
   await screen.findByText("之前有权查看的内容");
-  fixture.context.roles = ["listingkit_viewer"]; fixture.context.permissions = ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"];
+  if (roleChanged) fixture.context.roles = ["sumi_role_0123456789abcdef0123456789abcdef_02"];
+  fixture.context.permissions = fixture.context.permissions.filter(permission => permission !== "workbench.chat.read");
   view.rerender(tree());
   await screen.findByText("正在读取会话");
   expect(screen.queryByText("之前有权查看的内容")).toBeNull();
