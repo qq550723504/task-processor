@@ -406,7 +406,7 @@ func servicePurchaseFixture(t *testing.T) (*billing.ServicePurchases, *Repositor
 	if err != nil {
 		t.Fatal(err)
 	}
-	src := &serviceSourceFixture{original: billing.ServicePurchaseCommand{ID: "create-proof", RequestID: "original-request", OrderID: "original-service-order", Kind: "CREATE_PURCHASE", SourceProofID: "create-proof", ActorID: "buyer-member", BuyerOrganizationID: "buyer-org", ProviderOrganizationID: "provider-org", ProviderMerchantID: "sub-merchant", QuoteVersion: 1, AmountMinor: 101, DeliveryDays: 7, PolicyVersion: "eco-10-platform-fee-ar1"}}
+	src := &serviceSourceFixture{original: billing.ServicePurchaseCommand{Allocation: money.ServiceAllocationPolicy{CommissionBPS: 1000, Basis: money.ServiceAllocationCumulativeNetFloorV1}, ID: "create-proof", RequestID: "original-request", OrderID: "original-service-order", Kind: "CREATE_PURCHASE", SourceProofID: "create-proof", ActorID: "buyer-member", BuyerOrganizationID: "buyer-org", ProviderOrganizationID: "provider-org", ProviderMerchantID: "sub-merchant", QuoteVersion: 1, AmountMinor: 101, DeliveryDays: 7, PolicyVersion: "eco-10-platform-fee-ar1"}}
 	p := &serviceProviderFixture{profile: billing.ServiceMerchantProfile{Version: "original-profile", Environment: "PRODUCTION", PlatformMerchantID: "platform-merchant", AppID: "platform-app", FreezeDays: 180}, enabled: true, dispatched: map[string]int{}, effects: map[string]billing.ServiceOperationObservation{}}
 	svc, err := billing.NewServicePurchases(r, funds, p, src, serviceProtectionFixture{})
 	if err != nil {

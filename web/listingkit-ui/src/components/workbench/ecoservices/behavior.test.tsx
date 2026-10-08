@@ -2,7 +2,7 @@ import {act,cleanup,fireEvent,render,renderHook,screen,waitFor} from "@testing-l
 import {QueryClient,QueryClientProvider} from "@tanstack/react-query";
 import {afterEach,expect,it,vi} from "vitest";
 import type {ReactNode} from "react";
-import {ecoRequest,EcoservicesError,type EcoRequest} from "@/lib/api/ecoservices";
+import {ecoPolicy,ecoRequest,EcoservicesError,type EcoRequest} from "@/lib/api/ecoservices";
 import {RequestDetail} from "./request-detail";
 import {EcoservicesJoin} from "./join";
 import {useEcoCommands} from "./shared";
@@ -13,7 +13,7 @@ vi.mock("@/components/workbench/resources/resource-dialog",()=>({ResourceDialog:
 vi.mock("@/lib/api/ecoservices",async original=>({...await original<typeof import("@/lib/api/ecoservices")>(),ecoRequest:vi.fn()}));
 afterEach(()=>{cleanup();vi.clearAllMocks();context.isSwitching=false;context.permissions=["workbench.ecoservices.purchase"]});
 const scope={userId:"actor",organizationId:"org"},id="4841d296-ef14-4c16-8d25-a7667e534feb";
-function request():EcoRequest{return {id,listingId:id,listingVersion:"1",title:"原服务",category:"STORE_OPENING",description:"原需求",fileIds:[],state:"AWAITING_ACCEPTANCE",version:"8",quote:{amountMinor:"10000",scope:"交付店铺",acceptanceCriteria:"可登录",deliveryDays:7,version:"1"},delivery:{content:"原交付",fileIds:[],version:"1",submittedAt:"2026-10-08T00:00:00Z"},acceptedDeliveryVersion:"0",financialHold:false,financialState:"PAID",financialReason:"",createdAt:"2026-10-08T00:00:00Z",updatedAt:"2026-10-08T00:00:00Z",side:"buyer"}}
+function request():EcoRequest{return {id,listingId:id,listingVersion:"1",title:"原服务",category:"STORE_OPENING",description:"原需求",fileIds:[],state:"AWAITING_ACCEPTANCE",version:"8",quote:{commissionBps:1000,allocationBasis:"CUMULATIVE_NET_FLOOR_V1",policyVersion:ecoPolicy,amountMinor:"10000",scope:"交付店铺",acceptanceCriteria:"可登录",deliveryDays:7,version:"1"},delivery:{content:"原交付",fileIds:[],version:"1",submittedAt:"2026-10-08T00:00:00Z"},acceptedDeliveryVersion:"0",financialHold:false,financialState:"PAID",financialReason:"",createdAt:"2026-10-08T00:00:00Z",updatedAt:"2026-10-08T00:00:00Z",side:"buyer"}}
 function harness(){const client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});const wrapper=({children}:{children:ReactNode})=><QueryClientProvider client={client}>{children}</QueryClientProvider>;return {client,wrapper}}
 it("limits the reviewed original license upload to channel compatible images",async()=>{
  const {client,wrapper}=harness();context.permissions=["workbench.ecoservices.join"];vi.mocked(ecoRequest).mockResolvedValue({total:"0"});render(<EcoservicesJoin/>,{wrapper});

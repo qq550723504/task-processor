@@ -5,6 +5,7 @@ import (
 	"context"
 	"task-processor/internal/commercial/billing"
 	e "task-processor/internal/ecoservices"
+	"task-processor/internal/ledger/money"
 )
 
 type CheckoutAuthorizer interface {
@@ -16,7 +17,7 @@ type Source struct {
 }
 
 func command(in e.FinancialCommand) billing.ServicePurchaseCommand {
-	return billing.ServicePurchaseCommand{ID: in.ID, RequestID: in.RequestID, OrderID: in.OrderID, Kind: in.Kind, SourceProofID: in.SourceProofID, ActorID: in.ActorID, BuyerOrganizationID: in.BuyerOrganizationID, ProviderOrganizationID: in.ProviderOrganizationID, ProviderMerchantID: in.MerchantID, QuoteVersion: in.Quote.Version, AmountMinor: in.AmountMinor, DeliveryDays: in.Quote.DeliveryDays, PolicyVersion: in.PolicyVersion}
+	return billing.ServicePurchaseCommand{Allocation: money.ServiceAllocationPolicy{CommissionBPS: in.Quote.CommissionBPS, Basis: in.Quote.AllocationBasis}, ID: in.ID, RequestID: in.RequestID, OrderID: in.OrderID, Kind: in.Kind, SourceProofID: in.SourceProofID, ActorID: in.ActorID, BuyerOrganizationID: in.BuyerOrganizationID, ProviderOrganizationID: in.ProviderOrganizationID, ProviderMerchantID: in.MerchantID, QuoteVersion: in.Quote.Version, AmountMinor: in.AmountMinor, DeliveryDays: in.Quote.DeliveryDays, PolicyVersion: in.PolicyVersion}
 }
 func (s Source) OriginalServicePurchase(ctx context.Context, order string) (billing.ServicePurchaseCommand, error) {
 	in, err := s.Repository.OriginalFinancialCommand(ctx, order)

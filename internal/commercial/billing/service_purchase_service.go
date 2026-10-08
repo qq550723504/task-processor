@@ -16,7 +16,7 @@ func (s *ServicePurchases) original(ctx context.Context, c ServicePurchaseComman
 	if err != nil {
 		return ServicePurchaseOrder{}, err
 	}
-	if original.Validate() != nil || original.Kind != "CREATE_PURCHASE" || original.OrderID != c.OrderID || original.RequestID != c.RequestID || original.BuyerOrganizationID != c.BuyerOrganizationID || original.ProviderOrganizationID != c.ProviderOrganizationID || original.ProviderMerchantID != c.ProviderMerchantID || original.PolicyVersion != c.PolicyVersion || original.QuoteVersion != c.QuoteVersion || original.DeliveryDays != c.DeliveryDays || c.Kind != "REFUND" && c.AmountMinor != original.AmountMinor || c.Kind == "REFUND" && c.AmountMinor > original.AmountMinor {
+	if original.Validate() != nil || original.Kind != "CREATE_PURCHASE" || original.OrderID != c.OrderID || original.RequestID != c.RequestID || original.BuyerOrganizationID != c.BuyerOrganizationID || original.ProviderOrganizationID != c.ProviderOrganizationID || original.ProviderMerchantID != c.ProviderMerchantID || original.PolicyVersion != c.PolicyVersion || original.Allocation != c.Allocation || original.QuoteVersion != c.QuoteVersion || original.DeliveryDays != c.DeliveryDays || c.Kind != "REFUND" && c.AmountMinor != original.AmountMinor || c.Kind == "REFUND" && c.AmountMinor > original.AmountMinor {
 		return ServicePurchaseOrder{}, ErrConflict
 	}
 	if c.Kind == "CREATE_PURCHASE" && original.Fingerprint() != c.Fingerprint() {

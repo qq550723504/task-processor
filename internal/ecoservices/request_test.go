@@ -7,7 +7,7 @@ import (
 )
 
 func serviceRequest() Request {
-	return Request{ID: "request", BuyerOrganizationID: "buyer", ProviderOrganizationID: "provider", State: "PAID_READY", Version: 1, OrderID: "order", PaymentReceiptID: "verified-payment", Quote: &Quote{AmountMinor: 101, Version: 1, Scope: "service scope", AcceptanceCriteria: "deliver registered company", DeliveryDays: 3}}
+	return Request{ID: "request", BuyerOrganizationID: "buyer", ProviderOrganizationID: "provider", State: "PAID_READY", Version: 1, OrderID: "order", PaymentReceiptID: "verified-payment", Quote: &Quote{CommissionBPS: 1000, AllocationBasis: "CUMULATIVE_NET_FLOOR_V1", PolicyVersion: PolicyVersion, AmountMinor: 101, Version: 1, Scope: "service scope", AcceptanceCriteria: "deliver registered company", DeliveryDays: 3}}
 }
 func TestStartCancelAndExactCustomerAcceptance(t *testing.T) {
 	r := serviceRequest()

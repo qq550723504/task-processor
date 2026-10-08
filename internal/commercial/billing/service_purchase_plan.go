@@ -14,6 +14,9 @@ func serviceOperationRequestID(o ServicePurchaseOrder, c ServicePurchaseCommand,
 }
 
 func nextServiceOperation(o ServicePurchaseOrder, c ServicePurchaseCommand, f money.ServiceFundsView) (*ServiceFinancialOperation, error) {
+	if f.Allocation.Validate() != nil || f.Allocation != o.Source.Allocation || c.Allocation != o.Source.Allocation {
+		return nil, ErrConflict
+	}
 	if f.ReconciliationReason != "" {
 		return nil, ErrReconciliationRequired
 	}
@@ -45,7 +48,7 @@ func nextServiceOperation(o ServicePurchaseOrder, c ServicePurchaseCommand, f mo
 		if c.AmountMinor > f.GrossMinor-f.RefundedMinor-f.ChargedBackMinor {
 			return nil, ErrInvalid
 		}
-		p, _, err := money.ServiceAllocation(f.GrossMinor, f.RefundedMinor+f.ChargedBackMinor+c.AmountMinor)
+		p, _, err := money.ServiceAllocation(f.GrossMinor, f.RefundedMinor+f.ChargedBackMinor+c.AmountMinor, f.Allocation)
 		if err != nil {
 			return nil, ErrInvalid
 		}

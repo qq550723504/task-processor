@@ -11,7 +11,7 @@ import (
 func wechatServiceFixture() (WeChat, billing.ServicePurchaseOrder, billing.ServiceFinancialOperation) {
 	profile := billing.ServiceMerchantProfile{Version: "profile", Environment: "PRODUCTION", PlatformMerchantID: "platform", AppID: "app", FreezeDays: 180}
 	p := WeChat{config: WeChatConfig{Profile: profile, PublicKeyID: "PUB_KEY_ID_fixture"}, now: time.Now}
-	o := billing.ServicePurchaseOrder{Source: billing.ServicePurchaseCommand{OrderID: "service-order", ProviderMerchantID: "sub", AmountMinor: 100}, Profile: profile, TradeNo: "original-trade", Payment: &billing.ServicePaymentObservation{TransactionID: "transaction"}}
+	o := billing.ServicePurchaseOrder{Source: billing.ServicePurchaseCommand{Allocation: money.ServiceAllocationPolicy{CommissionBPS: 1000, Basis: money.ServiceAllocationCumulativeNetFloorV1}, OrderID: "service-order", ProviderMerchantID: "sub", AmountMinor: 100}, Profile: profile, TradeNo: "original-trade", Payment: &billing.ServicePaymentObservation{TransactionID: "transaction"}}
 	op := billing.ServiceFinancialOperation{Reservation: money.ServiceOperation{OrderID: "service-order", OperationID: "share-op", Kind: money.ServiceShare, AmountMinor: 10}, ProviderRequestID: "share-request"}
 	return p, o, op
 }

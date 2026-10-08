@@ -244,15 +244,30 @@ func (r *Repository) ReadServicePayment(ctx context.Context, in m.ServicePayment
 	err := decodeServiceReceipt(row.Receipt, &out)
 	return out, err
 }
-func serviceFunds(row servicePaymentRow) m.ServiceFundsView {
+func serviceAllocationPolicy(row servicePaymentRow) (m.ServiceAllocationPolicy, error) {
+	var in m.ServicePaymentInput
+	if json.Unmarshal(row.Input, &in) != nil || in.Validate() != nil || in.Fingerprint() != row.Fingerprint || in.OrderID != row.OrderID || in.Payment.GrossAmountMinor != row.GrossMinor {
+		return m.ServiceAllocationPolicy{}, m.ErrConflict
+	}
+	return in.Allocation, nil
+}
+
+func serviceFunds(row servicePaymentRow) (m.ServiceFundsView, error) {
+	policy, err := serviceAllocationPolicy(row)
+	if err != nil {
+		return m.ServiceFundsView{}, err
+	}
 	reversed := row.RefundedMinor
 	if row.ChargedBackMinor > row.GrossMinor-reversed {
 		reversed = row.GrossMinor
 	} else {
 		reversed += row.ChargedBackMinor
 	}
-	p, s, _ := m.ServiceAllocation(row.GrossMinor, reversed)
-	return m.ServiceFundsView{ChannelFeeMinor: row.ChannelFeeMinor, ChannelFeeObserved: row.ChannelFeeObserved, OrderID: row.OrderID, PaymentID: row.PaymentID, BuyerOrganizationID: row.BuyerOrganizationID, ProviderOrganizationID: row.ProviderOrganizationID, Currency: m.WalletCurrencyCNY, GrossMinor: row.GrossMinor, RefundedMinor: row.RefundedMinor, ChargedBackMinor: row.ChargedBackMinor, PlatformMinor: p, ProviderMinor: s, SharedMinor: row.SharedMinor, ReturnedMinor: row.ReturnedMinor, ReleasedMinor: row.ReleasedMinor, AutomaticReleasedMinor: row.AutomaticReleasedMinor, PendingOperationID: row.PendingOperationID, ReconciliationReason: row.ReconciliationReason}
+	p, s, err := m.ServiceAllocation(row.GrossMinor, reversed, policy)
+	if err != nil {
+		return m.ServiceFundsView{}, err
+	}
+	return m.ServiceFundsView{Allocation: policy, ChannelFeeMinor: row.ChannelFeeMinor, ChannelFeeObserved: row.ChannelFeeObserved, OrderID: row.OrderID, PaymentID: row.PaymentID, BuyerOrganizationID: row.BuyerOrganizationID, ProviderOrganizationID: row.ProviderOrganizationID, Currency: m.WalletCurrencyCNY, GrossMinor: row.GrossMinor, RefundedMinor: row.RefundedMinor, ChargedBackMinor: row.ChargedBackMinor, PlatformMinor: p, ProviderMinor: s, SharedMinor: row.SharedMinor, ReturnedMinor: row.ReturnedMinor, ReleasedMinor: row.ReleasedMinor, AutomaticReleasedMinor: row.AutomaticReleasedMinor, PendingOperationID: row.PendingOperationID, ReconciliationReason: row.ReconciliationReason}, nil
 }
 func (r *Repository) ReadServiceFunds(ctx context.Context, orderID string) (m.ServiceFundsView, error) {
 	var row servicePaymentRow
@@ -264,7 +279,7 @@ func (r *Repository) ReadServiceFunds(ctx context.Context, orderID string) (m.Se
 	} else if err != nil {
 		return m.ServiceFundsView{}, err
 	}
-	return serviceFunds(row), nil
+	return serviceFunds(row)
 }
 func lockServicePayment(tx *gorm.DB, orderID string) (servicePaymentRow, error) {
 	var row servicePaymentRow
@@ -279,7 +294,10 @@ func lockServicePayment(tx *gorm.DB, orderID string) (servicePaymentRow, error) 
 	return row, nil
 }
 func validateServiceOperation(tx *gorm.DB, row servicePaymentRow, in m.ServiceOperation) error {
-	funds := serviceFunds(row)
+	funds, err := serviceFunds(row)
+	if err != nil {
+		return err
+	}
 	switch in.Kind {
 	case m.ServiceShare:
 		if row.ReleasedMinor > 0 || row.AutomaticReleasedMinor > 0 || row.ReturnedMinor > 0 || in.AmountMinor != funds.PlatformMinor-row.SharedMinor {
@@ -307,7 +325,7 @@ func validateServiceOperation(tx *gorm.DB, row servicePaymentRow, in m.ServiceOp
 		if in.AmountMinor > available {
 			return m.ErrInvalid
 		}
-		target, _, err := m.ServiceAllocation(row.GrossMinor, row.RefundedMinor+row.ChargedBackMinor+in.AmountMinor)
+		target, _, err := m.ServiceAllocation(row.GrossMinor, row.RefundedMinor+row.ChargedBackMinor+in.AmountMinor, funds.Allocation)
 		if err != nil {
 			return err
 		}

@@ -56,7 +56,7 @@ func TestServicePurchasePostgresDispatchLeaseAndDurableFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, _ := New(db)
-	source := billing.ServicePurchaseCommand{ID: "create-proof", RequestID: "request", OrderID: "service-order", Kind: "CREATE_PURCHASE", SourceProofID: "create-proof", ActorID: "buyer", BuyerOrganizationID: "buyer-org", ProviderOrganizationID: "provider-org", ProviderMerchantID: "sub-merchant", QuoteVersion: 1, AmountMinor: 100, DeliveryDays: 7, PolicyVersion: "10-percent-platform-fee"}
+	source := billing.ServicePurchaseCommand{Allocation: money.ServiceAllocationPolicy{CommissionBPS: 1000, Basis: money.ServiceAllocationCumulativeNetFloorV1}, ID: "create-proof", RequestID: "request", OrderID: "service-order", Kind: "CREATE_PURCHASE", SourceProofID: "create-proof", ActorID: "buyer", BuyerOrganizationID: "buyer-org", ProviderOrganizationID: "provider-org", ProviderMerchantID: "sub-merchant", QuoteVersion: 1, AmountMinor: 100, DeliveryDays: 7, PolicyVersion: "10-percent-platform-fee"}
 	profile := billing.ServiceMerchantProfile{Version: "profile", Environment: "PRODUCTION", PlatformMerchantID: "platform", AppID: "app", FreezeDays: 180}
 	var wg sync.WaitGroup
 	orders := make(chan billing.ServicePurchaseOrder, 8)

@@ -38,7 +38,7 @@ func TransitionRequest(r *Request, c Command, now time.Time) (*FinancialCommand,
 		if r.Quote != nil {
 			quote = *r.Quote
 		}
-		return &FinancialCommand{ID: id, RequestID: r.ID, OrderID: r.OrderID, Kind: kind, SourceProofID: id, ActorID: c.Scope.ActorID, BuyerOrganizationID: r.BuyerOrganizationID, ProviderOrganizationID: r.ProviderOrganizationID, Quote: quote, AmountMinor: amount, PolicyVersion: PolicyVersion, State: "PENDING"}
+		return &FinancialCommand{ID: id, RequestID: r.ID, OrderID: r.OrderID, Kind: kind, SourceProofID: id, ActorID: c.Scope.ActorID, BuyerOrganizationID: r.BuyerOrganizationID, ProviderOrganizationID: r.ProviderOrganizationID, Quote: quote, AmountMinor: amount, PolicyVersion: quote.PolicyVersion, State: "PENDING"}
 	}
 	switch c.Kind {
 	case "quote":
@@ -49,6 +49,9 @@ func TransitionRequest(r *Request, c Command, now time.Time) (*FinancialCommand,
 			return nil, ErrInvalid
 		}
 		q := *c.Quote
+		q.CommissionBPS = 1000
+		q.AllocationBasis = "CUMULATIVE_NET_FLOOR_V1"
+		q.PolicyVersion = PolicyVersion
 		q.Version = 1
 		if r.Quote != nil {
 			q.Version = r.Quote.Version + 1
@@ -56,7 +59,7 @@ func TransitionRequest(r *Request, c Command, now time.Time) (*FinancialCommand,
 		r.Quote = &q
 		r.State = "QUOTED"
 	case "confirm_quote":
-		if r.State != "QUOTED" || r.Quote == nil || c.Quote == nil || c.Quote.Version != r.Quote.Version || c.PolicyAccepted != PolicyVersion {
+		if r.State != "QUOTED" || r.Quote == nil || c.Quote == nil || c.Quote.Version != r.Quote.Version || c.PolicyAccepted != r.Quote.PolicyVersion || r.Quote.CommissionBPS != 1000 || r.Quote.AllocationBasis != "CUMULATIVE_NET_FLOOR_V1" {
 			return nil, ErrConflict
 		}
 		r.OrderID = uuid.NewSHA1(uuid.NameSpaceOID, []byte("ecoservices-order:"+r.ID)).String()

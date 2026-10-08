@@ -11,6 +11,7 @@ import (
 // Service facts describe funds at the original channel submerchant. They never
 // credit a platform wallet or a referral balance.
 type ServicePaymentInput struct {
+	Allocation                                                      ServiceAllocationPolicy
 	OrderID, RequestID, BuyerOrganizationID, ProviderOrganizationID string
 	PlatformMerchantID, ProviderMerchantID, PolicyVersion           string
 	Binding                                                         ProviderPaymentBinding
@@ -23,7 +24,7 @@ func (in ServicePaymentInput) Validate() error {
 			return ErrInvalid
 		}
 	}
-	if in.BuyerOrganizationID == in.ProviderOrganizationID || in.PlatformMerchantID == in.ProviderMerchantID || in.Binding.Validate() != nil || in.Binding.Provider != "WECHAT_PAY" || in.Binding.MerchantID != in.ProviderMerchantID || in.Payment.Validate() != nil || in.Payment.PaymentPurpose != PaymentPurposeServicePurchase {
+	if in.Allocation.Validate() != nil || in.BuyerOrganizationID == in.ProviderOrganizationID || in.PlatformMerchantID == in.ProviderMerchantID || in.Binding.Validate() != nil || in.Binding.Provider != "WECHAT_PAY" || in.Binding.MerchantID != in.ProviderMerchantID || in.Payment.Validate() != nil || in.Payment.PaymentPurpose != PaymentPurposeServicePurchase {
 		return ErrInvalid
 	}
 	return nil
@@ -112,6 +113,7 @@ func (e ServiceEffect) Fingerprint() string {
 }
 
 type ServiceFundsView struct {
+	Allocation                                                                ServiceAllocationPolicy
 	ChannelFeeMinor                                                           int64
 	ChannelFeeObserved                                                        bool
 	OrderID, PaymentID, BuyerOrganizationID, ProviderOrganizationID, Currency string
@@ -178,12 +180,31 @@ func (r ServiceReceipt) Validate() error {
 	}
 	return nil
 }
-func ServiceAllocation(gross, refunded int64) (platform, provider int64, err error) {
-	if gross <= 0 || refunded < 0 || refunded > gross {
+
+const ServiceAllocationCumulativeNetFloorV1 = "CUMULATIVE_NET_FLOOR_V1"
+
+// The original paid input owns the allocation snapshot. Never substitute a
+// current platform rate for a missing or invalid original snapshot.
+type ServiceAllocationPolicy struct {
+	CommissionBPS int64
+	Basis         string
+}
+
+func (p ServiceAllocationPolicy) Validate() error {
+	if p.Basis != ServiceAllocationCumulativeNetFloorV1 || p.CommissionBPS < 0 || p.CommissionBPS > 10000 {
+		return ErrInvalid
+	}
+	return nil
+}
+
+func ServiceAllocation(gross, refunded int64, policy ServiceAllocationPolicy) (platform, provider int64, err error) {
+	if policy.Validate() != nil || gross <= 0 || refunded < 0 || refunded > gross {
 		return 0, 0, ErrInvalid
 	}
 	net := gross - refunded
-	platform = net / 10
+	// Quotient/remainder multiplication preserves floor rounding without
+	// overflowing int64 for any valid gross and basis-point rate.
+	platform = (net/10000)*policy.CommissionBPS + (net%10000)*policy.CommissionBPS/10000
 	return platform, net - platform, nil
 }
 

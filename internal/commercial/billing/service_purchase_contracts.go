@@ -26,6 +26,7 @@ func (p ServiceMerchantProfile) Validate() error {
 }
 
 type ServicePurchaseCommand struct {
+	Allocation                                                      money.ServiceAllocationPolicy
 	ID, RequestID, OrderID, Kind, SourceProofID, ActorID            string
 	BuyerOrganizationID, ProviderOrganizationID, ProviderMerchantID string
 	QuoteVersion                                                    int64
@@ -40,7 +41,7 @@ func (c ServicePurchaseCommand) Validate() error {
 			return ErrInvalid
 		}
 	}
-	if c.BuyerOrganizationID == c.ProviderOrganizationID || c.AmountMinor <= 0 || c.QuoteVersion < 1 || c.DeliveryDays < 1 {
+	if c.Allocation.Validate() != nil || c.BuyerOrganizationID == c.ProviderOrganizationID || c.AmountMinor <= 0 || c.QuoteVersion < 1 || c.DeliveryDays < 1 {
 		return ErrInvalid
 	}
 	switch c.Kind {
@@ -87,7 +88,7 @@ func (o ServicePurchaseOrder) Fingerprint() string {
 func (o ServicePurchaseOrder) MoneyInput() money.ServicePaymentInput {
 	p := o.Payment
 	binding := money.ProviderPaymentBinding{Provider: "WECHAT_PAY", Environment: o.Profile.Environment, MerchantID: o.Source.ProviderMerchantID, AppID: o.Profile.AppID, TradeID: p.TransactionID}
-	return money.ServicePaymentInput{OrderID: o.Source.OrderID, RequestID: o.Source.RequestID, BuyerOrganizationID: o.Source.BuyerOrganizationID, ProviderOrganizationID: o.Source.ProviderOrganizationID, PlatformMerchantID: o.Profile.PlatformMerchantID, ProviderMerchantID: o.Source.ProviderMerchantID, PolicyVersion: o.Source.PolicyVersion, Binding: binding, Payment: money.PaymentSettlement{PaymentID: "provider-payment:" + binding.ClaimID(), PaymentPurpose: money.PaymentPurposeServicePurchase, CommissionTreatment: money.CommissionNonCommissionable, PayerBinding: money.PayerOrganizationServiceBuyer, Currency: "CNY", GrossAmountMinor: o.Source.AmountMinor, Status: money.PaymentSettled, SettledAt: money.NormalizeTimestamp(p.OccurredAt), ProviderReference: "provider-trade:" + binding.ClaimID(), Version: 1}}
+	return money.ServicePaymentInput{Allocation: o.Source.Allocation, OrderID: o.Source.OrderID, RequestID: o.Source.RequestID, BuyerOrganizationID: o.Source.BuyerOrganizationID, ProviderOrganizationID: o.Source.ProviderOrganizationID, PlatformMerchantID: o.Profile.PlatformMerchantID, ProviderMerchantID: o.Source.ProviderMerchantID, PolicyVersion: o.Source.PolicyVersion, Binding: binding, Payment: money.PaymentSettlement{PaymentID: "provider-payment:" + binding.ClaimID(), PaymentPurpose: money.PaymentPurposeServicePurchase, CommissionTreatment: money.CommissionNonCommissionable, PayerBinding: money.PayerOrganizationServiceBuyer, Currency: "CNY", GrossAmountMinor: o.Source.AmountMinor, Status: money.PaymentSettled, SettledAt: money.NormalizeTimestamp(p.OccurredAt), ProviderReference: "provider-trade:" + binding.ClaimID(), Version: 1}}
 }
 
 type ServiceFinancialOperation struct {

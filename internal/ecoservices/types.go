@@ -77,6 +77,9 @@ type Listing struct {
 	Version                int64    `json:"version,string"`
 }
 type Quote struct {
+	CommissionBPS      int64  `json:"commissionBps"`
+	AllocationBasis    string `json:"allocationBasis"`
+	PolicyVersion      string `json:"policyVersion"`
 	AmountMinor        int64  `json:"amountMinor,string"`
 	Scope              string `json:"scope"`
 	AcceptanceCriteria string `json:"acceptanceCriteria"`

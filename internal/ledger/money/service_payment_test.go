@@ -1,9 +1,23 @@
 package money
 
 import (
+	"math"
 	"testing"
 	"time"
 )
+
+func TestServiceAllocationUsesSnapshotWithoutOverflowOrFallback(t *testing.T) {
+	for _, bps := range []int64{0, 1000, 2000, 10000} {
+		p := ServiceAllocationPolicy{CommissionBPS: bps, Basis: ServiceAllocationCumulativeNetFloorV1}
+		platform, provider, err := ServiceAllocation(math.MaxInt64, 0, p)
+		if err != nil || platform < 0 || provider < 0 || platform+provider != math.MaxInt64 {
+			t.Fatalf("overflow for bps %d: %d %d %v", bps, platform, provider, err)
+		}
+	}
+	if _, _, err := ServiceAllocation(101, 0, ServiceAllocationPolicy{}); err != ErrInvalid {
+		t.Fatalf("missing snapshot fallback: %v", err)
+	}
+}
 
 func TestServicePaymentIsExplicitlyNonCommissionable(t *testing.T) {
 	p := PaymentSettlement{PaymentID: "service-payment", PaymentPurpose: "SERVICE_PURCHASE", CommissionTreatment: CommissionNonCommissionable, PayerBinding: "ORGANIZATION_SERVICE_BUYER", Currency: WalletCurrencyCNY, GrossAmountMinor: 10001, Status: PaymentSettled, SettledAt: time.Now(), ProviderReference: "wechat-original-transaction", Version: 1}

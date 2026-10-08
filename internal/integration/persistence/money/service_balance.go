@@ -42,7 +42,10 @@ func (r *Repository) ObserveServiceUnsplit(ctx context.Context, in m.ServiceUnsp
 				return e
 			}
 		}
-		out = serviceFunds(row)
+		out, err = serviceFunds(row)
+		if err != nil {
+			return err
+		}
 		if m.ServiceFingerprint(out) != in.ExpectedFundsFingerprint {
 			stale = true
 			return nil
@@ -63,7 +66,10 @@ func (r *Repository) ObserveServiceUnsplit(ctx context.Context, in m.ServiceUnsp
 			if err = tx.Model(&row).Update("reconciliation_reason", row.ReconciliationReason).Error; err != nil {
 				return err
 			}
-			out = serviceFunds(row)
+			out, err = serviceFunds(row)
+			if err != nil {
+				return err
+			}
 		}
 		return nil
 	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
