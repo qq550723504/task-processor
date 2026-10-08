@@ -60,15 +60,19 @@ func NewCurrentApplicationWithAcquisition(ctx context.Context, sourceAccountDB, 
 
 // Browser construction stays in the existing admitted Product composition owner.
 // Its routes and transport DTO validation live in the Browser-specific file.
-func buildBrowserCaptureModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+func buildBrowserCaptureModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer, collections ...bool) (kernelmodule.Module, error) {
 	if dependencies.organizationResolver == nil || authorizer == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
-	if err := acquisitionstore.VerifyRuntimePermissions(ctx, db); err != nil {
+	capability, options, err := collectionAcquisitionOptions(collections)
+	if err != nil {
+		return nil, err
+	}
+	if err := acquisitionstore.VerifyRuntimePermissions(ctx, db, capability); err != nil {
 		return nil, err
 	}
 	live := &productReviewLiveOrganizationAccess{resolver: dependencies.organizationResolver, now: time.Now}
-	service, err := productsourcing.NewBrowserAcquisition(ctx, db, live, authorizer)
+	service, err := productsourcing.NewBrowserAcquisition(ctx, db, live, authorizer, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -378,11 +382,15 @@ func (m productAcquisitionModule) Register(reg *kernelmodule.Registry) error {
 	return nil
 }
 
-func buildProductAcquisitionModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer, browserService bool, charges orgresource.ConsumerChargePort) (kernelmodule.Module, error) {
+func buildProductAcquisitionModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer, browserService bool, charges orgresource.ConsumerChargePort, collections ...bool) (kernelmodule.Module, error) {
 	if dependencies.organizationResolver == nil || authorizer == nil || provider == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
-	if err := acquisitionstore.VerifyRuntimePermissions(ctx, db); err != nil {
+	capability, options, err := collectionAcquisitionOptions(collections)
+	if err != nil {
+		return nil, err
+	}
+	if err := acquisitionstore.VerifyRuntimePermissions(ctx, db, capability); err != nil {
 		return nil, err
 	}
 	// Reuse the existing request-local live organization capability, not Review
@@ -393,17 +401,28 @@ func buildProductAcquisitionModule(ctx context.Context, db *gorm.DB, dependencie
 	// bypasses replay-first, StartPrepared admission, the capacity preflight and
 	// the provider child budget.
 	var (
-		service productAcquisitionService
-		err     error
+		service    productAcquisitionService
+		serviceErr error
 	)
 	if browserService {
-		service, err = productsourcing.NewBrowserPublicAcquisition(ctx, db, live, authorizer, provider, browser.DefaultTimeout, charges)
+		service, serviceErr = productsourcing.NewBrowserPublicAcquisition(ctx, db, live, authorizer, provider, browser.DefaultTimeout, charges, options...)
 	} else {
-		service, err = productsourcing.NewPublicAcquisition(ctx, db, live, authorizer, provider, charges)
+		service, serviceErr = productsourcing.NewPublicAcquisition(ctx, db, live, authorizer, provider, charges, options...)
 	}
-	if err != nil {
-		return nil, err
+	if serviceErr != nil {
+		return nil, serviceErr
 	}
 	binder := productReviewCapabilityBinder{now: time.Now}
 	return productAcquisitionModule{routes: productAcquisitionRoutes(service, binder.Bind)}, nil
+}
+func collectionAcquisitionOptions(enabled []bool) (acquisitionstore.RuntimeCapabilities, []productsourcing.AcquisitionPublicationOption, error) {
+	if len(enabled) > 1 {
+		return acquisitionstore.RuntimeCapabilities{}, nil, sourcing.ErrAcquisitionUnavailable
+	}
+	capability := acquisitionstore.RuntimeCapabilities{Collections: len(enabled) == 1 && enabled[0]}
+	var options []productsourcing.AcquisitionPublicationOption
+	if capability.Collections {
+		options = append(options, productsourcing.WithCollectionPublication())
+	}
+	return capability, options, nil
 }

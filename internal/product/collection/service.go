@@ -46,7 +46,7 @@ func (s *Service) Mutate(ctx context.Context, key string, input Mutation) (Recei
 	if err != nil {
 		return Receipt{}, err
 	}
-	if !ValidID(key) {
+	if !ValidID(key) || !validMutationShape(input) {
 		return Receipt{}, ErrInvalid
 	}
 	command := Command{Scope: scope, Key: key, OperationID: StableID(scope.OrganizationID, scope.ActorID, key), InputHash: Digest(input), Mutation: input}
@@ -102,6 +102,30 @@ func (s *Service) Mutate(ctx context.Context, key string, input Mutation) (Recei
 func validName(name string) bool {
 	return name != "" && name == strings.TrimSpace(name) && utf8.ValidString(name) && len([]byte(name)) <= 200 && !strings.ContainsAny(name, "\x00\r\n")
 }
+
+// Each command accepts only its own fields, even for direct domain callers.
+func validMutationShape(input Mutation) bool {
+	allowed := Mutation{Action: input.Action}
+	switch input.Action {
+	case "create_batch":
+		allowed.Name = input.Name
+	case "rename_batch":
+		allowed.BatchID, allowed.ExpectedRevision, allowed.Name = input.BatchID, input.ExpectedRevision, input.Name
+	case "archive_batch":
+		allowed.BatchID, allowed.ExpectedRevision = input.BatchID, input.ExpectedRevision
+	case "move_item":
+		allowed.ItemID, allowed.TargetBatchID, allowed.ExpectedRevision = input.ItemID, input.TargetBatchID, input.ExpectedRevision
+	case "archive_item":
+		allowed.ItemID, allowed.ExpectedRevision = input.ItemID, input.ExpectedRevision
+	case "add_acquisition":
+		allowed.BatchID, allowed.SourceOperationID = input.BatchID, input.SourceOperationID
+	case "create_product":
+		allowed.BatchID, allowed.Product = input.BatchID, input.Product
+	default:
+		return false
+	}
+	return Digest(input) == Digest(allowed)
+}
 func (s *Service) ListBatches(ctx context.Context, query Query) (Page[Batch], error) {
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
@@ -121,11 +145,13 @@ func (s *Service) ListItems(ctx context.Context, batchID string, query Query) (P
 	if err != nil {
 		return Page[Item]{}, err
 	}
-	if !ValidID(batchID) || query.Validate() != nil {
+	if batchID != "" && !ValidID(batchID) || query.Validate() != nil {
 		return Page[Item]{}, ErrInvalid
 	}
-	if _, err := s.store.ReadBatch(ctx, scope, batchID); err != nil {
-		return Page[Item]{}, err
+	if batchID != "" {
+		if _, err := s.store.ReadBatch(ctx, scope, batchID); err != nil {
+			return Page[Item]{}, err
+		}
 	}
 	return s.store.ListItems(ctx, scope, batchID, query)
 }

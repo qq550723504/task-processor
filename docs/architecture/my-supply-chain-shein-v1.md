@@ -212,7 +212,7 @@ adapter 返回三种明确结果：`ConfirmedSuccess`（business success、必�
 
 ## 9. HTTP、权限、资源与恢复
 
-拟新增同源BFF/current-application路径：`/api/v1/workbench/product-collections`（批次/商品及导入/下载）、`/api/v1/workbench/supply-preparations`（转入、适配、补全、优化、审核投影）、`/api/v1/workbench/listing-submissions`（提交/同intent核实/读取）。handler仅验证/dispatch，Domain决定事实。
+同源BFF/current-application路径：`/api/v1/workbench/collections`（批次/商品及导入/下载）、`/api/v1/workbench/supply-preparations`（转入、适配、补全、优化、审核投影）、`/api/v1/workbench/listing-submissions`（提交/同intent核实/读取）。handler仅验证/dispatch，Domain决定事实。批次构成 owner 范围不因最终 route 名称而变化；当前显式配置 `productCollections: true` 与初始化 manifest 的 `collections: true` 选择匹配 schema/grant/verifier，未配置时不会启用。
 
 新增权限沿现有authz、enterprise module catalog和角色管理：商品collection read/manage、supply preparation read/manage、listing submit。已有角色的当前权益不被新功能覆盖；不把菜单可见或Product采集写权限自动解释为Store发布权限。API来源Organization/Actor来自verified identity；所有operation、item、target、record、run和receipt查询含Organization，返回not-found而非泄漏外企资源。
 

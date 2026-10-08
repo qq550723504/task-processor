@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"time"
 )
@@ -116,6 +117,13 @@ func (s *SourceApprovalService) Approve(ctx context.Context, input SourceApprova
 		return ApprovalReceipt{}, ErrSourceApprovalForbidden
 	}
 	commit := ApprovalCommit{TenantID: selection.TenantID, ProductKey: selection.ProductKey, TargetPlatform: selection.TargetPlatform, SourceSnapshotVersion: selection.EffectiveCatalogVersion, ActionID: input.ActionID}
+	existing, existingErr := s.approvals.ReadApprovalCommit(ctx, selection.TenantID, input.ActionID)
+	if existingErr != nil && !errors.Is(existingErr, ErrApprovedAssetsNotReady) {
+		return ApprovalReceipt{}, existingErr
+	}
+	if existingErr == nil && (existing.ActionID != input.ActionID || existing.TenantID != selection.TenantID || existing.ProductKey != selection.ProductKey || existing.TargetPlatform != selection.TargetPlatform || existing.SourceSnapshotVersion != selection.EffectiveCatalogVersion) {
+		return ApprovalReceipt{}, ErrApprovalConflict
+	}
 	byID := map[string]SourceImage{}
 	for _, image := range selection.Images {
 		if image.ID == "" || image.ReferenceHash != ReferenceHash(image.ID, image.URL) {
@@ -126,18 +134,24 @@ func (s *SourceApprovalService) Approve(ctx context.Context, input SourceApprova
 		}
 		byID[image.ID] = image
 	}
+	selectedSources := map[string]bool{}
 	for _, choice := range input.Images {
 		image, exists := byID[choice.ID]
-		if !exists || !choice.Role.valid() {
+		if !exists || !choice.Role.valid() || selectedSources[choice.ID] {
 			return ApprovalReceipt{}, ErrInvalidApproval
 		}
+		selectedSources[choice.ID] = true
 		approved := ApprovedAsset{ID: "source-" + approvalDigest([]string{selection.TenantID, input.ActionID, image.ID, string(choice.Role)}), Role: choice.Role, URL: image.URL, SourceAssetID: image.ID, Width: image.Width, Height: image.Height, SourceApproval: &SourceApprovalProvenance{OriginalPublicationID: selection.OriginalPublicationID, OriginalSnapshotVersion: selection.OriginalSnapshotVersion, ActorID: selection.ActorID, MemberID: selection.MemberID, ReferenceHash: image.ReferenceHash}}
 		commit.Assets = append(commit.Assets, approved)
 	}
 	if len(input.Approved) > 0 {
-		inventory, readErr := s.repository.GetApprovedInventory(ctx, InventoryScope{TenantID: selection.TenantID, ProductKey: selection.ProductKey, TargetPlatform: selection.TargetPlatform, SourceSnapshotVersion: selection.EffectiveCatalogVersion})
-		if readErr != nil {
-			return ApprovalReceipt{}, readErr
+		inventory := ApprovedAssetInventory{Assets: existing.Assets}
+		if existingErr != nil {
+			current, readErr := s.repository.GetApprovedInventory(ctx, InventoryScope{TenantID: selection.TenantID, ProductKey: selection.ProductKey, TargetPlatform: selection.TargetPlatform, SourceSnapshotVersion: selection.EffectiveCatalogVersion})
+			if readErr != nil {
+				return ApprovalReceipt{}, readErr
+			}
+			inventory = current
 		}
 		for _, choice := range input.Approved {
 			approvedCommit, readErr := s.approvals.ReadApprovalCommit(ctx, selection.TenantID, choice.ActionID)

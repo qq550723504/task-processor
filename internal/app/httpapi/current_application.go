@@ -28,6 +28,7 @@ import (
 	"task-processor/internal/knowledge"
 	knowledgehttp "task-processor/internal/knowledge/httpapi"
 	"task-processor/internal/ledger/orgresource"
+	collectionhttp "task-processor/internal/product/collection/httpapi"
 	"task-processor/internal/storecenter"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
 	"task-processor/internal/workbenchcontext"
@@ -133,6 +134,7 @@ type currentApplicationOptions struct {
 	membership              *MembershipDependencies
 	referrals               int
 	productAcquisitions     int
+	productCollections      int
 	imageAgents             int
 	memberships             int
 	browserCaptures         int
@@ -175,6 +177,12 @@ func WithProductAcquisition(db *gorm.DB) CurrentApplicationOption {
 		options.productAcquisitions++
 		options.productAcquisitionDB = db
 	}
+}
+
+// WithProductCollections opts the supplied Product pool into the admitted
+// collection schema/privilege footprint and atomic new-source references.
+func WithProductCollections() CurrentApplicationOption {
+	return func(options *currentApplicationOptions) { options.productCollections++ }
 }
 
 // WithAcquisitionImageAgent enables only the receipt-backed, single-main-image
@@ -275,8 +283,11 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		option(&supplied)
 	}
-	if supplied.storeCenters > 1 || supplied.localTrials > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 || supplied.accountAuditSources > 1 {
+	if supplied.storeCenters > 1 || supplied.localTrials > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.productCollections > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 || supplied.accountAuditSources > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
+	}
+	if supplied.productCollections > 0 && supplied.productAcquisitionDB == nil {
+		return nil, errors.New("collections require their current Product owner pool")
 	}
 	if supplied.localTrials > 0 {
 		if supplied.localTrialDB == nil || supplied.storeCenters != 1 || supplied.storeCenterDB == nil || factories.buildLocalTrial == nil || supplied.productAcquisitionDB != nil || supplied.productAgent != nil || supplied.aiWorkbench != nil || supplied.imageAgentDB != nil {
@@ -372,7 +383,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 			if err != nil {
 				return nil, err
 			}
-			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges)
+			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges, supplied.productCollections > 0)
 		}
 	}
 	if supplied.browserCaptures > 1 {
@@ -387,7 +398,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		browserDB := supplied.productAcquisitionDB
 		factories.buildBrowserCapture = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer)
+			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer, supplied.productCollections > 0)
 		}
 	}
 	if supplied.imageAgents > 0 {
@@ -542,6 +553,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		modules = append(modules, acquisition)
 	}
+	if supplied.productCollections > 0 {
+		collections, err := buildProductCollectionModule(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer)
+		if err != nil {
+			return nil, fmt.Errorf("build current product collections: %w", err)
+		}
+		modules = append(modules, collections)
+	}
 	if factories.buildAcquisitionImage != nil {
 		image, imageErr := factories.buildAcquisitionImage(authorizer, *workbench.authDependencies)
 		if imageErr != nil {
@@ -676,6 +694,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, err
 	}
 	routeFeatures := currentApplicationOptionalRoutes{
+		Collections:         supplied.productCollections > 0,
 		ZitadelSMS:          true,
 		StoreCenter:         supplied.storeCenters > 0,
 		LocalTrial:          supplied.localTrials > 0,
@@ -764,6 +783,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	Collections         bool
 	AgentConfiguration  bool
 	Knowledge           bool
 	StoreCenter         bool
@@ -780,6 +800,18 @@ type currentApplicationOptionalRoutes struct {
 
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if optional.Collections {
+		for _, r := range collectionhttp.Routes(nil, nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+		for _, r := range routes {
+			if r.Path == collectionhttp.BasePath || strings.HasPrefix(r.Path, collectionhttp.BasePath+"/") {
+				if err := validateCollectionDescriptor(r); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	if optional.AgentConfiguration {
 		for _, r := range confighttp.Routes(nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})

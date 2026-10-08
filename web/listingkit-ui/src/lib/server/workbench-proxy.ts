@@ -4,6 +4,7 @@ import { BROWSER_CAPTURE_MAX_BYTES, browserCaptureSchema } from "@/lib/contracts
 import {agentEmptyRequestSchema,agentStartRequestSchema,agentResumeRequestSchema,agentResultSchema,agentReviewLinkSchema,agentPath} from "@/lib/contracts/product-agent";
 import { aiWorkbenchPath, aiCreateBody, aiMessageBody, aiMetadataBody, aiResumeBody, parseAIWorkbenchResponse, type AIWorkbenchRoute } from "@/lib/contracts/ai-workbench";
 import { NextResponse } from "next/server";
+import { COLLECTION_MAX_BYTES, collectionPath, collectionCommandSchema, parseCollectionResponse, type CollectionRoute } from "@/lib/contracts/product-collection";
 import {
   findNodeAtLocation,
   parseTree,
@@ -49,6 +50,7 @@ const REQUEST_ID_MAX_BYTES = 128;
 const imageErrorStatuses: Readonly<Record<string, number>> = { INVALID_IMAGE_REQUEST: 400, FORBIDDEN: 403, IMAGE_NOT_FOUND: 404, IMAGE_CONFLICT: 409, IMAGE_BLOCKED: 409, IMAGE_UNAVAILABLE: 503 };
 
 export type WorkbenchResponseContract =
+  | `collection-${CollectionRoute}`
   | `ai-${AIWorkbenchRoute}`
   | "product-agent-result"
   | "product-agent-review"
@@ -72,6 +74,7 @@ export type WorkbenchResponseContract =
   | "source-account-mutation";
 
 type WorkbenchRequestContract =
+  | `collection-${CollectionRoute}`
   | `ai-${AIWorkbenchRoute}`
   | "product-agent-start"
   | "product-agent-read"
@@ -308,6 +311,10 @@ const sourceAccountErrorStatuses: Readonly<Record<string, number>> = {
 };
 
 const workbenchRouteAllowlist = [
+  ...(["batches", "items", "own", "detail", "operation", "command"] as const).map(name => {
+    const method = name === "command" ? "POST" : "GET";
+    return routeDefinition(method, `collection-${name}`, `collection-${name}`, path => collectionPath(method, path) === name ? path.join("/") : null);
+  }),
   ...([
     ["GET", "conversation-list"], ["POST", "conversation-create"],
     ["GET", "conversation-read"], ["PATCH", "conversation-metadata"],
@@ -412,8 +419,9 @@ export async function buildWorkbenchUpstreamRequest(
       "Workbench route is not allowed",
     );
   }
+  const collectionContract = route.requestContract.startsWith("collection-");
   if (
-    (route.requestContract.startsWith("store-") ||
+    (collectionContract || route.requestContract.startsWith("store-") ||
       route.requestContract.startsWith("source-account-") ||
       (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-") || route.requestContract.startsWith("acquisition-image-") || route.requestContract.startsWith("product-agent-") || route.requestContract.startsWith("ai-"))) &&
     new URL(request.url).pathname !==
@@ -446,12 +454,12 @@ export async function buildWorkbenchUpstreamRequest(
     headers.set("Content-Type", "application/json");
     headers.set("X-Requested-Organization-ID", organizationId);
   } else {
-    const selectedOrganization = (route.requestContract.startsWith("source-account-") || (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-") || route.requestContract.startsWith("acquisition-image-") || route.requestContract.startsWith("product-agent-") || route.requestContract.startsWith("ai-")))
+    const selectedOrganization = (collectionContract || route.requestContract.startsWith("source-account-") || (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-") || route.requestContract.startsWith("acquisition-image-") || route.requestContract.startsWith("product-agent-") || route.requestContract.startsWith("ai-")))
       ? readSourceSelectedOrganization(request)
       : readSelectedOrganization(request);
     if (selectedOrganization instanceof Response) return selectedOrganization;
     if (
-      route.requestContract.startsWith("store-") ||
+      collectionContract || route.requestContract.startsWith("store-") ||
       route.requestContract.startsWith("source-account-") || (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-") || route.requestContract.startsWith("acquisition-image-") || route.requestContract.startsWith("product-agent-") || route.requestContract.startsWith("ai-"))
     ) {
       const expectedOrganization = readExpectedOrganizationAssertion(
@@ -473,7 +481,38 @@ export async function buildWorkbenchUpstreamRequest(
       headers.set("X-Requested-Organization-ID", selectedOrganization);
     }
 
-    if (route.requestContract.startsWith("ai-")) {
+    if (collectionContract) {
+      const action = route.requestContract.slice(11) as CollectionRoute;
+      const url = new URL(request.url);
+      if (action === "command") {
+        const boundary = validateSourceMutationBoundary(request, authenticatedActorSubject);
+        if (boundary) return boundary;
+        const key = readCanonicalUUIDHeader(request.headers, "Idempotency-Key");
+        if (!key || url.search || request.headers.get("content-type") !== "application/json" || request.headers.has("content-encoding"))
+          return protocolError(400, "INVALID_REQUEST", "Collection command is invalid");
+        const raw = await readRequestBody(request, COLLECTION_MAX_BYTES, "INPUT_TOO_LARGE");
+        if (raw instanceof Response) return raw;
+        const parsed = parseJSONBody(raw);
+        const checked = collectionCommandSchema.safeParse(parsed?.payload);
+        if (!parsed || !checked.success) return protocolError(400, "INVALID_REQUEST", "Collection command is invalid");
+        body = JSON.stringify(checked.data);
+        headers.set("Content-Type", "application/json");
+        headers.set("Idempotency-Key", key);
+      } else {
+        if (!(await requestHasNoBody(request))) return protocolError(400, "INVALID_REQUEST", "Body is not allowed");
+        const allowed = action === "batches" || action === "items" || action === "own" ? new Set(["limit", "after", "keyword"]) : new Set<string>();
+        for (const key of url.searchParams.keys()) {
+          const values = url.searchParams.getAll(key);
+          if (!allowed.has(key) || values.length !== 1 || values[0] === "") return protocolError(400, "INVALID_REQUEST", "Collection query is invalid");
+          const value = values[0]!;
+          if (key === "limit" && (!/^[1-9][0-9]*$/.test(value) || Number(value) > 100) ||
+              key === "after" && !isAcquisitionUUID(value) ||
+              key === "keyword" && (new TextEncoder().encode(value).length > 80 || /[\0\r\n]/.test(value)))
+            return protocolError(400, "INVALID_REQUEST", "Collection query is invalid");
+        }
+        query = url.search;
+      }
+    } else if (route.requestContract.startsWith("ai-")) {
       const action = route.requestContract.slice(3) as AIWorkbenchRoute;
       if (!authenticatedActorSubject || request.headers.get(EXPECTED_USER_ID_HEADER) !== authenticatedActorSubject)
         return protocolError(409, "IDENTITY_CONTEXT_CHANGED", "Identity context changed");
@@ -839,6 +878,7 @@ export async function buildWorkbenchUpstreamRequest(
     },
     responseContract: route.responseContract,
     expectedStoreId:
+      route.requestContract === "collection-detail" ? path[2] :
       route.requestContract.startsWith("product-agent-") ? (path[6]??request.headers.get("Idempotency-Key")??undefined) :
       (route.requestContract === "acquisition-image-candidates") ? path[3] :
       (route.requestContract === "acquisition-image-read" || route.requestContract === "acquisition-image-approve") ? path[6] :
@@ -852,6 +892,7 @@ export async function buildWorkbenchUpstreamRequest(
         : undefined,
     requestId,
     sourceMutation:
+      route.requestContract === "collection-command" ||
       (route.requestContract.startsWith("ai-") && !["ai-conversation-list", "ai-conversation-read", "ai-task-list", "ai-task-read"].includes(route.requestContract)) ||
       (route.requestContract.startsWith("store-connection-") && route.requestContract !== "store-connection-read") ||
       route.requestContract.startsWith("store-service-") ||
@@ -883,6 +924,7 @@ export async function buildWorkbenchBrowserResponse(
   const imageContract = contract.startsWith("acquisition-image-");
   const agentContract = contract.startsWith("product-agent-");
   const aiContract = contract.startsWith("ai-");
+  const collectionContract = contract.startsWith("collection-");
   const sourceContract = contract.startsWith("source-account-") || acquisitionContract;
   const invalidSource = () =>
     acquisitionContract
@@ -891,7 +933,7 @@ export async function buildWorkbenchBrowserResponse(
   let body: Uint8Array;
   try {
     if (
-      (sourceContract || imageContract || agentContract || aiContract) &&
+      (sourceContract || imageContract || agentContract || aiContract || collectionContract) &&
       !/^application\/json(?:\s*;|$)/i.test(
         upstream.headers.get("content-type") ?? "",
       )
@@ -899,7 +941,7 @@ export async function buildWorkbenchBrowserResponse(
       void upstream.body?.cancel().catch(() => undefined);
       throw new InvalidUpstreamBodyError();
     }
-    const responseLimit = aiContract ? 256 * 1024 : (acquisitionContract || imageContract || agentContract) ? ACQUISITION_RESPONSE_MAX_BYTES : sourceContract
+    const responseLimit = collectionContract ? COLLECTION_MAX_BYTES : aiContract ? 256 * 1024 : (acquisitionContract || imageContract || agentContract) ? ACQUISITION_RESPONSE_MAX_BYTES : sourceContract
       ? SOURCE_ACCOUNT_RESPONSE_MAX_BYTES
       : UPSTREAM_RESPONSE_MAX_BYTES;
     const contentLength = readContentLength(upstream.headers);
@@ -914,6 +956,7 @@ export async function buildWorkbenchBrowserResponse(
       options.signal,
     );
   } catch {
+    if (collectionContract) return protocolError(options.sourceMutation ? 503 : 502, options.sourceMutation ? "OUTCOME_UNKNOWN" : "DEPENDENCY_UNAVAILABLE", "Collection response unavailable", options.requestId ?? "");
     if (aiContract) return protocolError(options.sourceMutation ? 503 : 502, options.sourceMutation ? "OUTCOME_UNKNOWN" : "DEPENDENCY_UNAVAILABLE", "AI Workbench response unavailable", options.requestId ?? "");
     if(agentContract)return protocolError(options.sourceMutation?503:502,options.sourceMutation?"OUTCOME_UNKNOWN":"DEPENDENCY_UNAVAILABLE","Agent response unavailable",options.requestId??"");
     if (sourceContract) return invalidSource();
@@ -927,6 +970,21 @@ export async function buildWorkbenchBrowserResponse(
 
   const parsedBody = parseJSONBody(body);
   const payload = parsedBody?.payload ?? null;
+  if (collectionContract) {
+    const invalid = () => protocolError(options.sourceMutation ? 503 : 502, options.sourceMutation ? "OUTCOME_UNKNOWN" : "DEPENDENCY_UNAVAILABLE", "Collection response invalid", options.requestId ?? "");
+    if (!parsedBody || !payload) return invalid();
+    if (upstream.ok) {
+      const checked = parseCollectionResponse(contract.slice(11) as CollectionRoute, payload, expectedStoreId);
+      return upstream.status === 200 && checked ? new NextResponse(JSON.stringify(checked), { status: 200, headers: safeJSONHeaders() }) : invalid();
+    }
+    const standard = parseWorkbenchErrorEnvelopePayload(payload);
+    const code = typeof payload.code === "string" ? payload.code : standard.success ? standard.data.code : "";
+    const statuses: Record<string, number> = { ...acquisitionErrorStatuses, INVALID_REQUEST: 400, PERMISSION_DENIED: 403, NOT_FOUND: 404, REVISION_CONFLICT: 409, OUTCOME_UNKNOWN: 409 };
+    if (statuses[code] !== upstream.status) return invalid();
+    const response = protocolError(upstream.status, code, "Collection request could not be completed", options.requestId ?? "");
+    if (code === "ORGANIZATION_ACCESS_REVOKED" || code === "ORGANIZATION_ACCESS_DENIED") clearSelectionCookie(response);
+    return response;
+  }
   if (aiContract) {
     const unavailable = () => protocolError(options.sourceMutation ? 503 : 502, options.sourceMutation ? "OUTCOME_UNKNOWN" : "DEPENDENCY_UNAVAILABLE", "AI Workbench response invalid", options.requestId ?? "");
     if (!parsedBody || !payload) return unavailable();

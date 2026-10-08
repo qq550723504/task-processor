@@ -21,6 +21,7 @@ import {
   type WorkbenchOrganization,
 } from "@/lib/api/workbench-context";
 import type { AcquisitionOperation } from "@/lib/api/product-acquisition";
+import type { CollectionIntent } from "@/lib/api/product-collection";
 
 type WorkbenchContextValue = {
   user: WorkbenchContext["user"] | null;
@@ -41,6 +42,8 @@ type WorkbenchContextValue = {
   switchOrganization: (organizationId: string) => void;
   pendingAcquisitionIntent: AcquisitionOperation | null;
   setPendingAcquisitionIntent: (intent: AcquisitionOperation | null) => void;
+  pendingCollectionIntent: CollectionIntent | null;
+  setPendingCollectionIntent: (intent: CollectionIntent | null) => void;
   registerOrganizationSwitchGuard: (
     guard: (target: WorkbenchOrganization) => boolean | Promise<boolean>,
   ) => () => void;
@@ -56,6 +59,7 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
   // changes. It is never a cross-organization authorization grant.
   const [pendingAcquisitionIntent, setPendingAcquisitionIntent] =
     useState<AcquisitionOperation | null>(null);
+  const [pendingCollectionIntent, setPendingCollectionIntent] = useState<CollectionIntent | null>(null);
   const guardsRef = useRef(new Set<(target: WorkbenchOrganization) => boolean | Promise<boolean>>());
   const currentContextRef = useRef<WorkbenchContext | null>(null);
   const switchRequestPendingRef = useRef(false);
@@ -187,6 +191,8 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       switchOrganization,
       pendingAcquisitionIntent,
       setPendingAcquisitionIntent,
+      pendingCollectionIntent,
+      setPendingCollectionIntent,
       registerOrganizationSwitchGuard,
     }),
     [
@@ -200,6 +206,7 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       switchPreparing,
       switchOrganization,
       pendingAcquisitionIntent,
+      pendingCollectionIntent,
       registerOrganizationSwitchGuard,
     ],
   );

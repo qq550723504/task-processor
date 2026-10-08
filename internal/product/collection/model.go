@@ -55,17 +55,19 @@ type Batch struct {
 type Source struct {
 	ProductKey    string `json:"productKey"`
 	PublicationID string `json:"publicationId"`
-	Version       uint64 `json:"version"`
+	Version       uint64 `json:"version,string"`
 	OperationID   string `json:"operationId,omitempty"`
 	Kind          string `json:"kind"`
 }
 type Item struct {
-	ID         string     `json:"id"`
-	BatchID    string     `json:"batchId"`
-	Source     Source     `json:"source"`
-	Revision   int64      `json:"revision"`
-	CreatedAt  time.Time  `json:"createdAt"`
-	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
+	ID           string     `json:"id"`
+	BatchID      string     `json:"batchId"`
+	Source       Source     `json:"source"`
+	Revision     int64      `json:"revision"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	ArchivedAt   *time.Time `json:"archivedAt,omitempty"`
+	Title        string     `json:"title,omitempty"`
+	ThumbnailURL string     `json:"thumbnailUrl,omitempty"`
 }
 type ItemDetail struct {
 	Item    Item                    `json:"item"`
@@ -89,12 +91,21 @@ type Page[T any] struct {
 	Total      int64  `json:"total"`
 }
 type OwnProduct struct {
-	Title       string                             `json:"title"`
-	Description string                             `json:"description"`
-	Brand       string                             `json:"brand,omitempty"`
-	Attributes  map[string]string                  `json:"attributes,omitempty"`
-	Variants    []sourcing.ProductVariantCandidate `json:"variants,omitempty"`
-	Images      []string                           `json:"images"`
+	Title       string            `json:"title"`
+	Description string            `json:"description"`
+	Brand       string            `json:"brand,omitempty"`
+	Attributes  map[string]string `json:"attributes,omitempty"`
+	Variants    []OwnVariant      `json:"variants,omitempty"`
+	Images      []string          `json:"images"`
+}
+type OwnVariant struct {
+	SourceID   string            `json:"sourceId"`
+	Title      string            `json:"title"`
+	SKU        string            `json:"sku"`
+	Attributes map[string]string `json:"attributes"`
+	Currency   string            `json:"currency"`
+	Price      float64           `json:"price"`
+	Stock      int               `json:"stock"`
 }
 type Mutation struct {
 	Action            string      `json:"action"`
@@ -155,7 +166,10 @@ func OwnEnvelope(id string, input OwnProduct) (sourcing.SourceEnvelope, error) {
 	if err != nil || len(raw) > MaxPayloadBytes || !utf8.Valid(raw) {
 		return sourcing.SourceEnvelope{}, ErrInvalid
 	}
-	envelope := sourcing.SourceEnvelope{Identity: sourcing.SourceIdentity{SourceType: "user_input", SourcePlatform: "own_product", SourceID: id}, RawReference: sourcing.RawSourceReference{ReferenceType: "user_input", ReferenceID: id, Checksum: sourcing.RawSnapshotChecksum(string(raw))}, ProductCandidate: sourcing.ProductCandidate{Title: input.Title, Description: input.Description, Brand: input.Brand, Attributes: input.Attributes, Variants: input.Variants}}
+	envelope := sourcing.SourceEnvelope{Identity: sourcing.SourceIdentity{SourceType: "user_input", SourcePlatform: "own_product", SourceID: id}, RawReference: sourcing.RawSourceReference{ReferenceType: "user_input", ReferenceID: id, Checksum: sourcing.RawSnapshotChecksum(string(raw))}, ProductCandidate: sourcing.ProductCandidate{Title: input.Title, Description: input.Description, Brand: input.Brand, Attributes: input.Attributes}}
+	for _, variant := range input.Variants {
+		envelope.ProductCandidate.Variants = append(envelope.ProductCandidate.Variants, sourcing.ProductVariantCandidate{SourceID: variant.SourceID, Title: variant.Title, SKU: variant.SKU, Attributes: variant.Attributes, Currency: variant.Currency, Price: variant.Price, Stock: variant.Stock})
+	}
 	for index, value := range input.Images {
 		parsed, err := url.Parse(value)
 		if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.Fragment != "" || len(value) > 2048 {

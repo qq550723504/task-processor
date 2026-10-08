@@ -14,13 +14,15 @@ import (
 	"gorm.io/gorm"
 	sigjson "sigs.k8s.io/json"
 	acquisitionstore "task-processor/internal/integration/persistence/product/acquisition"
+	collectionstore "task-processor/internal/integration/persistence/product/collection"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
 var acquisitionInitName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
 
 type acquisitionInitManifest struct {
-	SchemaVersion int `json:"schemaVersion"`
+	SchemaVersion int  `json:"schemaVersion"`
+	Collections   bool `json:"collections,omitempty"`
 	Database      struct {
 		Host     string `json:"host"`
 		Port     int    `json:"port"`
@@ -73,7 +75,12 @@ func InitializeAcquisitionDatabase(ctx context.Context, manifest, confirmedDatab
 		if err := InstallAcquisitionSchema(tx); err != nil {
 			return err
 		}
-		return acquisitionstore.GrantRuntimePermissions(ctx, tx)
+		if cfg.Collections {
+			if err := collectionstore.InstallSchema(tx); err != nil {
+				return err
+			}
+		}
+		return acquisitionstore.GrantRuntimePermissions(ctx, tx, acquisitionstore.RuntimeCapabilities{Collections: cfg.Collections})
 	})
 	if err != nil {
 		return unavailable

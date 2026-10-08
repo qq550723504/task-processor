@@ -56,6 +56,19 @@ func NewMemoryRepository() *MemoryRepository {
 	}
 }
 
+func (r *MemoryRepository) ReadApprovalCommit(ctx context.Context, tenantID, actionID string) (asset.ApprovalCommit, error) {
+	if err := ctx.Err(); err != nil {
+		return asset.ApprovalCommit{}, err
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	stored, exists := r.actions[actionKey{tenantID, actionID}]
+	if !exists {
+		return asset.ApprovalCommit{}, asset.ErrApprovedAssetsNotReady
+	}
+	return asset.CloneApprovalCommit(stored.commit), nil
+}
+
 func (r *MemoryRepository) CommitApproval(ctx context.Context, commit asset.ApprovalCommit) (asset.ApprovalReceipt, error) {
 	if err := ctx.Err(); err != nil {
 		return asset.ApprovalReceipt{}, err

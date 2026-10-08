@@ -20,14 +20,17 @@ func (f *sourceSelectionFixture) ReadSourceSelection(context.Context, asset.Sour
 
 type approvalReadFixture struct{ commit asset.ApprovalCommit }
 
-func (f approvalReadFixture) ReadApprovalCommit(context.Context, string, string) (asset.ApprovalCommit, error) {
+func (f approvalReadFixture) ReadApprovalCommit(_ context.Context, _ string, actionID string) (asset.ApprovalCommit, error) {
+	if f.commit.ActionID != actionID {
+		return asset.ApprovalCommit{}, asset.ErrApprovedAssetsNotReady
+	}
 	return f.commit, nil
 }
 
 func TestSourceApprovalDoesNotInventAgentIdentityAndBindsEffectiveVersion(t *testing.T) {
 	selection := &sourceSelectionFixture{selection: asset.SourceSelection{TenantID: "org-a", ActorID: "actor-a", MemberID: "member-a", ItemID: "item-a", ProductKey: "product-a", OriginalPublicationID: "publication-a", OriginalSnapshotVersion: 1, EffectiveCatalogVersion: 2, TargetPlatform: "shein", Images: []asset.SourceImage{{ID: "image-a", URL: "https://images.example.org/original.jpg", ReferenceHash: asset.ReferenceHash("image-a", "https://images.example.org/original.jpg"), Width: 1200, Height: 1200}}}}
 	repository := assettest.NewMemoryRepository()
-	service, err := asset.NewSourceApprovalService(selection, repository, approvalReadFixture{})
+	service, err := asset.NewSourceApprovalService(selection, repository, repository)
 	require.NoError(t, err)
 	input := asset.SourceApprovalCommand{ActionID: "approve-original", Selection: asset.SourceSelectionRequest{ItemID: "item-a", OriginalPublicationID: "publication-a", OriginalSnapshotVersion: 1, EffectiveCatalogVersion: 2, TargetPlatform: "shein"}, Images: []asset.SourceImageChoice{{ID: "image-a", Role: asset.RoleMain}}}
 	receipt, err := service.Approve(context.Background(), input)
@@ -43,6 +46,11 @@ func TestSourceApprovalDoesNotInventAgentIdentityAndBindsEffectiveVersion(t *tes
 	require.Zero(t, approved.Attempt)
 	require.EqualValues(t, 1, approved.SourceApproval.OriginalSnapshotVersion)
 	require.Equal(t, "actor-a", approved.SourceApproval.ActorID)
+	duplicate := input
+	duplicate.ActionID = "duplicate-source-image"
+	duplicate.Images = append([]asset.SourceImageChoice{{ID: "image-a", Role: asset.RoleGallery}}, input.Images...)
+	_, err = service.Approve(context.Background(), duplicate)
+	require.ErrorIs(t, err, asset.ErrInvalidApproval, "one source image cannot occupy two slots in the same selected set")
 	replay, err := service.Approve(context.Background(), input)
 	require.NoError(t, err)
 	require.Equal(t, receipt, replay)
@@ -70,9 +78,10 @@ func TestSourceAndAgentInventorySelectionReplacesFullSet(t *testing.T) {
 	_, err := repository.CommitApproval(context.Background(), commit)
 	require.NoError(t, err)
 	selection := &sourceSelectionFixture{selection: asset.SourceSelection{TenantID: "org-a", ActorID: "actor-a", MemberID: "member-a", ItemID: "item-a", ProductKey: "product-a", OriginalPublicationID: "original", OriginalSnapshotVersion: 1, EffectiveCatalogVersion: 2, TargetPlatform: "shein", Images: []asset.SourceImage{{ID: "image-a", URL: "https://images.example.org/source.png", ReferenceHash: asset.ReferenceHash("image-a", "https://images.example.org/source.png")}}}}
-	service, err := asset.NewSourceApprovalService(selection, repository, approvalReadFixture{commit})
+	service, err := asset.NewSourceApprovalService(selection, repository, repository)
 	require.NoError(t, err)
 	input := asset.SourceApprovalCommand{ActionID: "mixed", Selection: asset.SourceSelectionRequest{ItemID: "item-a", OriginalPublicationID: "original", OriginalSnapshotVersion: 1, EffectiveCatalogVersion: 2, TargetPlatform: "shein"}, Images: []asset.SourceImageChoice{{ID: "image-a", Role: asset.RoleGallery}}, Approved: []asset.ApprovedImageChoice{{ActionID: "agent-approval", AssetID: "generated"}}}
+	mixedInput := input
 	_, err = service.Approve(context.Background(), input)
 	require.NoError(t, err)
 	scope := asset.InventoryScope{TenantID: "org-a", ProductKey: "product-a", TargetPlatform: "shein", SourceSnapshotVersion: 2}
@@ -89,6 +98,11 @@ func TestSourceAndAgentInventorySelectionReplacesFullSet(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, sourceOnly.Assets, 1)
 	require.Equal(t, asset.OriginHumanSource, sourceOnly.Assets[0].OriginKind())
+	_, err = service.Approve(context.Background(), mixedInput)
+	require.NoError(t, err, "an exact replay reads its original receipt even after a new selection changed the head")
+	current, err := repository.GetApprovedInventory(context.Background(), scope)
+	require.NoError(t, err)
+	require.Equal(t, sourceOnly, current, "receipt replay must not restore a superseded inventory")
 	// Unselected generated images remain in history, never silently reappear.
 	input.ActionID = "wrong-agent-version"
 	input.Approved = []asset.ApprovedImageChoice{{ActionID: "agent-approval", AssetID: "generated"}}

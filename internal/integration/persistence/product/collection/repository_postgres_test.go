@@ -73,6 +73,12 @@ func TestPostgresCollectionAtomicReplayOwnershipMoveAndCommitUnknown(t *testing.
 	require.NoError(t, err)
 	original, err := repository.ReadItem(ctx, scope, receipt.ItemID)
 	require.NoError(t, err)
+	library, err := repository.ListItems(ctx, scope, "", collection.Query{Limit: 100, Keyword: "原始标题"})
+	require.NoError(t, err)
+	require.Len(t, library.Items, 1, "the own-product library searches its immutable source title")
+	foreignLibrary, err := repository.ListItems(ctx, collection.Scope{"org-a", "other-actor", "other-member"}, "", collection.Query{Limit: 100})
+	require.NoError(t, err)
+	require.Empty(t, foreignLibrary.Items)
 	replay, err := repository.Execute(ctx, command)
 	require.NoError(t, err)
 	require.True(t, replay.Replayed)
@@ -120,4 +126,9 @@ func TestPostgresCollectionAtomicReplayOwnershipMoveAndCommitUnknown(t *testing.
 	require.Equal(t, int64(3), page.Total)
 	_, err = repository.Execute(ctx, testCommand(scope, uuid.NewString(), collection.Mutation{Action: "rename_batch", BatchID: verified.BatchID, ExpectedRevision: verified.Revision, Name: "改名"}))
 	require.NoError(t, err)
+	// A same-count FK aimed at the wrong ownership relation is not readiness.
+	require.NoError(t, db.Exec("ALTER TABLE product_collection_items DROP CONSTRAINT product_collection_items_organization_id_actor_id_batch_id_fkey").Error)
+	require.NoError(t, db.Exec("DELETE FROM product_collection_items").Error)
+	require.NoError(t, db.Exec("ALTER TABLE product_collection_items ADD FOREIGN KEY(organization_id,actor_id,id) REFERENCES product_collection_batches(organization_id,actor_id,id)").Error)
+	require.Error(t, VerifySchema(ctx, db))
 }

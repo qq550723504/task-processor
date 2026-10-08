@@ -42,8 +42,17 @@ func TestAcquisitionRuntimeConfigRequiresCanonicalResourceOwner(t *testing.T) {
 	require.Error(t, cfg.validate())
 }
 
+func TestProductCollectionsRequireCurrentProductPool(t *testing.T) {
+	cfg := acquisitionRuntimeConfig()
+	cfg.ProductCollections = true
+	require.NoError(t, cfg.validate())
+	cfg.ProductAcquisitionDatabase = nil
+	require.Error(t, cfg.validate())
+}
+
 func TestAcquisitionRuntimeOwnsThirdPoolWithoutLegacyFallback(t *testing.T) {
 	cfg := acquisitionRuntimeConfig()
+	cfg.ProductCollections = true
 	source, product, owner := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
 	var closed []*gorm.DB
 	newCalled, oldCalled := false, false
@@ -64,6 +73,7 @@ func TestAcquisitionRuntimeOwnsThirdPoolWithoutLegacyFallback(t *testing.T) {
 			require.Same(t, source, a)
 			require.Same(t, product, f.ProductAcquisitionDB)
 			require.Same(t, owner, f.CommercialOwnerDB)
+			require.True(t, f.ProductCollections)
 			newCalled = true
 			return nil, errors.New("stop acquisition before listener")
 		},

@@ -5,10 +5,25 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
+	collectionstore "task-processor/internal/integration/persistence/product/collection"
 	"task-processor/internal/product/sourcing"
 )
 
 const RuntimeRole = "source_acquisition_runtime"
+
+type RuntimeCapabilities struct{ Collections bool }
+
+const collectionPrivileges = `,('product_collection_batches','SELECT'),('product_collection_batches','INSERT'),('product_collection_batches','UPDATE'),
+ ('product_collection_items','SELECT'),('product_collection_items','INSERT'),('product_collection_items','UPDATE'),
+ ('product_collection_operations','SELECT'),('product_collection_operations','INSERT')`
+
+func runtimePermissionsFor(capability RuntimeCapabilities) string {
+	if !capability.Collections {
+		return runtimePermissionQuery
+	}
+	admitted := strings.TrimSuffix(admittedPrivileges, ")") + collectionPrivileges + ")"
+	return strings.Replace(runtimePermissionQuery, admittedPrivileges, admitted, 1)
+}
 
 // Read-only readiness for the existing SRC-1/Catalog schema consumed by this
 // module. This is not a schema installer or another owner of publication facts.
@@ -100,11 +115,20 @@ const runtimePermissionQuery = `WITH admitted(table_name,privilege) AS ` + admit
 // GrantRuntimePermissions is an explicit, dedicated-database initialization
 // operation. The deployment owner provisions the login separately; this code
 // never reads, generates or changes a runtime credential or another role.
-func GrantRuntimePermissions(ctx context.Context, db *gorm.DB) error {
+func GrantRuntimePermissions(ctx context.Context, db *gorm.DB, capabilities ...RuntimeCapabilities) error {
 	if ctx == nil || db == nil || db.Dialector.Name() != "postgres" {
 		return sourcing.ErrAcquisitionUnavailable
 	}
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if len(capabilities) > 1 {
+			return sourcing.ErrAcquisitionUnavailable
+		}
+		enabled := len(capabilities) == 1 && capabilities[0].Collections
+		if enabled {
+			if err := collectionstore.VerifySchema(ctx, tx); err != nil {
+				return err
+			}
+		}
 		var roleSafe bool
 		if err := tx.Raw(`SELECT EXISTS(SELECT 1 FROM pg_roles r WHERE r.rolname=? AND r.rolcanlogin
  AND NOT r.rolsuper AND NOT r.rolcreatedb AND NOT r.rolcreaterole AND NOT r.rolreplication AND NOT r.rolbypassrls
@@ -125,6 +149,11 @@ func GrantRuntimePermissions(ctx context.Context, db *gorm.DB) error {
 			"GRANT SELECT,INSERT,UPDATE ON public.product_acquisition_operations,public.product_acquisition_charge_intents,public.product_snapshot_heads TO source_acquisition_runtime",
 			"GRANT SELECT,INSERT ON public.product_source_publications,public.product_source_publication_receipts,public.product_snapshot_versions TO source_acquisition_runtime",
 		}
+		if enabled {
+			statements = append(statements,
+				"GRANT SELECT,INSERT,UPDATE ON public.product_collection_batches,public.product_collection_items TO source_acquisition_runtime",
+				"GRANT SELECT,INSERT ON public.product_collection_operations TO source_acquisition_runtime")
+		}
 		for _, statement := range statements {
 			if err := tx.Exec(statement).Error; err != nil {
 				return sourcing.ErrAcquisitionUnavailable
@@ -137,7 +166,7 @@ func GrantRuntimePermissions(ctx context.Context, db *gorm.DB) error {
 // VerifyRuntimePermissions reuses the current application's catalog-based
 // least-privilege check, narrowed to the six Product acquisition tables.
 // It performs no grant, repair, DDL, business write or provider access.
-func VerifyRuntimePermissions(ctx context.Context, db *gorm.DB) error {
+func VerifyRuntimePermissions(ctx context.Context, db *gorm.DB, capabilities ...RuntimeCapabilities) error {
 	if ctx == nil || db == nil || db.Dialector.Name() != "postgres" {
 		return sourcing.ErrAcquisitionUnavailable
 	}
@@ -150,8 +179,15 @@ func VerifyRuntimePermissions(ctx context.Context, db *gorm.DB) error {
 		return sourcing.ErrAcquisitionUnavailable
 	}
 	var user string
+	if len(capabilities) > 1 {
+		return sourcing.ErrAcquisitionUnavailable
+	}
+	capability := RuntimeCapabilities{}
+	if len(capabilities) == 1 {
+		capability = capabilities[0]
+	}
 	var required, forbidden bool
-	if err := pool.QueryRowContext(ctx, runtimePermissionQuery).Scan(&user, &required, &forbidden); err != nil {
+	if err := pool.QueryRowContext(ctx, runtimePermissionsFor(capability)).Scan(&user, &required, &forbidden); err != nil {
 		return sourcing.ErrAcquisitionUnavailable
 	}
 	if user != RuntimeRole || !required || forbidden {
@@ -160,6 +196,11 @@ func VerifyRuntimePermissions(ctx context.Context, db *gorm.DB) error {
 	var schemaReady bool
 	if err := pool.QueryRowContext(ctx, publicationSchemaQuery).Scan(&schemaReady); err != nil || !schemaReady {
 		return sourcing.ErrAcquisitionUnavailable
+	}
+	if capability.Collections {
+		if err := collectionstore.VerifySchema(ctx, db); err != nil {
+			return err
+		}
 	}
 	_, err = NewRepository(ctx, db)
 	return err

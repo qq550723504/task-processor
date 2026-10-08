@@ -269,6 +269,7 @@ func AppendPublished(ctx context.Context, tx *gorm.DB, scope collection.Scope, s
 }
 
 type itemRow struct {
+	Title, ThumbnailURL                                                   string
 	ID, BatchID, ProductKey, PublicationID, SourceKind, SourceOperationID string
 	OriginalVersion                                                       uint64
 	Revision                                                              int64
@@ -279,7 +280,7 @@ type itemRow struct {
 const itemColumns = "id,batch_id,product_key,publication_id,original_version,source_kind,source_operation_id,revision,created_at,archived_at"
 
 func (row itemRow) item() collection.Item {
-	return collection.Item{ID: row.ID, BatchID: row.BatchID, Source: collection.Source{ProductKey: row.ProductKey, PublicationID: row.PublicationID, Version: row.OriginalVersion, Kind: row.SourceKind, OperationID: row.SourceOperationID}, Revision: row.Revision, CreatedAt: row.CreatedAt, ArchivedAt: row.ArchivedAt}
+	return collection.Item{ID: row.ID, BatchID: row.BatchID, Source: collection.Source{ProductKey: row.ProductKey, PublicationID: row.PublicationID, Version: row.OriginalVersion, Kind: row.SourceKind, OperationID: row.SourceOperationID}, Revision: row.Revision, CreatedAt: row.CreatedAt, ArchivedAt: row.ArchivedAt, Title: row.Title, ThumbnailURL: row.ThumbnailURL}
 }
 func (r *Repository) ReadOperation(ctx context.Context, scope collection.Scope, operationID string) (collection.Receipt, error) {
 	var stored struct{ ReceiptJSON []byte }
@@ -335,18 +336,27 @@ func (r *Repository) ListBatches(ctx context.Context, scope collection.Scope, qu
 }
 func (r *Repository) ListItems(ctx context.Context, scope collection.Scope, batchID string, query collection.Query) (collection.Page[collection.Item], error) {
 	page := collection.Page[collection.Item]{Items: []collection.Item{}}
-	base := r.db.WithContext(ctx).Table("product_collection_items").Where("organization_id=? AND actor_id=? AND batch_id=? AND archived_at IS NULL", scope.OrganizationID, scope.ActorID, batchID)
+	base := r.db.WithContext(ctx).Table("product_collection_items i").
+		Joins("JOIN product_collection_batches b ON b.organization_id=i.organization_id AND b.actor_id=i.actor_id AND b.id=i.batch_id AND b.archived_at IS NULL").
+		Joins("JOIN product_snapshot_versions v ON v.tenant_id=i.organization_id AND v.product_key=i.product_key AND v.version=i.original_version AND v.publication_id=i.publication_id").
+		Where("i.organization_id=? AND i.actor_id=? AND i.archived_at IS NULL", scope.OrganizationID, scope.ActorID)
+	if batchID == "" {
+		base = base.Where("i.source_kind='own'")
+	} else {
+		base = base.Where("i.batch_id=?", batchID)
+	}
 	if query.Keyword != "" {
-		base = base.Where("product_key ILIKE ?", likeKeyword(query.Keyword))
+		base = base.Where("(i.product_key ILIKE ? OR v.snapshot_json->>'title' ILIKE ?)", likeKeyword(query.Keyword), likeKeyword(query.Keyword))
 	}
 	if err := base.Count(&page.Total).Error; err != nil {
 		return page, err
 	}
 	if query.After != "" {
-		base = base.Where("id>?::uuid", query.After)
+		base = base.Where("i.id>?::uuid", query.After)
 	}
 	var rows []itemRow
-	if err := base.Select(itemColumns).Order("id").Limit(query.Limit + 1).Find(&rows).Error; err != nil {
+	columns := "i." + strings.ReplaceAll(itemColumns, ",", ",i.") + ",v.snapshot_json->>'title' AS title,v.snapshot_json->'images'->0->>'url' AS thumbnail_url"
+	if err := base.Select(columns).Order("i.id").Limit(query.Limit + 1).Find(&rows).Error; err != nil {
 		return page, err
 	}
 	if len(rows) > query.Limit {

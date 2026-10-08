@@ -48,11 +48,22 @@ func VerifySchema(ctx context.Context, db *gorm.DB) error {
 		}
 	}
 	var ready bool
-	err := db.WithContext(ctx).Raw(`SELECT
- (SELECT count(*)=3 FROM pg_constraint WHERE conrelid IN ('product_collection_batches'::regclass,'product_collection_items'::regclass,'product_collection_operations'::regclass) AND contype='p' AND convalidated AND NOT condeferrable)
- AND (SELECT count(*)=2 FROM pg_constraint WHERE conrelid='product_collection_items'::regclass AND contype='f' AND convalidated AND NOT condeferrable)
- AND EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='product_collection_items'::regclass AND contype='u' AND convalidated AND NOT condeferrable)
- AND EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='product_collection_operations'::regclass AND contype='u' AND convalidated AND NOT condeferrable)`).Scan(&ready).Error
+	err := db.WithContext(ctx).Raw(`WITH expected(relation,kind,columns,reference,reference_columns) AS (VALUES
+ ('product_collection_batches','p',ARRAY['organization_id','actor_id','id'],NULL::text,NULL::text[]),
+ ('product_collection_items','p',ARRAY['organization_id','actor_id','id'],NULL,NULL),
+ ('product_collection_operations','p',ARRAY['organization_id','actor_id','id'],NULL,NULL),
+ ('product_collection_items','u',ARRAY['organization_id','actor_id','publication_id'],NULL,NULL),
+ ('product_collection_operations','u',ARRAY['organization_id','actor_id','command_key'],NULL,NULL),
+ ('product_collection_items','f',ARRAY['organization_id','actor_id','batch_id'],'product_collection_batches',ARRAY['organization_id','actor_id','id']),
+ ('product_collection_items','f',ARRAY['organization_id','product_key','original_version'],'product_snapshot_versions',ARRAY['tenant_id','product_key','version'])
+ ) SELECT NOT EXISTS(SELECT 1 FROM expected e WHERE NOT EXISTS(
+ SELECT 1 FROM pg_constraint c WHERE c.conrelid=to_regclass(e.relation)
+ AND c.contype::text=e.kind AND c.convalidated AND NOT c.condeferrable
+ AND ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY AS k(id,position)
+ JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.id ORDER BY k.position)=e.columns
+ AND (e.reference IS NULL OR (c.confrelid=to_regclass(e.reference)
+ AND ARRAY(SELECT a.attname::text FROM unnest(c.confkey) WITH ORDINALITY AS k(id,position)
+ JOIN pg_attribute a ON a.attrelid=c.confrelid AND a.attnum=k.id ORDER BY k.position)=e.reference_columns))))`).Scan(&ready).Error
 	if err != nil || !ready {
 		return collection.ErrUnavailable
 	}

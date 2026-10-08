@@ -137,6 +137,9 @@ func execute() error {
 				options = append(options, httpapi.WithProductAcquisition(features.ProductAcquisitionDB))
 				options = append(options, httpapi.WithBrowserCapture())
 			}
+			if features.ProductCollections {
+				options = append(options, httpapi.WithProductCollections())
+			}
 			if features.ImageAgentDB != nil {
 				options = append(options, httpapi.WithAcquisitionImageAgent(features.ImageAgentDB, features.ImageAgentWorkflow))
 			}

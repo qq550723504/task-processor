@@ -50,6 +50,24 @@ func TestRevokedMemberCannotMutateOrReadCachedSource(t *testing.T) {
 	require.Empty(t, store.commands)
 }
 
+func TestCommandRejectsFieldsFromOtherActions(t *testing.T) {
+	store := &testStore{}
+	service, err := NewService(store, &testAuth{scope: Scope{"org", "actor", "member"}}, testSources{})
+	require.NoError(t, err)
+	for _, input := range []Mutation{
+		{Action: "create_batch", Name: "批次", TargetBatchID: uuid.NewString()},
+		{Action: "rename_batch", BatchID: uuid.NewString(), Name: "批次", ExpectedRevision: 1, Product: &OwnProduct{Title: "不应处理"}},
+		{Action: "archive_batch", BatchID: uuid.NewString(), ExpectedRevision: 1, Name: "隐藏字段"},
+		{Action: "move_item", ItemID: uuid.NewString(), TargetBatchID: uuid.NewString(), ExpectedRevision: 1, BatchID: uuid.NewString()},
+		{Action: "archive_item", ItemID: uuid.NewString(), ExpectedRevision: 1, TargetBatchID: uuid.NewString()},
+		{Action: "create_product", Product: &OwnProduct{Title: "商品"}, ExpectedRevision: 1},
+	} {
+		_, err := service.Mutate(context.Background(), uuid.NewString(), input)
+		require.ErrorIs(t, err, ErrInvalid, input.Action)
+	}
+	require.Empty(t, store.commands)
+}
+
 func TestAcquisitionSelectionCannotExposeAnotherActor(t *testing.T) {
 	scope := Scope{OrganizationID: "org-a", ActorID: "actor-a", MemberID: "member-a"}
 	result := sourcing.PublishedAcquisition{Result: sourcing.AcquisitionResult{Operation: sourcing.AcquisitionOperation{ID: uuid.NewString(), Scope: sourcing.PublicationScope{OrganizationID: scope.OrganizationID, ActorID: "actor-b"}}}}

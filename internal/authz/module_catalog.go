@@ -36,7 +36,7 @@ var enterpriseModules = []MenuModule{
 	{"services-join", "生态服务", "申请加入", false, nil},
 	{"data-market", "数据服务", "数据市场", false, nil},
 	{"data-api", "数据服务", "API管理", false, nil},
-	{"data-mine", "数据服务", "我的数据", false, nil},
+	{"data-mine", "数据服务", "我的数据", true, []string{PermissionWorkbenchCollectionRead, PermissionWorkbenchCollectionManage}},
 	{"stores", "店铺中心", "我的店铺", true, []string{PermissionWorkbenchStoreRead, PermissionWorkbenchStoreCreate, PermissionWorkbenchStoreUpdate, PermissionWorkbenchStoreLifecycle}},
 	{"store-products", "店铺中心", "店铺商品", false, nil},
 	{"store-orders", "店铺中心", "订单履约", false, nil},
