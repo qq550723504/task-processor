@@ -104,6 +104,11 @@ func (s *ServicePurchases) acceptPayment(ctx context.Context, o *ServicePurchase
 		} else if !o.CancelRequested && o.ActiveCommand == nil {
 			o.State = "PAID"
 			o.Reason = ""
+		} else if o.CancelRequested && o.State == "CLOSED_UNPAID" {
+			// A verified late payment supersedes the unpaid closure projection,
+			// while retaining the original cancellation and channel close proof.
+			o.State = "CANCELLATION_PENDING"
+			o.Reason = ""
 		}
 		if err := s.save(ctx, o); err != nil {
 			return err
@@ -150,7 +155,7 @@ func (s *ServicePurchases) Execute(ctx context.Context, c ServicePurchaseCommand
 		}
 		return serviceResult(o), nil
 	}
-	if r, ok := o.CompletedCommands[c.ID]; ok {
+	if r, ok := o.CompletedCommands[c.ID]; ok && !(c.Kind == "CANCEL" && r.State == "CLOSED_UNPAID" && o.PaymentReceiptID != "") {
 		if c.Kind == "CREATE_PURCHASE" {
 			if o.Operation != nil && o.Operation.Dispatched {
 				return serviceResult(o), nil
@@ -242,7 +247,7 @@ func (s *ServicePurchases) Execute(ctx context.Context, c ServicePurchaseCommand
 			if o.Operation != nil {
 				return serviceResult(o), nil
 			}
-			if result, ok := o.CompletedCommands[c.ID]; ok {
+			if result, ok := o.CompletedCommands[c.ID]; ok && !(c.Kind == "CANCEL" && result.State == "CLOSED_UNPAID" && o.PaymentReceiptID != "") {
 				return result, nil
 			}
 		}

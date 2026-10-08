@@ -849,6 +849,28 @@ func (r *Repository) CompleteFinancialCommand(ctx context.Context, in e.Financia
 		if string(row.Result) == string(data) {
 			return tx.Model(&row).Update("state", state).Error
 		}
+		if in.Kind == "CREATE_PURCHASE" && result.State == "CANCELLATION_PENDING" && result.PaymentReceiptID != "" && result.Revision >= req.FinancialRevision && req.State == "CANCELLED" && req.FinancialState == "CLOSED_UNPAID" {
+			// The original close completed before a verified late payment. Wake
+			// its exact cancellation, not a new refund or a new purchase. The
+			// request lock and generation fence retain a concurrent newer wake.
+			var cancellations []financialRow
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("order_id=? AND request_id=? AND kind='CANCEL'", in.OrderID, in.RequestID).Limit(2).Find(&cancellations).Error; err != nil {
+				return err
+			}
+			if len(cancellations) != 1 {
+				return e.ErrConflict
+			}
+			cancelRow := cancellations[0]
+			cancel, err := financialFact(cancelRow)
+			var closed e.FinancialResult
+			if err != nil || cancelRow.State != "DONE" || !cancelRow.DispatchAdmitted || json.Unmarshal(cancelRow.Result, &closed) != nil || closed.OrderID != in.OrderID || closed.State != "CLOSED_UNPAID" || closed.PaymentReceiptID != "" || closed.ReceiptID == "" || cancel.BuyerOrganizationID != in.BuyerOrganizationID || cancel.ProviderOrganizationID != in.ProviderOrganizationID || cancel.MerchantID != in.MerchantID || cancel.Quote != in.Quote || cancel.AmountMinor != in.AmountMinor || cancel.PolicyVersion != in.PolicyVersion {
+				return e.ErrConflict
+			}
+			if err := tx.Model(&cancelRow).Updates(map[string]any{"state": "PROCESSING", "next_attempt_at": time.Time{}, "recovery_generation": gorm.Expr("recovery_generation+1")}).Error; err != nil {
+				return err
+			}
+			req.State = "CANCEL_REQUESTED"
+		}
 		if err := e.ApplyFinancialResult(&req, result, time.Now().UTC()); err != nil {
 			return err
 		}
