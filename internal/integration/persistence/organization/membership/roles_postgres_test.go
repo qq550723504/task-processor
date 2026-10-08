@@ -56,8 +56,8 @@ func testRolePolicyReader(t *testing.T, ctx context.Context, owner *gorm.DB, dsn
 	require.NoError(t, owner.Exec(`REVOKE INSERT ON public.organization_roles FROM organization_role_policy_reader`).Error)
 }
 
-func testEnterpriseRoles(t *testing.T, ctx context.Context, r *Repository) {
-	tx, err := r.db.BeginTx(ctx, nil)
+func testEnterpriseRoles(t *testing.T, ctx context.Context, r, inventoryOwner *Repository) {
+	tx, err := inventoryOwner.db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	require.NoError(t, InstallRoleSlotsTx(ctx, tx, r.projectID, "roles-a"))
 	require.NoError(t, InstallRoleSlotsTx(ctx, tx, r.projectID, "roles-b"))

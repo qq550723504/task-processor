@@ -130,10 +130,10 @@ function ScopedMembers({ scope }: { scope:MemberScope }) {
         <Button variant="outline" disabled={busy || !canManage} onClick={()=>void run(activeKey,pending)}>继续原操作</Button>
       </>}</div>
     </section>}
-    <div className={styles.toolbar}><p role="status">{ready ? `${filtered ? "筛选结果" : "当前企业"} · ${query.data.total} 位成员` : "当前企业成员"}</p><Button variant="ghost" onClick={()=>void refreshMembers()} disabled={busy}>刷新成员</Button></div>
+    <p className="sr-only" role="status">{ready ? `${filtered ? "筛选结果" : "当前企业"} · ${query.data.total} 位成员` : "当前企业成员"}</p>
+    {!authorityError && <MemberStats scope={scope} />}
+    <div className={styles.memberListToolbar}>{!authorityError && <div className={styles.memberTabs} role="tablist" aria-label="成员列表"><button role="tab" aria-selected={memberTab==="formal"} onClick={()=>setMemberTab("formal")}>正式成员</button><button role="tab" disabled={!canManage} aria-selected={memberTab==="inviting"} onClick={()=>setMemberTab("inviting")}>邀请中</button></div>}<Button className={styles.refreshMembers} variant="ghost" onClick={()=>void refreshMembers()} disabled={busy}>刷新成员</Button></div>
     <div hidden={!!authorityError}>
-      {!authorityError && <MemberStats scope={scope} />}
-      <div className={styles.memberTabs} role="tablist" aria-label="成员列表"><button role="tab" aria-selected={memberTab==="formal"} onClick={()=>setMemberTab("formal")}>正式成员</button><button role="tab" disabled={!canManage} aria-selected={memberTab==="inviting"} onClick={()=>setMemberTab("inviting")}>邀请中</button></div>
       {canManage && <InvitationsPanel scope={scope} assignableRoles={query.data.assignableRoles} roleDefinitions={query.data.roleDefinitions} showList={memberTab==="inviting"} inviteRequest={inviteRequest} onInviteAvailability={setCanInvite} onChanged={()=>{void query.refetch();void queryClient.invalidateQueries({queryKey:["invitation-summary",scope.expectedUserId,scope.expectedOrganizationId]});}} onAuthorityFailure={quarantine}/>}
 
     <div hidden={memberTab!=="formal"}><form className={styles.memberFilters} aria-label="成员筛选" onSubmit={event=>{event.preventDefault();const next=memberListFilterSchema.safeParse({...filters,q:search});if(next.success){applyFilters(next.data);setSearch(next.data.q);}else setFilterError("搜索内容过长或包含无效字符，请缩短后重试。");}}>

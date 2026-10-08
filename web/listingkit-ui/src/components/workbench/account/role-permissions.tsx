@@ -30,6 +30,7 @@ export function RolePermissions({ scope, onChanged, onAuthorityFailure }: { scop
       if (!c.signal.aborted) { sessionStorage.removeItem(key); setIntent(null); setSelected(result.role.id); setCreating(false); await query.refetch(); onChanged(); }
     } catch (failure) {
       if (!c.signal.aborted) {
+        setCreating(false);
         onAuthorityFailure(failure);
         if (failure instanceof MemberError && [400, 403, 409].includes(failure.status)) { sessionStorage.removeItem(key); setIntent(null); void query.refetch(); }
         setError(failure instanceof MemberError && failure.status === 409 ? "角色已变化或名称已存在，请重新读取后修改。" : "本次尚未取得保存结果；请核实原操作，避免重复创建。");

@@ -19,5 +19,6 @@ it("saves only available modules with the displayed role revision",async()=>{
 it("retains the exact creation key and payload after a lost response",async()=>{
  api.create.mockRejectedValueOnce(new Error("response lost")).mockResolvedValueOnce({role});mount();const user=userEvent.setup();
  await user.click(await screen.findByRole("button",{name:"＋ 新建角色"}));await user.type(screen.getByRole("textbox",{name:/角色名称/}),"客服");await user.click(screen.getByRole("button",{name:"创建"}));
- await user.click(await screen.findByRole("button",{name:"核实原保存"}));await waitFor(()=>expect(api.create).toHaveBeenCalledTimes(2));expect(api.create.mock.calls[1][1]).toBe(api.create.mock.calls[0][1]);expect(api.create.mock.calls[1][2]).toEqual(api.create.mock.calls[0][2]);expect(api.create.mock.calls[1][2]).toEqual({name:"客服",modules:[]});
+ await screen.findByRole("button",{name:"核实原保存"});expect(screen.queryByRole("dialog",{name:"新建角色"})).not.toBeInTheDocument();
+ await user.click(screen.getByRole("button",{name:"核实原保存"}));await waitFor(()=>expect(api.create).toHaveBeenCalledTimes(2));expect(api.create.mock.calls[1][1]).toBe(api.create.mock.calls[0][1]);expect(api.create.mock.calls[1][2]).toEqual(api.create.mock.calls[0][2]);expect(api.create.mock.calls[1][2]).toEqual({name:"客服",modules:[]});
 });

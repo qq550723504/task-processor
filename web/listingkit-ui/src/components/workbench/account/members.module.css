@@ -57,7 +57,10 @@
 .sectionTabs > button[aria-selected="true"], .memberTabs > button[aria-selected="true"] { border-color:var(--primary); background:color-mix(in srgb,var(--primary) 20%,var(--card)); color:var(--primary); }
 .memberTabs { display:flex; gap:12px; align-items:center; margin:12px 0 16px; }
 .memberTabs > button[role="tab"] { min-height:40px; width:160px; border:1px solid var(--border); border-radius:8px; background:var(--card); font-size:13px; }
-.memberTabs > button:last-child { margin-left:auto; }
+.memberListToolbar { display:flex; align-items:center; gap:12px; margin:12px 0 16px; }
+.memberListToolbar .memberTabs { margin:0; }
+.memberListToolbar > .refreshMembers { margin-left:auto; }
+.memberTabs > button[aria-selected="true"] { border-color:var(--primary); background:color-mix(in srgb,var(--primary) 20%,var(--card)); color:var(--primary); }
 .memberMetrics article { display:flex; flex-direction:column; gap:6px; padding:14px 30px; border:0; }
 .memberMetrics strong { order:-1; }
 .memberMetrics small { display:none; }

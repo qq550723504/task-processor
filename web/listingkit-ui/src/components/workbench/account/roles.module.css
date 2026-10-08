@@ -30,7 +30,7 @@
 .nameField { display: grid; position: relative; gap: 10px; font-size: 13px; }
 .nameField input { min-height: 40px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); padding: 10px 60px 10px 12px; }
 .nameField small { position: absolute; right: 12px; bottom: 12px; color: var(--muted-foreground); font-size: 12px; }
-.modalTree { max-height: 248px; overflow-y: auto; border: 1px solid var(--border); padding: 10px; border-radius: 8px; }
+.modalTree { max-height: 192px; overflow-y: auto; border: 1px solid var(--border); padding: 10px; border-radius: 8px; }
 .notice { padding: 12px 16px; font-size: 13px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; }
 .roleButton:focus-visible, .group summary:focus-visible, .nameField input:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 @media(max-width:900px) { .layout { grid-template-columns: 200px minmax(0,1fr); } .moduleTree { columns: 1; } }

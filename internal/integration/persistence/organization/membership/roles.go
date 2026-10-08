@@ -123,7 +123,7 @@ func (r *Repository) MutateRole(ctx context.Context, scope domain.OperationScope
 			return role, domain.ErrConflict
 		}
 		var slot string
-		err = tx.QueryRowContext(ctx, `SELECT s.role_key FROM public.organization_role_slots s WHERE s.project_id=$1 AND s.organization_id=$2 AND NOT EXISTS(SELECT 1 FROM public.organization_roles r WHERE r.project_id=s.project_id AND r.organization_id=s.organization_id AND r.role_key=s.role_key) ORDER BY s.slot LIMIT 1 FOR UPDATE OF s`, scope.ProjectID, scope.OrganizationID).Scan(&slot)
+		err = tx.QueryRowContext(ctx, `SELECT s.role_key FROM public.organization_role_slots s WHERE s.project_id=$1 AND s.organization_id=$2 AND NOT EXISTS(SELECT 1 FROM public.organization_roles r WHERE r.project_id=s.project_id AND r.organization_id=s.organization_id AND r.role_key=s.role_key) ORDER BY s.slot LIMIT 1`, scope.ProjectID, scope.OrganizationID).Scan(&slot)
 		if errors.Is(err, sql.ErrNoRows) {
 			return role, domain.ErrConflict
 		}
