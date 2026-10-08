@@ -57,7 +57,7 @@
 .sectionTabs > button[aria-selected="true"], .memberTabs > button[aria-selected="true"] { border-color:var(--primary); background:color-mix(in srgb,var(--primary) 20%,var(--card)); color:var(--primary); }
 .memberTabs { display:flex; gap:12px; align-items:center; margin:12px 0 16px; }
 .memberTabs > button[role="tab"] { min-height:40px; width:160px; border:1px solid var(--border); border-radius:8px; background:var(--card); font-size:13px; }
-.memberListToolbar { display:flex; align-items:center; gap:12px; margin:12px 0 16px; }
+.memberListToolbar { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:12px 0 16px; }
 .memberListToolbar .memberTabs { margin:0; }
 .memberListToolbar > .refreshMembers { margin-left:auto; }
 .memberTabs > button[aria-selected="true"] { border-color:var(--primary); background:color-mix(in srgb,var(--primary) 20%,var(--card)); color:var(--primary); }
