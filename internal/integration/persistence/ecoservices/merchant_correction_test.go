@@ -304,3 +304,58 @@ func TestMerchantReadUsesCurrentBusyClaimAfterRevisionSwitch(t *testing.T) {
 		t.Fatal("busy unacknowledged correction fabricated a verified view", view, err)
 	}
 }
+
+func TestMerchantInitialAcceptanceRejectsDifferentQueryApplication(t *testing.T) {
+	for _, path := range []string{"submit", "read", "resume", "repository", "stale-snapshot"} {
+		t.Run(path, func(t *testing.T) {
+			r, s, p, _, scope, in, d := merchantServiceFixture(t)
+			ctx := context.Background()
+			p.acknowledge = true
+			p.state = "FINISH"
+			p.queryApplicationID = "different-accepted-application"
+			if path != "submit" {
+				p.unknown = true
+			}
+			_, err := s.Submit(ctx, scope, uuid.NewString(), in.ApplicationID, in.ApplicationVersion, d)
+			if path != "submit" {
+				if !errors.Is(err, e.ErrUnavailable) {
+					t.Fatal("fixture must save acceptance before lost query", err)
+				}
+				p.unknown = false
+				switch path {
+				case "read":
+					_, err = s.Read(ctx, scope, in.ApplicationID)
+				case "resume":
+					_, err = s.Resume(ctx, scope, in.ApplicationID, merchantApplication(t, r, in.ApplicationID).Version)
+				case "repository", "stale-snapshot":
+					a, claimed, claimErr := r.ClaimMerchantAttempt(ctx, scope, in.ApplicationID)
+					if claimErr != nil || !claimed || a.Acceptance == nil {
+						t.Fatal("acceptance not durably saved", claimErr)
+					}
+					if path == "stale-snapshot" {
+						a.Acceptance = nil
+						a.SealedAcceptance = nil
+					}
+					o := a.BindQuery(merchantObservation(a, "FINISH", "SIGNED", "1900000011"))
+					o.ChannelApplicationID = p.queryApplicationID
+					err = r.ObserveMerchant(ctx, a, o, []byte("mismatched-query"))
+					if releaseErr := r.ReleaseMerchantClaim(ctx, a); releaseErr != nil {
+						t.Fatal(releaseErr)
+					}
+				}
+			}
+			if !errors.Is(err, e.ErrConflict) || merchantApplication(t, r, in.ApplicationID).State == "ACTIVE" {
+				t.Fatal("accepted initial application was replaced by different query identity", err)
+			}
+			a, err := r.ReadMerchantAttempt(ctx, scope, in.ApplicationID)
+			if err != nil || a.Acceptance == nil || a.Acceptance.ChannelApplicationID != "1001" || len(a.SealedObservation) != 0 {
+				t.Fatal("mismatch changed accepted identity or projection", err)
+			}
+			p.queryApplicationID = "1001"
+			view, err := s.Read(ctx, scope, in.ApplicationID)
+			if err != nil || view.State != "FINISH" || merchantApplication(t, r, in.ApplicationID).State != "ACTIVE" || p.submits != 1 {
+				t.Fatal("matching original acceptance cannot recover", err)
+			}
+		})
+	}
+}

@@ -361,7 +361,7 @@ func (r *Repository) ObserveMerchant(ctx context.Context, a e.MerchantAttempt, o
 		if err != nil {
 			return err
 		}
-		if a.Revision.Version > 1 && (p.AcceptanceFingerprint == "" || a.Acceptance == nil || p.AcceptanceFingerprint != e.Fingerprint(*a.Acceptance)) {
+		if (a.Revision.Version > 1 || p.AcceptanceFingerprint != "") && (p.AcceptanceFingerprint == "" || a.Acceptance == nil || p.AcceptanceFingerprint != e.Fingerprint(*a.Acceptance)) {
 			return e.ErrConflict
 		}
 		if !p.Dispatched || p.ChannelApplicationID != "" && p.ChannelApplicationID != o.ChannelApplicationID {

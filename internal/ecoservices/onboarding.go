@@ -353,7 +353,7 @@ func (o MerchantObservation) Matches(a MerchantAttempt) bool {
 	if o.Profile != a.Intent.Profile || o.OutRequestNo != a.Intent.OutRequestNo || !validText(o.VerificationVersion, 256) {
 		return false
 	}
-	if a.Revision.Version == 1 {
+	if a.Revision.Version == 1 && a.Acceptance == nil {
 		return true
 	}
 	return a.CanObserve() && o.RevisionID == a.Revision.ID && o.RevisionVersion == a.Revision.Version &&

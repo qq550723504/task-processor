@@ -345,3 +345,17 @@ PR #604 的 `be5445c30` 评审发现：缓存付款码未在解密后重新核�
 - 验证复用现有 Go/PG/SDK 测试：缓存解密期间取消及撤权；原响应/加密/保存丢失后可信原单未支付恢复同一参数；查单 UNKNOWN/错身份/CLOSED/PAID、查询期间取消/撤权不重入；原派发标记与原号保持，迟到支付不重复入账。只做受影响增量，不新增恢复平台、schema 或 legacy 兼容路径。
 
 Design Basis：原 Independent Architecture 的有界 Native checkout 增量。2026-10-08，独立 Reviewer ecoservices_architecture_review 完成此增量复核，未发现新的设计 BLOCKER，确认 IMPLEMENTATION_READY。原两项生产 BLOCKER 仍须修复；严格未支付/缺失查询证明、错误金额/币种及UNKNOWN零重入归为 IMPLEMENTATION_TEST，在受影响SDK/合同测试收敛。其余冻结基线不重审。
+
+
+### 12.2 浏览器原 JSON 操作恢复增量（2026-10-09，IMPLEMENTATION_READY）
+
+PR #604 原 finding 4221847970 分类 IMPLEMENTATION_TEST：已持久提交但响应丢失时，React Query 内存保存的原 key/body/If-Match 会在页面刷新或新 client 后丢失，允许请求/服务创建改号重复。补齐现有浏览器消费者的恢复保存边界；E 原 operations/版本、B/M 和商户 §11.3.1 仍为唯一业务事实及恢复 owner。此处不引入服务端通用查询/第二账本/自动重放，也不改变 Figma 页面或产品需求。
+
+- 复用当前 `resources/resource-pending.ts` 已有 bounded schema、先保存再派发、精确读回、useSyncExternalStore 和 scope 隔离叶能力，增加可选 localStorage/bound 配置，原资源消费者 sessionStorage/8192 默认保持。生态消费者按当前 userId + organizationId（平台使用原空 org scope）保存一个原 JSON command。
+- 只保存固定生态 BFF allowlist 路径、原 UUID key、原 method/JSON 字符串、If-Match、admin/output 路由信息，严格 schema 校验且总序列化长度不超过 65536 字符。内容须符合原路径对应 ecoInputs，不能持久保存商户银行卡/身份证资料、文件 FormData、凭据、cookie、provider URL、签约 URL 或支付码。商户提交继续由服务器唯一原申请/current revision/CAS及已批准读取协议恢复，不另在浏览器保存 PII；文件上传继续原文件 intent，不扩展本项。
+- 未派发的原 command 也先保存并精确读回；写入失败、不可读、损坏或超界时禁止新派发，不擅自删除或换号。新 client/reload 只恢复可显示的原操作，不能 mount 自动请求；用户点击“重试原操作”才走原 BFF，fresh Expected-User/Org、Origin/当前鉴权与原 key/body/If-Match 继续校验。不同 user/org 不显示或消费另一 scope；实时 context 不匹配拒绝执行。
+- 同 scope 的所有 hook 实例订阅保存变化，已有未决 command 时禁止改载荷/新 key；原 key + 全部保存字段精确相同才允许正常原重试。使用[Web Locks 官方规范](https://w3c.github.io/web-locks/)定义的同 origin/storage bucket 锁，在一次“确认保存/dispatch/结果处理”期间互斥同一浏览器 scope 的窗口，避免两个窗口都在空值检查后各自保存并派发；不引入锁表/租约/恢复平台。浏览器不支持该成熟 API 时禁止新的可持久 JSON 派发并说明，不能回退到不安全双写。
+- 收到通过原 typed schema 的成功回执或确定未执行的原 400/404/409 业务拒绝才能按精确原 command 删除。OUTCOME_UNKNOWN、网络/超时/5xx/响应 schema 异常、撤权/身份变化后仍保存原 command；无 TTL、自动清除或自动改号。清除失败时保留限制，可再原号读回。localStorage 仅为同源浏览器待确认命令路由，不是权限或业务状态事实；主动清除浏览器配置不在本增量恢复保证内，不据此推定渠道 UNKNOWN 已解除。
+- 验证复用既有 Vitest/React Query/BFF：真实先 RED 的新 client/remount 后原 key/body/CAS 留存；零 mount 自动写；同 scope hook/窗口互斥；用户/org 切换不读取另一命令且 stale context 零请求；持久失败/损坏/超界零派发；5xx/invalid response/撤权不清除；确定结果只清精确命令；有效最长当前请求仍可提交，商户 PII/FormData不进入 localStorage，原资源默认消费者回归。真实浏览器恢复/用户验收保持 NOT_RUN。
+
+Design Basis：原 Independent Architecture 的有界浏览器消费者恢复边界增量。2026-10-09，现有独立 Reviewer ecoservices_architecture_review 检查本增量，确认 IMPLEMENTATION_READY，无设计 BLOCKER。实施测试落实：锁获得后实际 fetch 前再次核实 live scope；409身份/组织变化及403/5xx/错误schema不泛化清除；精确重试、最长有效输入界限与原资源默认不变。正式实现可以按此边界开始，实际浏览器/用户验收仍NOT_RUN；其余冻结协议不重审。Legacy decision：复用当前合格叶能力，无 Legacy migration/fallback。

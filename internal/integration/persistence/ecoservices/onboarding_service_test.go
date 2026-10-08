@@ -13,6 +13,7 @@ import (
 
 type merchantChannelFixture struct {
 	signURL                   string
+	queryApplicationID        string
 	profile                   e.MerchantProfile
 	state                     string
 	unknown                   bool
@@ -40,7 +41,11 @@ func (p *merchantChannelFixture) QueryMerchant(_ context.Context, a e.MerchantAt
 	if p.unknown {
 		return e.MerchantObservation{}, e.ErrUnavailable
 	}
-	return e.MerchantObservation{Profile: p.profile, OutRequestNo: a.Intent.OutRequestNo, ChannelApplicationID: "1001", State: p.state, SignState: "SIGNED", MerchantID: "1900000011", SignURL: p.signURL, VerificationVersion: "verified-original-fixture"}, nil
+	queryID := p.queryApplicationID
+	if queryID == "" {
+		queryID = "1001"
+	}
+	return e.MerchantObservation{Profile: p.profile, OutRequestNo: a.Intent.OutRequestNo, ChannelApplicationID: queryID, State: p.state, SignState: "SIGNED", MerchantID: "1900000011", SignURL: p.signURL, VerificationVersion: "verified-original-fixture"}, nil
 }
 
 type merchantAuthorizerFixture struct{ calls, revokeAt int }
