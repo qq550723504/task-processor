@@ -165,6 +165,13 @@ type MainSite struct {
 	Name  string `json:"main_site_name"`
 	Sites []Site `json:"sub_site_list"`
 }
+
+type Warehouse struct {
+	Code          string   `json:"warehouseCode"`
+	Name          string   `json:"warehouseName"`
+	SaleCountries []string `json:"saleCountryList"`
+	Type          int      `json:"warehouseType"`
+}
 type FillRule struct {
 	Field    string `json:"field_key"`
 	Module   string `json:"module"`

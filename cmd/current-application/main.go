@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"go.temporal.io/sdk/client"
 	"gorm.io/gorm"
 
 	aistore "task-processor/internal/aicapability/store"
@@ -81,6 +82,16 @@ func execute() error {
 		OpenImageAgent: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
+		OpenSupplyAssets: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
+		DialSupplyWorkflow: func(ctx context.Context, address, namespace string) (client.Client, func() error, error) {
+			current, err := client.DialContext(ctx, client.Options{HostPort: address, Namespace: namespace})
+			if err != nil {
+				return nil, nil, err
+			}
+			return current, func() error { current.Close(); return nil }, nil
+		},
 		OpenAccountAuditUsage: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingReadOnlyContext(ctx, databaseConfig(cfg))
 		},
@@ -139,6 +150,9 @@ func execute() error {
 			}
 			if features.ProductCollections {
 				options = append(options, httpapi.WithProductCollections())
+			}
+			if features.SupplyAssetDB != nil {
+				options = append(options, httpapi.WithSupplyChain(httpapi.SupplyChainDependencies{AssetDB: features.SupplyAssetDB, Workflow: features.SupplyWorkflow, Worker: features.SupplyWorker}))
 			}
 			if features.ImageAgentDB != nil {
 				options = append(options, httpapi.WithAcquisitionImageAgent(features.ImageAgentDB, features.ImageAgentWorkflow))

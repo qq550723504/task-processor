@@ -16,6 +16,7 @@ import (
 	confighttp "task-processor/internal/agentconfig/httpapi"
 	registration "task-processor/internal/app/referralregistration"
 	storeapp "task-processor/internal/app/storecenter"
+	supplyapp "task-processor/internal/app/supplychain"
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
@@ -134,6 +135,8 @@ type currentApplicationOptions struct {
 	referrals                 int
 	productAcquisitions       int
 	productCollections        int
+	supplyChains              int
+	supplyChain               *SupplyChainDependencies
 	imageAgents               int
 	memberships               int
 	browserCaptures           int
@@ -288,6 +291,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	if supplied.productCollections > 0 && supplied.productAcquisitionDB == nil {
 		return nil, errors.New("collections require their current Product owner pool")
 	}
+	if supplied.supplyChains > 1 || supplied.supplyChains > 0 && (supplied.supplyChain == nil || supplied.supplyChain.AssetDB == nil || supplied.supplyChain.Workflow == nil || supplied.supplyChain.Worker == nil || supplied.productCollections != 1 || supplied.productAcquisitionDB == nil || supplied.storeCenters != 1 || supplied.officialStoreApplications == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "") {
+		return nil, errors.New("supply chain requires current Product, Store, Asset and workflow owners")
+	}
 	if supplied.localTrials > 0 {
 		if supplied.localTrialDB == nil || supplied.storeCenters != 1 || supplied.storeCenterDB == nil || factories.buildLocalTrial == nil || supplied.productAcquisitionDB != nil || supplied.productAgent != nil || supplied.aiWorkbench != nil || supplied.imageAgentDB != nil {
 			return nil, errors.New("local trial requires its Store Center and excludes provider execution")
@@ -382,7 +388,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 			if err != nil {
 				return nil, err
 			}
-			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges, supplied.productCollections > 0)
+			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges, supplied.productCollections > 0, supplied.supplyChains > 0)
 		}
 	}
 	if supplied.browserCaptures > 1 {
@@ -397,7 +403,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		browserDB := supplied.productAcquisitionDB
 		factories.buildBrowserCapture = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer, supplied.productCollections > 0)
+			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer, supplied.productCollections > 0, supplied.supplyChains > 0)
 		}
 	}
 	if supplied.imageAgents > 0 {
@@ -553,7 +559,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, acquisition)
 	}
 	if supplied.productCollections > 0 {
-		collections, err := buildProductCollectionModule(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer)
+		collections, err := buildProductCollectionModule(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, supplied.supplyChains > 0)
 		if err != nil {
 			return nil, fmt.Errorf("build current product collections: %w", err)
 		}
@@ -570,6 +576,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, image)
 	}
 	var productRuntime *productAgentApplication
+	var supplyRuntime *supplyChainModule
 	if supplied.productAgent != nil {
 		agentConfig := *supplied.productAgent
 		agentConfig.Knowledge = supplied.knowledge
@@ -581,6 +588,14 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, agentModule)
 		modelPointRecovery = agentModule.(productAgentModule).recoverPoints
 		productRuntime = agentModule.(productAgentModule).application
+	}
+	if supplied.supplyChain != nil {
+		module, e := buildSupplyChainModule(ctx, supplied.productAcquisitionDB, supplied.storeCenterDB, *supplied.supplyChain, *workbench.authDependencies, authorizer, supplied.officialStoreApplications, cfg)
+		if e != nil {
+			return nil, fmt.Errorf("build current supply chain: %w", e)
+		}
+		modules = append(modules, module)
+		supplyRuntime = &module
 	}
 	if supplied.agentConfigurationDB != nil {
 		m, e := buildAgentConfigurationModule(ctx, supplied.agentConfigurationDB, workbench.authDependencies.organizationResolver, authorizer, supplied.knowledge, productRuntime)
@@ -693,6 +708,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, err
 	}
 	routeFeatures := currentApplicationOptionalRoutes{
+		SupplyChain:         supplied.supplyChains > 0,
 		Collections:         supplied.productCollections > 0,
 		ZitadelSMS:          true,
 		StoreCenter:         supplied.storeCenters > 0,
@@ -711,6 +727,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, err
 	}
 	server := buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies)
+	if supplyRuntime != nil {
+		*supplied.supplyChain.Worker = supplyRuntime.worker
+	}
 	if resourceRecovery != nil {
 		runtimeContext := supplied.runtimeContext
 		if runtimeContext == nil {
@@ -782,6 +801,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	SupplyChain         bool
 	Collections         bool
 	AgentConfiguration  bool
 	Knowledge           bool
@@ -799,6 +819,11 @@ type currentApplicationOptionalRoutes struct {
 
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if optional.SupplyChain {
+		for _, r := range supplyapp.SupplyRoutes(nil, nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
 	if optional.Collections {
 		for _, r := range collectionhttp.Routes(nil, nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
@@ -936,6 +961,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {
+		if descriptor.Path == supplyapp.SupplyBasePath || strings.HasPrefix(descriptor.Path, supplyapp.SupplyBasePath+"/") {
+			if !optional.SupplyChain {
+				return errors.New("supply chain feature not admitted")
+			}
+			if e := validateSupplyDescriptor(descriptor); e != nil {
+				return e
+			}
+		}
 		if optional.LocalTrial && isIssue36TrialRoute(descriptor.Method, descriptor.Path) {
 			if !validIssue36TrialDescriptor(descriptor) {
 				return errors.New("#36 local trial route loses admitted permission or deadline")

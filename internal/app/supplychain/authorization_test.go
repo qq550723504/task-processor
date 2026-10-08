@@ -56,6 +56,9 @@ func TestSupplyExecutionChecksOriginalGrantCurrentRoleAndOrganizationStatus(t *t
 	defer cancel()
 	scope := collection.Scope{"org-a", "actor-a", "member-a"}
 	require.NoError(t, owner.AuthorizeExecution(ctx, scope, collection.PermissionRead))
+	owner.OrganizationStatus = nil
+	require.NoError(t, owner.AuthorizeExecution(ctx, scope, collection.PermissionRead), "an unconfigured local overlay must match the current Workbench contract")
+	owner.OrganizationStatus = status
 	_, authenticated := authidentity.AuthenticatedIdentityFromContext(ctx)
 	require.False(t, authenticated)
 	replaced.Store(true)

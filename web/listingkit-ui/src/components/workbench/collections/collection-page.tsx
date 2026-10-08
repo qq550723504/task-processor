@@ -13,22 +13,25 @@ import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@
 import { CollectionAPIError, listCollectionBatches, listCollectionItems, listOwnProducts, readCollectionItem, mutateCollection, readCollectionOperation, type CollectionScope, type CollectionIntent } from "@/lib/api/product-collection";
 import { ownProductSchema, type CollectionBatch, type CollectionItem, type CollectionDetail, type CollectionCommand } from "@/lib/contracts/product-collection";
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
+import { useSupplyCommand } from "../supply/use-supply-command";
+import { SupplyCommandFeedback } from "../supply/command-feedback";
+import { transferReceiptSchema } from "@/lib/contracts/supply-chain";
 import { ConsolePage, ConsoleState } from "../console/console-page";
 
 const kindLabels = { acquisition: "在线采集", own: "自有商品", manual: "手动分组" };
 const failureText: Record<string, string> = { OUTCOME_UNKNOWN: "结果待核实", REVISION_CONFLICT: "资料已发生变化，请刷新后重试。", PERMISSION_DENIED: "当前权限不足。", NOT_FOUND: "未找到当前身份下的记录。", ORGANIZATION_CONTEXT_CHANGED: "企业上下文已变化。", IDENTITY_CONTEXT_CHANGED: "登录身份已变化。", INVALID_REQUEST: "请检查填写内容。" };
 
-export function CollectionPage() {
+export function CollectionPage({supplyAvailable=false}:{supplyAvailable?:boolean}) {
   const context = useWorkbenchContext();
   const userId = context.user?.id;
   const organizationId = context.effectiveOrganization?.id;
   const scope = useMemo(() => userId && organizationId ? { userId, organizationId } : null, [userId, organizationId]);
   if (context.isLoading || context.isSwitching) return <ConsoleState kind="loading" title="正在确认当前企业" />;
   if (!scope || context.selectionRequired || context.error || context.blockingError) return <ConsoleState kind="error" title="请先确认登录身份与当前企业" />;
-  return <ScopedCollectionPage key={`${scope.userId}:${scope.organizationId}`} scope={scope} />;
+  return <ScopedCollectionPage key={`${scope.userId}:${scope.organizationId}`} scope={scope} supplyAvailable={supplyAvailable} />;
 }
 
-function ScopedCollectionPage({ scope }: { scope: CollectionScope }) {
+function ScopedCollectionPage({ scope,supplyAvailable }: { scope: CollectionScope;supplyAvailable:boolean }) {
   const context = useWorkbenchContext();
   const [tab, setTab] = useState<"batches" | "own">("batches");
   const [batches, setBatches] = useState<CollectionBatch[]>([]);
@@ -44,7 +47,8 @@ function ScopedCollectionPage({ scope }: { scope: CollectionScope }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
-  const [dialog, setDialog] = useState<"manage" | "own" | "rename" | "archive-batch" | "move" | "archive-item" | "detail" | null>(null);
+  const [transferred,setTransferred]=useState<string|null>(null);
+  const [dialog, setDialog] = useState<"manage" | "own" | "rename" | "archive-batch" | "move" | "archive-item" | "detail" | "transfer" | null>(null);
   const [selectedBatch, setSelectedBatch] = useState<CollectionBatch | null>(null);
   const [selectedItem, setSelectedItem] = useState<CollectionItem | null>(null);
   const [detail, setDetail] = useState<CollectionDetail | null>(null);
@@ -56,7 +60,12 @@ function ScopedCollectionPage({ scope }: { scope: CollectionScope }) {
   const commandAbort = useRef<AbortController | null>(null);
   const canManage = context.permissions.includes("workbench.collection.manage");
   const foreignPending = !!pending && (pending.userId !== scope.userId || pending.organizationId !== scope.organizationId);
-  const writeBlocked = busy || !!pending || !canManage;
+  const supply=useSupplyCommand(scope,(result,intent)=>{
+    if(intent.route!=="transfer"){setNotice("已核实原供应链操作");return;}
+    const receipt=transferReceiptSchema.parse(result);setTransferred(receipt.preparation.id);setDialog(null);setNotice(`已加入我的供应链，共 ${receipt.preparation.count} 件商品。`);
+  });
+  const transferBlocked=busy||!!pending||supply.busy||!!supply.pending||!supply.ready||!context.permissions.includes("workbench.supply.manage");
+  const writeBlocked = busy || !!pending || supply.busy || !!supply.pending || !canManage;
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; commandAbort.current?.abort(); }; }, []);
   useEffect(() => context.registerOrganizationSwitchGuard(() => !inFlight.current), [context]);
@@ -119,6 +128,8 @@ function ScopedCollectionPage({ scope }: { scope: CollectionScope }) {
       <Button variant="outline" disabled={!canManage} onClick={() => { setName(""); setDialog("manage"); }}>管理批次</Button>
       {tab === "own" ? <Button disabled={writeBlocked} onClick={() => setDialog("own")}>添加自有商品</Button> : null}
     </Card>
+    {supplyAvailable ? <SupplyCommandFeedback state={supply} /> : null}
+    {transferred ? <Button asChild variant="outline" className="mb-4"><Link href={`/workbench/supply/mine?preparation=${transferred}`}>查看我的供应链</Link></Button> : null}
     {foreignPending ? <ConsoleState kind="unavailable" title="原身份下有待核实的操作">请回到原身份与企业后核实，操作键：{pending?.key}</ConsoleState> : pending ? <Card className="mb-4 space-y-3 border-amber-200 bg-amber-50 p-4"><h2 className="font-semibold">结果待核实</h2><p className="break-all text-sm">操作键：{pending.key}</p><div className="flex gap-2"><Button disabled={busy} onClick={() => void command(pending.command, pending, true)}>核实原操作</Button>{error === "NOT_FOUND" ? <Button disabled={busy} variant="outline" onClick={() => void command(pending.command, pending)}>重试原请求</Button> : null}</div></Card> : null}
     {error && error !== "OUTCOME_UNKNOWN" ? <p role="alert" className="mb-4 text-sm text-red-700">{failureText[error] ?? "暂时无法完成请求，请刷新或核实原操作。"}</p> : null}
     {notice ? <p role="status" className="mb-4 break-all text-sm text-emerald-700">{notice}</p> : null}
@@ -126,15 +137,16 @@ function ScopedCollectionPage({ scope }: { scope: CollectionScope }) {
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><h2 className="font-semibold">{tab === "own" ? "自有商品库" : batchId ? "批次商品" : "商品批次"}</h2><span className="text-sm text-slate-500">共 {total} {displayingItems ? "件商品" : "个批次"}</span></div>
       {loading ? <div className="p-6" role="status">正在读取商品资料…</div> : !total ? <div className="p-10 text-center text-sm text-slate-500">{tab === "own" ? "还没有自有商品，添加商品后可继续适配。" : "暂无商品批次，采集商品后会保存到这里。"}<div className="mt-4"><Button asChild variant="outline"><Link href="/workbench/supply/acquisition">去采集商品</Link></Button></div></div> : displayingItems ?
         <Table><TableHeader className="bg-slate-50"><TableRow><TableHead>商品</TableHead><TableHead>来源</TableHead><TableHead>保存时间</TableHead><TableHead>操作</TableHead></TableRow></TableHeader><TableBody>{items.map(item => <TableRow key={item.id}><TableCell><button className="flex items-center gap-3 text-left" onClick={() => void showDetail(item)}>{item.thumbnailUrl ? <Image unoptimized src={`/api/image-proxy?url=${encodeURIComponent(item.thumbnailUrl)}`} width={56} height={56} className="rounded-md object-cover" alt="" /> : <span aria-hidden="true" className="h-14 w-14 rounded-md bg-slate-100" />}<span><span className="block max-w-sm font-medium">{item.title || "未命名商品"}</span><span className="text-xs text-slate-400">{item.source.productKey}</span></span></button></TableCell><TableCell>{item.source.kind === "own" ? "自有商品" : "在线采集"}</TableCell><TableCell>{date(item.createdAt)}</TableCell><TableCell><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => void showDetail(item)}>查看</Button><Button size="sm" variant="ghost" disabled={writeBlocked} onClick={() => { setSelectedItem(item); setTargetBatch(""); setDialog("move"); }}>移动批次</Button><Button size="sm" variant="ghost" disabled={writeBlocked} onClick={() => { setSelectedItem(item); setDialog("archive-item"); }}>归档</Button></div></TableCell></TableRow>)}</TableBody></Table> :
-        <Table><TableHeader className="bg-slate-50"><TableRow><TableHead>批次名称</TableHead><TableHead>来源方式</TableHead><TableHead>商品总量</TableHead><TableHead>创建时间</TableHead><TableHead>操作</TableHead></TableRow></TableHeader><TableBody>{batches.map(batch => <TableRow key={batch.id}><TableCell><button className="font-medium text-slate-800 hover:text-primary" onClick={() => changeView("batches", batch.id)}>{batch.name}</button></TableCell><TableCell><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs text-emerald-700">{kindLabels[batch.kind]}</span></TableCell><TableCell>{batch.count}</TableCell><TableCell>{date(batch.createdAt)}</TableCell><TableCell><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => changeView("batches", batch.id)}>查看商品</Button><Button size="sm" variant="ghost" disabled={writeBlocked} onClick={() => { setSelectedBatch(batch); setName(batch.name); setDialog("rename"); }}>重命名</Button><Button size="sm" variant="ghost" disabled={writeBlocked} onClick={() => { setSelectedBatch(batch); setDialog("archive-batch"); }}>归档</Button></div></TableCell></TableRow>)}</TableBody></Table>}
+        <Table><TableHeader className="bg-slate-50"><TableRow><TableHead>批次名称</TableHead><TableHead>来源方式</TableHead><TableHead>商品总量</TableHead><TableHead>创建时间</TableHead><TableHead>操作</TableHead></TableRow></TableHeader><TableBody>{batches.map(batch => <TableRow key={batch.id}><TableCell><button className="font-medium text-slate-800 hover:text-primary" onClick={() => changeView("batches", batch.id)}>{batch.name}</button></TableCell><TableCell><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs text-emerald-700">{kindLabels[batch.kind]}</span></TableCell><TableCell>{batch.count}</TableCell><TableCell>{date(batch.createdAt)}</TableCell><TableCell><div className="flex gap-2">{supplyAvailable ? <Button size="sm" variant="outline" disabled={transferBlocked || batch.count===0} onClick={()=>{setSelectedBatch(batch);setDialog("transfer")}}>加入我的供应链</Button> : null}<Button size="sm" variant="outline" onClick={() => changeView("batches", batch.id)}>查看商品</Button><Button size="sm" variant="ghost" disabled={writeBlocked} onClick={() => { setSelectedBatch(batch); setName(batch.name); setDialog("rename"); }}>重命名</Button><Button size="sm" variant="ghost" disabled={writeBlocked} onClick={() => { setSelectedBatch(batch); setDialog("archive-batch"); }}>归档</Button></div></TableCell></TableRow>)}</TableBody></Table>}
       <div className="flex justify-end gap-2 border-t border-slate-100 p-4"><Button size="sm" variant="outline" disabled={!after || loading} onClick={() => { setAfter(undefined); setLoading(true); }}>首页</Button><Button size="sm" variant="outline" disabled={!next || loading} onClick={() => { setAfter(next); setLoading(true); }}>下一页</Button></div>
     </Card>
-    {dialog ? <CollectionDialog title={dialog === "manage" ? "批次管理" : dialog === "own" ? "添加自有商品" : dialog === "rename" ? "重命名批次" : dialog === "move" ? "移动批次" : dialog === "detail" ? "原始商品资料" : "归档确认"} onClose={() => { if (!busy) setDialog(null); }}>
+    {dialog ? <CollectionDialog title={dialog === "transfer" ? "加入我的供应链" : dialog === "manage" ? "批次管理" : dialog === "own" ? "添加自有商品" : dialog === "rename" ? "重命名批次" : dialog === "move" ? "移动批次" : dialog === "detail" ? "原始商品资料" : "归档确认"} onClose={() => { if (!busy) setDialog(null); }}>
       {dialog === "manage" ? <><p className="text-sm text-slate-500">批次可重命名或归档，原始商品资料保留。</p><form className="flex gap-3" onSubmit={event => { event.preventDefault(); void command({ action: "create_batch", name }); }}><Input aria-label="新批次名称" placeholder="输入新批次名称" value={name} onChange={event => setName(event.target.value)} /><Button type="submit" disabled={writeBlocked || !name.trim()}>新建批次</Button></form><div className="flex flex-wrap gap-2">{batches.map(batch => <Button key={batch.id} variant="outline" disabled={writeBlocked} onClick={() => { setSelectedBatch(batch); setName(batch.name); setDialog("rename"); }}>{batch.name} · 重命名</Button>)}</div></> : null}
       {dialog === "rename" && selectedBatch ? <form className="space-y-4" onSubmit={event => { event.preventDefault(); void command({ action: "rename_batch", batchId: selectedBatch.id, expectedRevision: selectedBatch.revision, name }); }}><Input aria-label="批次名称" value={name} onChange={event => setName(event.target.value)} /><Button type="submit" disabled={writeBlocked || !name.trim()}>保存名称</Button></form> : null}
       {dialog === "archive-batch" && selectedBatch ? <><p>归档“{selectedBatch.name}”后将从列表隐藏，原始资料和发布记录保留。</p><Button disabled={writeBlocked} onClick={() => void command({ action: "archive_batch", batchId: selectedBatch.id, expectedRevision: selectedBatch.revision })}>确认归档</Button></> : null}
       {dialog === "archive-item" && selectedItem ? <><p>归档此商品后将从列表隐藏，原始资料和发布记录保留。</p><Button disabled={writeBlocked} onClick={() => void command({ action: "archive_item", itemId: selectedItem.id, expectedRevision: selectedItem.revision })}>确认归档</Button></> : null}
       {dialog === "move" && selectedItem ? <form className="space-y-4" onSubmit={event => { event.preventDefault(); void command({ action: "move_item", itemId: selectedItem.id, targetBatchId: targetBatch, expectedRevision: selectedItem.revision }); }}><label className="grid gap-2">目标批次<Select value={targetBatch} onChange={event => setTargetBatch(event.target.value)}><option value="">选择批次</option>{batches.filter(batch => batch.id !== selectedItem.batchId).map(batch => <option key={batch.id} value={batch.id}>{batch.name}</option>)}</Select></label><p className="text-sm text-slate-500">移动只改变分组，原始资料保留。</p><Button type="submit" disabled={writeBlocked || !targetBatch}>确认移动</Button></form> : null}
+      {dialog === "transfer" && selectedBatch ? <><p>将“{selectedBatch.name}”的全部 {selectedBatch.count} 件商品加入我的供应链。</p><p className="text-sm text-slate-500">确认后保存当前批次的原始资料，后续可选择店铺并完成适配。</p><Button disabled={transferBlocked} onClick={()=>supply.execute("transfer",{batchId:selectedBatch.id,expectedRevision:selectedBatch.revision})}>确认加入</Button></> : null}
       {dialog === "own" ? <OwnProductForm disabled={writeBlocked} onSubmit={product => void command({ action: "create_product", product })} /> : null}
       {dialog === "detail" ? detail ? <ProductFacts detail={detail} /> : <p role="status">正在读取原始资料…</p> : null}
     </CollectionDialog> : null}

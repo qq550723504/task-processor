@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
 	"net"
 	"net/http"
 	"time"
@@ -33,6 +35,8 @@ type Dependencies struct {
 	OpenImageAgent               func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenAccountAuditUsage        func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	DialImageAgentWorkflow       func(context.Context, string, string) (imageagent.WorkflowClient, func() error, error)
+	OpenSupplyAssets             func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	DialSupplyWorkflow           func(context.Context, string, string) (client.Client, func() error, error)
 	OpenReferrals                func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenMembership               func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	NewApplicationWithFeatures   func(context.Context, *gorm.DB, ApplicationFeatures, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
@@ -59,6 +63,9 @@ type ApplicationFeatures struct {
 	MoneyOwnerDB                                         *gorm.DB
 	ProductAcquisitionDB                                 *gorm.DB
 	ProductCollections                                   bool
+	SupplyAssetDB                                        *gorm.DB
+	SupplyWorkflow                                       client.Client
+	SupplyWorker                                         *worker.Worker
 	ImageAgentDB                                         *gorm.DB
 	AccountAuditImageDB, AccountAuditProductDB           *gorm.DB
 	ImageAgentWorkflow                                   imageagent.WorkflowClient
@@ -137,6 +144,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	if cfg.ImageAgent != nil && (dependencies.OpenImageAgent == nil || dependencies.DialImageAgentWorkflow == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("current image agent owner and organization workflow lifecycle unavailable")
+	}
+	if cfg.SupplyChain != nil && (dependencies.OpenSupplyAssets == nil || dependencies.DialSupplyWorkflow == nil || dependencies.NewApplicationWithFeatures == nil) {
+		return errors.New("supply chain runtime dependencies unavailable")
 	}
 	if cfg.AccountAuditUsage != nil && (dependencies.OpenAccountAuditUsage == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("account audit usage read-only lifecycle unavailable")
@@ -364,6 +374,27 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			}
 		}
 	}
+	var supplyAssetDB *gorm.DB
+	var supplyWorkflow client.Client
+	var supplyWorker worker.Worker
+	if s := cfg.SupplyChain; s != nil {
+		supplyAssetDB, err = dependencies.OpenSupplyAssets(startupContext, s.AssetDatabase)
+		if err != nil || supplyAssetDB == nil {
+			return errors.New("open supply Asset runtime owner failed")
+		}
+		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, imageDB, storeDB} {
+			if supplyAssetDB == existing {
+				return errors.New("supply requires its narrow independently opened Asset pool")
+			}
+		}
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(supplyAssetDB)) }()
+		var closeWorkflow func() error
+		supplyWorkflow, closeWorkflow, err = dependencies.DialSupplyWorkflow(startupContext, s.TemporalAddress, s.TemporalNamespace)
+		if err != nil || supplyWorkflow == nil || closeWorkflow == nil {
+			return errors.New("supply workflow runtime unavailable")
+		}
+		defer func() { resultErr = errors.Join(resultErr, closeWorkflow()) }()
+	}
 	var trialDB *gorm.DB
 	if cfg.LocalTrial != nil {
 		trialDB, err = dependencies.OpenLocalTrial(startupContext, cfg.LocalTrial.Database)
@@ -406,7 +437,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, SupplyAssetDB: supplyAssetDB, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {
@@ -434,6 +465,17 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		return fmt.Errorf("listen for current application: %w", err)
 	}
 	server.Addr = cfg.ListenAddress()
+	if cfg.SupplyChain != nil {
+		if supplyWorker == nil {
+			_ = listener.Close()
+			return errors.New("supply worker was not assembled")
+		}
+		if err := supplyWorker.Start(); err != nil {
+			_ = listener.Close()
+			return errors.New("start supply worker failed")
+		}
+		defer supplyWorker.Stop()
+	}
 	serveResult := make(chan error, 1)
 	go func() { serveResult <- server.Serve(listener) }()
 

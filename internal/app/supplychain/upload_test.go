@@ -280,7 +280,7 @@ func uploadFixture(t *testing.T) (*UploadService, collection.Scope, *uploadRecor
 	require.NoError(t, err)
 	binding := storecenter.ProductMerchantBinding{OrganizationID: scope.OrganizationID, StoreID: uuid.NewString(), Site: "shein-us", StoreVersion: 1, ConnectionRevision: 1, ApplicationRevision: "v1:self_operated", ApplicationID: "app-a", ApplicationType: storecenter.ApplicationSelfOperated, SupplierIdentityHash: collection.Digest("merchant-a"), ServiceExpiresAt: time.Now().Add(time.Hour)}
 	binding.ServiceExpiresAt = binding.ServiceExpiresAt.UTC().Truncate(time.Microsecond)
-	rules := goods.OfficialRuleSnapshot{ApplicationMode: model.ModeSelfOperated,
+	rules := goods.OfficialRuleSnapshot{ApplicationMode: model.ModeSelfOperated, Warehouses: []model.Warehouse{},
 		Categories: []model.Category{{ID: 123, ProductTypeID: 456, Leaf: uploadPointer(true)}}, Sites: []model.MainSite{{ID: "shein", Sites: []model.Site{{Abbreviation: "shein-us", Status: uploadPointer(1), StoreType: uploadPointer(2), Currency: "USD"}}}},
 		Fill:       model.FillStandards{DefaultLanguage: "en", DefaultTitleMaximum: uploadPointer(150), SupplierCodeInSPU: uploadPointer(false), Fields: []model.FillRule{}, Pictures: []model.PictureRule{{Field: "switch_spu_picture", Enabled: uploadPointer(false)}, {Field: "sku_image_required", Enabled: uploadPointer(false)}}},
 		Attributes: model.AttributeTemplate{ProductTypeID: 456, MainAttributeStatus: uploadPointer(1), Attributes: []model.Attribute{{ID: 12, Name: "Default", Type: uploadPointer(1), Show: uploadPointer(1), MainLabel: uploadPointer(1), Mode: uploadPointer(2), Status: uploadPointer(3), MaximumSelections: uploadPointer(1), Options: []model.AttributeOption{{ID: 34, Name: "Default", Show: uploadPointer(1)}}}}},

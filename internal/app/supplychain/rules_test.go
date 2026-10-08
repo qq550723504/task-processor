@@ -32,6 +32,9 @@ func (s *rulesFixture) Binding() storecenter.ProductMerchantBinding { return s.b
 func (s *rulesFixture) Sites(context.Context) ([]model.MainSite, error) {
 	return []model.MainSite{}, nil
 }
+func (s *rulesFixture) Warehouses(context.Context) ([]model.Warehouse, error) {
+	return []model.Warehouse{}, nil
+}
 func (s *rulesFixture) Categories(context.Context) ([]model.Category, error) {
 	leaf := true
 	return []model.Category{{ID: 123, ProductTypeID: 456, Leaf: &leaf}}, nil

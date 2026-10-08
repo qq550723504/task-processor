@@ -5,25 +5,48 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
+	preparationstore "task-processor/internal/integration/persistence/listing/preparation"
+	recordstore "task-processor/internal/integration/persistence/listing/record"
+	submissionstore "task-processor/internal/integration/persistence/listing/submission"
 	collectionstore "task-processor/internal/integration/persistence/product/collection"
 	"task-processor/internal/product/sourcing"
 )
 
 const RuntimeRole = "source_acquisition_runtime"
 
-type RuntimeCapabilities struct{ Collections bool }
+type RuntimeCapabilities struct {
+	Collections bool
+	SupplyChain bool
+}
 
 const collectionPrivileges = `,('product_collection_batches','SELECT'),('product_collection_batches','INSERT'),('product_collection_batches','UPDATE'),
  ('product_collection_items','SELECT'),('product_collection_items','INSERT'),('product_collection_items','UPDATE'),
  ('product_collection_operations','SELECT'),('product_collection_operations','INSERT')`
 
 func runtimePermissionsFor(capability RuntimeCapabilities) string {
-	if !capability.Collections {
-		return runtimePermissionQuery
+	admitted := strings.TrimSuffix(admittedPrivileges, ")")
+	if capability.Collections {
+		admitted += collectionPrivileges
 	}
-	admitted := strings.TrimSuffix(admittedPrivileges, ")") + collectionPrivileges + ")"
+	if capability.SupplyChain {
+		admitted += supplyPrivileges
+	}
+	admitted += ")"
 	return strings.Replace(runtimePermissionQuery, admittedPrivileges, admitted, 1)
 }
+
+const supplyPrivileges = `,('listing_preparations','SELECT'),('listing_preparations','INSERT'),
+ ('listing_preparation_sources','SELECT'),('listing_preparation_sources','INSERT'),
+ ('listing_preparation_targets','SELECT'),('listing_preparation_targets','INSERT'),('listing_preparation_targets','UPDATE'),
+ ('listing_target_records','SELECT'),('listing_target_records','INSERT'),
+ ('listing_target_record_commands','SELECT'),('listing_target_record_commands','INSERT'),
+ ('listing_preparation_operations','SELECT'),('listing_preparation_operations','INSERT'),('listing_preparation_operations','UPDATE'),
+ ('listing_preparation_operation_items','SELECT'),('listing_preparation_operation_items','INSERT'),('listing_preparation_operation_items','UPDATE'),
+ ('listing_submission_execution_attempts','SELECT'),('listing_submission_execution_attempts','INSERT'),('listing_submission_execution_attempts','UPDATE'),
+ ('listing_submission_target_fences','SELECT'),('listing_submission_target_fences','INSERT'),('listing_submission_target_fences','UPDATE'),
+ ('listing_submission_official_intents','SELECT'),('listing_submission_official_intents','INSERT'),
+ ('listing_submission_official_receipts','SELECT'),('listing_submission_official_receipts','INSERT'),
+ ('product_title_proposals','SELECT')`
 
 // Read-only readiness for the existing SRC-1/Catalog schema consumed by this
 // module. This is not a schema installer or another owner of publication facts.
@@ -124,6 +147,10 @@ func GrantRuntimePermissions(ctx context.Context, db *gorm.DB, capabilities ...R
 			return sourcing.ErrAcquisitionUnavailable
 		}
 		enabled := len(capabilities) == 1 && capabilities[0].Collections
+		supply := len(capabilities) == 1 && capabilities[0].SupplyChain
+		if supply && !enabled {
+			return sourcing.ErrAcquisitionUnavailable
+		}
 		if enabled {
 			if err := collectionstore.VerifySchema(ctx, tx); err != nil {
 				return err
@@ -153,6 +180,11 @@ func GrantRuntimePermissions(ctx context.Context, db *gorm.DB, capabilities ...R
 			statements = append(statements,
 				"GRANT SELECT,INSERT,UPDATE ON public.product_collection_batches,public.product_collection_items TO source_acquisition_runtime",
 				"GRANT SELECT,INSERT ON public.product_collection_operations TO source_acquisition_runtime")
+		}
+		if supply {
+			statements = append(statements, "GRANT SELECT,INSERT ON public.listing_preparations,public.listing_preparation_sources,public.listing_target_records,public.listing_target_record_commands,public.listing_submission_official_intents,public.listing_submission_official_receipts TO source_acquisition_runtime",
+				"GRANT SELECT,INSERT,UPDATE ON public.listing_preparation_targets,public.listing_preparation_operations,public.listing_preparation_operation_items,public.listing_submission_execution_attempts,public.listing_submission_target_fences TO source_acquisition_runtime",
+				"GRANT SELECT ON public.product_title_proposals TO source_acquisition_runtime")
 		}
 		for _, statement := range statements {
 			if err := tx.Exec(statement).Error; err != nil {
@@ -186,6 +218,9 @@ func VerifyRuntimePermissions(ctx context.Context, db *gorm.DB, capabilities ...
 	if len(capabilities) == 1 {
 		capability = capabilities[0]
 	}
+	if capability.SupplyChain && !capability.Collections {
+		return sourcing.ErrAcquisitionUnavailable
+	}
 	var required, forbidden bool
 	if err := pool.QueryRowContext(ctx, runtimePermissionsFor(capability)).Scan(&user, &required, &forbidden); err != nil {
 		return sourcing.ErrAcquisitionUnavailable
@@ -199,6 +234,20 @@ func VerifyRuntimePermissions(ctx context.Context, db *gorm.DB, capabilities ...
 	}
 	if capability.Collections {
 		if err := collectionstore.VerifySchema(ctx, db); err != nil {
+			return err
+		}
+	}
+	if capability.SupplyChain {
+		if err := preparationstore.VerifySchema(ctx, db); err != nil {
+			return err
+		}
+		if err := preparationstore.VerifyOperationSchema(ctx, db); err != nil {
+			return err
+		}
+		if err := recordstore.VerifySchema(ctx, db); err != nil {
+			return err
+		}
+		if err := submissionstore.VerifyOfficialSchema(ctx, db); err != nil {
 			return err
 		}
 	}

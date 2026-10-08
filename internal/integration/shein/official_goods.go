@@ -53,6 +53,10 @@ func (c *OfficialClient) goodsRequest(ctx context.Context, method, path, query s
 		if method != http.MethodGet || len(payload) != 0 {
 			return nil, ErrGoodsInvalid
 		}
+	case "/open-api/msc/warehouse/list":
+		if method != http.MethodGet || query != "" || len(payload) != 0 {
+			return nil, ErrGoodsInvalid
+		}
 	default:
 		return nil, ErrGoodsInvalid
 	}
@@ -75,6 +79,7 @@ func (c *OfficialClient) goodsRequest(ctx context.Context, method, path, query s
 	request.Header.Set("language", "en")
 	if method == http.MethodGet {
 		request.Header.Set("language", "US")
+		request.Header.Set("x-lt-language", "US")
 	}
 	request.Header.Set("x-lt-openKeyId", credential.OpenKeyID)
 	request.Header.Set("x-lt-timestamp", timestamp)

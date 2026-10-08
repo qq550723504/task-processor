@@ -19,11 +19,14 @@ import (
 	"task-processor/internal/product/sourcing"
 )
 
-func buildProductCollectionService(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, permissions *authz.ListingKitAuthorizer) (*collection.Service, error) {
+func buildProductCollectionService(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, permissions *authz.ListingKitAuthorizer, supply ...bool) (*collection.Service, error) {
 	if dependencies.organizationResolver == nil || permissions == nil {
 		return nil, collection.ErrUnavailable
 	}
-	if err := acquisitionstore.VerifyRuntimePermissions(ctx, db, acquisitionstore.RuntimeCapabilities{Collections: true}); err != nil {
+	if len(supply) > 1 {
+		return nil, collection.ErrUnavailable
+	}
+	if err := acquisitionstore.VerifyRuntimePermissions(ctx, db, acquisitionstore.RuntimeCapabilities{Collections: true, SupplyChain: len(supply) == 1 && supply[0]}); err != nil {
 		return nil, err
 	}
 	live := &productReviewLiveOrganizationAccess{resolver: dependencies.organizationResolver, now: time.Now}
@@ -51,8 +54,8 @@ func buildProductCollectionService(ctx context.Context, db *gorm.DB, dependencie
 	}
 	return service.WithSnapshots(snapshots), nil
 }
-func buildProductCollectionModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, permissions *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-	service, err := buildProductCollectionService(ctx, db, dependencies, permissions)
+func buildProductCollectionModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, permissions *authz.ListingKitAuthorizer, supply ...bool) (kernelmodule.Module, error) {
+	service, err := buildProductCollectionService(ctx, db, dependencies, permissions, supply...)
 	if err != nil {
 		return nil, err
 	}

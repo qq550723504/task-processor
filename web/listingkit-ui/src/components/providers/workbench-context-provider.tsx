@@ -22,6 +22,8 @@ import {
 } from "@/lib/api/workbench-context";
 import type { AcquisitionOperation } from "@/lib/api/product-acquisition";
 import type { CollectionIntent } from "@/lib/api/product-collection";
+import type { SupplyIntent } from "@/lib/api/supply-chain";
+import { loadSupplyIntent, saveSupplyIntent } from "@/lib/api/supply-intent";
 
 type WorkbenchContextValue = {
   user: WorkbenchContext["user"] | null;
@@ -44,6 +46,9 @@ type WorkbenchContextValue = {
   setPendingAcquisitionIntent: (intent: AcquisitionOperation | null) => void;
   pendingCollectionIntent: CollectionIntent | null;
   setPendingCollectionIntent: (intent: CollectionIntent | null) => void;
+  pendingSupplyIntent: SupplyIntent | null;
+  supplyIntentReady: boolean;
+  setPendingSupplyIntent: (intent: SupplyIntent | null) => boolean;
   registerOrganizationSwitchGuard: (
     guard: (target: WorkbenchOrganization) => boolean | Promise<boolean>,
   ) => () => void;
@@ -60,6 +65,10 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
   const [pendingAcquisitionIntent, setPendingAcquisitionIntent] =
     useState<AcquisitionOperation | null>(null);
   const [pendingCollectionIntent, setPendingCollectionIntent] = useState<CollectionIntent | null>(null);
+  const [pendingSupplyIntent,setSupplyIntent]=useState<SupplyIntent|null>(null);
+  const [supplyIntentReady,setSupplyIntentReady]=useState(false);
+  useEffect(()=>{setSupplyIntent(loadSupplyIntent());setSupplyIntentReady(true)},[]);
+  const setPendingSupplyIntent=useCallback((intent:SupplyIntent|null)=>{if(!saveSupplyIntent(intent))return false;setSupplyIntent(intent);return true},[]);
   const guardsRef = useRef(new Set<(target: WorkbenchOrganization) => boolean | Promise<boolean>>());
   const currentContextRef = useRef<WorkbenchContext | null>(null);
   const switchRequestPendingRef = useRef(false);
@@ -193,6 +202,9 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       setPendingAcquisitionIntent,
       pendingCollectionIntent,
       setPendingCollectionIntent,
+      pendingSupplyIntent,
+      supplyIntentReady,
+      setPendingSupplyIntent,
       registerOrganizationSwitchGuard,
     }),
     [
@@ -207,6 +219,9 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       switchOrganization,
       pendingAcquisitionIntent,
       pendingCollectionIntent,
+      pendingSupplyIntent,
+      supplyIntentReady,
+      setPendingSupplyIntent,
       registerOrganizationSwitchGuard,
     ],
   );

@@ -16,6 +16,7 @@ import (
 type RulesMerchant interface {
 	Binding() storecenter.ProductMerchantBinding
 	Sites(context.Context) ([]model.MainSite, error)
+	Warehouses(context.Context) ([]model.Warehouse, error)
 	Categories(context.Context) ([]model.Category, error)
 	Brands(context.Context) ([]model.Brand, error)
 	FillStandards(context.Context, int64) (model.FillStandards, error)
@@ -57,6 +58,7 @@ func (r RuleReader) ReadTargetRules(ctx context.Context, scope collection.Scope,
 	group, reads := errgroup.WithContext(ctx)
 	if snapshot.ApplicationMode != model.ModeFullyManaged {
 		group.Go(func() error { var err error; snapshot.Sites, err = merchant.Sites(reads); return err })
+		group.Go(func() error { var err error; snapshot.Warehouses, err = merchant.Warehouses(reads); return err })
 	}
 	group.Go(func() error { var err error; snapshot.Categories, err = merchant.Categories(reads); return err })
 	group.Go(func() error { var err error; snapshot.Brands, err = merchant.Brands(reads); return err })

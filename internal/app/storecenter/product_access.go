@@ -16,6 +16,7 @@ var ErrProductAccessChanged = errors.New("official product merchant authorizatio
 type OfficialGoodsProvider interface {
 	Application() storecenter.OfficialApplication
 	QueryProductSites(context.Context, storecenter.OfficialMerchantCredential) ([]model.MainSite, error)
+	QueryProductWarehouses(context.Context, storecenter.OfficialMerchantCredential) ([]model.Warehouse, error)
 	QueryProductCategories(context.Context, storecenter.OfficialMerchantCredential) ([]model.Category, error)
 	QueryProductFillStandards(context.Context, storecenter.OfficialMerchantCredential, int64) (model.FillStandards, error)
 	QueryProductAttributes(context.Context, storecenter.OfficialMerchantCredential, int64) (model.AttributeTemplate, error)
@@ -135,6 +136,11 @@ func (h *MerchantHandle) Sites(ctx context.Context) ([]model.MainSite, error) {
 func (h *MerchantHandle) Categories(ctx context.Context) ([]model.Category, error) {
 	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) ([]model.Category, error) {
 		return h.entry.provider.(OfficialGoodsProvider).QueryProductCategories(ctx, c)
+	})
+}
+func (h *MerchantHandle) Warehouses(ctx context.Context) ([]model.Warehouse, error) {
+	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) ([]model.Warehouse, error) {
+		return h.entry.provider.(OfficialGoodsProvider).QueryProductWarehouses(ctx, c)
 	})
 }
 func (h *MerchantHandle) FillStandards(ctx context.Context, id int64) (model.FillStandards, error) {

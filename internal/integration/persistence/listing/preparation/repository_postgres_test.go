@@ -106,8 +106,9 @@ func TestPostgresTransferCapturesAllPagesAndReplaysOriginalMembership(t *testing
 	cancelled, err := opService.Cancel(actor, op.Operation.ID)
 	require.NoError(t, err)
 	require.Equal(t, preparation.OperationCancelled, cancelled.Status)
-	_, err = operations.BeginOperationItem(actor, access, opPage.Items[1].SourceID)
-	require.ErrorIs(t, err, preparation.ErrConflict, "cancelled pending item may not be claimed")
+	stopped, err := operations.BeginOperationItem(actor, access, opPage.Items[1].SourceID)
+	require.NoError(t, err, "cancel between list and claim returns the durable terminal result")
+	require.Equal(t, preparation.ItemCancelled, stopped.Status)
 	claimed.Status, claimed.Note = preparation.ItemSucceeded, "适配资料已保存"
 	require.NoError(t, operations.FinishOperationItem(actor, access, claimed))
 	afterCancel, err := opService.Read(actor, op.Operation.ID)

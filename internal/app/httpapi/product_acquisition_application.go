@@ -416,10 +416,13 @@ func buildProductAcquisitionModule(ctx context.Context, db *gorm.DB, dependencie
 	return productAcquisitionModule{routes: productAcquisitionRoutes(service, binder.Bind)}, nil
 }
 func collectionAcquisitionOptions(enabled []bool) (acquisitionstore.RuntimeCapabilities, []productsourcing.AcquisitionPublicationOption, error) {
-	if len(enabled) > 1 {
+	if len(enabled) > 2 {
 		return acquisitionstore.RuntimeCapabilities{}, nil, sourcing.ErrAcquisitionUnavailable
 	}
-	capability := acquisitionstore.RuntimeCapabilities{Collections: len(enabled) == 1 && enabled[0]}
+	capability := acquisitionstore.RuntimeCapabilities{Collections: len(enabled) >= 1 && enabled[0], SupplyChain: len(enabled) == 2 && enabled[1]}
+	if capability.SupplyChain && !capability.Collections {
+		return acquisitionstore.RuntimeCapabilities{}, nil, sourcing.ErrAcquisitionUnavailable
+	}
 	var options []productsourcing.AcquisitionPublicationOption
 	if capability.Collections {
 		options = append(options, productsourcing.WithCollectionPublication())

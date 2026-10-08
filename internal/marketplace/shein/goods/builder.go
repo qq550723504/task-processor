@@ -22,6 +22,7 @@ type OfficialRuleSnapshot struct {
 	Attributes      model.AttributeTemplate `json:"attributes"`
 	Linked          []model.LinkedRules     `json:"linked"`
 	Brands          []model.Brand           `json:"brands"`
+	Warehouses      []model.Warehouse       `json:"warehouses"`
 }
 type OfficialDraftInput struct {
 	Product model.PublishProduct `json:"product"`
@@ -105,6 +106,9 @@ func BuildOfficial(input OfficialDraftInput, rules OfficialRuleSnapshot, invento
 	}
 	if rules.ApplicationMode != model.ModeFullyManaged && siteCount != 1 {
 		b.issue("site_list", "unavailable", "无法确认当前店铺的美国站")
+	}
+	if rules.ApplicationMode != model.ModeFullyManaged && rules.Warehouses == nil {
+		b.issue("warehouses", "rule_unavailable", "无法确认当前店铺的库存仓库")
 	}
 	if rules.Attributes.ProductTypeID != p.ProductTypeID || rules.Attributes.MainAttributeStatus == nil || rules.Attributes.Attributes == nil {
 		b.issue("attributes", "rule_unavailable", "当前类目属性规范不可用")
@@ -202,6 +206,21 @@ func BuildOfficial(input OfficialDraftInput, rules OfficialRuleSnapshot, invento
 					b.issue(sp+".stock_info_list", "invalid", "库存范围为 0 至 99999，多仓库存须有不同的真实仓库 ID")
 				}
 				seenWarehouse[stock.WarehouseID] = true
+				if rules.ApplicationMode != model.ModeFullyManaged {
+					valid := len(rules.Warehouses) == 0 && stock.WarehouseID == "" && stock.WarehouseName == ""
+					for _, warehouse := range rules.Warehouses {
+						us := false
+						for _, country := range warehouse.SaleCountries {
+							us = us || country == "US"
+						}
+						if (warehouse.Code == stock.WarehouseID || len(rules.Warehouses) == 1 && stock.WarehouseID == "") && warehouse.Type == 1 && us && (stock.WarehouseName == "" || stock.WarehouseName == warehouse.Name) {
+							valid = true
+						}
+					}
+					if !valid {
+						b.issue(sp+".stock_info_list", "invalid", "选择当前店铺可维护美国站库存的商家仓，多仓店铺须填写仓库 ID")
+					}
+				}
 			}
 			if sku.Quantity != nil {
 				q := sku.Quantity

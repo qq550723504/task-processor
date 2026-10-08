@@ -25,7 +25,7 @@ type OrganizationExecutionAuthorizer struct {
 }
 
 func (a OrganizationExecutionAuthorizer) current(ctx context.Context, scope collection.Scope) ([]string, error) {
-	if ctx == nil || ctx.Err() != nil || scope.Validate() != nil || a.Client == nil || a.ServiceToken == nil || a.ProjectID == "" || a.Permissions == nil || a.OrganizationStatus == nil {
+	if ctx == nil || ctx.Err() != nil || scope.Validate() != nil || a.Client == nil || a.ServiceToken == nil || a.ProjectID == "" || a.Permissions == nil {
 		return nil, collection.ErrForbidden
 	}
 	if _, bounded := ctx.Deadline(); !bounded {
@@ -44,8 +44,13 @@ func (a OrganizationExecutionAuthorizer) current(ctx context.Context, scope coll
 	if err != nil || !grant.Found || grant.State != "STATE_ACTIVE" || grant.AuthorizationID != scope.MemberID {
 		return nil, collection.ErrForbidden
 	}
-	suspended, err := a.OrganizationStatus.IsOrganizationSuspended(ctx, scope.OrganizationID)
-	if err != nil || suspended || ctx.Err() != nil {
+	if a.OrganizationStatus != nil {
+		suspended, err := a.OrganizationStatus.IsOrganizationSuspended(ctx, scope.OrganizationID)
+		if err != nil || suspended {
+			return nil, collection.ErrForbidden
+		}
+	}
+	if ctx.Err() != nil {
 		return nil, collection.ErrForbidden
 	}
 	return grant.Roles, nil

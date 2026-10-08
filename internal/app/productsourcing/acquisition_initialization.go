@@ -13,8 +13,12 @@ import (
 
 	"gorm.io/gorm"
 	sigjson "sigs.k8s.io/json"
+	preparationstore "task-processor/internal/integration/persistence/listing/preparation"
+	recordstore "task-processor/internal/integration/persistence/listing/record"
+	submissionstore "task-processor/internal/integration/persistence/listing/submission"
 	acquisitionstore "task-processor/internal/integration/persistence/product/acquisition"
 	collectionstore "task-processor/internal/integration/persistence/product/collection"
+	reviewstore "task-processor/internal/integration/persistence/product/review"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
@@ -23,6 +27,7 @@ var acquisitionInitName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
 type acquisitionInitManifest struct {
 	SchemaVersion int  `json:"schemaVersion"`
 	Collections   bool `json:"collections,omitempty"`
+	SupplyChain   bool `json:"supplyChain,omitempty"`
 	Database      struct {
 		Host     string `json:"host"`
 		Port     int    `json:"port"`
@@ -54,6 +59,9 @@ func InitializeAcquisitionDatabase(ctx context.Context, manifest, confirmedDatab
 	var cfg acquisitionInitManifest
 	strict, err := sigjson.UnmarshalStrict(raw, &cfg, sigjson.DisallowUnknownFields, sigjson.DisallowDuplicateFields)
 	d := cfg.Database
+	if cfg.SupplyChain && !cfg.Collections {
+		return unavailable
+	}
 	if err != nil || len(strict) > 0 || cfg.SchemaVersion != 1 || d.Host != "127.0.0.1" || d.Port < 1 || d.Port > 65535 || !acquisitionInitName.MatchString(d.User) || !acquisitionInitName.MatchString(d.Database) || confirmedDatabase != d.Database || d.User == acquisitionstore.RuntimeRole || d.Database == "postgres" || d.Database == "template0" || d.Database == "template1" || len(d.Password) < 1 || len(d.Password) > 1024 || strings.ContainsAny(d.Password, " ='\\\t\r\n\v\f\x00") {
 		return unavailable
 	}
@@ -80,10 +88,29 @@ func InitializeAcquisitionDatabase(ctx context.Context, manifest, confirmedDatab
 				return err
 			}
 		}
-		return acquisitionstore.GrantRuntimePermissions(ctx, tx, acquisitionstore.RuntimeCapabilities{Collections: cfg.Collections})
+		if cfg.SupplyChain {
+			if err := InstallSupplyChainSchema(tx); err != nil {
+				return err
+			}
+		}
+		return acquisitionstore.GrantRuntimePermissions(ctx, tx, acquisitionstore.RuntimeCapabilities{Collections: cfg.Collections, SupplyChain: cfg.SupplyChain})
 	})
 	if err != nil {
 		return unavailable
 	}
 	return nil
+}
+
+func InstallSupplyChainSchema(db *gorm.DB) error {
+	if db == nil || db.Dialector.Name() != "postgres" {
+		return errors.New("supply requires existing Product PostgreSQL owner")
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		for _, install := range []func(*gorm.DB) error{preparationstore.InstallSchema, recordstore.InstallSchema, preparationstore.InstallOperationSchema, submissionstore.InstallSchema, submissionstore.InstallOfficialSchema, reviewstore.InstallSchema} {
+			if err := install(tx); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

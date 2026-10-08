@@ -57,6 +57,7 @@ type SourceSelectionRequest struct {
 	OriginalPublicationID   string `json:"originalPublicationId"`
 	OriginalSnapshotVersion uint64 `json:"originalSnapshotVersion"`
 	EffectiveCatalogVersion uint64 `json:"effectiveCatalogVersion"`
+	ApplyReceiptID          string `json:"applyReceiptId,omitempty"`
 	TargetPlatform          string `json:"targetPlatform"`
 }
 type SourceImage struct {

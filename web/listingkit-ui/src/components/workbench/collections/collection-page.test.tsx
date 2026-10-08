@@ -3,16 +3,37 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CollectionAPIError, type CollectionIntent } from "@/lib/api/product-collection";
 import { CollectionPage } from "./collection-page";
+import { SupplyAPIError,type SupplyIntent } from "@/lib/api/supply-chain";
 
-const state = vi.hoisted(() => ({ context: {} as Record<string, unknown>, list: vi.fn(), mutate: vi.fn(), read: vi.fn() }));
+const state = vi.hoisted(() => ({ context: {} as Record<string, unknown>, list: vi.fn(), mutate: vi.fn(), read: vi.fn(),supplyWrite:vi.fn(),supplyRead:vi.fn() }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => state.context }));
 vi.mock("@/lib/api/product-collection", async original => ({ ...await original<object>(), listCollectionBatches: state.list, mutateCollection: state.mutate, readCollectionOperation: state.read }));
+vi.mock("@/lib/api/supply-chain",async original=>({...await original<object>(),supplyCommand:state.supplyWrite,readSupplyCommand:state.supplyRead}));
 beforeEach(() => {
   state.context = { user: { id: "actor-a" }, effectiveOrganization: { id: "org-a" }, permissions: ["workbench.collection.manage"],
     pendingCollectionIntent: null, setPendingCollectionIntent: (intent: CollectionIntent | null) => { state.context.pendingCollectionIntent = intent; }, registerOrganizationSwitchGuard: () => () => {} };
   state.list.mockReset().mockResolvedValue({ items: [], total: 0 }); state.mutate.mockReset(); state.read.mockReset();
+  state.context.pendingSupplyIntent=null;state.context.supplyIntentReady=true;state.context.setPendingSupplyIntent=(intent:SupplyIntent|null)=>{state.context.pendingSupplyIntent=intent;return true};
+  state.supplyWrite.mockReset();state.supplyRead.mockReset();
 });
 afterEach(cleanup);
+
+it("transfers all 205 batch members and recovers an uncertain original key",async()=>{
+ const id="550e8400-e29b-41d4-a716-446655440000";
+ state.context.permissions=["workbench.collection.read","workbench.supply.manage"];
+ state.list.mockResolvedValue({items:[{id,name:"供应测试批次",kind:"manual",revision:1,count:205,createdAt:"2026-10-08T00:00:00Z"}],total:1});
+ state.supplyWrite.mockRejectedValue(new SupplyAPIError("OUTCOME_UNKNOWN",503));
+ render(<CollectionPage supplyAvailable />);
+ await userEvent.click(await screen.findByRole("button",{name:"加入我的供应链"}));
+ await userEvent.click(screen.getByRole("button",{name:"确认加入"}));
+ await screen.findByText("结果待核实");
+ const intent=state.supplyWrite.mock.calls[0][0] as SupplyIntent;
+ expect(intent.command).toEqual({batchId:id,expectedRevision:1});expect(intent.route).toBe("transfer");
+ state.supplyRead.mockResolvedValue({preparation:{id,sourceBatchId:id,sourceRevision:1,name:"供应测试批次",count:205,revision:1,createdAt:"2026-10-08T00:00:00Z"},replayed:true});
+ await userEvent.click(screen.getByRole("button",{name:"核实原操作"}));
+ await screen.findByRole("link",{name:"查看我的供应链"});
+ expect(state.supplyRead).toHaveBeenCalledWith(intent,expect.any(AbortSignal));expect(state.supplyWrite).toHaveBeenCalledOnce();
+});
 
 it("keeps an uncertain batch command and verifies the original key without another write", async () => {
   state.mutate.mockRejectedValue(new CollectionAPIError("OUTCOME_UNKNOWN", 503));

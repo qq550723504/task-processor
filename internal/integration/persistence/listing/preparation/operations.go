@@ -332,6 +332,10 @@ func (r *OperationRepository) BeginOperationItem(ctx context.Context, proof prep
 		if err := tx.Where("organization_id=? AND actor_id=? AND operation_id=? AND source_id=?", row.OrganizationID, row.ActorID, row.ID, id).Take(&item).Error; err != nil {
 			return err
 		}
+		if preparation.ItemTerminal(item.Status) {
+			output = item.value()
+			return nil
+		}
 		if row.Status == preparation.OperationCancelled && item.Status != preparation.ItemRunning {
 			return preparation.ErrConflict
 		}

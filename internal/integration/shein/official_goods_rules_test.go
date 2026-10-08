@@ -85,3 +85,29 @@ func TestPublishPermissionIsCurrentSignedReadAndMissingFlagNeverAllowsSend(t *te
 	_, err = client.QueryProductPublishPermission(context.Background(), goodsCredential(), "actual brand")
 	require.ErrorIs(t, err, ErrGoodsUnavailable)
 }
+
+func TestWarehouseReadUsesSignedMerchantGetAndValidatesFullSet(t *testing.T) {
+	response := `{"code":"0","info":{"list":[{"warehouseCode":"wh-us","warehouseName":"US","warehouseType":1,"saleCountryList":["US"]},{"warehouseCode":"certified","warehouseName":"Certified","warehouseType":"2","saleCountryList":["US"]}]}}`
+	client := testClient(t, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		require.Equal(t, http.MethodGet, r.Method)
+		require.Equal(t, "/open-api/msc/warehouse/list", r.URL.Path)
+		require.Empty(t, r.URL.RawQuery)
+		require.Equal(t, "US", r.Header.Get("x-lt-language"))
+		require.NotEmpty(t, r.Header.Get("x-lt-signature"))
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(response)), Header: make(http.Header)}, nil
+	}))
+	list, err := client.QueryProductWarehouses(context.Background(), goodsCredential())
+	require.NoError(t, err)
+	require.Len(t, list, 2)
+	require.Equal(t, 2, list[1].Type)
+	for _, invalid := range []string{`{"code":"0","info":{"list":null}}`, `{"code":"0","info":{"list":[{"warehouseCode":"wh-us","warehouseName":"US","warehouseType":3,"saleCountryList":["US"]}]}}`, `{"code":"0","info":{"list":[{"warehouseCode":"wh-us","warehouseName":"US","warehouseType":1,"saleCountryList":null}]}}`} {
+		response = invalid
+		_, err = client.QueryProductWarehouses(context.Background(), goodsCredential())
+		require.ErrorIs(t, err, ErrGoodsUnavailable)
+	}
+	response = `{"code":"0","info":{"list":[]}}`
+	list, err = client.QueryProductWarehouses(context.Background(), goodsCredential())
+	require.NoError(t, err)
+	require.NotNil(t, list)
+	require.Empty(t, list)
+}

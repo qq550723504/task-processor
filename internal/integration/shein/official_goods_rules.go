@@ -5,9 +5,51 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
 	sheinmodel "task-processor/internal/marketplace/shein/model"
 	"task-processor/internal/storecenter"
 )
+
+func (c *OfficialClient) QueryProductWarehouses(ctx context.Context, credential storecenter.OfficialMerchantCredential) ([]sheinmodel.Warehouse, error) {
+	raw, err := c.goodsRequest(ctx, http.MethodGet, "/open-api/msc/warehouse/list", "", credential, nil)
+	if err != nil {
+		return nil, ErrGoodsUnavailable
+	}
+	var response struct {
+		Code string `json:"code"`
+		Info *struct {
+			List []struct {
+				Code          string          `json:"warehouseCode"`
+				Name          string          `json:"warehouseName"`
+				SaleCountries []string        `json:"saleCountryList"`
+				Type          json.RawMessage `json:"warehouseType"`
+			} `json:"list"`
+		} `json:"info"`
+	}
+	if decodeGoods(raw, &response) != nil || response.Code != "0" || response.Info == nil || response.Info.List == nil || len(response.Info.List) > 20 {
+		return nil, ErrGoodsUnavailable
+	}
+	output := make([]sheinmodel.Warehouse, 0, len(response.Info.List))
+	seen := map[string]bool{}
+	for _, row := range response.Info.List {
+		var text string
+		if json.Unmarshal(row.Type, &text) != nil {
+			text = string(row.Type)
+		}
+		kind, err := strconv.Atoi(text)
+		if err != nil || kind < 1 || kind > 2 || !boundedParameter(row.Code, 128) || seen[row.Code] || !boundedParameter(row.Name, 256) || row.SaleCountries == nil || len(row.SaleCountries) > 64 {
+			return nil, ErrGoodsUnavailable
+		}
+		for _, country := range row.SaleCountries {
+			if len(country) != 2 || country[0] < 'A' || country[0] > 'Z' || country[1] < 'A' || country[1] > 'Z' {
+				return nil, ErrGoodsUnavailable
+			}
+		}
+		seen[row.Code] = true
+		output = append(output, sheinmodel.Warehouse{Code: row.Code, Name: row.Name, SaleCountries: row.SaleCountries, Type: kind})
+	}
+	return output, nil
+}
 
 func queryGoodsData[T any](c *OfficialClient, ctx context.Context, credential storecenter.OfficialMerchantCredential, path string, payload []byte) ([]T, error) {
 	raw, err := c.goodsPost(ctx, path, credential, payload)
