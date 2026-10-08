@@ -80,18 +80,30 @@ App 持有 composition 与跨 owner 调用，Domain 不直接访问 HTTP、GORM�
 
 新增 Product collection 与 Listing preparation/target-binding 表由显式 schema 初始化创建；不让 serving constructor 自动迁移。复用 Product 数据库容纳本批次 Product/Listing 的有界事实和 Submission 持久执行表，按表/列授予最小 serving 权限；Store/Asset/Agent/Commercial pool 继续独立，禁止跨库复制 owner 表。
 
-1. `CollectionBatch`：Organization、BatchID、名称、创建者、创建时间、Revision、ArchivedAt。
-2. `CollectionItem`：Organization、ItemID、BatchID、ProductKey、SourcePublicationID、OriginalSnapshotVersion、来源方式、Revision、ArchivedAt。原始版本永久指向来源资料；不随优化结果漂移。
+1. `CollectionBatch`：Organization、OwnerActorID、OwnerMemberID、BatchID、名称、创建时间、Revision、ArchivedAt。
+2. `CollectionItem`：Organization、OwnerActorID、OwnerMemberID、ItemID、BatchID、ProductKey、SourcePublicationID、OriginalSnapshotVersion、来源方式、SourceOperationID（采集来源）、Revision、ArchivedAt。原始版本永久指向来源资料；不随优化结果漂移。
 3. `Preparation`：Organization、PreparationID、原 collection revision 与选定成员快照、RuleID/Revision、Platform/Site、Actor、幂等键/输入 hash、Revision。
 4. `PreparationItem`：PreparationID、ItemID、目标维度、CurrentRecordID、CatalogVersion、资产 inventory version/hash、Stage、缺失项与校验引用、AgentRun/Review/ApplyReceipt 引用、Revision。
 5. 目标资料正文、诊断与输入 hash 由 Listing Record 的不可变版本保存，不能同时写一份可变 preparation payload。`preparation` 只引用它。
 6. 外部状态仍来自 Submission attempt 与平台回执；`uploaded` 是投影，不新增一个可以独立签发成功的布尔字段。
 
-批次新建/改名/成员移动/归档与操作回执在 Product 数据库共享事务内完成；按 Organization-qualified ID 锁定相关批次及成员、核对 expected revision。同 key 同 payload 返回原回执，不同 payload 409；数据库 COMMIT 不确定以原 key 查证，不能伪装失败或自动另建请求。
+批次新建/改名/成员移动/归档与操作回执在 Product 数据库共享事务内完成；按 Organization + OwnerActor-qualified ID 锁定相关批次及成员、核对 expected revision。同 key 同 payload 返回原回执，不同 payload 409；数据库 COMMIT 不确定以原 key 查证，不能伪装失败或自动另建请求。
 
 转入适配在同一事务固定选定成员及源版本，批次之后移动、改名/归档不篡改已有 preparation。归档只隐藏列表项，不删除来源、target、批准、financial 或远端资产；不因归档取消已经发出的外部调用。自有商品创建把声明为用户提供的来源资料、Catalog publication 和 collection 引用放在同一已有 Product UoW；图片仍需 Asset 显式批准。
 
 外部 owner 读取不能伪造跨库原子事务。Listing 资料固定不可变 Product/资产/规则/模板版本及 hash；创建与发送各自重新核对 live Organization/Store access、Store connection/service version 与 exact owner refs。漂移返回冲突/需重新校验，不自动切到最新版本。Store凭据只在 server-only执行授权 Port 内解密，不落入 Listing/Product payload、前端或日志。
+
+### 5.1 选择、来源所有权与保存合同
+
+现有 `PublishedAcquisitionReader` 是按 Organization + Actor 限定的单次采集回执读取，不是企业共享商品列表。本批次保留此访问范围：批次、成员、preparation 和其 operation 均保存 OwnerActorID / 原有效 OwnerMemberID；读、下载、移动、归档和 worker 读取都同时限定 Organization + OwnerActorID。企业管理员角色不会自动取得其他操作人的来源资料。没有本轮授权的企业共享功能不得通过 collection read 权限隐式开放。
+
+新增 `CollectionSourceReader.ReadSource(ctx, AuthorizedSelection)`，返回精确 `ProductKey / PublicationID / OriginalVersion / SourceKind / SourceReceipt`。`AuthorizedSelection` 只能由 collection owner 核对当前身份或 durable execution authority 后创建，不能接受客户端自报的 ProductKey 作为读取权限。采集分支先核对原 Organization/Actor/OperationID，再使用精确 Catalog 版本；自有录入分支核对本 owner 的创建回执，不能伪造 acquisition operation。仅在所属来源已经授权后调用 Catalog 的窄 VersionedSnapshotReader。
+
+当前 Product Agent / AI Workbench 的选择以 acquisition OperationID 为依据。接入本流程时新增显式的 collection selection 分支，消费上述已授权、版本化 source receipt；原 acquisition 选择分支保持其授权合同。不得用任意 ProductKey 绕过原 source owner，也不得创建假的 operation 来满足旧接口。
+
+新采集发布在当前 Product UoW 内原子保存 publication、采集成功回执与默认 collection 成员引用；collection 写入由 app 注入同事务窄 writer。任一步失败均不签发采集成功。OperationID 派生稳定成员身份，重放返回原引用。已存在的当前采集结果只在用户显式选择其自己的 operation 后以幂等命令加入，不进行历史回填、迁移或扩大可读范围。自有录入使用同一 publication/collection UoW。
+
+数据库约束包括 Organization + OwnerActor + command key 唯一、payload hash 比较、Organization/OwnerActor-qualified batch/member 外键与 revision CAS；移动只接受同 owner 的有效目标批次。原 SourcePublicationID / OriginalSnapshotVersion 不可修改；优化后的 EffectiveCatalogVersion、target record revision 单独保存。操作结果按同 scope 原 key 查询，UNKNOWN 不另建请求。
 
 ## 6. 状态与用户操作
 
@@ -126,6 +138,24 @@ Product字段优化继续经 Product Review → Catalog 新版本；原始版本
 
 本批次不新增Scheduler/Reconciler、通用outbox平台、批次runner或验收session工具。若现有Temporal/Agent合同不能满足某个required变更，先指出具体阻碍并局部修正设计，不建第二套运行时。
 
+### 7.1 后台授权与稳定执行合同
+
+请求内 `product/sourcing` 的 publication read proof 最长五秒，并绑定已认证身份及 request deadline。它不可以序列化给 Temporal。持久命令只保存经过 verified identity 核对的 Organization / Actor / Member、所需 permission purpose、selection receipt、expected versions、输入 hash 和 operation ID；不保存 JWT，也不在 worker 中制造 `AuthenticatedIdentity` 或延长 TokenExpiresAt。
+
+新增 owner 窄口 `ExecutionAuthorizer.AuthorizeExecution(ctx, ExecutionSubject) -> AuthorizedExecution`，沿现有 ImageAgent.ExecutionAuthorizer 的模式。每个 activity 先加载原 durable command，再使用当前 live Organization member/role owner 核对原 Actor + Member 是否仍有效及所需 module grant；Store 副作用另核对当前成员店铺授权和服务。授权结果仅供当前有 deadline 的 activity 消费。原请求证明和 worker 执行证明使用不同入口，不能互相强制转换。撤权后尚未发送的操作记录 denied/suspended，已发送的操作继续由原 Submission owner 核实；核实不得触发新的写入。
+
+需要读取来源、发起 Agent、应用 Review 的 worker 用例提供明确的 `AuthorizedExecution` 入口，仍调用原 owner 的权限、输入版本和回执规则。HTTP 入口保持现有 verified identity 规则。Agent 使用新 collection selection receipt 时由 collection/source owner 重新授权，不能把保存的 receipt 当永久权限。
+
+`EnsureExecution(Organization, OwnerActor, OperationID)` 先读原 operation：terminal 只返回原结果；pending 使用固定 `supply/<Organization>/<OperationID>` workflow ID；already-started 只核实同 workflow；启动不确定保留 pending/start-unknown 并核实同 ID。worker 从数据库取固定 item membership，按 page size 内部分页，逐项 command key 为原 operation + item + action。请求超时、worker 重启和 Activity retry 不改变身份、不重复 terminal 项、不重发 UNKNOWN 项。取消只阻止未 claim 项。该恢复入口只恢复已有命令，不创建另一套 scheduler。
+
+### 7.2 优化、批准与资料版本绑定
+
+首版选择器只开放实际已启用且支持当前字段的 ProductTitleAgent / ImageAgent 及其版本化模板。标题继续由当前 title-review-v1 / Review.Apply 处理；图片由 Asset owner 的候选和显式批准处理。描述、POD 或其他字段在没有实际已准入 owner/模板时显示不可用，可由用户手动补全 target record。不得将原型模板示例伪造为服务，也不得用 title 回执批准整份资料。
+
+每个优化请求和批准消费绑定以下向量：Organization + OwnerActor/Member、CollectionItemID、OriginalPublicationID/Version、EffectiveCatalogVersion、Platform/Site/Store、TargetRecordID/Revision、RuleRevision、TemplateID/Revision、Candidate/RunID、Review/ApplyReceipt 或 AssetInventoryVersion/Hash。已有 owner 的 receipt 不存储全部 target 维度时，preparation 保存 target-to-receipt 的不可变绑定，并核对该 owner receipt 自身的 exact source/version/field；不能声称原回执包含它没有核对的维度。
+
+Title Apply 成功后核对 receipt 指向的 ProductVersion，再生成绑定该版本的新 target record；Asset 仅引用批准 inventory 的确切版本与 hash。每个被修改字段都必须有匹配它的 owner receipt 或明确用户手动资料来源。缺回执、部分 Apply 失败、原字段/规则/模板版本漂移时仍为待审核/待补全或冲突，不能上传。用户修改生成新不可变 record，并使旧校验及绑定失效；重新校验后才可开始上传。title-only 批准不覆盖描述、图片或法律事实。
+
 ## 8. SHEIN官方上传与UNKNOWN
 
 官方资料查证于2026-10-08：
@@ -151,6 +181,18 @@ Product字段优化继续经 Product Review → Catalog 新版本；原始版本
 
 平台发布权限、证书、库存、类目规范及连接资质可能随店铺变化，上传前按当前Store和官方合同重查；不拿原型SHEIN-US示例ID或静态全局类目表冒充current owner事实。
 
+### 8.1 Store → SendPermit → adapter 的窄合同
+
+`StoreProductAccess.Authorize(ctx, ExecutionSubject, Target, ExpectedConnectionRevision)` 接收 server 取出的 Organization/Actor/Member、StoreID、SHEIN/US 和原 operation 身份，返回不含密钥的 `MerchantBinding`（StoreID、platform/site、connection/application revision、supplier identity hash、service validity）及进程内有 deadline 的执行句柄。Store owner 使用当前 live member grant、有效服务、已验证官方连接和凭据版本产生句柄。秘密仅由 Store 私有执行实现解密并交给 integration 签名；不返回给 Product、Listing、BFF、Temporal payload 或日志，不缓存过期权限。
+
+顺序固定为：worker reauth → 精确 source/record/approval/rule 检查 → Store Authorize → 建立/读取 Submission intent → 原内核 claim/committed SendPermit → Store 发送前再核对同 MerchantBinding → adapter 单次调用 → 原内核 finalize。发送前连接/授权漂移拒绝执行。若已取得 SendPermit 后才发现授权变化或进程在 wire-send 前退出，由于现有内核没有 local-no-dispatch evidence kind，保守进入 UNKNOWN，不能制造 provider_response 或自行宣布无副作用；沿现有 qualified readback/manual resolution contract 处理原 attempt。批准回执、权限或连接漂移均不得换 payload 后重用旧 permit。
+
+商品与可能有副作用的图片调用分别有 effect identity：原 operation + target/store/site + action + exact payload/source-image hash。平台已确认的 image result 与原输入绑定，最终商品 payload 只消费这些结果。没有官方 safe-repeat 证明的 image-effect 也使用同 Submission 内核和 fence；UNKNOWN 先核实原 effect，不由 Temporal 自动重发。纯本地图片格式校验无 provider mutation。
+
+adapter 返回三种明确结果：`ConfirmedSuccess`（business success、必要 SPU/SKC/SKU 标识、trace、exact payload correlation 与证据 hash）；`DefinitiveNoEffect`（官方明确拒绝且可证明未发生写入的已列举业务结果）；`OutcomeUnknown`（其余情况，包括 transport error、缺标识、未识别 code、响应丢失、发送后取消）。只有现有内核验证的 evidence 能转移状态；200 或 query 列表缺失都不能作为证据捷径。初版不把未知业务错误归入无副作用失败。
+
+官方 payload 在 marketplace SHEIN owner 定义独立 DTO 与 deterministic validation：发布站点/语言、末级 category、类目属性及销售规格、SKU/价格/库存、品牌/产地等必需事实、已确认平台图片引用。规则与类目规范由官方只读接口或版本化 fixture 提供；缺必需事实保持待补全，不能复用旧 seller DTO 或自动补造合规事实。正式请求由当前 official adapter 编码、签名和发送；实现阶段对实际 DTO/response 做 fixture 合同测试，真实调用仍 NOT_RUN。
+
 ## 9. HTTP、权限、资源与恢复
 
 拟新增同源BFF/current-application路径：`/api/v1/workbench/product-collections`（批次/商品及导入/下载）、`/api/v1/workbench/supply-preparations`（转入、适配、补全、优化、审核投影）、`/api/v1/workbench/listing-submissions`（提交/同intent核实/读取）。handler仅验证/dispatch，Domain决定事实。
@@ -159,7 +201,7 @@ Product字段优化继续经 Product Review → Catalog 新版本；原始版本
 
 候选界面在isSwitching/selectionRequired/撤权时取消读请求、清空scope内选择与详情。服务端不接受客户端Organization当授权依据。读/下载/批量command范围都在服务端过滤，不在一页数据上计算总量。
 
-初版边界：列表page size≤100、keyword≤80UTF-8 bytes、cursor稳定排序绑定查询与Organization；普通命令≤2MiB并有deadline；执行最多100个选定item，较大批次逐页执行且明确显示范围；Excel导入只允许声明格式及有界行数/单元格，拒绝公式执行/宏/外部链接，导出CSV转义公式前缀。不新增无限请求或静默截断的部分成功。
+初版边界：列表page size≤100、keyword≤80UTF-8 bytes、cursor稳定排序绑定查询与Organization/OwnerActor；普通命令≤2MiB并有deadline。选择整个批次时事务固定完整成员快照，worker 内部按100项分页处理并展示逐项进度，不要求用户手动拆批次，也不静默截断选择。Excel导入只允许声明格式及有界行数/单元格，拒绝公式执行/宏/外部链接，导出CSV转义公式前缀；具体行数/文件大小由已有请求与导入资源配置约束并在UI明确显示。资源约束不改变用户所选完整批次。
 
 长任务POST返回持久operation引用，读接口deadline≤10s；慢provider在既有worker中运行。费用仍按现有quoted owner逐项结算；适配/批次管理不自行发明收费。worker资源上限及部署配置在本批次正常runtime接线中明确，缺必需依赖constructor fail closed；内存仅用于测试。
 
@@ -187,16 +229,12 @@ TDD覆盖当前修改的不变量：同key冲突/回放与COMMIT-unknown、跨Or
 
 ## 12. Architecture Admission
 
-当前结论：**NOT_READY**；只完成只读映射与设计草案，尚无生产代码/schema变更。
+当前结论：**NOT_READY / R2_PENDING**；只完成只读映射与设计，尚无生产代码/schema变更。
 
 独立Reviewer应只核对本次用户Must和高风险边界，对finding按AGENTS分类；不得把全部旧父Issue关闭、全仓搬迁、全平台开放或新验收工具追加成前置。
 
-需在正式开工前固定的合同：
+R1 独立结论为 NOT_READY：要求补齐 canonical selection / worker authorization、逐字段批准绑定、Store → SendPermit → official/recovery 三处合同；该轮没有独立验证出代码 BLOCKER，也没有要求新增产品决定。R1 未逐行验证所有现有端口，不能当作实现或完整代码评审 PASS。
 
-- collection/target record的具体最小schema、权限与single-pool UoW；
-- 当前title-only Review与Asset批准如何消费所选实际Agent模板，unsupported字段必须不能获得错误批准；
-- 官方SHEIN最小有效payload、US站点/店铺许可和平台image-effect的确切safe-retry合同；
-- Store server-only执行授权与凭据读取，跨库exact-input/freshness及发送时授权；
-- Temporal稳定启动identity、原operation恢复入口与SUB-K1调用边界。
+上述补齐分别在 §5.1 / §7.1、§7.2、§8.1。R2 仅复核这些增量及其引用的当前 source/Review/Store/Submission/worker 端口，依 AGENTS 的两轮停止规则给出明确 IMPLEMENTATION_READY 或具体命中 Must 的 BLOCKER，不枚举额外产品范围。非 Blocker 的实现细节以 IMPLEMENTATION_TEST / BACKLOG 记录。
 
-上述合同必须在Independent Architecture准入中收敛，取得显式IMPLEMENTATION_READY；不能在生产实现PR里临时发明。真实密钥/店铺配置与付费调用不是架构评审的前提，但真实运行验收保持NOT_RUN。
+仍须取得独立显式 IMPLEMENTATION_READY 才能修改正式生产路径。真实密钥/店铺配置与付费调用不是架构准入前提；真实运行与用户验收保持 NOT_RUN。实现阶段严格消费本冻结合同，不临时发明第二事实源或授权恢复协议。
