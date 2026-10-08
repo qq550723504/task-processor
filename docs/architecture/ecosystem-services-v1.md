@@ -309,3 +309,16 @@ Schema按现有owner SQL/provision模式交付，全新安装、空业务数据�
 | 双方退款协商精确版本入口 | 开始后双方协商、平台审核 | 服务商提案/确认绑定原订单、金额及版本；变更金额/版本使旧同意失效；平台只消费双确认同版本 |
 
 AR1 为 ACCEPTED_RISK，不增加自动验收/超期退款；真实渠道资格、手续费配置、冻结/退款/回退时限在开放前核实。渠道已知终态失败记明确人工原因，不能无限记为 UNKNOWN。正式实施及最终交付检查沿本设计与 AGENTS，不创建版本化设计文档链。
+
+### 12.1 Native 付款码恢复增量（2026-10-08，IMPLEMENTATION_READY）
+
+PR #604 的 `be5445c30` 评审发现：缓存付款码未在解密后重新核实当前取消/授权；付款码响应、加密或持久化失败后，原派发标记使客户永久无法继续支付。分别影响“取消后不能新增支付能力”和正常付款路径，分类为 BLOCKER。只重新打开以下原 Native checkout 恢复边界，既有产品、E/B/M owner、原交易身份、资金与 AR1 规则保持冻结。
+
+- 原缓存码与新生成码都在返回前执行当前客户授权与 E 原命令准入核实；解密/网络耗时期间发生取消或撤权时不返回付款能力。已经交付的二维码无法由本地撤回，仍由既有 cancel → 原关单 → 迟到付款原退款协议处理。
+- 原订单没有保存付款码但 `PaymentDispatched=true` 时，仅在客户正常 checkout 操作中、持有同一 B claim 的情况下查询原支付身份。先持久化匹配的可信查询，再接受原 PAID/REFUND 事实；只有直接查询成功且匹配原 profile、商户、订单、币种的 UNPAID 结果允许重新请求 **相同原参数** 的 Native 付款码。不清除派发标记，不换 trade/order/profile/到期时间/金额，也不在后台自动生成新的支付能力。
+- 可信查询失败、签名或身份不匹配、CLOSED、已支付及未核实结果均不下单。渠道返回下单错误仍保留原派发标记，下一次正常请求重新查原单。每次原参数重入前重新执行 live 授权与 E 原 checkout 准入，返回前也核实；取消、撤权、关闭新付款、原到期或 profile 不可用时不得重入。M 的资金接受身份与唯一 receipt 不改变。
+- 查询回执显式携带本次 Native 重入证明，不能仅凭旧 UNPAID 状态：成功查询必须是原 NATIVE/NOTPAY 且渠道原金额、CNY 均匹配；签名核实的原商户/原号 ORDER_NOT_EXIST 使用独立缺失证明，不能伪造渠道金额或已付款结果。两种证明仅允许同一原参数重入；USERPAYING、普通未支付旧回执和缺失证明未核实均不授权重入。证明随原观察保存，不新增 schema；恢复消费本次直接查询，不从旧回执中推定新许可。
+- 渠道依据：[微信 Native 常见问题](https://pay.wechatpay.cn/doc/v3/merchant/4012791890) 明确原参数重入可刷新付款码，旧 code_url 会失效；[服务商 Native API](https://pay.wechatpay.cn/doc/v3/partner/4012738659) 使用原 out_trade_no，SYSTEM_ERROR 要求相同参数重新调用。结合两项官方说明采用同一 Native 原订单重入，不将“没收到响应”当成未派发，也不引入新交易或新外部幂等号。实际商户行为仍在真实联调核实。
+- 验证复用现有 Go/PG/SDK 测试：缓存解密期间取消及撤权；原响应/加密/保存丢失后可信原单未支付恢复同一参数；查单 UNKNOWN/错身份/CLOSED/PAID、查询期间取消/撤权不重入；原派发标记与原号保持，迟到支付不重复入账。只做受影响增量，不新增恢复平台、schema 或 legacy 兼容路径。
+
+Design Basis：原 Independent Architecture 的有界 Native checkout 增量。2026-10-08，独立 Reviewer ecoservices_architecture_review 完成此增量复核，未发现新的设计 BLOCKER，确认 IMPLEMENTATION_READY。原两项生产 BLOCKER 仍须修复；严格未支付/缺失查询证明、错误金额/币种及UNKNOWN零重入归为 IMPLEMENTATION_TEST，在受影响SDK/合同测试收敛。其余冻结基线不重审。

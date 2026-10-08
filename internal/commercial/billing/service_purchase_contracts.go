@@ -101,6 +101,27 @@ type ServicePaymentObservation struct {
 	TransactionID, Currency, State, VerificationVersion                             string
 	AmountMinor                                                                     int64
 	OccurredAt                                                                      time.Time
+	CheckoutRecovery                                                                string
+}
+
+const (
+	ServiceCheckoutUnpaidProof = "NATIVE_UNPAID_MATCHED"
+	ServiceCheckoutAbsentProof = "NATIVE_ORDER_NOT_EXIST_VERIFIED"
+)
+
+// Only a fresh, verified original Native query can authorize original-parameter
+// reentry. Ordinary UNPAID observations do not confer payment capability.
+func (p ServicePaymentObservation) AllowsCheckoutReplay(o ServicePurchaseOrder) bool {
+	if !p.Matches(o) || p.State != "UNPAID" {
+		return false
+	}
+	switch p.CheckoutRecovery {
+	case ServiceCheckoutUnpaidProof:
+		return p.AmountMinor == o.Source.AmountMinor
+	case ServiceCheckoutAbsentProof:
+		return p.AmountMinor == 0 && p.TransactionID == ""
+	}
+	return false
 }
 
 func (p ServicePaymentObservation) Matches(o ServicePurchaseOrder) bool {
@@ -199,5 +220,5 @@ func serviceCheckoutBinding(o ServicePurchaseOrder) string {
 	return "service-checkout:" + o.Fingerprint()
 }
 func validServiceQR(v string) bool {
-	return strings.HasPrefix(v, "weixin://wxpay/bizpayurl?") && len(v) <= 8192
+	return (strings.HasPrefix(v, "weixin://wxpay/bizpayurl?") || strings.HasPrefix(v, "weixin://wxpay/bizpayurl/up?")) && len(v) <= 8192
 }

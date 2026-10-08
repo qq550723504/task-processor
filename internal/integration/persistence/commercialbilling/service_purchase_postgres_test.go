@@ -102,6 +102,14 @@ func TestServicePurchasePostgresDispatchLeaseAndDurableFacts(t *testing.T) {
 		t.Fatalf("multiple dispatch owners: %d", len(claims))
 	}
 	old := <-claims
+	unpaid := billing.ServicePaymentObservation{EventID: "verified-original-native-unpaid", ProfileVersion: profile.Version, PlatformMerchantID: profile.PlatformMerchantID, AppID: profile.AppID, ProviderMerchantID: source.ProviderMerchantID, TradeNo: old.TradeNo, Currency: "CNY", State: "UNPAID", AmountMinor: source.AmountMinor, VerificationVersion: "controlled-verified-fixture", CheckoutRecovery: billing.ServiceCheckoutUnpaidProof}
+	if err := r.RecordServicePaymentObservation(ctx, old, unpaid); err != nil {
+		t.Fatal(err)
+	}
+	observations, err := r.ServicePaymentObservations(ctx, source.OrderID)
+	if err != nil || len(observations) != 1 || observations[0].CheckoutRecovery != billing.ServiceCheckoutUnpaidProof || !observations[0].AllowsCheckoutReplay(old) {
+		t.Fatalf("original Native recovery proof not durable: %+v %v", observations, err)
+	}
 	payment := billing.ServicePaymentObservation{EventID: "verified-paid", ProfileVersion: profile.Version, PlatformMerchantID: profile.PlatformMerchantID, AppID: profile.AppID, ProviderMerchantID: source.ProviderMerchantID, TradeNo: old.TradeNo, TransactionID: "original-channel-tx", Currency: "CNY", State: "PAID", VerificationVersion: "controlled-verified-fixture", AmountMinor: 100, OccurredAt: time.Now().UTC().Truncate(time.Microsecond)}
 	old.Payment = &payment
 	old.Operation = &billing.ServiceFinancialOperation{Reservation: money.ServiceOperation{OrderID: source.OrderID, OperationID: "original-share-operation", Kind: money.ServiceShare, AmountMinor: 10, SourceProofID: "accepted-delivery"}, CommandID: "accepted", ProviderRequestID: "00000000000000000000000000000001", Dispatched: true}

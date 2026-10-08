@@ -540,10 +540,37 @@ func (s *ServicePurchases) Checkout(ctx context.Context, org, actor, order strin
 		return "", err
 	}
 	if len(o.CheckoutCiphertext) > 0 {
-		return s.protection.Open(serviceCheckoutBinding(o), o.CheckoutCiphertext)
+		qr, err := s.protection.Open(serviceCheckoutBinding(o), o.CheckoutCiphertext)
+		if err != nil {
+			return "", err
+		}
+		if err := s.checkoutAdmission(ctx, org, actor, original, o); err != nil {
+			return "", err
+		}
+		return qr, nil
 	}
 	if o.PaymentDispatched {
-		return "", ErrReconciliationRequired
+		p, err := s.provider.QueryServicePayment(ctx, o)
+		if err != nil {
+			return "", err
+		}
+		if !p.Matches(o) {
+			return "", ErrConflict
+		}
+		if err := s.store.RecordServicePaymentObservation(ctx, o, p); err != nil {
+			return "", err
+		}
+		if err := s.acceptPayment(ctx, &o); err != nil {
+			return "", err
+		}
+		if !p.AllowsCheckoutReplay(o) || o.PaymentReceiptID != "" {
+			return "", ErrReconciliationRequired
+		}
+		// Keep the dispatch fence and every original channel parameter. Never
+		// turn a lost response or an old unpaid observation into a new order.
+		if err := s.checkoutAdmission(ctx, org, actor, original, o); err != nil {
+			return "", err
+		}
 	}
 	o.PaymentDispatched = true
 	if err := s.save(ctx, &o); err != nil {
@@ -564,12 +591,20 @@ func (s *ServicePurchases) Checkout(ctx context.Context, org, actor, order strin
 	if err := s.save(ctx, &o); err != nil {
 		return "", err
 	}
-	if err := s.source.AuthorizeServiceCheckout(ctx, org, actor, order); err != nil {
-		return "", err
-	}
-	// A cancellation arriving during the channel request fences disclosure too.
-	if err := s.source.AdmitServiceCommand(ctx, original, "checkout:"+original.ID); err != nil {
+	// Cancellation/revocation during channel request or encryption fences
+	// disclosure, including cached and recovered checkout codes.
+	if err := s.checkoutAdmission(ctx, org, actor, original, o); err != nil {
 		return "", err
 	}
 	return qr, nil
+}
+
+func (s *ServicePurchases) checkoutAdmission(ctx context.Context, org, actor string, original ServicePurchaseCommand, o ServicePurchaseOrder) error {
+	if o.CancelRequested || o.PaymentReceiptID != "" || !s.provider.NewPaymentsEnabled() || !s.now().Before(o.ExpiresAt) {
+		return ErrOrderCancelled
+	}
+	if err := s.source.AuthorizeServiceCheckout(ctx, org, actor, original.OrderID); err != nil {
+		return err
+	}
+	return s.source.AdmitServiceCommand(ctx, original, "checkout:"+original.ID)
 }

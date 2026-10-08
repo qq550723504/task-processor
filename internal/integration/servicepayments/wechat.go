@@ -67,7 +67,7 @@ func (p *WeChat) CreateServiceCheckout(ctx context.Context, o billing.ServicePur
 		return "", billing.ErrReconciliationRequired
 	}
 	u, err := url.Parse(rsp.Response.CodeUrl)
-	if err != nil || u.Scheme != "weixin" || u.Host != "wxpay" || u.Path != "/bizpayurl" || u.User != nil || u.Fragment != "" || u.Query().Get("pr") == "" {
+	if err != nil || u.Scheme != "weixin" || u.Host != "wxpay" || (u.Path != "/bizpayurl" && u.Path != "/bizpayurl/up") || u.User != nil || u.Fragment != "" || u.Query().Get("pr") == "" {
 		return "", billing.ErrReconciliationRequired
 	}
 	return rsp.Response.CodeUrl, nil
@@ -83,7 +83,12 @@ func (p *WeChat) QueryServicePayment(ctx context.Context, o billing.ServicePurch
 		if !p.now().Before(o.ExpiresAt) {
 			state = "CLOSED"
 		}
-		return p.paymentObservation(o, state, "", 0, time.Time{}), nil
+		obs := p.paymentObservation(o, state, "", 0, time.Time{})
+		if state == "UNPAID" {
+			obs.CheckoutRecovery = billing.ServiceCheckoutAbsentProof
+			obs.EventID = "service-payment:" + money.ServiceFingerprint(obs)
+		}
+		return obs, nil
 	}
 	if err != nil || rsp == nil || rsp.Code != 0 || rsp.Response == nil {
 		return empty, billing.ErrReconciliationRequired
@@ -127,6 +132,14 @@ func (p *WeChat) paymentResult(o billing.ServicePurchaseOrder, v wechat.PartnerQ
 		}
 	}
 	obs := p.paymentObservation(o, state, v.TransactionId, amount, at)
+	if v.TradeState == "NOTPAY" {
+		if v.TradeType != "NATIVE" || v.Amount == nil || v.Amount.Currency != "CNY" || int64(v.Amount.Total) != o.Source.AmountMinor {
+			return empty, billing.ErrConflict
+		}
+		obs.AmountMinor = int64(v.Amount.Total)
+		obs.CheckoutRecovery = billing.ServiceCheckoutUnpaidProof
+		obs.EventID = "service-payment:" + money.ServiceFingerprint(obs)
+	}
 	if !obs.Matches(o) {
 		return empty, billing.ErrConflict
 	}
