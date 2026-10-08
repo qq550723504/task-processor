@@ -14,7 +14,7 @@ export const notificationRef = z.string().min(1).max(2048).regex(/^[A-Za-z0-9_-]
   } catch { return false; }
 });
 const targetSchema = z.object({ kind: text(32), id: boundedID.or(z.literal("")) }).strict();
-export function notificationHref(target: z.infer<typeof targetSchema>): string | null {
+function notificationHref(target: z.infer<typeof targetSchema>): string | null {
   const staticRoutes: Record<string, string> = { none: "", home: "/workbench", resources: "/workbench/plans/entitlements", "member-resources": "/workbench/account/organization/resources", members: "/workbench/account/organization/members", "personal-verification": "/workbench/account/profile/verification", "organization-verification": "/workbench/account/organization", earnings: "/workbench/account/referrals/earnings", withdrawals: "/workbench/account/referrals/withdrawals" };
   if (target.id === "" && Object.hasOwn(staticRoutes, target.kind)) return staticRoutes[target.kind];
   if (!boundedID.safeParse(target.id).success) return null;
@@ -42,7 +42,7 @@ export const notificationSnapshotSchema = z.object({ id: notificationUUID, finge
 export const notificationCommandSchema = z.object({ key: notificationUUID, operation: z.enum(["read", "snapshot", "read-all", "publish", "withdraw"]), committedAt: z.iso.datetime({ offset: true }), resultId: notificationUUID.optional() }).strict();
 export type NotificationItem = z.infer<typeof notificationItemSchema>;
 export type NotificationList = z.infer<typeof notificationListSchema>;
-export type NotificationChannel = "official" | "business" | "personal";
+type NotificationChannel = "official" | "business" | "personal";
 export type NotificationScope = { userId: string; channel: NotificationChannel; organizationId?: string };
 export class NotificationError extends Error { constructor(public code: string, public status = 503) { super(code); } }
 export async function notificationRequest<T>(scope: NotificationScope, path: string, schema: z.ZodType<T>, options: { signal?: AbortSignal; key?: string; body?: unknown } = {}): Promise<T> {

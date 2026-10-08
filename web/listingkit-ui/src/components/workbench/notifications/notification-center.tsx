@@ -13,7 +13,7 @@ import styles from "./notifications.module.css";
 const policy = { staleTime: 0, gcTime: 0, retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false } as const;
 const labels: Record<string, string> = { official: "官方消息", "workbench-plan": "对话计划", "workbench-task": "AI 任务", "product-review": "标题审核", acquisition: "商品获取", store: "店铺状态", "org-resource": "企业资源", "member-resource": "个人分配资源", "member-limit": "月度用量", billing: "订单与账单", "invitation-admin": "企业邀请", "invitation-recipient": "收到的邀请", membership: "成员操作", knowledge: "知识文件", "organization-verification": "企业认证", "personal-verification": "个人认证", "referral-earnings": "推广收益", "referral-withdrawal": "提现", inventory: "库存", advertising: "广告", opportunity: "商机", report: "报告", "merchant-chat": "商家聊天", fulfillment: "履约" };
 const officialTypes: Record<string, string> = { PRODUCT: "产品更新", SYSTEM: "系统通知", ACTIVITY: "活动公告", POLICY: "规则说明" };
-export function notificationTime(value: string | null) { return value ? new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : "发生时间未提供"; }
+function notificationTime(value: string | null) { return value ? new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : "发生时间未提供"; }
 function errorMessage(error: unknown) {
   const code = error instanceof NotificationError ? error.code : "NOTIFICATION_UNAVAILABLE";
   if (code === "OUTCOME_UNKNOWN") return "阅读状态待核实，请核实原操作。";
