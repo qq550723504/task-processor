@@ -33,10 +33,11 @@ func (g *grants) ListOwnProjectAuthorizations(context.Context, string, string, s
 	return []authidentity.OrganizationGrant{{OrganizationID: "org", ProjectID: "project", Roles: g.roles}}, nil
 }
 func TestKnowledgeAuthorizerUsesLiveGrantAndExistingRoles(t *testing.T) {
-	g := &grants{roles: []string{"listingkit_operator"}}
+	g := &grants{roles: []string{authz.EnterpriseRoleKey("org", 1)}}
 	resolver := workbenchcontext.NewResolver(workbenchcontext.NewGrantResolver(g, nil), "project", "v1", nil)
 	policy, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
+	policy.SetRolePolicyReader(knowledgeRoleFixture{})
 	a, err := NewAuthorizer(resolver, policy)
 	require.NoError(t, err)
 	request := commercetoolauth.OrganizationRequest{Identity: authidentity.AuthenticatedIdentity{UserID: "actor", HomeOrganizationID: "org", TokenExpiresAt: time.Now().Add(time.Hour)}, BearerToken: "synthetic-test-token", RequestedOrganizationID: "org"}
@@ -44,7 +45,7 @@ func TestKnowledgeAuthorizerUsesLiveGrantAndExistingRoles(t *testing.T) {
 	// Warm the actual grant cache, then change roles/revoke without invalidating.
 	_, err = resolver.Resolve(ctx, httproute.OrganizationAccessPolicyCachedRead, workbenchcontext.ResolveInput{Identity: request.Identity, BearerToken: request.BearerToken, RequestedOrganizationID: "org"})
 	require.NoError(t, err)
-	for _, role := range []string{"listingkit_operator", "listingkit_admin", "listingkit_viewer"} {
+	for _, role := range []string{authz.EnterpriseRoleKey("org", 1), "listingkit_admin", "listingkit_viewer"} {
 		g.roles = []string{role}
 		scope, err := a.AuthorizeKnowledge(ctx)
 		if role == "listingkit_viewer" {
@@ -68,4 +69,16 @@ func TestKnowledgeAuthorizerUsesLiveGrantAndExistingRoles(t *testing.T) {
 	request.Identity.TokenExpiresAt = time.Now().Add(-time.Second)
 	_, err = a.AuthorizeKnowledge(commercetoolauth.WithOrganizationRequest(context.Background(), request))
 	require.ErrorIs(t, err, k.ErrForbidden)
+}
+
+type knowledgeRoleFixture struct{}
+
+func (knowledgeRoleFixture) RoleModules(_ context.Context, org string, keys []string) (map[string][]string, error) {
+	r := map[string][]string{}
+	for _, k := range keys {
+		if k == authz.EnterpriseRoleKey(org, 1) {
+			r[k] = []string{"knowledge"}
+		}
+	}
+	return r, nil
 }

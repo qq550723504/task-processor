@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { completedWorkFixture } from "@/test/fixtures/completed-work";
 import { CompletedWorkPageContent } from "./completed-work-page";
 
-vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => ({ user: { id: "reader" }, effectiveOrganization: { id: "200", name: "企业甲" }, roles: [], retry: vi.fn() }) }));
+vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => ({ user: { id: "reader" }, effectiveOrganization: { id: "200", name: "企业甲" }, roles: [], permissions: [], retry: vi.fn() }) }));
 let client: QueryClient;
 beforeEach(() => { client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); });
 afterEach(() => { cleanup(); client.clear(); vi.unstubAllGlobals(); });

@@ -18,7 +18,13 @@ const runtimePermissionQuery = `SELECT current_user,
  AND has_table_privilege(current_user,'public.organization_member_invitations','INSERT')
  AND has_table_privilege(current_user,'public.organization_member_invitations','UPDATE')
  AND has_table_privilege(current_user,'public.organization_member_audit_events','SELECT')
- AND has_table_privilege(current_user,'public.organization_member_audit_events','INSERT') AS required,
+ AND has_table_privilege(current_user,'public.organization_member_audit_events','INSERT')
+ AND has_table_privilege(current_user,'public.organization_role_slots','SELECT')
+ AND has_table_privilege(current_user,'public.organization_roles','SELECT')
+ AND has_table_privilege(current_user,'public.organization_roles','INSERT')
+ AND has_table_privilege(current_user,'public.organization_roles','UPDATE')
+ AND has_table_privilege(current_user,'public.organization_role_mutations','SELECT')
+ AND has_table_privilege(current_user,'public.organization_role_mutations','INSERT') AS required,
  has_database_privilege(current_user,current_database(),'CREATE')
  OR has_database_privilege(current_user,current_database(),'TEMPORARY')
  OR EXISTS (SELECT 1 FROM pg_roles WHERE rolname=current_user AND (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls))
@@ -36,6 +42,9 @@ const runtimePermissionQuery = `SELECT current_user,
      relation.relname='organization_member_operations' AND privilege.privilege_type IN ('SELECT','INSERT','UPDATE')
      OR relation.relname='organization_member_invitations' AND privilege.privilege_type IN ('SELECT','INSERT','UPDATE')
      OR relation.relname='organization_member_audit_events' AND privilege.privilege_type IN ('SELECT','INSERT')
+     OR relation.relname='organization_role_slots' AND privilege.privilege_type='SELECT'
+     OR relation.relname='organization_roles' AND privilege.privilege_type IN ('SELECT','INSERT','UPDATE')
+     OR relation.relname='organization_role_mutations' AND privilege.privilege_type IN ('SELECT','INSERT')
    )
  )
  ) AS forbidden`

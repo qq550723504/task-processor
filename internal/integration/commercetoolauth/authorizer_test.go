@@ -23,13 +23,15 @@ func TestCasbinAuthorizerDelegatesExistingListingKitPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCasbinAuthorizer(): %v", err)
 	}
-	requirement := commercetool.PermissionRequirement{Permission: authz.PermissionListingKitAdminRead}
+	delegate.SetRolePolicyReader(commerceRoleFixture{})
+	requirement := commercetool.PermissionRequirement{Permission: authz.PermissionLocalAgentWrite}
 
 	tests := []struct {
 		role    string
 		allowed bool
 	}{
-		{role: "listingkit_operator", allowed: true},
+		{role: authz.EnterpriseRoleKey("tenant-1", 1), allowed: true},
+		{role: "listingkit_operator"},
 		{role: "listingkit_admin", allowed: true},
 		{role: "platform_admin", allowed: true},
 		{role: "admin", allowed: true},
@@ -51,4 +53,16 @@ func TestCasbinAuthorizerDelegatesExistingListingKitPolicy(t *testing.T) {
 			}
 		})
 	}
+}
+
+type commerceRoleFixture struct{}
+
+func (commerceRoleFixture) RoleModules(_ context.Context, org string, keys []string) (map[string][]string, error) {
+	r := map[string][]string{}
+	for _, k := range keys {
+		if k == authz.EnterpriseRoleKey(org, 1) {
+			r[k] = []string{"agents"}
+		}
+	}
+	return r, nil
 }

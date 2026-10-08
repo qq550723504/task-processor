@@ -58,7 +58,7 @@ func TestTokenExpiryDuringDirectoryReadDiscardsResult(t *testing.T) {
 		expires := time.Now().Add(10 * time.Millisecond)
 		ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "actor", EffectiveOrganizationID: "effective-b", Roles: []string{"listingkit_admin"}, TokenExpiresAt: expires, OrganizationGrants: []authidentity.OrganizationGrant{{ProjectID: "project", OrganizationID: "effective-b", Roles: []string{"listingkit_admin"}}}})
 		d := &directoryStub{page: Page{Total: 1, Items: []Member{{ID: "member", UserID: "user", OrganizationID: "effective-b", ProjectID: "project"}}}, onRead: func() { time.Sleep(time.Until(expires) + time.Millisecond) }}
-		s := NewService(d, a, "project")
+		s := testService(d, a, "project")
 		var err error
 		if detail {
 			_, err = s.Read(ctx, "member")
@@ -74,27 +74,27 @@ func TestTokenExpiryDuringDirectoryReadDiscardsResult(t *testing.T) {
 func TestReadMemberRejectsRemovedAndCrossOrganization(t *testing.T) {
 	authorizer, _ := authz.NewListingKitAuthorizer(nil, nil)
 	directory := &directoryStub{page: Page{Items: []Member{{ID: "target", UserID: "member", OrganizationID: "effective-b", ProjectID: "project"}}, Total: 1}}
-	service := NewService(directory, authorizer, "project")
-	result, err := service.Read(scopedContext("listingkit_operator"), "target")
+	service := testService(directory, authorizer, "project")
+	result, err := service.Read(scopedContext(testOperateRole), "target")
 	if err != nil || len(result.Items) != 1 || result.Items[0].ID != "target" || result.CanManage {
 		t.Fatalf("detail: %+v %v", result, err)
 	}
 	directory.page.Items[0].OrganizationID = "foreign"
-	if result, err := service.Read(scopedContext("listingkit_operator"), "target"); err != ErrInvalidResponse || len(result.Items) != 0 {
+	if result, err := service.Read(scopedContext(testOperateRole), "target"); err != ErrInvalidResponse || len(result.Items) != 0 {
 		t.Fatalf("foreign member accepted: %+v %v", result, err)
 	}
 	directory.page.Items = nil
-	if _, err := service.Read(scopedContext("listingkit_operator"), "target"); err != ErrNotFound {
+	if _, err := service.Read(scopedContext(testOperateRole), "target"); err != ErrNotFound {
 		t.Fatalf("removed member: %v", err)
 	}
 }
 
 func TestListBindsEffectiveOrganizationAndProjectsPermissions(t *testing.T) {
-	for _, role := range []string{"listingkit_viewer", "listingkit_operator", "listingkit_admin"} {
+	for _, role := range []string{testReadRole, testOperateRole, "listingkit_admin"} {
 		t.Run(role, func(t *testing.T) {
-			directory := &directoryStub{page: Page{Items: []Member{{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{"listingkit_viewer"}, State: "active"}}, Total: 1}}
+			directory := &directoryStub{page: Page{Items: []Member{{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{testReadRole}, State: "active"}}, Total: 1}}
 			authorizer, _ := authz.NewListingKitAuthorizer(nil, nil)
-			service := NewService(directory, authorizer, "project")
+			service := testService(directory, authorizer, "project")
 			result, err := service.List(scopedContext(role), PageRequest{Limit: 20})
 			if err != nil {
 				t.Fatalf("list: %v", err)
@@ -112,7 +112,7 @@ func TestListBindsEffectiveOrganizationAndProjectsPermissions(t *testing.T) {
 func TestListRejectsUnverifiedOrExpiredIdentityBeforeDirectory(t *testing.T) {
 	for _, scenario := range []string{"missing", "expired", "ungranted", "wrong-project", "unknown-role"} {
 		t.Run(scenario, func(t *testing.T) {
-			ctx := scopedContext("listingkit_viewer")
+			ctx := scopedContext(testReadRole)
 			identity, _ := authidentity.AuthenticatedIdentityFromContext(ctx)
 			switch scenario {
 			case "missing":
@@ -132,7 +132,7 @@ func TestListRejectsUnverifiedOrExpiredIdentityBeforeDirectory(t *testing.T) {
 			}
 			directory := &directoryStub{}
 			authorizer, _ := authz.NewListingKitAuthorizer(nil, nil)
-			_, err := NewService(directory, authorizer, "project").List(ctx, PageRequest{Limit: 20})
+			_, err := testService(directory, authorizer, "project").List(ctx, PageRequest{Limit: 20})
 			if err == nil || directory.calls != 0 {
 				t.Fatalf("unauthorized access: err=%v calls=%d", err, directory.calls)
 			}
@@ -143,7 +143,7 @@ func TestListRejectsUnverifiedOrExpiredIdentityBeforeDirectory(t *testing.T) {
 func TestListRejectsCrossScopeProviderResponse(t *testing.T) {
 	for _, field := range []string{"organization", "project"} {
 		t.Run(field, func(t *testing.T) {
-			member := Member{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{"listingkit_viewer"}, State: "active"}
+			member := Member{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{testReadRole}, State: "active"}
 			if field == "organization" {
 				member.OrganizationID = "home-a"
 			} else {
@@ -151,7 +151,7 @@ func TestListRejectsCrossScopeProviderResponse(t *testing.T) {
 			}
 			directory := &directoryStub{page: Page{Items: []Member{member}, Total: 1}}
 			authorizer, _ := authz.NewListingKitAuthorizer(nil, nil)
-			result, err := NewService(directory, authorizer, "project").List(scopedContext("listingkit_admin"), PageRequest{Limit: 20})
+			result, err := testService(directory, authorizer, "project").List(scopedContext("listingkit_admin"), PageRequest{Limit: 20})
 			if !errors.Is(err, ErrInvalidResponse) || len(result.Items) != 0 {
 				t.Fatalf("cross-scope response leaked: %+v %v", result, err)
 			}
@@ -162,7 +162,7 @@ func TestListRejectsCrossScopeProviderResponse(t *testing.T) {
 func TestListDependencyFailureIsNotEmpty(t *testing.T) {
 	directory := &directoryStub{err: errors.New("private provider detail")}
 	authorizer, _ := authz.NewListingKitAuthorizer(nil, nil)
-	_, err := NewService(directory, authorizer, "project").List(scopedContext("listingkit_viewer"), PageRequest{Limit: 20})
+	_, err := testService(directory, authorizer, "project").List(scopedContext(testReadRole), PageRequest{Limit: 20})
 	if !errors.Is(err, ErrUnavailable) || err.Error() != ErrUnavailable.Error() {
 		t.Fatalf("unsafe error: %v", err)
 	}
@@ -180,13 +180,13 @@ func TestConfiguredPlatformCapabilityStillRequiresExactOrganizationGrant(t *test
 			authorizer, _ := authz.NewListingKitAuthorizer(users, roles)
 			ctx := scopedContext("custom-platform-operator")
 			directory := &directoryStub{page: Page{Items: []Member{}, Total: 0}}
-			result, err := NewService(directory, authorizer, "project").List(ctx, PageRequest{Limit: 20})
+			result, err := testService(directory, authorizer, "project").List(ctx, PageRequest{Limit: 20})
 			if err != nil || !result.CanManage {
 				t.Fatalf("configured capability not projected: %+v %v", result, err)
 			}
 			identity, _ := authidentity.AuthenticatedIdentityFromContext(ctx)
 			identity.EffectiveOrganizationID = "foreign-org"
-			_, err = NewService(directory, authorizer, "project").List(authidentity.WithAuthenticatedIdentity(ctx, identity), PageRequest{Limit: 20})
+			_, err = testService(directory, authorizer, "project").List(authidentity.WithAuthenticatedIdentity(ctx, identity), PageRequest{Limit: 20})
 			if err == nil || directory.calls != 1 {
 				t.Fatalf("configured administrator bypassed org grant: %v calls=%d", err, directory.calls)
 			}
@@ -204,7 +204,7 @@ func (a *captureAuthorizer) Authorize(_ string, _ []string, permission string) b
 func TestListUsesOnlyExplicitMembershipCapabilities(t *testing.T) {
 	authorizer := &captureAuthorizer{}
 	directory := &directoryStub{page: Page{Items: []Member{}, Total: 0}}
-	result, err := NewService(directory, authorizer, "project").List(scopedContext("listingkit_admin"), PageRequest{Limit: 20})
+	result, err := testService(directory, authorizer, "project").List(scopedContext("listingkit_admin"), PageRequest{Limit: 20})
 	if err != nil || result.CanManage {
 		t.Fatalf("role substituted for authority: %+v %v", result, err)
 	}

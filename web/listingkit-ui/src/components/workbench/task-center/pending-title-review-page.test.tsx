@@ -18,7 +18,7 @@ const failure = (code: string, outcome: "unknown" | "rejected" = "rejected", sta
 function deferred<T>() { let resolve!: (value: T) => void, reject!: (error: unknown) => void; const promise = new Promise<T>((r, j) => { resolve = r; reject = j; }); return { promise, resolve, reject }; }
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  calls.context = { user: { id: "owner" }, effectiveOrganization: { id: "200" }, roles: ["listingkit_admin"], retry: vi.fn() };
+  calls.context = { user: { id: "owner" }, effectiveOrganization: { id: "200" }, roles: ["listingkit_admin"], permissions: ["listingkit.admin.read","listingkit.admin.write","product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.agent.configure","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.knowledge.manage","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.store.delete","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.organization_member.manage","workbench.commercial.read","workbench.commercial.purchase","workbench.commercial.wallet_topup"], retry: vi.fn() };
   calls.list.mockReset().mockResolvedValue(collection()); calls.get.mockReset().mockResolvedValue(proposal());
   calls.decide.mockReset().mockResolvedValue(proposal("accepted", "2")); calls.apply.mockReset();
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: function (this: HTMLDialogElement) { this.open = true; } });
@@ -94,7 +94,7 @@ it.each(["organization", "user", "roles", "switching", "revoked", "logout", "unm
   const signal = calls.decide.mock.calls[0][0].signal;
   if (kind === "organization") calls.context.effectiveOrganization = { id: "100" };
   if (kind === "user") calls.context.user = { id: "other" };
-  if (kind === "roles") calls.context.roles = ["listingkit_operator"];
+  if (kind === "roles") calls.context.roles = ["listingkit_operator"]; calls.context.permissions = ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"];
   if (kind === "switching") calls.context.isSwitching = true;
   if (kind === "revoked") calls.context.blockingError = { code: "ORGANIZATION_ACCESS_REVOKED" };
   if (kind === "logout") calls.context.user = null;
@@ -114,7 +114,7 @@ it("clears sensitive data on write denial and never falls back to admin", async 
 });
 
 it("operator can edit their own proposal but cannot accept, reject or apply", async () => {
-  calls.context.roles = ["listingkit_operator"]; await open();
+  calls.context.roles = ["listingkit_operator"]; calls.context.permissions = ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"]; await open();
   expect(screen.getByRole("button", { name: "编辑标题" })).toBeEnabled();
   expect(screen.queryByRole("button", { name: /接受提案|拒绝提案|应用到标准商品/ })).not.toBeInTheDocument();
 });

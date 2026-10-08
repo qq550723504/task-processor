@@ -70,14 +70,14 @@ const order = {
   updated_at: "2026-09-29T00:00:00Z",
 };
 let client: QueryClient;
-function tree(org = "org-B", items = [offer], roles = ["listingkit_admin"]) {
+function tree(org = "org-B", items = [offer], roles = ["workbench.commercial.purchase"]) {
   return (
     <QueryClientProvider client={client}>
       <ResourcePurchasePanel
         userId="actor"
         organizationId={org}
         organizationName="企业乙"
-        roles={roles}
+        permissions={roles}
         offers={{ organization_id: org, items }}
       />
     </QueryClientProvider>

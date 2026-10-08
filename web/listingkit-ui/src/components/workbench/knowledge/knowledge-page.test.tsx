@@ -7,7 +7,7 @@ import {OrganizationSwitcher} from "@/components/workbench/organization-switcher
 import {KnowledgePage} from "./knowledge-page";
 afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();});
 const baseId="4841d296-ef14-4c16-8d25-a7667e534feb",sourceId="d6c33a5b-95dd-4a3c-a420-652ec52b5f08",oldId="f5dd72eb-e639-436e-b057-38c713d12ce9",latestId="b6f6b343-b4d6-4db4-ac21-98585bc527f6";
-const context={user:{id:"reader"},homeOrganizationId:"org-a",effectiveOrganizationId:"org-a",selectionRequired:false,organizations:[{id:"org-a",name:"企业甲",roles:["listingkit_admin"]},{id:"org-b",name:"企业乙",roles:["listingkit_admin"]}]};
+const context={user:{id:"reader"},homeOrganizationId:"org-a",effectiveOrganizationId:"org-a",selectionRequired:false,organizations:[{id:"org-a",name:"企业甲",roles:["listingkit_admin"], permissions: ["listingkit.admin.read","listingkit.admin.write","product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.agent.configure","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.knowledge.manage","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.store.delete","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.organization_member.manage","workbench.commercial.read","workbench.commercial.purchase","workbench.commercial.wallet_topup"]},{id:"org-b",name:"企业乙",roles:["listingkit_admin"], permissions: ["listingkit.admin.read","listingkit.admin.write","product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.agent.configure","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.knowledge.manage","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.store.delete","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.organization_member.manage","workbench.commercial.read","workbench.commercial.purchase","workbench.commercial.wallet_topup"]}]};
 const timestamp="2026-09-28T10:00:00Z";
 const base={id:baseId,name:"品牌指南",state:"ACTIVE",version:1,createdBy:"reader",updatedBy:"reader",createdAt:timestamp,updatedAt:timestamp};
 const old={id:oldId,number:1,filename:"old.txt",contentType:"text/plain",sizeBytes:5,state:"AVAILABLE",createdAt:timestamp,updatedAt:timestamp};
@@ -29,13 +29,13 @@ it("refreshes an externally renamed and disabled base alongside its sources",asy
 function RefreshContext(){const context=useWorkbenchContext();return <button onClick={()=>void context.retry()}>更新企业授权</button>;}
 function mount(baseId?:string,refresh=false,client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}})){const view=render(<QueryClientProvider client={client}><WorkbenchContextProvider><OrganizationSwitcher/>{refresh?<RefreshContext/>:null}<KnowledgePage baseId={baseId}/></WorkbenchContextProvider></QueryClientProvider>);return ()=>{view.unmount();client.clear();};}
 it.each(["listingkit_operator","listingkit_viewer","admin",""])("hides creation for current organization role %s even with admin in another organization",async(role)=>{
- vi.stubGlobal("fetch",vi.fn(async(url:string)=>url==="/api/workbench/context"?Response.json({...context,organizations:[{...context.organizations[0],roles:role?[role]:[]},context.organizations[1]]}):Response.json({items:[base],pagination:{page:1,pageSize:20,total:1}})));
+ vi.stubGlobal("fetch",vi.fn(async(url:string)=>url==="/api/workbench/context"?Response.json({...context,organizations:[{...context.organizations[0],roles:role?[role]:[],permissions: role === "listingkit_operator" ? ["workbench.knowledge.read"] : []},context.organizations[1]]}):Response.json({items:[base],pagination:{page:1,pageSize:20,total:1}})));
  const unmount=mount();if(role==="listingkit_operator"){await screen.findByText("品牌指南");expect(screen.getByRole("link",{name:"打开知识库"})).toBeVisible();}else{await screen.findByText("当前身份没有知识库读取权限");expect(screen.queryByText("品牌指南")).not.toBeInTheDocument();}expect(screen.queryByRole("button",{name:"创建知识库"})).not.toBeInTheDocument();unmount();
 });
 it.each([undefined,baseId])("clears protected reads on same-organization read revocation for %s",async(id)=>{
  let roles=["listingkit_operator"];
  vi.stubGlobal("fetch",vi.fn(async(url:string)=>{
- if(url==="/api/workbench/context")return Response.json({...context,organizations:[{...context.organizations[0],roles},context.organizations[1]]});
+ if(url==="/api/workbench/context")return Response.json({...context,organizations:[{...context.organizations[0],roles,permissions: roles.includes("listingkit_admin") ? ["workbench.knowledge.read","workbench.knowledge.manage"] : roles.includes("listingkit_operator") ? ["workbench.knowledge.read"] : []},context.organizations[1]]});
  if(url.endsWith("/sources"))return Response.json({items:[{id:sourceId,knowledgeBaseId:baseId,name:"产品资料",state:"ACTIVE",version:1,latestRevision:old,currentReadableRevision:old,createdBy:"reader",updatedBy:"reader",createdAt:timestamp,updatedAt:timestamp}]});
  if(url.endsWith("/preview"))return Response.json({revisionId:oldId,text:"受保护正文"});return Response.json(id?base:{items:[base],pagination:{page:1,pageSize:20,total:1}});
  }));const unmount=mount(id,true);await screen.findByRole("heading",{name:"品牌指南"});
@@ -61,7 +61,7 @@ it("cancels an old read when roles lose access and rejects its late result",asyn
  let roles=["listingkit_operator"],sourceReads=0;let release!:(response:Response)=>void;const late=new Promise<Response>(resolve=>{release=resolve;});let signal:AbortSignal|undefined;
  const source={id:sourceId,knowledgeBaseId:baseId,name:"已撤销资料",state:"ACTIVE",version:1,latestRevision:old,currentReadableRevision:old,createdBy:"reader",updatedBy:"reader",createdAt:timestamp,updatedAt:timestamp};
  vi.stubGlobal("fetch",vi.fn(async(url:string,init?:RequestInit)=>{
- if(url==="/api/workbench/context")return Response.json({...context,organizations:[{...context.organizations[0],roles},context.organizations[1]]});
+ if(url==="/api/workbench/context")return Response.json({...context,organizations:[{...context.organizations[0],roles,permissions: roles.includes("listingkit_admin") ? ["workbench.knowledge.read","workbench.knowledge.manage"] : roles.includes("listingkit_operator") ? ["workbench.knowledge.read"] : []},context.organizations[1]]});
  if(url.endsWith("/sources")){if(sourceReads++===0){signal=init?.signal??undefined;return late;}return Response.json({items:[{...source,name:"重新授权资料"}]});}return Response.json(base);
  }));const unmount=mount(baseId,true);await waitFor(()=>expect(signal).toBeDefined());
  roles=["listingkit_viewer"];await userEvent.click(screen.getByRole("button",{name:"更新企业授权"}));await screen.findByText("当前身份没有知识库读取权限");expect(signal?.aborted).toBe(true);
@@ -83,7 +83,7 @@ it("keeps a preview authorization failure latched when a late source response ch
 });
 it("lets an operator preview saved text while hiding all management controls",async()=>{
  vi.stubGlobal("fetch",vi.fn(async(url:string)=>{
- if(url==="/api/workbench/context")return Response.json({...context,organizations:[{...context.organizations[0],roles:["listingkit_operator"]},context.organizations[1]]});
+ if(url==="/api/workbench/context")return Response.json({...context,organizations:[{...context.organizations[0],roles:["listingkit_operator"], permissions: ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"]},context.organizations[1]]});
  if(url.endsWith("/sources"))return Response.json({items:[{id:sourceId,knowledgeBaseId:baseId,name:"产品资料",state:"ACTIVE",version:1,latestRevision:old,currentReadableRevision:old,createdBy:"reader",updatedBy:"reader",createdAt:timestamp,updatedAt:timestamp}]});
  if(url.endsWith("/preview"))return Response.json({revisionId:oldId,text:"只读正文"});return Response.json(base);
  }));const unmount=mount(baseId);await screen.findByText("产品资料");
@@ -141,7 +141,7 @@ it("retains an unknown write through failed context confirmation and same-scope 
 it("retains the original unknown intent when refreshed authority becomes read-only",async()=>{
  const keys:string[]=[];let contextReads=0;
  vi.stubGlobal("fetch",vi.fn(async(url:string,init?:RequestInit)=>{
- if(url==="/api/workbench/context"){const roles=[["listingkit_admin"],["listingkit_operator"],["listingkit_viewer"]][contextReads++]??["listingkit_admin"];return Response.json({...context,organizations:[{...context.organizations[0],roles},context.organizations[1]]});}
+ if(url==="/api/workbench/context"){const roles=[["listingkit_admin"],["listingkit_operator"],["listingkit_viewer"]][contextReads++]??["listingkit_admin"];return Response.json({...context,organizations:[{...context.organizations[0],roles,permissions: roles.includes("listingkit_admin") ? ["workbench.knowledge.read","workbench.knowledge.manage"] : roles.includes("listingkit_operator") ? ["workbench.knowledge.read"] : []},context.organizations[1]]});}
  if(init?.method==="POST"){keys.push(new Headers(init.headers).get("Idempotency-Key")!);return keys.length===1?Response.json({code:"KNOWLEDGE_UNAVAILABLE"},{status:503}):keys.length===2?Response.json({code:"PERMISSION_DENIED"},{status:403}):Response.json({knowledgeBase:base},{status:201});}
  return Response.json({items:[],pagination:{page:1,pageSize:20,total:0}});
  }));const unmount=mount(undefined,true);await screen.findByText("当前企业还没有知识库");

@@ -75,15 +75,15 @@ func TestLostResponseAndLostDispatchCommitNeverResend(t *testing.T) {
 	for _, loseCommit := range []bool{false, true} {
 		t.Run(map[bool]string{false: "provider response lost", true: "dispatch commit lost"}[loseCommit], func(t *testing.T) {
 			a, _ := authz.NewListingKitAuthorizer(nil, nil)
-			member := Member{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{"listingkit_viewer"}, State: "active"}
+			member := Member{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{testReadRole}, State: "active"}
 			d := &directoryStub{page: Page{Items: []Member{member}, Total: 1}}
-			s := NewService(d, a, "project")
+			s := testService(d, a, "project")
 			store := &memoryReceipts{loseDispatch: loseCommit}
 			provider := &writerStub{err: errors.New("lost response")}
 			refresh := func(ctx context.Context) (context.Context, error) { return ctx, nil }
 			commands := NewCommands(s, store, provider, refresh)
 			key := uuid.NewString()
-			input := CommandInput{Kind: CommandRole, AuthorizationID: "grant", ExpectedVersion: observedVersion(member), Role: "listingkit_operator"}
+			input := CommandInput{Kind: CommandRole, AuthorizationID: "grant", ExpectedVersion: observedVersion(member), Role: testOperateRole}
 			_, _ = commands.Execute(scopedContext("listingkit_admin"), key, input)
 			want := 1
 			if loseCommit {
@@ -108,8 +108,8 @@ func TestLostResponseAndLostDispatchCommitNeverResend(t *testing.T) {
 
 func TestRevokeBeforeDispatchPreventsProviderWrite(t *testing.T) {
 	a, _ := authz.NewListingKitAuthorizer(nil, nil)
-	member := Member{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{"listingkit_viewer"}}
-	s := NewService(&directoryStub{page: Page{Items: []Member{member}, Total: 1}}, a, "project")
+	member := Member{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{testReadRole}}
+	s := testService(&directoryStub{page: Page{Items: []Member{member}, Total: 1}}, a, "project")
 	provider := &writerStub{}
 	calls := 0
 	commands := NewCommands(s, &memoryReceipts{}, provider, func(ctx context.Context) (context.Context, error) {
@@ -129,8 +129,8 @@ func TestAcknowledgmentPersistenceFailureUsesOnlyDurableEvidenceAfterRebuild(t *
 	for _, mode := range []string{"before", "after"} {
 		t.Run(mode, func(t *testing.T) {
 			a, _ := authz.NewListingKitAuthorizer(nil, nil)
-			member := Member{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{"listingkit_viewer"}, State: "active"}
-			s := NewService(&directoryStub{page: Page{Items: []Member{member}, Total: 1}}, a, "project")
+			member := Member{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{testReadRole}, State: "active"}
+			s := testService(&directoryStub{page: Page{Items: []Member{member}, Total: 1}}, a, "project")
 			store := &memoryReceipts{ackMode: mode}
 			provider := &writerStub{}
 			refresh := func(ctx context.Context) (context.Context, error) { return ctx, nil }
@@ -165,8 +165,8 @@ func (w *delayedWriter) Write(_ context.Context, op Operation) (Acknowledgment, 
 }
 func TestOutstandingHTTPHoldsTargetWhileVerifyAndNewKeyRace(t *testing.T) {
 	a, _ := authz.NewListingKitAuthorizer(nil, nil)
-	member := Member{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{"listingkit_viewer"}, State: "active"}
-	s := NewService(&directoryStub{page: Page{Items: []Member{member}, Total: 1}}, a, "project")
+	member := Member{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{testReadRole}, State: "active"}
+	s := testService(&directoryStub{page: Page{Items: []Member{member}, Total: 1}}, a, "project")
 	store := &memoryReceipts{}
 	writer := &delayedWriter{started: make(chan struct{}), release: make(chan struct{})}
 	c := NewCommands(s, store, writer, func(ctx context.Context) (context.Context, error) { return ctx, nil })

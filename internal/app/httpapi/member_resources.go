@@ -134,7 +134,7 @@ func (g memberResourceGate) identity(ctx context.Context, org string, write bool
 	if write {
 		permission = authz.PermissionWorkbenchOrganizationMemberManage
 	}
-	if !grant || !g.base.authorizer.Authorize(id.UserID, id.Roles, permission) || (write && !g.base.authorizer.IsTenantAdmin(id.UserID, id.Roles)) {
+	if !grant || !authz.AllowedOrganization(ctx, g.base.authorizer, id.UserID, id.EffectiveOrganizationID, id.Roles, permission) || (write && !g.base.authorizer.IsTenantAdmin(id.UserID, id.Roles)) {
 		return id, orgresource.ErrForbidden
 	}
 	return id, nil

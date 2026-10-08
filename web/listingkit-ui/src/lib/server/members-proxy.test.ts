@@ -6,8 +6,8 @@ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers();
 const headers = { "X-Expected-User-ID": "actor", "X-Expected-Organization-ID": "org", cookie: `${WORKBENCH_COOKIE_NAME}=org`, Origin: "http://localhost:3000" };
 it("forwards complete-directory filters with the verified scope",async()=>{
   vi.stubEnv("LISTINGKIT_SERVICE_API_BASE","http://127.0.0.1:9000/api/v1");
-  const fetch=vi.fn().mockResolvedValue(Response.json({schemaVersion:"membership-v1",userId:"actor",organizationId:"org",items:[],total:0,canManage:false,assignableRoles:[]}));vi.stubGlobal("fetch",fetch);
-  const query="?limit=20&offset=20&q=Member&role=listingkit_viewer&state=active";
+  const fetch=vi.fn().mockResolvedValue(Response.json({schemaVersion:"membership-v1",userId:"actor",organizationId:"org",items:[],total:0,canManage:false,assignableRoles:[],roleDefinitions:[]}));vi.stubGlobal("fetch",fetch);
+  const query="?limit=20&offset=20&q=Member&role=sumi_role_e87cb45c05ad389dff6dea6e7bf581ee_01&state=active";
   const response=await proxyMembers(new Request(`http://localhost:3000/api/account/members${query}`,{headers}),"server-secret","actor");
   expect(response.status).toBe(200);
   expect(fetch.mock.calls[0][0]).toBe(`http://127.0.0.1:9000/api/v1/account/members${query}`);
@@ -71,7 +71,7 @@ it.each(["", "{}"])("checks actual verify-body bytes for %j", async body => {
 });
 it("takes the selected org from the matching single cookie and only forwards the server token", async () => {
   vi.stubEnv("LISTINGKIT_SERVICE_API_BASE", "http://127.0.0.1:9000/api/v1");
-  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ schemaVersion: "membership-v1", userId: "actor", organizationId: "org", items: [], total: 0, canManage: false, assignableRoles: [] }), { headers: { "Content-Type": "application/json" } }));
+  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ schemaVersion: "membership-v1", userId: "actor", organizationId: "org", items: [], total: 0, canManage: false, assignableRoles:[],roleDefinitions:[] }), { headers: { "Content-Type": "application/json" } }));
   vi.stubGlobal("fetch", fetch);
   const response = await proxyMembers(new Request("http://localhost:3000/api/account/members?limit=20&offset=0", { headers: { ...headers, Authorization: "Bearer browser-secret", "X-Requested-Organization-ID": "foreign" } }), "server-secret", "actor");
   expect(response.status).toBe(200); expect(fetch).toHaveBeenCalledTimes(1);

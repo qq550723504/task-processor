@@ -7,7 +7,7 @@ import { ChatPage } from "./chat-page";
 
 const fixture = vi.hoisted(() => ({
   request: vi.fn(), push: vi.fn(), search: new URLSearchParams(),
-  context: { user: { id: "user-a" }, effectiveOrganization: { id: "org-a", capabilities: { "workbench.chat.use": true } }, roles: ["listingkit_operator"],
+  context: { user: { id: "user-a" }, effectiveOrganization: { id: "org-a", capabilities: { "workbench.chat.use": true } }, roles: ["listingkit_operator"], permissions: ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"],
     aiWorkbenchAvailable: true, aiWorkbenchPlanningReadiness: "AVAILABLE", aiWorkbenchTitleReadiness: "AVAILABLE", isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null },
 }));
 vi.mock("@/lib/api/ai-workbench", async original => ({ ...await original<typeof import("@/lib/api/ai-workbench")>(), requestAIWorkbench: fixture.request }));
@@ -24,7 +24,7 @@ function tree() { return <QueryClientProvider client={client}><ChatPage mode="de
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   fixture.context.effectiveOrganization = { id: "org-a", capabilities: { "workbench.chat.use": true } };
-  fixture.context.roles = ["listingkit_operator"];
+  fixture.context.roles = ["listingkit_operator"]; fixture.context.permissions = ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"];
   fixture.context.isSwitching = false;
   fixture.context.aiWorkbenchAvailable = true;
   fixture.context.aiWorkbenchPlanningReadiness = "AVAILABLE";
@@ -191,7 +191,7 @@ it("keeps planning available but disables execution when this actor lacks the cu
 });
 
 it("shows chat history without mutation controls when the current organization lacks chat use", async () => {
-  fixture.context.roles = ["listingkit_viewer"];
+  fixture.context.roles = ["listingkit_viewer"]; fixture.context.permissions = ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"];
   fixture.context.effectiveOrganization = { id: "org-a", capabilities: { "workbench.chat.use": false } };
   const proposal = { id: "d5d9d1ca-1db3-43af-9649-dcdf3663745b", digest: "a".repeat(64), sourceSequence: 1,
     goalSummary: "只读方案", productKey: "product", targetPlatform: "shein", humanReviewRequired: true, detailsAvailable: true, titleProfileReady: true, executionAuthorized: false };
@@ -246,14 +246,14 @@ it("edits a conversation title through the existing revision-checked metadata ro
 });
 
 it("hides creation for a read-only organization and restores it after switching to a writable one", async () => {
-  fixture.context.roles = ["listingkit_viewer"];
+  fixture.context.roles = ["listingkit_viewer"]; fixture.context.permissions = ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"];
   fixture.context.effectiveOrganization = { id: "org-a", capabilities: { "workbench.chat.use": false } };
   fixture.request.mockImplementation(async ({ route }) => route === "conversation-list" ? { conversations: [], next: "" }
     : Promise.reject(new AIWorkbenchError("FORBIDDEN")));
   const view = render(<QueryClientProvider client={client}><ChatPage mode="home" /></QueryClientProvider>);
   await screen.findByText("开始一项新需求");
   expect(screen.queryByRole("button", { name: "进入新建会话 →" })).toBeNull();
-  fixture.context.roles = ["listingkit_operator"];
+  fixture.context.roles = ["listingkit_operator"]; fixture.context.permissions = ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"];
   fixture.context.effectiveOrganization = { id: "org-b", capabilities: { "workbench.chat.use": true } };
   view.rerender(<QueryClientProvider client={client}><ChatPage mode="home" /></QueryClientProvider>);
   expect(await screen.findByRole("button", { name: "进入新建会话 →" })).toBeVisible();
@@ -381,7 +381,7 @@ it("does not show a cached conversation when the current role set changes", asyn
   });
   const view = render(tree());
   await screen.findByText("之前有权查看的内容");
-  fixture.context.roles = ["listingkit_viewer"];
+  fixture.context.roles = ["listingkit_viewer"]; fixture.context.permissions = ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"];
   view.rerender(tree());
   await screen.findByText("正在读取会话");
   expect(screen.queryByText("之前有权查看的内容")).toBeNull();

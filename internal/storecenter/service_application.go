@@ -161,7 +161,7 @@ func (application *ServiceLifecycleApplication) authorize(ctx context.Context) (
 	if !ok || strings.TrimSpace(identity.EffectiveOrganizationID) == "" || !hasEffectiveOrganizationGrant(identity) {
 		return authidentity.AuthenticatedIdentity{}, ErrServiceLifecycleIdentityRequired
 	}
-	if !application.authorizer.Authorize(identity.UserID, identity.Roles, authz.PermissionWorkbenchStoreLifecycle) {
+	if !authz.AllowedOrganization(ctx, application.authorizer, identity.UserID, identity.EffectiveOrganizationID, identity.Roles, authz.PermissionWorkbenchStoreLifecycle) {
 		return authidentity.AuthenticatedIdentity{}, ErrServiceLifecyclePermissionDenied
 	}
 	return identity, nil

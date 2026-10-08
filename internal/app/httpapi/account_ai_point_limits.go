@@ -160,7 +160,7 @@ func (m memberPointLimitModule) identity(c *gin.Context, write bool) (authidenti
 		writePointLimitError(c, orgresource.ErrInvalidInput)
 		return identity, false
 	}
-	if identity.TenantID != org || identity.EffectiveOrganizationID != org || m.gate.authorizer == nil || !m.gate.authorizer.Authorize(identity.UserID, identity.Roles, permission) {
+	if identity.TenantID != org || identity.EffectiveOrganizationID != org || m.gate.authorizer == nil || !authz.AllowedOrganization(c.Request.Context(), m.gate.authorizer, identity.UserID, org, identity.Roles, permission) {
 		writePointLimitError(c, orgresource.ErrForbidden)
 		return identity, false
 	}
@@ -266,7 +266,7 @@ func (a memberPointLimitAuthorizer) AuthorizeMemberLimitWrite(ctx context.Contex
 }
 func (a memberPointLimitAuthorizer) authorize(ctx context.Context, p orgresource.Principal, org, member, permission string) error {
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
-	if !ok || a.authorizer == nil || a.directory == nil || a.projectID == "" || p.Kind != orgresource.PrincipalTenantHuman || identity.UserID != p.ID || identity.TenantID != org || identity.EffectiveOrganizationID != org || identity.EffectiveMemberID == "" || !a.authorizer.Authorize(identity.UserID, identity.Roles, permission) {
+	if !ok || a.authorizer == nil || a.directory == nil || a.projectID == "" || p.Kind != orgresource.PrincipalTenantHuman || identity.UserID != p.ID || identity.TenantID != org || identity.EffectiveOrganizationID != org || identity.EffectiveMemberID == "" || !authz.AllowedOrganization(ctx, a.authorizer, identity.UserID, org, identity.Roles, permission) {
 		return orgresource.ErrForbidden
 	}
 	target, err := a.directory.Read(ctx, org, member)

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
-const context = vi.hoisted(() => ({ effectiveOrganization: { id: "org-a", name: "企业 A", roles: [] as string[] }, roles: ["listingkit_operator"], retry: vi.fn(), registerOrganizationSwitchGuard: vi.fn(() => vi.fn()) }));
+const context = vi.hoisted(() => ({ effectiveOrganization: { id: "org-a", name: "企业 A", roles: [], permissions: [] as string[] }, roles: ["listingkit_operator"], permissions: ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"], retry: vi.fn(), registerOrganizationSwitchGuard: vi.fn(() => vi.fn()) }));
 const query = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const update = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }));
 const create = vi.hoisted(() => ({ mutate: vi.fn(), retryLast: vi.fn(), canRetryLast: false, isPending: false }));
@@ -31,12 +31,12 @@ import { StoreDetailPage } from "@/components/workbench/stores/store-detail-page
 
 const STORE = { id: "11111111-1111-4111-8111-111111111111", name: "店铺", platform: "shein" as const, region: "CN", externalStoreId: "", recordStatus: "active" as const, serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null, connectionStatus: "disconnected" as const, version: 1, createdAt: "2026-08-31T00:00:00Z", updatedAt: "2026-08-31T00:00:00Z" };
 describe("StoreDetailPage", () => {
-  afterEach(() => { query.value = {}; update.mutate.mockReset(); update.isPending = false; create.mutate.mockReset(); enable.mutate.mockReset(); enable.isPending = false; disable.mutate.mockReset(); disable.isPending = false; resumeCreate.mutate.mockReset(); resumeCreate.isPending = false; remove.mutate.mockReset(); remove.retryLast.mockReset(); remove.canRetryLast = false; remove.isPending = false; queryClient.removeQueries.mockReset(); context.retry.mockReset(); context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [] }; context.roles = ["listingkit_operator"]; context.registerOrganizationSwitchGuard.mockReset(); context.registerOrganizationSwitchGuard.mockImplementation(() => vi.fn()); router.push.mockReset(); router.replace.mockReset(); });
+  afterEach(() => { query.value = {}; update.mutate.mockReset(); update.isPending = false; create.mutate.mockReset(); enable.mutate.mockReset(); enable.isPending = false; disable.mutate.mockReset(); disable.isPending = false; resumeCreate.mutate.mockReset(); resumeCreate.isPending = false; remove.mutate.mockReset(); remove.retryLast.mockReset(); remove.canRetryLast = false; remove.isPending = false; queryClient.removeQueries.mockReset(); context.retry.mockReset(); context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [], permissions: [] }; context.roles = ["listingkit_operator"]; context.permissions = ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"]; context.registerOrganizationSwitchGuard.mockReset(); context.registerOrganizationSwitchGuard.mockImplementation(() => vi.fn()); router.push.mockReset(); router.replace.mockReset(); });
   it("waits for the initial organization without redirecting a valid detail", () => {
-    context.effectiveOrganization = { id: "", name: "", roles: [] };
+    context.effectiveOrganization = { id: "", name: "", roles: [], permissions: [] };
     query.value = { isPending: true };
     const { rerender } = render(<StoreDetailPage storeId={STORE.id} />);
-    context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [] };
+    context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [], permissions: [] };
     query.value = { isPending: false, data: STORE, refetch: vi.fn() };
     rerender(<StoreDetailPage storeId={STORE.id} />);
     expect(screen.getByRole("heading", { name: "店铺" })).toBeInTheDocument();
@@ -63,7 +63,7 @@ describe("StoreDetailPage", () => {
   });
 
   it("keeps a safe Store identity and lifecycle information visible while hiding edit for a viewer", () => {
-    context.roles = ["listingkit_viewer"];
+    context.roles = ["listingkit_viewer"]; context.permissions = ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"];
     query.value = { isPending: false, isError: false, data: STORE, refetch: vi.fn() };
     render(<StoreDetailPage storeId={STORE.id} />);
     expect(screen.getByRole("heading", { name: "店铺" })).toBeInTheDocument();
@@ -83,7 +83,7 @@ describe("StoreDetailPage", () => {
     const deleting = { ...STORE, recordStatus: "deleting" as const, serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null, version: 2 };
     const refetch = vi.fn().mockResolvedValue({ data: deleting, isSuccess: true, isError: false });
     query.value = { isPending: false, isError: false, data: STORE, refetch };
-    context.roles = ["listingkit_admin"];
+    context.roles = ["listingkit_admin"]; context.permissions = ["listingkit.admin.read","listingkit.admin.write","product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.agent.configure","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.knowledge.manage","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.store.delete","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.organization_member.manage","workbench.commercial.read","workbench.commercial.purchase","workbench.commercial.wallet_topup"];
     remove.canRetryLast = true;
     const user = userEvent.setup();
     render(<StoreDetailPage storeId={STORE.id} />);
@@ -101,7 +101,7 @@ describe("StoreDetailPage", () => {
     const newerActive = { ...STORE, version: 2 };
     const refetch = vi.fn().mockResolvedValue({ data: newerActive, isSuccess: true, isError: false });
     query.value = { isPending: false, isError: false, data: STORE, refetch };
-    context.roles = ["listingkit_admin"];
+    context.roles = ["listingkit_admin"]; context.permissions = ["listingkit.admin.read","listingkit.admin.write","product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.agent.configure","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.knowledge.manage","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.store.delete","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.organization_member.manage","workbench.commercial.read","workbench.commercial.purchase","workbench.commercial.wallet_topup"];
     remove.canRetryLast = true;
     const user = userEvent.setup();
     render(<StoreDetailPage storeId={STORE.id} />);
@@ -212,15 +212,15 @@ describe("StoreDetailPage", () => {
   });
   it("navigates only after the provider proves an Organization change even when the detail query has been cleared", async () => {
     query.value = { isPending: false, isError: false, data: STORE, refetch: vi.fn() };
-    let guard: ((target: { id: string; name: string; roles: string[] }) => boolean) | undefined;
-    context.registerOrganizationSwitchGuard.mockImplementation(((next: (target: { id: string; name: string; roles: string[] }) => boolean) => { guard = next; return vi.fn(); }) as never);
+    let guard: ((target: { id: string; name: string; permissions?: string[]; roles: string[] }) => boolean) | undefined;
+    context.registerOrganizationSwitchGuard.mockImplementation(((next: (target: { id: string; name: string; permissions?: string[]; roles: string[] }) => boolean) => { guard = next; return vi.fn(); }) as never);
     const confirm = vi.fn(() => true); vi.stubGlobal("confirm", confirm);
     const user = userEvent.setup(); const view = render(<StoreDetailPage storeId={STORE.id} />);
     await user.type(screen.getByLabelText("店铺名称"), "草稿");
     await waitFor(() => expect(guard).toBeDefined());
-    expect(guard?.({ id: "org-b", name: "企业 B", roles: [] })).toBe(true);
+    expect(guard?.({ id: "org-b", name: "企业 B", roles: [], permissions: [] })).toBe(true);
     expect(router.replace).not.toHaveBeenCalled();
-    context.effectiveOrganization = { id: "org-b", name: "企业 B", roles: [] };
+    context.effectiveOrganization = { id: "org-b", name: "企业 B", roles: [], permissions: [] };
     query.value = { isPending: true, isError: false, data: undefined, refetch: vi.fn() };
     view.rerender(<StoreDetailPage storeId={STORE.id} />);
     expect(screen.getByRole("status")).toHaveTextContent("正在切换企业");
@@ -235,7 +235,7 @@ describe("StoreDetailPage", () => {
     await user.click(screen.getByRole("button", { name: "保存更改" }));
     update.mutate.mock.calls[0]?.[1].onSuccess({ ...STORE, name: "旧企业已保存", version: 2 });
     expect(await screen.findByDisplayValue("旧企业已保存")).toBeInTheDocument();
-    context.effectiveOrganization = { id: "org-b", name: "企业 B", roles: [] };
+    context.effectiveOrganization = { id: "org-b", name: "企业 B", roles: [], permissions: [] };
     query.value = { isPending: true, isError: false, data: undefined, refetch: vi.fn() };
     view.rerender(<StoreDetailPage storeId={STORE.id} />);
     expect(screen.getByRole("status")).toHaveTextContent("正在切换企业");
@@ -250,7 +250,7 @@ describe("StoreDetailPage", () => {
     await user.click(screen.getByRole("button", { name: "保存更改" }));
     update.mutate.mock.calls[0]?.[1].onError({ code: "STORE_VERSION_CONFLICT", status: 409, fieldErrors: [] });
     expect(await screen.findByRole("button", { name: "使用最新版本重新保存" })).toBeInTheDocument();
-    context.effectiveOrganization = { id: "org-b", name: "企业 B", roles: [] };
+    context.effectiveOrganization = { id: "org-b", name: "企业 B", roles: [], permissions: [] };
     query.value = { isPending: true, isError: false, data: undefined, refetch: vi.fn() };
     view.rerender(<StoreDetailPage storeId={STORE.id} />);
     expect(screen.getByRole("status")).toHaveTextContent("正在切换企业");

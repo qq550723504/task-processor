@@ -55,7 +55,7 @@ const mocks = vi.hoisted(() => ({
   disable: vi.fn(),
   remove: vi.fn(),
   context: {
-    effectiveOrganization: null as { id: string; name: string; roles: string[] } | null,
+    effectiveOrganization: null as { id: string; name: string; permissions?: string[]; roles: string[] } | null,
   },
 }));
 
@@ -96,7 +96,7 @@ function createHarness() {
 
 function selectOrganization(id: string | null) {
   mocks.context.effectiveOrganization = id
-    ? { id, name: `Organization ${id}`, roles: [] }
+    ? { id, name: `Organization ${id}`, roles: [], permissions: [] }
     : null;
 }
 

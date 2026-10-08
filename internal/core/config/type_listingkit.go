@@ -1,6 +1,7 @@
 package config
 
 type ListingKitConfig struct {
+	RolePolicyDatabase             *DatabaseConfig             `mapstructure:"rolePolicyDatabase" yaml:"rolePolicyDatabase"`
 	SheinSubmitDebugDumpDir        string                      `mapstructure:"sheinSubmitDebugDumpDir" yaml:"sheinSubmitDebugDumpDir"`
 	GenerationUsageLedgerEnabled   bool                        `mapstructure:"generationUsageLedgerEnabled" yaml:"generationUsageLedgerEnabled"`
 	GenerationUsageLedgerTenantIDs []string                    `mapstructure:"generationUsageLedgerTenantIDs" yaml:"generationUsageLedgerTenantIDs"`

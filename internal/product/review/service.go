@@ -49,7 +49,7 @@ func (s *Service) authorize(ctx context.Context, write, admin bool) (Scope, erro
 	// Scope roles are produced by the existing organization resolver. Configured
 	// global user grants cannot substitute for a grant in the effective org.
 	a := Scope{i.EffectiveOrganizationID, i.UserID, s.auth.IsTenantAdmin("", i.Roles)}
-	if !s.auth.Authorize("", i.Roles, authz.PermissionListingKitAdminRead) || write && !s.auth.Authorize("", i.Roles, authz.PermissionListingKitAdminWrite) || admin && !a.Admin {
+	if !authz.AllowedOrganization(ctx, s.auth, "", i.EffectiveOrganizationID, i.Roles, authz.PermissionLocalAgentWrite) || write && !authz.AllowedOrganization(ctx, s.auth, "", i.EffectiveOrganizationID, i.Roles, authz.PermissionLocalAgentWrite) || admin && !a.Admin {
 		return Scope{}, ErrForbidden
 	}
 	return a, nil
@@ -265,7 +265,7 @@ func (s *Service) FindAgentTaskReviewState(ctx context.Context, runID string) (s
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
 	if !ok || !ValidKey(identity.UserID) || !ValidKey(identity.EffectiveOrganizationID) ||
 		identity.TenantID != identity.EffectiveOrganizationID || !time.Now().Before(identity.TokenExpiresAt) ||
-		!s.auth.Authorize(identity.UserID, identity.Roles, authz.PermissionWorkbenchTaskRead) {
+		!authz.AllowedOrganization(ctx, s.auth, identity.UserID, identity.EffectiveOrganizationID, identity.Roles, authz.PermissionWorkbenchTaskRead) {
 		return "", false, ErrForbidden
 	}
 	scope := Scope{Org: identity.EffectiveOrganizationID, Actor: identity.UserID}

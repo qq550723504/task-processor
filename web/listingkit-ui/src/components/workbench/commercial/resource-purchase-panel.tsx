@@ -119,13 +119,13 @@ type Props = {
   userId: string;
   organizationId: string;
   organizationName: string;
-  roles: string[];
+  permissions: string[];
   offers: ResourceOffers;
 };
 export function ResourcePurchasePanel(props: Props) {
   return (
     <ScopedPurchase
-      key={JSON.stringify([props.userId, props.organizationId, props.roles])}
+      key={JSON.stringify([props.userId, props.organizationId, props.permissions])}
       {...props}
     />
   );
@@ -134,7 +134,7 @@ function ScopedPurchase({
   userId,
   organizationId,
   organizationName,
-  roles,
+  permissions,
   offers,
 }: Props) {
   const client = useQueryClient();
@@ -168,9 +168,7 @@ function ScopedPurchase({
       active.current?.abort();
     };
   }, []);
-  const canPurchase = roles.some(
-    (r) => r === "listingkit_admin" || r === "platform_admin",
-  );
+  const canPurchase = permissions.includes("workbench.commercial.purchase");
   const wallet = useQuery({
     queryKey: [
       "workbench",

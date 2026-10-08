@@ -69,7 +69,7 @@ var workbenchCommercialPermissions = []string{
 
 // WorkbenchPermissions is a bounded display contract, never a policy source.
 func WorkbenchPermissions() []string {
-	result := []string{PermissionProductSourcingWrite, PermissionLocalAgentWrite, PermissionImageAgentRead, PermissionImageAgentWrite, PermissionWorkbenchAgentRead, PermissionWorkbenchAgentUse, PermissionWorkbenchAgentConfigure}
+	result := []string{PermissionListingKitAdminRead, PermissionListingKitAdminWrite, PermissionProductSourcingWrite, PermissionLocalAgentWrite, PermissionImageAgentRead, PermissionImageAgentWrite, PermissionWorkbenchAgentRead, PermissionWorkbenchAgentUse, PermissionWorkbenchAgentConfigure}
 	for _, group := range [][]string{workbenchChatPermissions, workbenchKnowledgePermissions, workbenchStorePermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
 		result = append(result, group...)
 	}
@@ -94,7 +94,10 @@ m = (r.sub == p.sub || g(r.sub, p.sub)) && r.obj == p.obj
 `
 
 type ListingKitAuthorizer struct {
-	enforcer *casbin.Enforcer
+	enforcer         *casbin.Enforcer
+	rolePolicyReader RolePolicyReader
+	moduleEnforcer   *casbin.Enforcer
+	protectedRoles   map[string]bool
 }
 
 var (
@@ -326,7 +329,15 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		}
 	}
 
-	return &ListingKitAuthorizer{enforcer: enforcer}, nil
+	moduleEnforcer, err := newModuleEnforcer()
+	if err != nil {
+		return nil, err
+	}
+	protected := map[string]bool{}
+	for _, role := range normalizeUnique(platformAdminRoles) {
+		protected[role] = true
+	}
+	return &ListingKitAuthorizer{enforcer: enforcer, moduleEnforcer: moduleEnforcer, protectedRoles: protected}, nil
 }
 
 func (a *ListingKitAuthorizer) Authorize(userID string, roles []string, permission string) bool {

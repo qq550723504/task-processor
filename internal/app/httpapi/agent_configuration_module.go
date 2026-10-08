@@ -65,7 +65,7 @@ func buildAgentConfigurationModule(ctx context.Context, db *gorm.DB, resolver or
 			return agent.Scope{}, agentconfig.ErrForbidden
 		}
 		for _, p := range permissions {
-			if auth.Authorize(id.UserID, id.Roles, p) {
+			if authz.AllowedOrganization(ctx, auth, id.UserID, id.EffectiveOrganizationID, id.Roles, p) {
 				return agent.Scope{OrganizationID: id.EffectiveOrganizationID, ActorID: id.UserID}, nil
 			}
 		}

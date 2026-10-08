@@ -11,7 +11,7 @@ const contextPayload = {
   homeOrganizationId: "org-a",
   effectiveOrganizationId: "org-b",
   selectionRequired: false,
-  organizations: [{ id: "org-b", name: "Organization B", roles: [] }],
+  organizations: [{ id: "org-b", name: "Organization B", roles: [], permissions: [] }],
 };
 
 const storeId = "11111111-1111-4111-8111-11111111111a";

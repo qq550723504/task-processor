@@ -10,7 +10,7 @@ it.each([null, { accessToken: "token" }, { accessToken: "token", error: "Refresh
   await expect(AccountServerPage({ page: "profile" })).rejects.toThrow("redirect:/login?");
 });
 it("passes only the current subject, independent of old allowlists or membership roles", async () => {
-  auth.session = { accessToken: "do-not-serialize", identityVersion: 3, identity: { tenantId: "A", userId: "u1", roles: [], userType: "zitadel" } };
+  auth.session = { accessToken: "do-not-serialize", identityVersion: 3, identity: { tenantId: "A", userId: "u1", roles: [], permissions: [], userType: "zitadel" } };
   const element = await AccountServerPage({ page: "profile" });
   expect(element.props).toEqual({ page: "profile", expectedUserId: "u1" });
 });

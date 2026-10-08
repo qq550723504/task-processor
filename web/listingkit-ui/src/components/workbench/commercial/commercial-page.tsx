@@ -81,7 +81,8 @@ export function CommercialPage({
   const scope = JSON.stringify([
     context.user.id,
     organization.id,
-    context.roles,
+    context.permissions,
+    context.permissions,
   ]);
   return (
     <ScopedCommercial
@@ -91,7 +92,7 @@ export function CommercialPage({
       userId={context.user.id}
       organizationId={organization.id}
       organizationName={organization.name}
-      roles={context.roles}
+      permissions={context.permissions}
       orderId={orderId}
     />
   );
@@ -161,7 +162,7 @@ function ScopedCommercial({
   userId,
   organizationId,
   organizationName,
-  roles,
+  permissions,
   orderId,
 }: {
   page: PageKind;
@@ -169,7 +170,7 @@ function ScopedCommercial({
   userId: string;
   organizationId: string;
   organizationName: string;
-  roles: string[];
+  permissions: string[];
   orderId?: string;
 }) {
   const [sequence, setSequence] = useState(0);
@@ -190,7 +191,7 @@ function ScopedCommercial({
           page={page}
           userId={userId}
           organizationId={organizationId}
-          roles={roles}
+          permissions={permissions}
           orderId={orderId}
         />
       </PageFrame>
@@ -244,7 +245,7 @@ function ScopedCommercial({
         userId={userId}
         organizationId={organizationId}
         organizationName={organizationName}
-        roles={roles}
+        permissions={permissions}
         sequence={sequence}
       />
     </PageFrame>
@@ -257,7 +258,7 @@ function CommercialRequest({
   userId,
   organizationId,
   organizationName,
-  roles,
+  permissions,
   sequence,
 }: {
   page: PageKind;
@@ -265,7 +266,7 @@ function CommercialRequest({
   userId: string;
   organizationId: string;
   organizationName: string;
-  roles: string[];
+  permissions: string[];
   sequence: number;
 }) {
   const response = useQuery({
@@ -292,7 +293,7 @@ function CommercialRequest({
         userId={userId}
         organizationId={organizationId}
         organizationName={organizationName}
-        roles={roles}
+        permissions={permissions}
         sequence={sequence}
       />
     );
@@ -323,13 +324,13 @@ function BillingRequest({
   userId,
   organizationId,
   orderId,
-  roles,
+  permissions,
 }: {
   page: "top-up" | "orders" | "order-detail";
   userId: string;
   organizationId: string;
   orderId?: string;
-  roles: string[];
+  permissions: string[];
 }) {
   const [filters, setFilters] = useState<CommercialOrderFilters>({});
   const [cursor, setCursor] = useState("");
@@ -428,14 +429,14 @@ function BillingRequest({
         wallet={wallet.data}
         entries={entries.data}
         userId={userId}
-        roles={roles}
+        permissions={permissions}
         onNext={() => setWalletCursor(entries.data.next_cursor)}
         purchase={
           <ResourceCatalog
             userId={userId}
             organizationId={organizationId}
             organizationName="当前企业"
-            roles={roles}
+            permissions={permissions}
             sequence={0}
           />
         }
@@ -496,7 +497,7 @@ function BillingRequest({
           key={detail.data.order_id}
           userId={userId}
           organizationId={organizationId}
-          roles={roles}
+          permissions={permissions}
           initialOrder={detail.data}
         />
       ) : null}
@@ -573,13 +574,13 @@ function ResourceCatalog({
   userId,
   organizationId,
   organizationName,
-  roles,
+  permissions,
   sequence,
 }: {
   userId: string;
   organizationId: string;
   organizationName: string;
-  roles: string[];
+  permissions: string[];
   sequence: number;
 }) {
   const result = useQuery({
@@ -611,7 +612,7 @@ function ResourceCatalog({
       userId={userId}
       organizationId={organizationId}
       organizationName={organizationName}
-      roles={roles}
+      permissions={permissions}
       offers={result.data}
     />
   );

@@ -45,8 +45,8 @@ func TestAccountAuditHTTPReadsNativeMemberResourceFactsWithFreshAuthorization(t 
 	require.NoError(t, err)
 	modules := kernelmodule.NewRegistry()
 	require.NoError(t, (accountAuditModule{query: query}).Register(modules))
-	grants := &auditHTTPGrants{role: "listingkit_viewer"}
-	authorizer, _ := authz.NewListingKitAuthorizer(nil, nil)
+	grants := &auditHTTPGrants{role: authz.EnterpriseRoleKey("B", 1)}
+	authorizer, _ := newCurrentRoleTestAuthorizer(nil, nil)
 	server := buildIsolatedApplicationHTTPServer(modules.Routes(), routeAuthDependencies{workbenchVerifier: applicationVerifier{}, organizationResolver: workbenchcontext.NewResolver(grants, "project", "v1", nil), authorizer: authorizer}, registry.Timeout)
 	get := func(org, query string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("GET", accountAuditPath+query, nil)

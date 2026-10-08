@@ -34,7 +34,7 @@ func (r *resourceBalanceFixture) ReadBalances(_ context.Context, org string) (or
 
 func TestCommercialResourcesLiveAuthorization(t *testing.T) {
 	reader := &resourceBalanceFixture{}
-	grants := &auditHTTPGrants{role: "listingkit_operator"}
+	grants := &auditHTTPGrants{role: "listingkit_admin"}
 	authorizer, _ := authz.NewListingKitAuthorizer(nil, nil)
 	module := commercialResourcesModule{reader: reader}
 	server := buildIsolatedApplicationHTTPServer(module.routes(), routeAuthDependencies{workbenchVerifier: applicationVerifier{}, organizationResolver: workbenchcontext.NewResolver(grants, "project", "v1", nil), authorizer: authorizer}, 15*time.Second)
@@ -87,7 +87,7 @@ func TestCommercialResourcesLiveAuthorization(t *testing.T) {
 			if mode != "unavailable" && reader.calls != before {
 				t.Fatal("denied request reached resource owner")
 			}
-			grants.role = "listingkit_operator"
+			grants.role = "listingkit_admin"
 			grants.revoked = false
 			reader.failure = false
 		})

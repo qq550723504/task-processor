@@ -204,6 +204,7 @@ func BuildConfig(v *viper.Viper) *Config {
 			PausedTaskRecoveryInterval: v.GetDuration("listingControlPlane.pausedTaskRecoveryInterval"),
 		},
 		ListingKit: ListingKitConfig{
+			RolePolicyDatabase:             rolePolicyDatabase(v),
 			SheinSubmitDebugDumpDir:        v.GetString("listingkit.sheinSubmitDebugDumpDir"),
 			GenerationUsageLedgerEnabled:   v.GetBool("listingkit.generationUsageLedgerEnabled"),
 			GenerationUsageLedgerTenantIDs: getStringSlice(v, "listingkit.generationUsageLedgerTenantIDs"),

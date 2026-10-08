@@ -138,19 +138,13 @@ resource "zitadel_project" "listingkit" {
   has_project_check        = false
   private_labeling_setting = "PRIVATE_LABELING_SETTING_ENFORCE_PROJECT_RESOURCE_OWNER_POLICY"
 }
-resource "zitadel_project_role" "viewer" {
+resource "zitadel_project_role" "enterprise_slot" {
+  for_each     = { for slot in range(1, 65) : format("%02d", slot) => slot }
   org_id       = zitadel_org.account.id
   project_id   = zitadel_project.listingkit.id
-  role_key     = "listingkit_viewer"
-  display_name = "ListingKit Viewer"
-  group        = "ListingKit"
-}
-resource "zitadel_project_role" "operator" {
-  org_id       = zitadel_org.account.id
-  project_id   = zitadel_project.listingkit.id
-  role_key     = "listingkit_operator"
-  display_name = "ListingKit Operator"
-  group        = "ListingKit"
+  role_key     = format("sumi_role_%s_%02d", substr(sha256(zitadel_org.account.id), 0, 32), each.value)
+  display_name = format("Enterprise role slot %02d", each.value)
+  group        = "Enterprise custom roles"
 }
 resource "zitadel_project_role" "admin" {
   org_id       = zitadel_org.account.id
@@ -170,8 +164,8 @@ resource "zitadel_user_grant" "operator" {
   org_id     = zitadel_org.account.id
   project_id = zitadel_project.listingkit.id
   user_id    = zitadel_human_user.operator.id
-  role_keys  = ["listingkit_viewer", "listingkit_operator", "listingkit_admin", "platform_admin"]
-  depends_on = [zitadel_project_role.viewer, zitadel_project_role.operator, zitadel_project_role.admin, zitadel_project_role.platform_admin]
+  role_keys  = ["listingkit_admin", "platform_admin"]
+  depends_on = [zitadel_project_role.enterprise_slot, zitadel_project_role.admin, zitadel_project_role.platform_admin]
 }
 
 resource "zitadel_application_api" "current_application" {
@@ -234,4 +228,15 @@ output "oidc_client_id" {
 output "oidc_client_secret" {
   value     = zitadel_application_oidc.listingkit_ui.client_secret
   sensitive = true
+}
+
+# Only emitted after native resources have been provisioned by the fresh initializer.
+output "enterprise_role_slots" {
+  value = jsonencode({
+    projectId = zitadel_project.listingkit.id
+    organizations = [{
+      organizationId = zitadel_org.account.id
+      roleKeys = [for key in sort(keys(zitadel_project_role.enterprise_slot)) : zitadel_project_role.enterprise_slot[key].role_key]
+    }]
+  })
 }

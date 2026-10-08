@@ -14,7 +14,7 @@ const failure = (code: string, outcome: "rejected" | "unknown" = "rejected") => 
 let client: QueryClient;
 const tree = () => <QueryClientProvider client={client}><SourceAccountsPage /></QueryClientProvider>;
 beforeEach(() => {
-  state.context = { user: { id: "actor" }, effectiveOrganization: { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": true } }, roles: ["listingkit_operator"], retry: vi.fn() };
+  state.context = { user: { id: "actor" }, effectiveOrganization: { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": true } }, roles: ["listingkit_operator"], permissions: ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"], retry: vi.fn() };
   state.list.mockReset().mockResolvedValue({ schemaVersion: 1, items: [account], nextCursor: null });
   state.detail.mockReset().mockResolvedValue(detail());
   state.create.mockReset().mockResolvedValue({ ...detail(), replayed: false });
@@ -27,12 +27,12 @@ async function openDetail() { await userEvent.click(await screen.findByRole("but
 async function register() { await userEvent.type(screen.getByLabelText("显示名称"), "新源账号"); await userEvent.click(screen.getByRole("button", { name: "登记源账号" })); }
 
 it.each([
-  { identity: "viewer", roles: ["listingkit_viewer"], allowed: false },
-  { identity: "operator denied by authority", roles: ["listingkit_operator"], allowed: false },
-  { identity: "admin denied by authority", roles: ["listingkit_admin"], allowed: false },
-  { identity: "operator granted", roles: ["listingkit_operator"], allowed: true },
-  { identity: "configured platform role", roles: ["company-support-admin"], allowed: true },
-  { identity: "configured platform user", roles: [], allowed: true },
+  { identity: "viewer", roles: ["listingkit_viewer"], permissions: ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"], allowed: false },
+  { identity: "operator denied by authority", roles: ["listingkit_operator"], permissions: ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"], allowed: false },
+  { identity: "admin denied by authority", roles: ["listingkit_admin"], permissions: ["listingkit.admin.read","listingkit.admin.write","product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.agent.configure","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.knowledge.manage","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.store.delete","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.organization_member.manage","workbench.commercial.read","workbench.commercial.purchase","workbench.commercial.wallet_topup"], allowed: false },
+  { identity: "operator granted", roles: ["listingkit_operator"], permissions: ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"], allowed: true },
+  { identity: "configured platform role", roles: ["company-support-admin"], permissions: [], allowed: true },
+  { identity: "configured platform user", roles: [], permissions: [], allowed: true },
 ])("uses backend capability for $identity management affordances", async ({ roles, allowed }) => {
   state.context.roles = roles;
   state.context.effectiveOrganization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": allowed } };
@@ -42,7 +42,7 @@ it.each([
 });
 
 it("fails closed when no capability is supplied even with an administrator role", async () => {
-  state.context.roles = ["listingkit_admin"];
+  state.context.roles = ["listingkit_admin"]; state.context.permissions = ["listingkit.admin.read","listingkit.admin.write","product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.agent.configure","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.knowledge.manage","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.store.delete","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.organization_member.manage","workbench.commercial.read","workbench.commercial.purchase","workbench.commercial.wallet_topup"];
   state.context.effectiveOrganization = { id: "org-B", name: "企业乙" };
   render(tree()); await openDetail();
   expect(screen.queryByRole("button", { name: "登记源账号" })).not.toBeInTheDocument();
@@ -59,11 +59,11 @@ it("removes management when the same identity and organization capability is rev
 });
 
 it("invalidates old read facts when roles change with management capability remaining false", async () => {
-  state.context.roles = ["listingkit_viewer"];
+  state.context.roles = ["listingkit_viewer"]; state.context.permissions = ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"];
   state.context.effectiveOrganization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": false } };
   const view = render(tree()); await openDetail();
   state.list.mockReturnValue(new Promise(() => {}));
-  state.context.roles = ["ordinary-custom-grant"];
+  state.context.roles = ["ordinary-custom-grant"]; state.context.permissions = [];
   view.rerender(tree());
   expect(screen.queryByText("企业乙源账号")).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "源账号详情" })).not.toBeInTheDocument();
@@ -71,11 +71,11 @@ it("invalidates old read facts when roles change with management capability rema
 
 it("rejects a late read from roles that lost read access while manage remains false", async () => {
   let finish!: (value: unknown) => void;
-  state.context.roles = ["listingkit_viewer"];
+  state.context.roles = ["listingkit_viewer"]; state.context.permissions = ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"];
   state.context.effectiveOrganization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": false } };
   state.list.mockReturnValueOnce(new Promise(resolve => { finish = resolve; })).mockRejectedValue(failure("PERMISSION_DENIED"));
   const view = render(tree()); await waitFor(() => expect(state.list).toHaveBeenCalledTimes(1));
-  state.context.roles = ["ordinary-custom-grant"]; view.rerender(tree());
+  state.context.roles = ["ordinary-custom-grant"]; state.context.permissions = []; view.rerender(tree());
   await act(async () => finish({ schemaVersion: 1, items: [account], nextCursor: null }));
   expect(screen.queryByText("企业乙源账号")).not.toBeInTheDocument();
   expect(await screen.findByRole("alert")).toHaveTextContent("无操作权限");
@@ -185,7 +185,7 @@ it.each(["enable", "disable"] as const)("retains exact %s request after response
 });
 
 it("allows viewer reads but hides manage controls", async () => {
-  state.context.roles = ["listingkit_viewer"]; state.context.effectiveOrganization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": false } }; render(tree()); await openDetail();
+  state.context.roles = ["listingkit_viewer"]; state.context.permissions = ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"]; state.context.effectiveOrganization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": false } }; render(tree()); await openDetail();
   expect(screen.queryByRole("button", { name: "登记源账号" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "禁用源账号" })).not.toBeInTheDocument();
 });

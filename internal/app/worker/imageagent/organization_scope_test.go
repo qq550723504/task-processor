@@ -2,6 +2,7 @@ package imageagentworker
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -12,6 +13,36 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/imageagent"
 )
+
+type workerRolePolicyFixture struct{ removed atomic.Bool }
+
+func (f *workerRolePolicyFixture) RoleModules(_ context.Context, org string, keys []string) (map[string][]string, error) {
+	result := map[string][]string{}
+	if !f.removed.Load() {
+		for _, key := range keys {
+			if key == authz.EnterpriseRoleKey(org, 1) {
+				result[key] = []string{"images"}
+			}
+		}
+	}
+	return result, nil
+}
+func TestOrganizationExecutionUsesCurrentCustomRolePolicy(t *testing.T) {
+	key := authz.EnterpriseRoleKey("org-1", 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"pagination":{"totalResult":"1"},"authorizations":[{"id":"member","project":{"id":"project-1"},"organization":{"id":"org-1"},"user":{"id":"actor-1"},"state":"STATE_ACTIVE","roles":[{"key":%q}]}]}`, key)
+	}))
+	defer server.Close()
+	policy, _ := authz.NewListingKitAuthorizer(nil, nil)
+	reader := &workerRolePolicyFixture{}
+	policy.SetRolePolicyReader(reader)
+	a := OrganizationExecutionAuthorizer{Client: zitadel.NewAuthorizationClient(server.URL, server.Client()), ServiceToken: func(context.Context) (string, error) { return "fixture", nil }, ProjectID: "project-1", Authorizer: policy}
+	identity := imageagent.ExecutionIdentity{ScopeProtocol: imageagent.OrganizationScopeProtocol, RunID: "run-1", TenantID: "org-1", UserID: "actor-1", MemberID: "member", BusinessTaskID: "operation-1"}
+	require.NoError(t, a.AuthorizeExecution(context.Background(), identity))
+	reader.removed.Store(true)
+	require.Error(t, a.AuthorizeExecution(context.Background(), identity), "recovery must not reuse removed module permission")
+}
 
 func TestOrganizationExecutionAuthorizerRejectsReplacedMemberGrant(t *testing.T) {
 	var replaced atomic.Bool

@@ -210,12 +210,27 @@ SQL
   membership_dsn="postgresql://membership_owner:$(tr -d '\r\n' < "$membership_db_owner_secret/membership-db-password")@127.0.0.1:5433/membership?sslmode=disable"
   printf '%s\n' "$membership_dsn" > "$work/membership-owner-dsn"
   chmod 600 "$work/membership-owner-dsn"
+  if [ -s "$runtime/enterprise-role-slots.json" ]; then
+  organization-membership-schema-init -dsn-file "$work/membership-owner-dsn" -role-slots-file "$runtime/enterprise-role-slots.json"
+else
   organization-membership-schema-init -dsn-file "$work/membership-owner-dsn"
+fi
   psql "$membership_dsn" -v ON_ERROR_STOP=1 <<SQL
 GRANT CONNECT ON DATABASE membership TO organization_membership_runtime;
 GRANT USAGE ON SCHEMA public TO organization_membership_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.organization_member_operations, public.organization_member_invitations TO organization_membership_runtime;
 GRANT SELECT, INSERT ON TABLE public.organization_member_audit_events TO organization_membership_runtime;
+GRANT SELECT ON TABLE public.organization_role_slots TO organization_membership_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.organization_roles TO organization_membership_runtime;
+GRANT SELECT, INSERT ON TABLE public.organization_role_mutations TO organization_membership_runtime;
+-- A retained project has no newly created reader credential or native slots.
+DO \$grant\$ BEGIN
+ IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='organization_role_policy_reader') THEN
+  GRANT CONNECT ON DATABASE membership TO organization_role_policy_reader;
+  GRANT USAGE ON SCHEMA public TO organization_role_policy_reader;
+  GRANT SELECT ON TABLE public.organization_role_slots,public.organization_roles TO organization_role_policy_reader;
+ END IF;
+END \$grant\$;
 SQL
   exit 0
 fi
@@ -330,7 +345,11 @@ initialize_knowledge
 
 printf 'postgresql://membership_owner:%s@127.0.0.1:5433/membership?sslmode=disable\n' "$(tr -d '\r\n' < "$membership_db_owner_secret/membership-db-password")" > "$work/membership-owner-dsn"
 chmod 600 "$work/membership-owner-dsn"
-organization-membership-schema-init -dsn-file "$work/membership-owner-dsn"
+if [ -s "$runtime/enterprise-role-slots.json" ]; then
+  organization-membership-schema-init -dsn-file "$work/membership-owner-dsn" -role-slots-file "$runtime/enterprise-role-slots.json"
+else
+  organization-membership-schema-init -dsn-file "$work/membership-owner-dsn"
+fi
 psql "postgresql://membership_owner:$(tr -d '\r\n' < "$membership_db_owner_secret/membership-db-password")@127.0.0.1:5433/membership?sslmode=disable" -v ON_ERROR_STOP=1 <<SQL
 REVOKE CREATE, TEMPORARY ON DATABASE membership FROM PUBLIC;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
@@ -339,6 +358,17 @@ GRANT CONNECT ON DATABASE membership TO organization_membership_runtime;
 GRANT USAGE ON SCHEMA public TO organization_membership_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.organization_member_operations, public.organization_member_invitations TO organization_membership_runtime;
 GRANT SELECT, INSERT ON TABLE public.organization_member_audit_events TO organization_membership_runtime;
+GRANT SELECT ON TABLE public.organization_role_slots TO organization_membership_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.organization_roles TO organization_membership_runtime;
+GRANT SELECT, INSERT ON TABLE public.organization_role_mutations TO organization_membership_runtime;
+-- A retained project has no newly created reader credential or native slots.
+DO \$grant\$ BEGIN
+ IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='organization_role_policy_reader') THEN
+  GRANT CONNECT ON DATABASE membership TO organization_role_policy_reader;
+  GRANT USAGE ON SCHEMA public TO organization_role_policy_reader;
+  GRANT SELECT ON TABLE public.organization_role_slots,public.organization_roles TO organization_role_policy_reader;
+ END IF;
+END \$grant\$;
 SQL
 
 mv "$state/.init-started" "$state/.init-complete"

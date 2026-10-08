@@ -16,8 +16,8 @@ const ORG_A_CONTEXT = {
   effectiveOrganizationId: "org-a",
   selectionRequired: false,
   organizations: [
-    { id: "org-a", name: "硕米科技", roles: ["org-a-admin"] },
-    { id: "org-b", name: "星海贸易", roles: ["org-b-viewer"] },
+    { id: "org-a", name: "硕米科技", roles: ["org-a-admin"], permissions: [] },
+    { id: "org-b", name: "星海贸易", roles: ["org-b-viewer"], permissions: [] },
   ],
 };
 
@@ -258,8 +258,8 @@ describe("WorkbenchContextProvider", () => {
       ...ORG_A_CONTEXT,
       effectiveOrganizationId: "org-b",
       organizations: [
-        { id: "org-a", name: "硕米科技", roles: [] },
-        { id: "org-b", name: "星海贸易", roles: ["org-b-admin"] },
+        { id: "org-a", name: "硕米科技", roles: [], permissions: [] },
+        { id: "org-b", name: "星海贸易", roles: ["org-b-admin"], permissions: [] },
       ],
     };
     const fetchMock = vi

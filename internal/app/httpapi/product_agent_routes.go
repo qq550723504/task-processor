@@ -115,7 +115,7 @@ func productAgentRoutes(a *productAgentApplication) []httproute.Descriptor {
 	var routes []httproute.Descriptor
 	for _, spec := range specs {
 		spec := spec
-		routes = append(routes, httproute.Descriptor{Method: spec.method, Path: spec.path, Module: "product-agent", Permission: authz.PermissionListingKitAdminWrite, AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: 2 * time.Minute, Handler: func(c *gin.Context) {
+		routes = append(routes, httproute.Descriptor{Method: spec.method, Path: spec.path, Module: "product-agent", Permission: authz.PermissionLocalAgentWrite, AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: 2 * time.Minute, Handler: func(c *gin.Context) {
 			if a == nil {
 				writeProductAgentError(c, agent.ErrUnavailable)
 				return
@@ -145,7 +145,7 @@ func productAgentRoutes(a *productAgentApplication) []httproute.Descriptor {
 				return
 			}
 			ctx = authidentity.WithAuthenticatedIdentity(ctx, i)
-			if !a.authorizer.Authorize(i.UserID, i.Roles, authz.PermissionWorkbenchAgentUse) {
+			if !authz.AllowedOrganization(ctx, a.authorizer, i.UserID, i.EffectiveOrganizationID, i.Roles, authz.PermissionWorkbenchAgentUse) {
 				writeProductAgentError(c, agentconfig.ErrForbidden)
 				return
 			}

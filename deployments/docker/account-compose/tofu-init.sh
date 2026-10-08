@@ -85,7 +85,7 @@ cp -R "$terraform_source/." "$state/config/"
 until curl --fail --silent --show-error --cacert "$trusted_ca/root-ca.pem" "https://localhost:${identity_port}/.well-known/openid-configuration" >/dev/null; do sleep 2; done
 cd "$state/config"
 tofu init -input=false
-tofu apply -input=false -auto-approve \
+tofu apply -input=false -auto-approve -parallelism=1 \
   -var="bootstrap_pat=$(tr -d '\r\n' < "$bootstrap_pat")" \
   -var="operator_password=$(tr -d '\r\n' < "$tofu_inputs/operator-password")" \
   -var="viewer_password=$(tr -d '\r\n' < "$tofu_inputs/viewer-password")" \
@@ -102,6 +102,7 @@ write_output api_client_id "$runtime/api-client-id"
 write_output api_client_secret "$runtime/api-client-secret"
 write_output signup_org_id "$runtime/signup-org-id"
 write_output project_id "$runtime/project-id"
+write_output enterprise_role_slots "$runtime/enterprise-role-slots.json"
 write_output bootstrap_user_id "$runtime/bootstrap-user-id"
 write_output viewer_user_id "$runtime/viewer-user-id"
 write_output insufficient_user_id "$runtime/insufficient-user-id"

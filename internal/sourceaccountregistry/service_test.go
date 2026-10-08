@@ -234,9 +234,7 @@ func TestConfiguredAuthorityAcrossSourceAccountOperations(t *testing.T) {
 				case "ordinary viewer":
 					users = nil
 					identity.Roles = []string{"listingkit_viewer"}
-					if operation != "get" && operation != "list" {
-						want = ErrForbidden
-					}
+					want = ErrForbidden // Retired fixed viewer grants no current scoped capability.
 				case "configuration removed":
 					users, want = nil, ErrForbidden
 				case "expired":

@@ -11,6 +11,7 @@ import (
 )
 
 type Service struct {
+	roleStore      RoleStore
 	directory      Directory
 	authorizer     Authorizer
 	projectID      string
@@ -44,7 +45,7 @@ func (s *Service) Read(ctx context.Context, id string) (Result, error) {
 		return Result{}, ErrInvalidResponse
 	}
 	member.Roles = append([]string{}, member.Roles...)
-	return s.project(identity, []Member{member}, 1), nil
+	return s.project(ctx, identity, []Member{member}, 1)
 }
 
 func NewService(directory Directory, authorizer Authorizer, projectID string, protectedRoles ...string) *Service {
@@ -63,6 +64,9 @@ func (s *Service) List(ctx context.Context, page PageRequest) (Result, error) {
 	page, err = page.Normalize()
 	if err != nil {
 		return Result{}, err
+	}
+	if page.Filter.Role != "" && !s.assignable(ctx, identity.EffectiveOrganizationID, page.Filter.Role) {
+		return Result{}, ErrInvalidRequest
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -86,7 +90,7 @@ func (s *Service) List(ctx context.Context, page PageRequest) (Result, error) {
 		member.Roles = append([]string{}, member.Roles...)
 		items = append(items, member)
 	}
-	return s.project(identity, items, listed.Total), nil
+	return s.project(ctx, identity, items, listed.Total)
 }
 
 // authorize consumes the verified live-grant identity installed by the current
@@ -111,7 +115,11 @@ func (s *Service) authorize(ctx context.Context, permission string) (authidentit
 			matched = true
 		}
 	}
-	if !matched || !s.authorizer.Authorize(identity.UserID, identity.Roles, permission) {
+	allowed, policyErr := authz.AuthorizeOrganization(ctx, s.authorizer, identity.UserID, identity.EffectiveOrganizationID, identity.Roles, permission)
+	if policyErr != nil {
+		return authidentity.AuthenticatedIdentity{}, ErrUnavailable
+	}
+	if !matched || !allowed {
 		return authidentity.AuthenticatedIdentity{}, ErrPermission
 	}
 	if ctx.Err() != nil {

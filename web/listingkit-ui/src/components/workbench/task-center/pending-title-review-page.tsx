@@ -17,7 +17,7 @@ const denied = (error: unknown) => error instanceof ProductTitleReviewError && (
 export function PendingTitleReviewPageContent({ available, initialProposalId }: { available: boolean; initialProposalId?: string }) {
   const context = useWorkbenchContext();
   const valid = !context.isSwitching && !context.isLoading && !context.error && !context.blockingError && !context.selectionRequired && context.user && context.effectiveOrganization;
-  const scope = valid ? JSON.stringify([context.user!.id, context.effectiveOrganization!.id, context.roles]) : "unavailable";
+  const scope = valid ? JSON.stringify([context.user!.id, context.effectiveOrganization!.id, context.roles,context.permissions]) : "unavailable";
   const [entry, setEntry] = useState<{ scope: string | null; id?: string }>({ scope: valid ? scope : null, id: initialProposalId });
   // A changed identity/context permanently clears the initial URL selection,
   // including A -> unavailable -> A. The next selection requires a user action.
@@ -25,10 +25,10 @@ export function PendingTitleReviewPageContent({ available, initialProposalId }: 
   if (!valid && entry.scope !== null && entry.scope !== "unavailable") setEntry({ scope: "unavailable", id: undefined });
   if (!available) return <TaskCenterLayout pendingReview><ConsoleState kind="unavailable" title="标题审核暂未启用">当前环境尚未配置标题提案服务，未读取业务数据。</ConsoleState></TaskCenterLayout>;
   if (!valid) return <TaskCenterLayout pendingReview><ConsoleState kind={context.isSwitching ? "loading" : "unavailable"} title={context.isSwitching ? "正在切换企业" : "企业或登录上下文不可用"}>已清空提案、编辑和操作状态；停止等待不撤销服务器提交。</ConsoleState></TaskCenterLayout>;
-  return <ScopedReviews key={scope} scope={scope} organizationId={context.effectiveOrganization!.id} userId={context.user!.id} roles={context.roles} initialProposalId={entry.scope === scope ? entry.id : undefined} />;
+  return <ScopedReviews key={scope} scope={scope} organizationId={context.effectiveOrganization!.id} userId={context.user!.id} roles={context.roles} permissions={context.permissions} initialProposalId={entry.scope === scope ? entry.id : undefined} />;
 }
 
-function ScopedReviews({ scope, organizationId, userId, roles, initialProposalId }: { scope: string; organizationId: string; userId: string; roles: string[]; initialProposalId?: string }) {
+function ScopedReviews({ scope, organizationId, userId, roles, permissions, initialProposalId }: { scope: string; organizationId: string; userId: string; roles: string[]; permissions:string[]; initialProposalId?: string }) {
   const [selected, setSelected] = useState(initialProposalId);
   const [position, setPosition] = useState({ cursors: [undefined] as (string | undefined)[], page: 1, sequence: 0 });
   const [locked, setLocked] = useState(false);
@@ -57,15 +57,15 @@ function ScopedReviews({ scope, organizationId, userId, roles, initialProposalId
         <Button variant="outline" size="sm" disabled={locked || response.isFetching || position.cursors.length <= 1} onClick={() => { select(); setPosition((old) => ({ cursors: old.cursors.slice(0, -1), page: old.page - 1, sequence: old.sequence + 1 })); }}>上一页</Button>
         <Button variant="outline" size="sm" disabled={locked || response.isFetching || !response.data?.next_cursor} onClick={() => { const cursor = response.data?.next_cursor; if (cursor) { select(); setPosition((old) => ({ cursors: [...old.cursors, cursor].slice(-50), page: old.page + 1, sequence: old.sequence + 1 })); } }}>下一页</Button>
         <p className="w-full">每页最多 20 条，按提案标识排序；刷新重新读取，不表示全局待办数量。</p></div>}
-      detail={selected ? <ProposalSession key={selected} proposalId={selected} organizationId={organizationId} scope={scope} userId={userId} roles={roles}
+      detail={selected ? <ProposalSession key={selected} proposalId={selected} organizationId={organizationId} scope={scope} userId={userId} roles={roles} permissions={permissions}
         onLocked={setLocked} onDenied={(err) => { setLocked(false); setAccessError(err); setSelected(undefined); }} onChanged={() => { void response.refetch(); }} /> : undefined}
     />}
   </TaskCenterLayout>;
 }
 
 type Intent = { kind: "decision"; request: Omit<Parameters<typeof decideProductTitleProposal>[0], "signal"> } | { kind: "apply"; request: Omit<Parameters<typeof applyProductTitleProposal>[0], "signal"> };
-function ProposalSession({ proposalId, organizationId, scope, userId, roles, onLocked, onDenied, onChanged }: {
-  proposalId: string; organizationId: string; scope: string; userId: string; roles: string[];
+function ProposalSession({ proposalId, organizationId, scope, userId, roles, permissions, onLocked, onDenied, onChanged }: {
+  proposalId: string; organizationId: string; scope: string; userId: string; roles: string[]; permissions:string[];
   onLocked: (locked: boolean) => void; onDenied: (error: unknown) => void; onChanged: () => void;
 }) {
   const [read, setRead] = useState(0);
@@ -119,7 +119,7 @@ function ProposalSession({ proposalId, organizationId, scope, userId, roles, onL
       : conflict ? <ReviewError error={writeError} recover={reread} />
       : data ? <>
         {writeError && !uncertain ? <ReviewError error={writeError} /> : null}
-        {!uncertain ? <TitleReviewControls key={`${data.revision}:${read}`} proposal={data} roles={roles} userId={userId} pending={pending} decide={decide} apply={apply} /> : null}
+        {!uncertain ? <TitleReviewControls key={`${data.revision}:${read}`} proposal={data} roles={roles} permissions={permissions} userId={userId} pending={pending} decide={decide} apply={apply} /> : null}
         <TitleReviewDetail proposal={data} />
       </> : null}
   </>;

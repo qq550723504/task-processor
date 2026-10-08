@@ -283,7 +283,7 @@ func (h *Handler) project(ctx context.Context, scope agent.Scope, e agentconfig.
 			ready = false
 		}
 	}
-	_, domain := h.Authorize(ctx, authz.PermissionListingKitAdminWrite)
+	_, domain := h.Authorize(ctx, authz.PermissionLocalAgentWrite)
 	return gin.H{"agent": a, "name": e.Name, "description": e.Description, "definitionVersion": e.Definition.Version, "parameterSchema": e.ParameterSchema, "capabilities": caps, "canConfigure": configure == nil, "canUse": use == nil && domain == nil && ready && a.Activation == "ENABLED", "canReadRuns": use == nil && domain == nil}, nil
 }
 func (h *Handler) serve(c *gin.Context, s spec) {

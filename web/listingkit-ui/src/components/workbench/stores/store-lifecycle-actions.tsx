@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import { Button } from "@/components/ui/button";
 import type { WorkbenchStore } from "@/lib/api/workbench-stores";
-import { canDeleteWorkbenchStore, canUpdateWorkbenchStore } from "@/lib/workbench/permissions";
+import { canDeleteWorkbenchStore } from "@/lib/workbench/permissions";
 import {
 	useDeleteWorkbenchStore,
 	useDisableWorkbenchStore,
@@ -53,15 +53,15 @@ export function StoreLifecycleActions({
   const organization = context.effectiveOrganization;
   const organizationId = organization?.id ?? "";
   const organizationName = organization?.name ?? "当前企业";
-  const canUpdate = canUpdateWorkbenchStore(context.roles);
+  const canUpdate = context.permissions.includes("workbench.store.lifecycle");
   const canDelete = Boolean(
-    organizationId && canDeleteWorkbenchStore(context.roles),
+    organizationId && canDeleteWorkbenchStore(context.permissions),
   );
   const scopeKey = [organizationId, store.id].join("\u0000");
   const confirmationScopeKey = [
     scopeKey,
     organizationName,
-    [...context.roles].sort().join(","),
+    [...context.permissions].sort().join(","),
     store.name,
     store.version,
   ].join("\u0000");

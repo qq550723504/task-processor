@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"github.com/gin-gonic/gin"
 	"io"
@@ -20,8 +21,19 @@ type invitationView struct {
 	Permissions []string `json:"permissions"`
 }
 
-func projectInvitation(service *flow.Service, inv flow.Invitation) invitationView {
+func projectInvitation(ctx context.Context, service *flow.Service, inv flow.Invitation) (invitationView, error) {
 	view := invitationView{Invitation: inv, Permissions: []string{}}
+	if service.ScopedPermissions != nil {
+		permissions, err := service.ScopedPermissions(ctx, inv.OrganizationID, []string{inv.Role})
+		if err != nil {
+			return view, domain.ErrUnavailable
+		}
+		view.Permissions = permissions
+		return view, nil
+	}
+	if strings.HasPrefix(inv.Role, "sumi_role_") {
+		return view, domain.ErrUnavailable
+	}
 	if service.Authorize != nil {
 		for _, permission := range authz.WorkbenchPermissions() {
 			if service.Authorize("", []string{inv.Role}, permission) {
@@ -29,7 +41,7 @@ func projectInvitation(service *flow.Service, inv flow.Invitation) invitationVie
 			}
 		}
 	}
-	return view
+	return view, nil
 }
 
 type InvitationFactory func(*http.Request) (*flow.Service, error)
@@ -107,7 +119,12 @@ func (h *Handler) invitationHandler(recipient, summary bool) gin.HandlerFunc {
 				page, err = service.List(ctx, 100, 0)
 				views := make([]invitationView, 0, len(page.Items))
 				for _, item := range page.Items {
-					views = append(views, projectInvitation(service, item))
+					view, projectionErr := projectInvitation(ctx, service, item)
+					if projectionErr != nil {
+						err = projectionErr
+						break
+					}
+					views = append(views, view)
 				}
 				data = gin.H{"schemaVersion": "membership-invitations-v1", "userId": identity.UserID, "organizationId": identity.EffectiveOrganizationID, "items": views, "total": page.Total, "pending": page.Pending, "canNotify": service.Notify != nil}
 			case strings.HasSuffix(c.FullPath(), "/accept"):
@@ -141,7 +158,12 @@ func (h *Handler) invitationHandler(recipient, summary bool) gin.HandlerFunc {
 			return
 		}
 		if data == nil {
-			data = gin.H{"schemaVersion": "membership-invitation-v1", "userId": identity.UserID, "organizationId": inv.OrganizationID, "invitation": projectInvitation(service, inv)}
+			view, projectionErr := projectInvitation(ctx, service, inv)
+			if projectionErr != nil {
+				writeError(c, projectionErr)
+				return
+			}
+			data = gin.H{"schemaVersion": "membership-invitation-v1", "userId": identity.UserID, "organizationId": inv.OrganizationID, "invitation": view}
 		}
 		c.Header("Cache-Control", "private, no-store")
 		c.JSON(http.StatusOK, data)

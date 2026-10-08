@@ -43,11 +43,11 @@ function CapabilityNote({ children }: { children: React.ReactNode }) {
   return <div className={styles.capabilityNote} role="note"><strong>写入能力未开放</strong><span>{children}</span></div>;
 }
 
-export function WalletView({ wallet, entries, onNext, userId, roles, purchase }: { wallet: CommercialWallet; entries: CommercialWalletEntryPage; onNext: () => void; userId: string; roles: string[]; purchase?: React.ReactNode }) {
+export function WalletView({ wallet, entries, onNext, userId, permissions, purchase }: { wallet: CommercialWallet; entries: CommercialWalletEntryPage; onNext: () => void; userId: string; permissions: string[]; purchase?: React.ReactNode }) {
   return <div className={styles.stack}>
     <Panel title="企业钱包余额" className={styles.walletHero}>
       <div><p className={styles.eyebrow}>当前企业 · {wallet.currency}</p><strong className={styles.walletBalance}>{minorAmount(wallet.available_minor, wallet.currency)}</strong><p className={styles.subtle}>可用余额 · 观察于 {timeLabel(wallet.observed_at)}</p></div>
-      <WalletTopUpEntry userId={userId} organizationId={wallet.organization_id} roles={roles} />
+      <WalletTopUpEntry userId={userId} organizationId={wallet.organization_id} permissions={permissions} />
       <dl className={styles.walletFacts}><div><dt>预留金额</dt><dd>{minorAmount(wallet.reserved_minor, wallet.currency)}</dd></div><div><dt>待偿欠款</dt><dd>{minorAmount(wallet.debt_minor, wallet.currency)}</dd></div><div><dt>累计充值</dt><dd>{minorAmount(wallet.lifetime_topup_minor, wallet.currency)}</dd></div><div><dt>累计支出</dt><dd>{minorAmount(wallet.lifetime_spend_minor, wallet.currency)}</dd></div></dl>
     </Panel>
     <Panel title="钱包流水" className={styles.billingPanel}>

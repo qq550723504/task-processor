@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AccountOrganization, AccountProfile } from "@/lib/api/account";
 import { AccountPage } from "./account-page";
 
-const state = vi.hoisted(() => ({ context: { user: { id: "u1" } as { id: string } | null, homeOrganizationId: "A", effectiveOrganization: { id: "B", name: "企业乙", roles: ["viewer"] } as { id: string; name: string; roles: string[] } | null, roles: ["viewer"], isLoading: false, isSwitching: false, selectionRequired: false, error: null as { code: string } | null, blockingError: null as { code: string } | null } }));
+const state = vi.hoisted(() => ({ context: { user: { id: "u1" } as { id: string } | null, homeOrganizationId: "A", effectiveOrganization: { id: "B", name: "企业乙", roles: ["viewer"], permissions: [] } as { id: string; name: string; permissions?: string[]; roles: string[] } | null, roles: ["viewer"], permissions: [], isLoading: false, isSwitching: false, selectionRequired: false, error: null as { code: string } | null, blockingError: null as { code: string } | null } }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => state.context }));
 const profile: AccountProfile = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", displayName: "本人甲", email: null, emailVerified: null, phoneNumber: "+8613800000000", phoneNumberVerified: false, source: "zitadel_userinfo", readAt: "2026-09-07T01:00:00Z" };
 const organization: AccountOrganization = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", effectiveOrganizationId: "B", name: "企业乙", roles: ["viewer"], source: "zitadel_project_authorizations", readAt: profile.readAt, authorizationMaxAgeSeconds: 60 };
@@ -17,7 +17,7 @@ function mount(page: "profile" | "profile-settings" | "profile-business" | "prof
   const child = (id = expectedUserId) => <QueryClientProvider client={client}><AccountPage page={page} expectedUserId={id} /></QueryClientProvider>;
   const view = render(child()); return { ...view, update: (id = expectedUserId) => view.rerender(child(id)) };
 }
-afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()); vi.unstubAllGlobals(); state.context = { user: { id: "u1" }, homeOrganizationId: "A", effectiveOrganization: { id: "B", name: "企业乙", roles: ["viewer"] }, roles: ["viewer"], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null }; });
+afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()); vi.unstubAllGlobals(); state.context = { user: { id: "u1" }, homeOrganizationId: "A", effectiveOrganization: { id: "B", name: "企业乙", roles: ["viewer"], permissions: [] }, roles: ["viewer"], permissions: [], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null }; });
 describe("AccountPage read-only projection", () => {
   it("shows all three entry cards without turning links into management authority", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
@@ -98,7 +98,7 @@ describe("AccountPage read-only projection", () => {
   });
   it.each(["no-org","revoked","loading","selection","switching","api-revoked","api-unavailable"])("keeps personal verification accessible with %s organization context", async mode => {
     state.context.effectiveOrganization = null;
-    if(mode.startsWith("api-")||mode==="switching")state.context.effectiveOrganization={id:"B",name:"企业乙",roles:["viewer"]};
+    if(mode.startsWith("api-")||mode==="switching")state.context.effectiveOrganization={id:"B",name:"企业乙",roles:["viewer"], permissions: []};
     if(mode==="revoked")state.context.blockingError={code:"ORGANIZATION_ACCESS_REVOKED"};
     if(mode==="loading")state.context.isLoading=true;
     if(mode==="selection")state.context.selectionRequired=true;
@@ -346,7 +346,7 @@ describe("AccountPage read-only projection", () => {
     const requests: RequestInit[] = []; vi.stubGlobal("fetch", vi.fn((_url, init: RequestInit) => { requests.push(init); return requests.length === 1 ? late : Promise.resolve(Response.json({ ...organization, effectiveOrganizationId: "C", name: "企业丙" })); }));
     const view = mount("organization"); await waitFor(() => expect(requests).toHaveLength(1));
     state.context.isSwitching = true; view.update(); expect(requests[0].signal?.aborted).toBe(true);
-    state.context.isSwitching = false; state.context.effectiveOrganization = { id: "C", name: "企业丙", roles: ["viewer"] }; view.update();
+    state.context.isSwitching = false; state.context.effectiveOrganization = { id: "C", name: "企业丙", roles: ["viewer"], permissions: [] }; view.update();
     expect(await screen.findByRole("heading", { name: "企业丙" })).toBeVisible(); await act(async () => release(Response.json(organization)));
     expect(screen.queryByText("企业乙")).not.toBeInTheDocument(); expect(screen.queryByText("读取超时")).not.toBeInTheDocument();
   });
@@ -360,7 +360,7 @@ describe("AccountPage read-only projection", () => {
     let release!: (r: Response) => void;
     vi.stubGlobal("fetch", vi.fn().mockImplementationOnce(() => new Promise<Response>(r => { release = r; })).mockImplementation(() => Promise.resolve(Response.json({ ...organization, effectiveOrganizationId: "C", name: "企业丙" }))));
     const view = mount("organization"); await waitFor(() => expect(release).toBeDefined());
-    state.context.effectiveOrganization = { id: "C", name: "企业丙", roles: ["viewer"] }; view.update();
+    state.context.effectiveOrganization = { id: "C", name: "企业丙", roles: ["viewer"], permissions: [] }; view.update();
     expect(await screen.findByRole("heading", { name: "企业丙" })).toBeVisible();
     await act(async () => release(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "private", requestId: "", fieldErrors: [] }, { status: 503 })));
     expect(screen.queryByRole("heading",{name:"企业信息暂不可用"})).not.toBeInTheDocument(); expect(screen.getByRole("heading", { name: "企业丙" })).toBeVisible();
@@ -380,7 +380,7 @@ describe("AccountPage read-only projection", () => {
   });
   it("clears visible profile and reauthorizes when role context changes", async () => {
     const fetcher = vi.fn().mockImplementationOnce(() => Promise.resolve(Response.json(profile))).mockImplementationOnce(() => Promise.resolve(Response.json({ code: "AUTHENTICATION_REQUIRED", message: "hidden", requestId: "", fieldErrors: [] }, { status: 401 }))); vi.stubGlobal("fetch",withSelfReads(fetcher));
-    const view = mount(); expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible(); state.context.roles = []; view.update();
+    const view = mount(); expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible(); state.context.roles = []; state.context.permissions = []; view.update();
     expect(screen.queryByText("本人甲")).not.toBeInTheDocument(); expect(await screen.findByRole("alert")).toBeVisible();
   });
 });

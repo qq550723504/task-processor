@@ -29,6 +29,7 @@ import (
 	"task-processor/internal/integration/httpimage"
 	openaiclient "task-processor/internal/integration/openai"
 	resourceadapter "task-processor/internal/integration/orgresource"
+	memberstore "task-processor/internal/integration/persistence/organization/membership"
 	productassetpersistence "task-processor/internal/integration/persistence/product/asset"
 	s3integration "task-processor/internal/integration/s3"
 	"task-processor/internal/listingsubscription"
@@ -114,6 +115,11 @@ func defaultImageAgentWorkerDependencyResolver() imageAgentWorkerDependencyResol
 	return imageAgentWorkerDependencyResolver{
 		LoadConfig: config.LoadConfigFromFile,
 		OpenDB: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+			if cfg != nil && cfg.User == memberstore.RolePolicyReaderRole {
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				return platformdatabase.OpenExistingReadOnlyContext(ctx, configadapter.Database(cfg))
+			}
 			if cfg != nil && cfg.User == resourceadapter.RuntimeRole {
 				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 				defer cancel()
@@ -122,6 +128,9 @@ func defaultImageAgentWorkerDependencyResolver() imageAgentWorkerDependencyResol
 			return platformdatabase.OpenShared(configadapter.Database(cfg))
 		},
 		CloseDB: func(cfg *config.DatabaseConfig, db *gorm.DB) error {
+			if cfg != nil && cfg.User == memberstore.RolePolicyReaderRole {
+				return platformdatabase.Close(db)
+			}
 			if cfg != nil && cfg.User == resourceadapter.RuntimeRole {
 				return platformdatabase.Close(db)
 			}
@@ -224,11 +233,15 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("open commercial usage database: %w", err)
 	}
 	var resourceDB *gorm.DB
+	var rolePolicyDB *gorm.DB
 	closeDB := func() error {
 		closeErr := resolver.CloseDB(cfg.Database, db)
 		closeErr = errors.Join(closeErr, resolver.CloseDB(cfg.CommercialDatabase, commercialDB))
 		if resourceDB != nil {
 			closeErr = errors.Join(closeErr, resolver.CloseDB(cfg.CommercialOwnerDatabase, resourceDB))
+		}
+		if rolePolicyDB != nil {
+			closeErr = errors.Join(closeErr, resolver.CloseDB(cfg.ListingKit.RolePolicyDatabase, rolePolicyDB))
 		}
 		return closeErr
 	}
@@ -347,6 +360,26 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 				authErr = domainimageagent.ErrIdentityRequired
 			}
 			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build organization image agent execution authorizer: %w", authErr)
+		}
+		if cfg.ListingKit.RolePolicyDatabase != nil {
+			if cfg.ListingKit.RolePolicyDatabase.User != memberstore.RolePolicyReaderRole {
+				_ = closeDB()
+				return appruntime.ImageAgentTemporalDependencies{}, nil, errors.New("role policy requires its read-only runtime role")
+			}
+			rolePolicyDB, err = resolver.OpenDB(cfg.ListingKit.RolePolicyDatabase)
+			if err != nil {
+				_ = closeDB()
+				return appruntime.ImageAgentTemporalDependencies{}, nil, errors.New("open role policy database failed")
+			}
+			startup, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			reader, readerErr := memberstore.NewRolePolicyReader(startup, rolePolicyDB, cfg.ListingKit.Zitadel.ProjectID)
+			cancel()
+			receiver, ok := authorizer.(interface{ SetRolePolicyReader(authz.RolePolicyReader) })
+			if readerErr != nil || !ok {
+				_ = closeDB()
+				return appruntime.ImageAgentTemporalDependencies{}, nil, errors.New("role policy reader injection failed")
+			}
+			receiver.SetRolePolicyReader(reader)
 		}
 		dependencies.ExecutionAuthorizer = authorizer
 		generation, recovery, generationErr := buildOrganizationGeneration(cfg.ImageAgent.Generation, db, resourceDB, repository, authorizer, logger)

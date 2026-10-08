@@ -10,6 +10,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { EnterpriseRole } from "@/lib/api/enterprise-roles";
 import { MemberScope, MemberRole } from "@/lib/api/members";
 import {
   createInvitation,
@@ -36,11 +37,7 @@ const subscribePending = (notify: () => void) => {
 const noPending = () => null;
 const pendingChanged = () =>
   window.dispatchEvent(new Event("membership-pending"));
-const roles: Record<MemberRole, string> = {
-  listingkit_viewer: "只读成员",
-  listingkit_operator: "操作成员",
-  listingkit_admin: "企业管理员",
-};
+const roles: Record<string,string> = {listingkit_admin:"管理员"};
 const states: Record<string, string> = {
   pending: "邀请中",
   accepting: "加入结果待核实",
@@ -58,14 +55,23 @@ const deliveries: Record<string, string> = {
 export function InvitationsPanel({
   scope,
   assignableRoles,
+  roleDefinitions,
+  showList=true,
+  inviteRequest=0,
+  onInviteAvailability,
   onChanged,
   onAuthorityFailure,
 }: {
   scope: MemberScope;
   assignableRoles: MemberRole[];
+  roleDefinitions: EnterpriseRole[];
+  showList?:boolean;
+  inviteRequest?:number;
+  onInviteAvailability?:(available:boolean)=>void;
   onChanged: () => void;
   onAuthorityFailure: (error: unknown) => void;
 }) {
+  const roles=Object.fromEntries(roleDefinitions.map(role=>[role.id,role.name]));
   const query = useQuery({
     queryKey: [
       "invitations",
@@ -84,7 +90,8 @@ export function InvitationsPanel({
     staleTime: 0,
     retry: false,
   });
-  const [creating, setCreating] = useState(false),
+  const [closedRequest, setClosedRequest] = useState(0),
+    creating = inviteRequest > closedRequest,
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const active = useRef(false),
@@ -139,7 +146,7 @@ export function InvitationsPanel({
         if (isCreate) {
           sessionStorage.removeItem(storageKey);
           pendingChanged();
-          setCreating(false);
+          setClosedRequest(inviteRequest);
         }
         await query.refetch();
         onChanged();
@@ -154,9 +161,11 @@ export function InvitationsPanel({
       if (!c.signal.aborted) setBusy(false);
     }
   }
+  const available=!busy && !retained.error && !!query.data?.canNotify && !unconfirmed && assignableRoles.length>0 && !query.isFetching;
+  useEffect(()=>{onInviteAvailability?.(available);},[available,onInviteAvailability]);
   const requestScope = () => ({ ...scope, signal: controller.current?.signal });
   return (
-    <section className={styles.panel} aria-label="正式成员邀请">
+    <section className={styles.invitationHost} data-list-visible={showList} aria-label="正式成员邀请">
       <div className={styles.toolbar}>
         <h2>成员邀请</h2>
         <div>
@@ -167,26 +176,15 @@ export function InvitationsPanel({
           >
             刷新邀请
           </Button>
-          <Button
-            disabled={
-              busy ||
-              retained.error ||
-              !query.data?.canNotify ||
-              !!unconfirmed ||
-              !assignableRoles.length
-            }
-            onClick={() => setCreating(true)}
-          >
-            邀请成员
-          </Button>
+
         </div>
       </div>
       <p>
         通过邮件邀请；对方使用已验证的受邀邮箱登录并接受后，才会成为企业成员。邮件服务器接收不代表已送达收件箱。
       </p>
-      {error && <p role="alert">{error}</p>}
+      {error && <p data-recovery="true" role="alert">{error}</p>}
       {retained.error && (
-        <p role="alert">
+        <p data-recovery="true" role="alert">
           无法读取原邀请标识，请先核对邀请列表；暂不能创建新邀请。
         </p>
       )}
@@ -200,7 +198,7 @@ export function InvitationsPanel({
             <p role="status">当前实例尚未配置邀请邮件服务。</p>
           )}
           {unconfirmed && (
-            <div>
+            <div data-recovery="true">
               <p>
                 保留的原邀请：{unconfirmed.email} · {unconfirmed.key}
               </p>
@@ -222,7 +220,8 @@ export function InvitationsPanel({
             </div>
           )}
           {creating && !unconfirmed && (
-            <InvitationDrawer onClose={() => setCreating(false)}>
+            <InvitationDrawer onClose={() => setClosedRequest(inviteRequest)}>
+              {!query.data.canNotify && <p role="status">当前实例尚未配置邀请邮件服务，暂不能发送邀请。</p>}
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
@@ -275,11 +274,11 @@ export function InvitationsPanel({
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setCreating(false)}
+                    onClick={() => setClosedRequest(inviteRequest)}
                   >
                     取消
                   </Button>
-                  <Button disabled={busy} type="submit">
+                  <Button disabled={busy || !query.data.canNotify} type="submit">
                     发送邀请邮件
                   </Button>
                 </footer>
@@ -449,7 +448,7 @@ export function RecipientInvitation({
         </section>
         <section className={design.recipientCard}>
           <h2>加入企业空间</h2>
-          {error && <p role="alert">{error}</p>}
+          {error && <p data-recovery="true" role="alert">{error}</p>}
           {query.isPending || query.isFetching ? (
             <p>正在核实邀请和登录邮箱…</p>
           ) : query.isError ? (
@@ -479,7 +478,7 @@ export function RecipientInvitation({
                 <div>
                   <dt>邀请角色</dt>
                   <dd>
-                    {roles[data.role]}
+                    {roles[data.role] ?? "企业自定义角色"}
                     <PermissionScope permissions={data.permissions} />
                   </dd>
                 </div>

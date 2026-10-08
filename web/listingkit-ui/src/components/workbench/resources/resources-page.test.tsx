@@ -16,7 +16,7 @@ vi.mock("@/lib/api/member-resources",async original=>({...await original<typeof 
 let client: QueryClient;
 const tree = () => <QueryClientProvider client={client}><ResourcesPage /></QueryClientProvider>;
 beforeEach(() => {
-  state.context = { user: { id: "actor" }, effectiveOrganization: { id: "org-B", name: "企业乙" }, roles: ["listingkit_operator"], retry: vi.fn() };
+  state.context = { user: { id: "actor" }, effectiveOrganization: { id: "org-B", name: "企业乙" }, roles: ["listingkit_operator"], permissions: ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"], retry: vi.fn() };
   state.read.mockReset().mockResolvedValue(commercialOverviewFixture());
   state.resources.mockReset().mockImplementation((_user, org) => Promise.resolve(commercialResourcesFixture(org)));
   state.stores.mockReset().mockResolvedValue({ items: [], pagination: { total: 37, page: 1, pageSize: 1 } });
@@ -69,7 +69,7 @@ it.each(["organization", "actor", "roles", "switching", "logout", "revoke"])("cl
   state.read.mockReturnValue(new Promise(() => {}));
   if (kind === "organization") state.context.effectiveOrganization = { id: "org-C", name: "企业丙" };
   if (kind === "actor") state.context.user = { id: "other" };
-  if (kind === "roles") state.context.roles = ["listingkit_viewer"];
+  if (kind === "roles") state.context.roles = ["listingkit_viewer"]; state.context.permissions = ["workbench.task.read","workbench.store.read","workbench.source_account.read","workbench.organization_member.read","workbench.commercial.read"];
   if (kind === "switching") state.context.isSwitching = true;
   if (kind === "logout") state.context.user = null;
   if (kind === "revoke") state.context.blockingError = { code: "ORGANIZATION_ACCESS_REVOKED" };

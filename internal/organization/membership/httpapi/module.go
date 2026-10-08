@@ -24,6 +24,7 @@ func (m routeModule) Register(reg *kernelmodule.Registry) error {
 		handler gin.HandlerFunc
 	}{
 		{"/api/v1/account/members", m.handler.List},
+		{"/api/v1/account/roles", m.handler.ListRoles},
 		{"/api/v1/account/members/summary", m.handler.Summary},
 		{"/api/v1/account/members/:member_id", m.handler.Read},
 	} {
@@ -36,6 +37,8 @@ func (m routeModule) Register(reg *kernelmodule.Registry) error {
 			handler      gin.HandlerFunc
 		}{
 			{"POST", "/api/v1/account/members/:member_id/role", m.handler.ChangeRole},
+			{"POST", "/api/v1/account/roles", m.handler.MutateRole},
+			{"POST", "/api/v1/account/roles/:role_id/permissions", m.handler.MutateRole},
 			{"POST", "/api/v1/account/members/:member_id/remove", m.handler.Remove},
 			{"GET", "/api/v1/account/member-operations/:operation_id", m.handler.GetOperation},
 			{"POST", "/api/v1/account/member-operations/:operation_id/verify", m.handler.VerifyOperation},

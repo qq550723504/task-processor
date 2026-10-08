@@ -41,7 +41,7 @@ func (a topUpRuntimeAuthorizer) AuthorizeTopUp(ctx context.Context, org, actor s
 		return billing.ErrAuthorizationRevoked
 	}
 	result, err := a.directory.reader.ReadExactServiceProjectAuthorization(ctx, a.directory.serviceToken, actor, a.directory.projectID, org)
-	if err != nil || !result.Found || result.State != "STATE_ACTIVE" || !a.directory.authorizer.Authorize(actor, result.Roles, authz.PermissionWorkbenchCommercialWalletTopUp) {
+	if err != nil || !result.Found || result.State != "STATE_ACTIVE" || !authz.AllowedOrganization(ctx, a.directory.authorizer, actor, org, result.Roles, authz.PermissionWorkbenchCommercialWalletTopUp) {
 		return billing.ErrAuthorizationRevoked
 	}
 	return nil

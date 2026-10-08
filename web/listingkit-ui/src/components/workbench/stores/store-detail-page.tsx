@@ -44,7 +44,7 @@ export function StoreDetailPage({ storeId }: { storeId: string }) {
   return (
     <StoreDetailContent
       key={JSON.stringify([context.user?.id,organizationId,context.roles,storeId])}
-      canUpdate={canUpdateWorkbenchStore(context.roles)}
+      canUpdate={canUpdateWorkbenchStore(context.permissions)}
       storeId={storeId}
     />
   );

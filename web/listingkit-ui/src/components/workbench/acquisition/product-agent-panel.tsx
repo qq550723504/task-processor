@@ -62,7 +62,7 @@ function ScopedAgentPanel({ userId, organizationId, operationId, productKey, cat
     const [authority,setAuthority]=useState({rolesKey,generation:0});
     const generation=authority.rolesKey===rolesKey?authority.generation:authority.generation+1;
     if(authority.rolesKey!==rolesKey)setAuthority({rolesKey,generation});
-    const knowledgeReadable=context.roles.some(role=>["listingkit_admin","platform_admin","listingkit_operator"].includes(role));
+    const knowledgeReadable=context.permissions.includes("workbench.knowledge.read");
     const [result, setResult] = useState<(ProductAgentResult & {knowledgeGeneration:number}) | null>(null);
     // Invalidate protected display during render, including late responses and
     // downgrade/regrant. Keep the durable operation key and all UNKNOWN intent.

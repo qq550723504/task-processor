@@ -40,12 +40,12 @@ func (p *inviteProvider) Write(_ context.Context, op Operation) (Acknowledgment,
 
 func TestInviteLostUserResponseContinuesOnlyFixedVerifiedIdentity(t *testing.T) {
 	a, _ := authz.NewListingKitAuthorizer(nil, nil)
-	s := NewService(&directoryStub{}, a, "project")
+	s := testService(&directoryStub{}, a, "project")
 	p := &inviteProvider{loseUser: true, loseGrant: true}
 	store := &memoryReceipts{}
 	c := NewCommands(s, store, p, func(ctx context.Context) (context.Context, error) { return ctx, nil })
 	key := uuid.NewString()
-	op, err := c.Execute(scopedContext("listingkit_admin"), key, CommandInput{Kind: CommandInvite, Role: "listingkit_viewer", Invitation: &Invitation{Email: " New@Example.com ", FirstName: "New", LastName: "Member"}})
+	op, err := c.Execute(scopedContext("listingkit_admin"), key, CommandInput{Kind: CommandInvite, Role: testReadRole, Invitation: &Invitation{Email: " New@Example.com ", FirstName: "New", LastName: "Member"}})
 	if err != nil || op.Phase != PhaseDispatched || p.userCalls != 1 || p.grantCalls != 0 {
 		t.Fatalf("first=%+v %v", op, err)
 	}
@@ -69,7 +69,7 @@ func TestInviteLostUserResponseContinuesOnlyFixedVerifiedIdentity(t *testing.T) 
 
 func TestInviteRevocationPreventsPartialContinuation(t *testing.T) {
 	a, _ := authz.NewListingKitAuthorizer(nil, nil)
-	s := NewService(&directoryStub{}, a, "project")
+	s := testService(&directoryStub{}, a, "project")
 	p := &inviteProvider{loseUser: true}
 	store := &memoryReceipts{}
 	revoked := false
@@ -80,7 +80,7 @@ func TestInviteRevocationPreventsPartialContinuation(t *testing.T) {
 		return ctx, nil
 	})
 	key := uuid.NewString()
-	_, err := c.Execute(scopedContext("listingkit_admin"), key, CommandInput{Kind: CommandInvite, Role: "listingkit_viewer", Invitation: &Invitation{Email: "new@example.com", FirstName: "New", LastName: "Member"}})
+	_, err := c.Execute(scopedContext("listingkit_admin"), key, CommandInput{Kind: CommandInvite, Role: testReadRole, Invitation: &Invitation{Email: "new@example.com", FirstName: "New", LastName: "Member"}})
 	if err != nil {
 		t.Fatal(err)
 	}

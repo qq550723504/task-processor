@@ -84,7 +84,7 @@ describe("GET /api/zitadel-auth/session", () => {
       identity: {
         tenantId: "org-286",
         user_id: "373211204509761704",
-        roles: ["listingkit_admin"],
+        roles: ["listingkit_admin"], permissions: ["listingkit.admin.read","listingkit.admin.write","product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.agent.configure","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.knowledge.manage","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.store.delete","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.organization_member.manage","workbench.commercial.read","workbench.commercial.purchase","workbench.commercial.wallet_topup"],
       },
     };
     mockedServerToken.accessToken = "access-token-1";
@@ -104,7 +104,7 @@ describe("GET /api/zitadel-auth/session", () => {
       identity: {
         tenantId: "org-286",
         userId: "user-1",
-        roles: ["listingkit_operator"],
+        roles: ["listingkit_operator"], permissions: ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"],
       },
     };
     mockedServerToken.accessToken = "access-token-1";
@@ -131,7 +131,7 @@ describe("GET /api/zitadel-auth/session", () => {
   it("returns null when the authenticated session has no provider authentication time", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
-    mockedAuthState.session = { identityVersion: 3, identity: { tenantId: "org-286", userId: "user-1", roles: ["listingkit_operator"] } };
+    mockedAuthState.session = { identityVersion: 3, identity: { tenantId: "org-286", userId: "user-1", roles: ["listingkit_operator"], permissions: ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"] } };
     mockedServerToken.accessToken = "access-token-1";
     expect(await (await callGET()).json()).toMatchObject({ ok: true, authenticatedAt: null });
   });

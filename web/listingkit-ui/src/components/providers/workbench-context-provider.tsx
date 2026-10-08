@@ -28,6 +28,7 @@ type WorkbenchContextValue = {
   organizations: WorkbenchOrganization[];
   effectiveOrganization: WorkbenchOrganization | null;
   roles: string[];
+  permissions: string[];
   aiWorkbenchAvailable: boolean;
   aiWorkbenchPlanningReadiness: "AVAILABLE" | "NEEDS_CONFIGURATION" | "UNAVAILABLE";
   aiWorkbenchTitleReadiness: "AVAILABLE" | "NEEDS_CONFIGURATION" | "UNAVAILABLE";
@@ -169,6 +170,7 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       organizations: currentContext?.organizations ?? [],
       effectiveOrganization,
       roles: effectiveOrganization?.roles ?? [],
+      permissions: effectiveOrganization?.permissions ?? [],
       aiWorkbenchAvailable: currentContext?.aiWorkbenchAvailable === true,
       aiWorkbenchPlanningReadiness: currentContext?.aiWorkbenchPlanningReadiness ?? "UNAVAILABLE",
       aiWorkbenchTitleReadiness: currentContext?.aiWorkbenchTitleReadiness ?? "UNAVAILABLE",

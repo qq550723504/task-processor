@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createRoleInput, saveRoleInput, enterpriseRoleKey, parseEnterpriseRoles, parseRoleMutation } from "@/lib/api/enterprise-roles";
 import {
   MemberError,
   memberSummarySchema,
@@ -57,6 +58,11 @@ function endpoint(url: URL, method: string) {
   if (!url.pathname.startsWith(base)) return null;
   const path = url.pathname.slice(base.length);
   const parts = path.split("/");
+  if (!url.search && parts[0] === "roles") {
+    if (parts.length === 1 && ["GET", "POST"].includes(method)) return {path, operation:false, schema:method === "POST" ? createRoleInput : null, roles:method === "GET", roleMutation:method === "POST"};
+    if (parts.length === 3 && enterpriseRoleKey.safeParse(parts[1]).success && parts[2] === "permissions" && method === "POST") return {path, operation:false, schema:saveRoleInput, roleMutation:true};
+    return null;
+  }
   if (!url.search && path === "members/summary" && method === "GET")
     return { path, operation: false, schema: null, summary: true };
   if (!url.search && parts[0] === "member-invitations") {
@@ -254,7 +260,9 @@ export async function proxyMembers(
         response.status,
         memberErrorCode(response.status, payload),
       );
-    const result = route.summary
+    const result = route.roles ? parseEnterpriseRoles(payload)
+      : route.roleMutation ? parseRoleMutation(payload, headers.get("Idempotency-Key")!)
+      : route.summary
       ? memberSummarySchema.parse(payload)
       : route.invitationSummary
         ? invitationSummarySchema.parse(payload)

@@ -15,6 +15,7 @@ referral_db_owner_secret=/referral-db-owner-secret
 referral_runtime_secret=/referral-runtime-secret
 membership_db_owner_secret=/membership-db-owner-secret
 membership_runtime_secret=/membership-runtime-secret
+role_policy_reader_secret=/role-policy-reader-secret
 zitadel_api_secrets=/zitadel-api-secrets
 tofu_inputs=/tofu-inputs
 frontend_secrets=/frontend-secrets
@@ -119,6 +120,9 @@ write_random 24 "$referral_db_owner_secret/referral-db-password"
 write_random 24 "$referral_runtime_secret/referral-runtime-password"
 write_random 24 "$membership_db_owner_secret/membership-db-password"
 write_random 24 "$membership_runtime_secret/membership-runtime-password"
+mkdir -p "$role_policy_reader_secret"
+write_random 24 "$role_policy_reader_secret/password"
+chown 70:70 "$role_policy_reader_secret/password"
 write_random 32 "$frontend_secrets/auth-secret"
 mkdir -p "$image_db_owner_secret" "$image_runtime_secret" "$image_worker_secret" "$acquisition_db_owner_secret" "$acquisition_runtime_secret" "$image_minio_secret"
 mkdir -p "$product_agent_db_owner_secret" "$image_audit_reader_secret" "$product_audit_reader_secret"

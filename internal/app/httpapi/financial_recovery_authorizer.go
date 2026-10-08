@@ -30,6 +30,6 @@ func (adapter financialRecoveryAuthorizer) ReauthorizeCommercialPurchase(ctx con
 	if err != nil {
 		return billing.CommercialPurchaseAuthorization{}, err
 	}
-	allowed := result.Found && result.State == "STATE_ACTIVE" && adapter.authorizer.Authorize(actorID, result.Roles, authz.PermissionWorkbenchCommercialPurchase)
+	allowed := result.Found && result.State == "STATE_ACTIVE" && authz.AllowedOrganization(ctx, adapter.authorizer, actorID, organizationID, result.Roles, authz.PermissionWorkbenchCommercialPurchase)
 	return billing.CommercialPurchaseAuthorization{OrganizationID: organizationID, ActorID: actorID, Roles: append([]string(nil), result.Roles...), Allowed: allowed, ObservedAt: time.Now().UTC()}, nil
 }

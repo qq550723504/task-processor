@@ -75,7 +75,7 @@ func (m commercialModule) Enabled(cfg *config.Config) bool {
 	return m.handler != nil && cfg != nil && cfg.Workbench.Enabled
 }
 func (m commercialModule) Register(registry *kernelmodule.Registry) error {
-	registry.AddRoutes(httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/overview", Module: m.Name(), Permission: authz.PermissionListingKitAdminRead, AuthPolicy: httproute.AuthPolicyVerifiedIdentity,
+	registry.AddRoutes(httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/overview", Module: m.Name(), Permission: authz.PermissionWorkbenchCommercialRead, AuthPolicy: httproute.AuthPolicyVerifiedIdentity,
 		// The existing LiveWrite policy denotes live grant validation; this GET
 		// performs no business mutation and introduces no new IAM policy.
 		OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, Handler: m.handler.Get})

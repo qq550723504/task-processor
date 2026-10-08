@@ -12,8 +12,8 @@ const MULTI_ORG_CONTEXT = {
   effectiveOrganizationId: "org-a",
   selectionRequired: false,
   organizations: [
-    { id: "org-a", name: "硕米科技", roles: ["role-a"] },
-    { id: "org-b", name: "星海贸易", roles: ["role-b"] },
+    { id: "org-a", name: "硕米科技", roles: ["role-a"], permissions: [] },
+    { id: "org-b", name: "星海贸易", roles: ["role-b"], permissions: [] },
   ],
 };
 

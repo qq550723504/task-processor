@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { StrictMode } from "react";
 
 const context = vi.hoisted(() => ({
-  effectiveOrganization: { id: "org-a", name: "企业 A", roles: [] as string[] },
+  effectiveOrganization: { id: "org-a", name: "企业 A", roles: [], permissions: [] as string[] },
   isSwitching: false,
-  roles: ["listingkit_admin"],
+  roles: ["listingkit_admin"], permissions: ["listingkit.admin.read","listingkit.admin.write","product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.agent.configure","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.knowledge.manage","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.store.delete","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.organization_member.manage","workbench.commercial.read","workbench.commercial.purchase","workbench.commercial.wallet_topup"],
   retry: vi.fn(),
 }));
 const queryClient = vi.hoisted(() => ({ removeQueries: vi.fn() }));
@@ -42,8 +42,8 @@ const STORE = {
 
 describe("StoreLifecycleActions", () => {
   afterEach(() => {
-    context.roles = ["listingkit_admin"];
-    context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [] };
+    context.roles = ["listingkit_admin"]; context.permissions = ["listingkit.admin.read","listingkit.admin.write","product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.agent.configure","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.knowledge.manage","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.store.delete","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.organization_member.manage","workbench.commercial.read","workbench.commercial.purchase","workbench.commercial.wallet_topup"];
+    context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [], permissions: [] };
     context.isSwitching = false;
     context.retry.mockReset(); queryClient.removeQueries.mockReset();
     enable.mutate.mockReset(); enable.isPending = false;
@@ -58,7 +58,7 @@ describe("StoreLifecycleActions", () => {
     ["listingkit_admin", true, true],
     ["platform_admin", true, true],
   ])("uses role %s to expose lifecycle controls without treating UI gates as authority", (role, canUpdate, canDelete) => {
-    context.roles = [role];
+    context.roles = [role]; context.permissions = [...(canUpdate ? ["workbench.store.lifecycle"] : []), ...(canDelete ? ["workbench.store.delete"] : [])];
     render(<StoreLifecycleActions store={STORE} />);
     expect(screen.queryByRole("button", { name: "停用店铺" }) !== null).toBe(canUpdate);
     expect(screen.queryByRole("button", { name: "删除店铺" }) !== null).toBe(canDelete);
@@ -190,11 +190,11 @@ describe("StoreLifecycleActions", () => {
     const view = render(<StoreLifecycleActions store={STORE} />);
     await user.click(screen.getByRole("button", { name: "删除店铺" }));
     await user.type(screen.getByLabelText("确认删除文本"), "删除 企业 A 的店铺 华东旗舰店");
-    context.roles = [role];
+    context.roles = [role]; context.permissions = [];
     view.rerender(<StoreLifecycleActions store={STORE} />);
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "重试删除" })).not.toBeInTheDocument();
-    context.roles = ["listingkit_admin"];
+    context.roles = ["listingkit_admin"]; context.permissions = ["listingkit.admin.read","listingkit.admin.write","product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.agent.configure","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.knowledge.manage","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.store.delete","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.organization_member.manage","workbench.commercial.read","workbench.commercial.purchase","workbench.commercial.wallet_topup"];
     view.rerender(<StoreLifecycleActions store={STORE} />);
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
@@ -220,7 +220,7 @@ describe("StoreLifecycleActions", () => {
 
   it("never exposes an eligible deleting retry after the current role loses delete permission", () => {
     remove.canRetryLast = true;
-    context.roles = ["listingkit_operator"];
+    context.roles = ["listingkit_operator"]; context.permissions = ["product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.commercial.read"];
     render(<StoreLifecycleActions store={{ ...STORE, recordStatus: "deleting", serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null }} />);
     expect(screen.getByText(/删除正在进行中/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "重试删除" })).not.toBeInTheDocument();

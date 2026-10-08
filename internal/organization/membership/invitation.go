@@ -102,7 +102,7 @@ func (c *Commands) resumeInvite(ctx context.Context, op Operation) (Operation, e
 		if identity.UserID != op.Scope.ActorID || identity.EffectiveOrganizationID != op.Scope.OrganizationID || c.service.projectID != op.Scope.ProjectID {
 			return op, ErrPermission
 		}
-		if !c.service.assignable(op.Role) {
+		if !c.service.assignable(ctx, op.Scope.OrganizationID, op.Role) {
 			return op, ErrPermission
 		}
 		human, readErr := reader.ReadHuman(ctx, op.Scope.OrganizationID, op.TargetUserID)

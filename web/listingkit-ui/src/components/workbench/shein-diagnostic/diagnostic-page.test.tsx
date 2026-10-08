@@ -23,7 +23,7 @@ function deferred<T>() {
 
 beforeEach(() => {
   state.fetch.mockReset();
-  state.context = { user: { id: "reader" }, effectiveOrganization: { id: "org-a", name: "企业甲", roles: [] }, roles: [], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null, retry: vi.fn() };
+  state.context = { user: { id: "reader" }, effectiveOrganization: { id: "org-a", name: "企业甲", roles: [], permissions: [] }, roles: [], permissions: [], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null, retry: vi.fn() };
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
 afterEach(() => { cleanup(); client.clear(); });
@@ -109,7 +109,7 @@ describe("diagnostic page request lifecycle (contract fixture)", () => {
     view.rerender(tree());
     expect(signal.aborted).toBe(true);
     expect(screen.getByRole("status")).toHaveTextContent("正在切换企业");
-    state.context = { ...state.context, isSwitching: false, effectiveOrganization: { id: "org-b", name: "企业乙", roles: [] } };
+    state.context = { ...state.context, isSwitching: false, effectiveOrganization: { id: "org-b", name: "企业乙", roles: [], permissions: [] } };
     view.rerender(tree());
     expect(await screen.findByText("发现需要处理的问题")).toBeVisible();
     expect(state.fetch.mock.calls[1][0].organizationId).toBe("org-b");
@@ -142,7 +142,7 @@ describe("diagnostic page request lifecycle (contract fixture)", () => {
     expect(await screen.findByText("发现需要处理的问题")).toBeVisible();
     const pending = deferred<ReturnType<typeof diagnosticFixture>>();
     state.fetch.mockReturnValue(pending.promise);
-    state.context = { ...state.context, roles: ["changed-role"] };
+    state.context = { ...state.context, roles: ["changed-role"], permissions: [] };
     view.rerender(tree());
     expect(screen.queryByText("发现需要处理的问题")).not.toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("正在检查");
@@ -192,12 +192,12 @@ describe("diagnostic page request lifecycle (contract fixture)", () => {
     expect(screen.getByRole("button", { name: "正在恢复企业上下文…" })).toBeDisabled();
     if (change === "action") await userEvent.selectOptions(screen.getByLabelText("检查动作"), "save_draft");
     else if (change === "organization") {
-      state.context = { ...state.context, effectiveOrganization: { id: "org-b", name: "企业乙", roles: [] } };
+      state.context = { ...state.context, effectiveOrganization: { id: "org-b", name: "企业乙", roles: [], permissions: [] } };
       view.rerender(tree());
     } else view.unmount();
     if (change !== "unmount") expect(await screen.findByText("发现需要处理的问题")).toBeVisible();
     const count = state.fetch.mock.calls.length;
-    await act(async () => recovery.resolve({ user: { id: "reader" }, effectiveOrganizationId: "org-a", selectionRequired: false, organizations: [{ id: "org-a", roles: [] }] }));
+    await act(async () => recovery.resolve({ user: { id: "reader" }, effectiveOrganizationId: "org-a", selectionRequired: false, organizations: [{ id: "org-a", roles: [], permissions: [] }] }));
     expect(state.fetch).toHaveBeenCalledTimes(count);
     if (change === "action") expect(screen.getByLabelText("检查动作")).toHaveValue("save_draft");
   });

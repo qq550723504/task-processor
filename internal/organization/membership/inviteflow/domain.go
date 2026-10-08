@@ -69,16 +69,18 @@ type Grant struct {
 	Roles     []string
 }
 type Dependencies struct {
-	Store       Store
-	Manager     func(context.Context, string) (authidentity.AuthenticatedIdentity, error)
-	Reader      func(context.Context) (authidentity.AuthenticatedIdentity, error)
-	RoleAllowed func(string) bool
-	ReadSelf    func(context.Context) (authidentity.SelfProfile, error)
-	ReadGrant   func(context.Context, string, string) (Grant, error)
-	Authorize   func(string, []string, string) bool
-	WriteGrant  func(context.Context, Invitation) error
-	Notify      func(context.Context, Invitation) error
-	Now         func() time.Time
+	Store             Store
+	Manager           func(context.Context, string) (authidentity.AuthenticatedIdentity, error)
+	Reader            func(context.Context) (authidentity.AuthenticatedIdentity, error)
+	RoleAllowed       func(string) bool
+	ScopedRoleAllowed func(context.Context, string, string) bool
+	ScopedPermissions func(context.Context, string, []string) ([]string, error)
+	ReadSelf          func(context.Context) (authidentity.SelfProfile, error)
+	ReadGrant         func(context.Context, string, string) (Grant, error)
+	Authorize         func(string, []string, string) bool
+	WriteGrant        func(context.Context, Invitation) error
+	Notify            func(context.Context, Invitation) error
+	Now               func() time.Time
 }
 type Service struct {
 	Dependencies
