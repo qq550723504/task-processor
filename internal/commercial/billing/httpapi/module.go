@@ -430,6 +430,7 @@ func Routes(handler *Handler) ([]httproute.Descriptor, error) {
 	const purchase = authz.PermissionWorkbenchCommercialPurchase
 	const topup = authz.PermissionWorkbenchCommercialWalletTopUp
 	routes := make([]httproute.Descriptor, 0, 12)
+	routes = append(routes, publicPriceRoute(handler))
 	for _, route := range []struct {
 		method, path, permission string
 		handler                  gin.HandlerFunc

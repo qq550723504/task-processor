@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { formatRetailMoney, singleRetailOffer, type RetailPriceCatalog } from "@/lib/api/retail-prices";
 import Link from "next/link";
 import {
   ArrowRight, BarChart3, Bot, BrainCircuit, BriefcaseBusiness, Building2,
@@ -35,7 +36,9 @@ const services = [[Building2, "企业与资质", "公司注册 · 开户 · 年�
 const footerGroups = [["产品能力", [["人工智能员工", "#agents"], ["人工智能选品", "#agents"], ["店铺智能运营", "#agents"], ["全球数据能力", "#data"]]], ["解决方案", [["跨境新手创业", "#solutions"], ["跨境卖家增长", "#solutions"], ["工厂产品出海", "#solutions"], ["企业智能协同", "#solutions"], ["OPC电商社区落地", "#solutions"]]], ["服务支持", [["创业陪跑", "#pricing"], ["店铺联合运营", "#pricing"], ["品牌出海方案", "#pricing"], ["功能定制开发", "#pricing"]]], ["关于硕米", [["品牌介绍", "#home"], ["应用实践", "#practices"], ["价格与服务", "#pricing"], ["联系我们", "#contact-launcher"]]]] as const;
 const plans = [["01", "新手创业陪跑", "¥4,999 / 半年", "方向规划 · AI选品培训 · 店铺启动指导", "blue"], ["02", "店铺联合运营", "¥5,999 + 利润分成30%", "商品与市场分析 · 内容上架 · 运营执行", "green"], ["03", "品牌出海方案", "定制方案 · 咨询报价", "市场研究 · 产品组合 · 品牌本地化", "violet"], ["04", "功能定制开发", "按需求评估 · 咨询报价", "专属AI智能体 · 企业知识库 · 自动化工作流", "cyan"], ["05", "一人公司电商社区落地", "项目定制 · 咨询报价", "AI服务平台 · 资源接入 · 团队培训 · 运营陪跑", "green"]];
 
-export function MarketingHomepage() {
+export function MarketingHomepage({ pricing = null }: { pricing?: RetailPriceCatalog | null } = {}) {
+  const storePrice = singleRetailOffer(pricing, "store_renewal_period");
+  const aiPrice = singleRetailOffer(pricing, "ai_point");
   return <main className={styles.page}>
     <MarketingHero loginHref={LOGIN_HREF} />
 
@@ -57,7 +60,29 @@ export function MarketingHomepage() {
 
     <section className={`${styles.section} ${styles.practiceSection}`} id="practices"><SectionHeading label="AI COMMERCE PRACTICES / AI电商应用实践" title="从一个业务目标，到一套可以执行的结果" description="硕米智能引擎组织AI员工、商品数据、供应链资源和专业服务，帮助不同类型的用户完成完整电商任务。" /><PracticeTabs /></section>
 
-    <section className={`${styles.section} ${styles.pricingSection}`} id="pricing"><SectionHeading label="价格与服务方案" title="简单透明，只为实际使用付费" description="注册即可免费体验。店铺按月接入，人工智能按实际算力用量消耗计费；需要业务落地支持时，可选择对应的专项服务。" centered /><div className={styles.trialBanner}><span>新用户专享</span><strong>注册即享15天免费体验</strong><p>免费绑定1个店铺 · 赠送¥5 AI算力券 · 体验店铺接入与AI能力 · 试用结束不自动续费</p><Link href={LOGIN_HREF}>免费开始体验 <ArrowRight size={15} /></Link></div><div className={styles.basePricing}><article><Store size={25} /><small>店铺基础接入</small><h3><strong>¥99</strong> / 店铺 / 月</h3><p>数据安全接入 · 商品与订单同步 · 经营看板<br />多店铺统一管理 · AI智能体调用入口</p></article><article><Zap size={25} /><small>人工智能算力</small><h3><strong>按算力用量</strong> 实际消耗计费</h3><p>不调用AI不产生费用 · 执行前显示预估消耗<br />提供用量明细 · 支持预算设置 · 余额不足自动暂停</p></article></div><div className={styles.professionalHeader}><div><span>专项落地服务</span><h3>从使用人工智能工具，到完成业务落地</h3></div><p>根据不同业务阶段，选择创业指导、联合运营、品牌出海、功能开发或社区建设服务。</p></div><div className={styles.planGrid}>{plans.map(([number, title, price, detail, tone]) => <article className={styles[tone]} key={title}><span>{number}</span><h3>{title}</h3><b>{price}</b><p>{detail}</p></article>)}</div><p className={styles.pricingNote}>统一收费说明：15天体验仅限1个店铺 · AI按实际算力用量计费 · 联合运营需通过项目评估 · 不承诺固定销售额或固定利润</p></section>
+    <section className={`${styles.section} ${styles.pricingSection}`} id="pricing">
+      <SectionHeading label="价格与服务方案" title="简单透明，只为实际使用付费" description="店铺按30天一期付费，AI点数预付使用；需要业务落地支持时，可咨询对应的专项服务。" centered />
+      <div className={styles.trialBanner}>
+        <span>新用户试用计划</span><strong>15天体验计划 · 待开放</strong>
+        <p>计划提供1个店铺试用与¥5 AI算力券。试用计划尚未开放，注册不会自动赠送资源。</p>
+        <Link href={LOGIN_HREF}>注册进入硕米 <ArrowRight size={15} /></Link>
+      </div>
+      <div className={styles.basePricing}>
+        <article><Store size={25} /><small>店铺基础接入</small>
+          <h3><strong>{storePrice ? formatRetailMoney(storePrice.unit_price_minor) : "店铺价格暂不可用"}</strong>{storePrice ? " / 店铺 / 30 天" : null}</h3>
+          <p>1期为30天；购买后需完成平台授权，再显式开通或续费。<br />各店铺分别计时，不自动续费；平台支持情况以工作台为准。</p>
+          {storePrice ? <Link href="/login?returnTo=%2Fworkbench%2Fplans%2Foptions">购买店铺服务 <ArrowRight size={15} /></Link> : null}
+        </article>
+        <article><Zap size={25} /><small>人工智能算力</small>
+          <h3><strong>{aiPrice ? formatRetailMoney(aiPrice.unit_price_minor) : "AI点数价格暂不可用"}</strong>{aiPrice ? " / AI点数" : null}</h3>
+          <p>AI点数预付使用，余额不按月清零。<br />各模型按对应费率和实际用量扣点，购买点数不会自动调用AI。</p>
+          {aiPrice ? <Link href="/login?returnTo=%2Fworkbench%2Fplans%2Foptions">购买AI点数 <ArrowRight size={15} /></Link> : null}
+        </article>
+      </div>
+      <div className={styles.professionalHeader}><div><span>专项落地服务</span><h3>从使用人工智能工具，到完成业务落地</h3></div><p>以下为专项服务参考报价；服务范围、周期与结算以双方确认的合同为准。</p></div>
+      <div className={styles.planGrid}>{plans.map(([number, title, price, detail, tone]) => <article className={styles[tone]} key={title}><span>{number}</span><h3>{title}</h3><b>{price}</b><p>{detail}</p></article>)}</div>
+      <p className={styles.pricingNote}>统一收费说明：店铺1期为30天 · AI点数按实际消耗扣减 · 最终金额以购买确认的报价为准 · 联合运营需通过项目评估 · 不承诺固定销售额或固定利润</p>
+    </section>
 
     <BrandClosing />
     <footer className={styles.footer} data-node-id="234:204"><div className={styles.footerIdentity}><div className={styles.footerBrand}><Image src="/sumi/c3ea4c6f-992f-4c3d-ae2e-c14d4ec9735a.png" width={48} height={48} alt="" /><div><strong>硕米智能引擎</strong><span>新一代人工智能电商操作系统</span></div></div><p>连接智能体、数据、商品、供应链与专业服务，帮助个人和组织完成电商业务。</p></div><nav aria-label="页尾导航" className={styles.footerLinks}>{footerGroups.map(([title,links]) => <div key={title}><h3>{title}</h3><ul>{links.map(([label,href]) => <li key={label}><>{label === "联系我们" ? <ContactPanel inlineTrigger /> : <a href={href}>{label}</a>}</></li>)}</ul></div>)}</nav><div className={styles.copyright}>© 2026 硕米智能引擎　保留所有权利 <span><Link href="/privacy-policy">隐私政策</Link><Link href="/user-agreement">用户协议</Link><Link href="/ai-compute-billing">算力计费说明</Link><Link href="/service-agreement">服务协议</Link></span></div></footer>

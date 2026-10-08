@@ -16,9 +16,7 @@ func agentAndPointRoutes(agent, points bool) []httproute.Descriptor {
 		routes = append(routes, httproute.Descriptor{Method: route.Method, Path: route.Path})
 	}
 	// Keep billing first: its early discovery must not skip later auth checks.
-	for _, route := range currentCommercialBillingApplicationRoutes {
-		routes = append(routes, httproute.Descriptor{Method: route.Method, Path: route.Path})
-	}
+	routes = append(routes, billingDescriptorsForTest()...)
 	if agent {
 		routes = append(routes, productAgentRoutes(nil)...)
 		for _, route := range productReviewRoutes(nil, nil) {

@@ -31,9 +31,7 @@ func TestCurrentMemberPointLimitRoutesPreserveLiveBoundaryAfterBillingRoutes(t *
 	for _, route := range currentWorkbenchApplicationRoutes {
 		routes = append(routes, httproute.Descriptor{Method: route.Method, Path: route.Path})
 	}
-	for _, route := range currentCommercialBillingApplicationRoutes {
-		routes = append(routes, httproute.Descriptor{Method: route.Method, Path: route.Path})
-	}
+	routes = append(routes, billingDescriptorsForTest()...)
 	routes = append(routes, (memberPointLimitModule{}).routes()...)
 	validate := func(r []httproute.Descriptor) error {
 		return validateCurrentApplicationRoutesInternal(r, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{MemberPoints: true})

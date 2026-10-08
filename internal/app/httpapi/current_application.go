@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	billinghttp "task-processor/internal/commercial/billing/httpapi"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -68,6 +69,7 @@ var currentAccountProfileApplicationRoutes = []currentApplicationRoute{
 }
 
 var currentCommercialBillingApplicationRoutes = []currentApplicationRoute{
+	{Method: http.MethodGet, Path: "/api/v1/commercial/resource-offers"},
 	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/resource-offers"},
 	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/wallet"},
 	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/wallet/entries"},
@@ -940,6 +942,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	if includeCommercialBilling {
 		for _, route := range currentCommercialBillingApplicationRoutes {
 			expected[route] = struct{}{}
+		}
+		for _, descriptor := range routes {
+			if descriptor.Path == billinghttp.PublicResourceOfferPath && !billinghttp.ValidatePublicPriceDescriptor(descriptor) {
+				return errors.New("public retail catalog loses its price-only read boundary")
+			}
 		}
 	}
 	referralRoutes := map[currentApplicationRoute]httproute.Descriptor{}

@@ -57,11 +57,13 @@ connected Store and allocated service periods; one period is 30 days.
 Administrators buy Store periods, AI points and data rows from the enterprise
 wallet against configured `commercial_offers`. AI/data also accept a money budget:
 the server floors the purchasable quantity and leaves the remainder uncharged.
-Missing prices disable purchases. The Commercial schema owner installs one
-approved DATA_ROW offer at CNY 0.05 per row for server-side 1688 acquisitions;
-browser-extension and local captures do not consume rows. It preserves an
-existing offer and refuses a competing active DATA_ROW price. AI points and
-Store-period prices remain unconfigured. `ACCOUNT_ISOLATED_TRIAL_CATALOG` and
+Missing prices disable purchases. On a new installation, the Commercial schema
+owner atomically installs approved Store periods at CNY 168 per 30 days, AI
+points at CNY 0.01 per point (CNY 1 = 100 points), and DATA_ROW at CNY 0.05 per
+row for server-side 1688 acquisitions; browser-extension and local captures do
+not consume rows. It preserves owner-adjusted and disabled offers and refuses
+competing active prices, including scheduled or expired sale windows. It does
+not update a retained catalog. `ACCOUNT_ISOLATED_TRIAL_CATALOG` and
 the former free subscription seed are retired and rejected.
 Enterprise resource balances do not expire monthly. Members retain concrete Store
 grants, allocated periods/data and a UTC calendar-month AI spending limit.
@@ -72,8 +74,23 @@ rejected. Keep existing projects on their original checkout: this cutover does n
 migrate or delete their data. The native Store initializer now accepts only
 `store-center-schema-init -config <absolute-private-store-owner-json>`.
 The current commercial/money initializer installs their current owners, explicit
-grants and the approved create-only DATA_ROW offer. Serving verifies schemas and
+grants and the approved create-only retail offers. Serving verifies schemas and
 permissions without altering them.
+
+The homepage reads `GET /api/v1/commercial/resource-offers` server-side through
+the existing `COMMERCIAL_API_ORIGIN`. This anonymous route only returns current
+sellable prices; enterprise wallet, resources, quotes and orders remain private.
+Missing catalog/configuration shows unavailable prices with no static fallback.
+Purchase from `/workbench/plans/options`, allocate periods in Account resources,
+then explicitly activate or renew a connected Store in `/workbench/stores`.
+View original purchases in `/workbench/plans/orders`. Buying periods does not
+connect or activate a Store. The 15-day trial and CNY 5 AI coupon remain planned;
+registration grants no resource or money balance. Model tariffs, official Store
+connections and real payment opening still require their own existing settings.
+Use the new-project startup command below to initialize these prices; stopping
+and restarting a retained project preserves its catalog and volumes. Do not use
+`down -v`, reset a retained catalog, or rerun owner initialization to force a price
+change. Real business data/catalog changes are a separately authorized action.
 
 Product Agent remains explicitly opt-in. Its `productAgent.textPolicy.pointPricing`
 requires a reviewed `priceVersion` and positive integer

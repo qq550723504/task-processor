@@ -2,6 +2,8 @@ import { headers } from "next/headers";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/headers", () => ({ headers: vi.fn() }));
+// Metadata is inspected outside Next's Server Component runtime.
+vi.mock("server-only", () => ({}));
 
 import { generateMetadata } from "./layout";
 
