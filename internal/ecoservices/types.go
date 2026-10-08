@@ -118,6 +118,7 @@ type Request struct {
 	AcceptedDeliveryVersion int64            `json:"acceptedDeliveryVersion,string"`
 	FinancialFence          bool             `json:"-"`
 	FinancialState          string           `json:"financialState"`
+	FinancialRevision       int64            `json:"-"`
 	FinancialReason         string           `json:"financialReason"`
 	FundsExpireAt           *time.Time       `json:"fundsExpireAt,omitempty"`
 	CreatedAt               time.Time        `json:"createdAt"`
@@ -148,13 +149,14 @@ type Result struct {
 	Request     *Request     `json:"request,omitempty"`
 }
 type FinancialCommand struct {
-	ID, RequestID, OrderID, Kind, SourceProofID             string
+	ID, RequestID, OrderID, Kind, SourceProofID, ActorID    string
 	BuyerOrganizationID, ProviderOrganizationID, MerchantID string
 	Quote                                                   Quote
 	AmountMinor                                             int64
 	PolicyVersion                                           string
 	State                                                   string
 	DispatchAdmitted                                        bool
+	DispatchOperationID                                     string
 }
 type Query struct {
 	Scope                   Scope
@@ -177,10 +179,14 @@ type Repository interface {
 	PendingFinancialCommands(context.Context, int) ([]FinancialCommand, error)
 	AdmitFinancialCommand(context.Context, FinancialCommand) (FinancialCommand, error)
 	CompleteFinancialCommand(context.Context, FinancialCommand, FinancialResult) error
+	FinancialCommand(context.Context, string) (FinancialCommand, error)
+	OriginalFinancialCommand(context.Context, string) (FinancialCommand, error)
 }
 type FinancialResult struct {
 	OrderID, PaymentReceiptID, ReceiptID, State, Reason string
 	FundsExpireAt                                       *time.Time
+	Revision                                            int64
+	FullRefund                                          bool
 }
 type TradingPort interface {
 	ExecuteServiceCommand(context.Context, FinancialCommand) (FinancialResult, error)

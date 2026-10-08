@@ -4,6 +4,7 @@ package ecoservices
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/google/uuid"
 	pg "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -122,5 +123,36 @@ func TestEcoservicesPostgresStartCancelExclusiveAndCounts(t *testing.T) {
 	}
 	if err := VerifyRuntime(ctx, repo.db); !errors.Is(err, e.ErrUnavailable) {
 		t.Fatalf("immutable operation mutation allowed: %v", err)
+	}
+}
+func TestEcoservicesPostgresEachFinancialStageHonorsNewDispute(t *testing.T) {
+	ctx, db, repo, service := postgresFixture(t)
+	app := e.Application{ID: uuid.NewString(), OrganizationID: "provider", CompanyName: "qualified fixture", State: "ACTIVE", Version: 1, MerchantID: "original-sub", AgreementAccepted: true, OnboardingState: "FINISH"}
+	if err := db.Create(applicationRecord(app)).Error; err != nil {
+		t.Fatal(err)
+	}
+	request := e.Request{ID: uuid.NewString(), BuyerOrganizationID: "buyer", ProviderOrganizationID: "provider", State: "ACCEPTED", AcceptanceID: "acceptance-proof", Version: 1, OrderID: uuid.NewString(), PaymentReceiptID: "controlled-receipt", Quote: &e.Quote{AmountMinor: 101, DeliveryDays: 7, Version: 1}, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	if err := db.Create(requestRecord(request)).Error; err != nil {
+		t.Fatal(err)
+	}
+	command := e.FinancialCommand{ID: "acceptance-proof", RequestID: request.ID, OrderID: request.OrderID, Kind: "SETTLE", SourceProofID: request.AcceptanceID, ActorID: "buyer", BuyerOrganizationID: "buyer", ProviderOrganizationID: "provider", MerchantID: "original-sub", Quote: *request.Quote, AmountMinor: 101, PolicyVersion: e.PolicyVersion, State: "PENDING"}
+	payload, _ := json.Marshal(command)
+	if err := db.Create(&financialRow{ID: command.ID, RequestID: command.RequestID, OrderID: command.OrderID, Kind: command.Kind, Fingerprint: e.Fingerprint(command), Payload: payload, State: "PENDING", CreatedAt: time.Now()}).Error; err != nil {
+		t.Fatal(err)
+	}
+	command.DispatchOperationID = "original-share"
+	if _, err := repo.AdmitFinancialCommand(ctx, command); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Mutate(ctx, e.Command{Scope: e.Scope{OrganizationID: "buyer", ActorID: "b"}, Kind: "refund_propose", ID: request.ID, Key: uuid.NewString(), Version: 1, RefundAmountMinor: 2, Reason: "partial dispute"}); err != nil {
+		t.Fatal(err)
+	}
+	command.DispatchOperationID = "new-normal-finish"
+	if _, err := repo.AdmitFinancialCommand(ctx, command); !errors.Is(err, e.ErrConflict) {
+		t.Fatalf("new finish ignored dispute fence: %v", err)
+	}
+	command.DispatchOperationID = "original-share"
+	if _, err := repo.AdmitFinancialCommand(ctx, command); err != nil {
+		t.Fatalf("existing original in-flight fact lost admission: %v", err)
 	}
 }

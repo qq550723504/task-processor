@@ -46,6 +46,7 @@ type ServiceEffectKind string
 const (
 	ServiceShare            ServiceEffectKind = "SHARE"
 	ServiceFinish           ServiceEffectKind = "FINISH"
+	ServiceRefundRelease    ServiceEffectKind = "REFUND_RELEASE"
 	ServiceReturn           ServiceEffectKind = "RETURN"
 	ServiceRefund           ServiceEffectKind = "REFUND"
 	ServiceChargeback       ServiceEffectKind = "CHARGEBACK"
@@ -66,7 +67,7 @@ func (in ServiceOperation) Validate() error {
 		return ErrInvalid
 	}
 	switch in.Kind {
-	case ServiceShare, ServiceFinish:
+	case ServiceShare, ServiceFinish, ServiceRefundRelease:
 	case ServiceReturn:
 		if !isCanonicalWalletIdentifier(in.OriginalShareID) {
 			return ErrInvalid
@@ -85,6 +86,18 @@ type ServiceEffect struct {
 	Operation         ServiceOperation
 	ProviderReference string
 	OccurredAt        time.Time
+}
+type ServiceOperationFailure struct {
+	Operation                          ServiceOperation
+	ProofID, ProviderReference, Reason string
+	OccurredAt                         time.Time
+}
+
+func (in ServiceOperationFailure) Validate() error {
+	if in.Operation.Validate() != nil || !isCanonicalWalletIdentifier(in.ProofID) || !isCanonicalWalletIdentifier(in.ProviderReference) || !isCanonicalWalletIdentifier(in.Reason) || in.OccurredAt.IsZero() {
+		return ErrInvalid
+	}
+	return nil
 }
 
 func (e ServiceEffect) Validate() error {
@@ -138,4 +151,13 @@ type ServiceFundsStore interface {
 	AcceptServiceEffect(context.Context, ServiceEffect) (ServiceReceipt, error)
 	ReadServiceEffect(context.Context, ServiceOperation) (ServiceReceipt, error)
 	ObserveServiceChargeback(context.Context, string, ChargebackSettlement) error
+	ResolveFailedServiceOperation(context.Context, ServiceOperationFailure) (ServiceReceipt, error)
+	ObserveServiceRefundUncertainty(context.Context, ServicePaymentInput, string) (ServiceReceipt, error)
+}
+
+func ValidateServiceUncertaintyProof(proof string) error {
+	if !isCanonicalWalletIdentifier(proof) {
+		return ErrInvalid
+	}
+	return nil
 }

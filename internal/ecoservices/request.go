@@ -38,7 +38,7 @@ func TransitionRequest(r *Request, c Command, now time.Time) (*FinancialCommand,
 		if r.Quote != nil {
 			quote = *r.Quote
 		}
-		return &FinancialCommand{ID: id, RequestID: r.ID, OrderID: r.OrderID, Kind: kind, SourceProofID: id, BuyerOrganizationID: r.BuyerOrganizationID, ProviderOrganizationID: r.ProviderOrganizationID, Quote: quote, AmountMinor: amount, PolicyVersion: PolicyVersion, State: "PENDING"}
+		return &FinancialCommand{ID: id, RequestID: r.ID, OrderID: r.OrderID, Kind: kind, SourceProofID: id, ActorID: c.Scope.ActorID, BuyerOrganizationID: r.BuyerOrganizationID, ProviderOrganizationID: r.ProviderOrganizationID, Quote: quote, AmountMinor: amount, PolicyVersion: PolicyVersion, State: "PENDING"}
 	}
 	switch c.Kind {
 	case "quote":
@@ -165,29 +165,41 @@ func ApplyFinancialResult(r *Request, result FinancialResult, now time.Time) err
 	if r == nil || r.OrderID == "" || result.OrderID != r.OrderID {
 		return ErrConflict
 	}
+	if result.Revision > 0 && result.Revision < r.FinancialRevision {
+		return nil
+	}
+	if result.Revision > 0 {
+		r.FinancialRevision = result.Revision
+	}
 	if result.PaymentReceiptID != "" {
 		if r.PaymentReceiptID != "" && r.PaymentReceiptID != result.PaymentReceiptID {
 			return ErrConflict
 		}
 		r.PaymentReceiptID = result.PaymentReceiptID
-		if r.State == "ORDER_PENDING" {
+		if r.State == "ORDER_PENDING" && result.State != "RECONCILIATION_REQUIRED" {
 			r.State = "PAID_READY"
 		}
 	}
 	r.FinancialState = result.State
 	r.FinancialReason = result.Reason
+	if result.State == "RECONCILIATION_REQUIRED" {
+		r.FinancialFence = true
+	}
 	r.FundsExpireAt = result.FundsExpireAt
 	if result.State == "CLOSED_UNPAID" && r.State == "CANCEL_REQUESTED" {
 		r.State = "CANCELLED"
 	}
 	if result.State == "REFUNDED" {
-		if r.State == "CANCEL_REQUESTED" {
+		if r.State == "CANCEL_REQUESTED" || result.FullRefund {
 			r.State = "CANCELLED"
 		}
 		if r.Refund != nil && r.Refund.State == "APPROVED" {
 			r.Refund.State = "REFUNDED"
 		}
 		r.FinancialFence = false
+	}
+	if result.State == "CHANNEL_OPERATION_FAILED" && r.Refund != nil && r.Refund.State == "APPROVED" {
+		r.Refund.State = "FAILED"
 	}
 	r.Version++
 	r.UpdatedAt = now

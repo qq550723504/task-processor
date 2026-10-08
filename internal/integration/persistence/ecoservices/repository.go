@@ -47,6 +47,7 @@ type requestRow struct {
 	OrderID                                     *string `gorm:"uniqueIndex"`
 	PaymentReceiptID                            string
 	FinancialFence                              bool
+	FinancialRevision                           int64
 	Payload                                     []byte
 	CreatedAt, UpdatedAt                        time.Time
 }
@@ -131,7 +132,7 @@ func requestRecord(v e.Request) *requestRow {
 		o := v.OrderID
 		order = &o
 	}
-	return &requestRow{ID: v.ID, BuyerOrganizationID: v.BuyerOrganizationID, ProviderOrganizationID: v.ProviderOrganizationID, State: v.State, Title: v.Title, Category: string(v.Category), Version: v.Version, OrderID: order, PaymentReceiptID: v.PaymentReceiptID, FinancialFence: v.FinancialFence, Payload: p, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+	return &requestRow{ID: v.ID, BuyerOrganizationID: v.BuyerOrganizationID, ProviderOrganizationID: v.ProviderOrganizationID, State: v.State, Title: v.Title, Category: string(v.Category), Version: v.Version, OrderID: order, PaymentReceiptID: v.PaymentReceiptID, FinancialFence: v.FinancialFence, FinancialRevision: v.FinancialRevision, Payload: p, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func applicationRecord(v e.Application) *applicationRow {
 	p, _ := json.Marshal(v)
@@ -144,6 +145,7 @@ func requestFact(v requestRow) (e.Request, error) {
 	}
 	r.BuyerOrganizationID = v.BuyerOrganizationID
 	r.ProviderOrganizationID = v.ProviderOrganizationID
+	r.FinancialRevision = v.FinancialRevision
 	r.PaymentReceiptID = v.PaymentReceiptID
 	r.FinancialFence = v.FinancialFence
 	return r, nil
@@ -588,6 +590,33 @@ func (r *Repository) PendingFinancialCommands(ctx context.Context, limit int) ([
 	}
 	return out, nil
 }
+func (r *Repository) FinancialCommand(ctx context.Context, id string) (e.FinancialCommand, error) {
+	var row financialRow
+	if err := r.db.WithContext(ctx).Where("id=?", id).Take(&row).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		return e.FinancialCommand{}, e.ErrNotFound
+	} else if err != nil {
+		return e.FinancialCommand{}, err
+	}
+	return financialFact(row)
+}
+func (r *Repository) OriginalFinancialCommand(ctx context.Context, order string) (e.FinancialCommand, error) {
+	var rows []financialRow
+	if err := r.db.WithContext(ctx).Where("order_id=? AND kind='CREATE_PURCHASE'", order).Limit(2).Find(&rows).Error; err != nil {
+		return e.FinancialCommand{}, err
+	}
+	if len(rows) != 1 {
+		return e.FinancialCommand{}, e.ErrNotFound
+	}
+	return financialFact(rows[0])
+}
+func financialFact(row financialRow) (e.FinancialCommand, error) {
+	var out e.FinancialCommand
+	if json.Unmarshal(row.Payload, &out) != nil || out.ID != row.ID || out.OrderID != row.OrderID || out.RequestID != row.RequestID || out.Kind != row.Kind || e.Fingerprint(out) != row.Fingerprint {
+		return out, e.ErrConflict
+	}
+	out.DispatchAdmitted = row.DispatchAdmitted
+	return out, nil
+}
 func (r *Repository) AdmitFinancialCommand(ctx context.Context, in e.FinancialCommand) (e.FinancialCommand, error) {
 	var out e.FinancialCommand
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -601,13 +630,30 @@ func (r *Repository) AdmitFinancialCommand(ctx context.Context, in e.FinancialCo
 		}
 		original := in
 		original.DispatchAdmitted = false
+		original.DispatchOperationID = ""
 		if row.Fingerprint != e.Fingerprint(original) || row.OrderID != in.OrderID {
 			return e.ErrConflict
 		}
 		if json.Unmarshal(row.Payload, &out) != nil {
 			return e.ErrConflict
 		}
-		if row.DispatchAdmitted {
+		admissionKey := in.DispatchOperationID
+		if admissionKey != "" {
+			if len(admissionKey) > 192 {
+				return e.ErrInvalid
+			}
+			var prior operationRow
+			if err := tx.Where("organization_id=? AND kind=? AND key=?", "SYSTEM_FINANCE", "financial_dispatch", admissionKey).Take(&prior).Error; err == nil {
+				if prior.Fingerprint != e.Fingerprint(original) {
+					return e.ErrConflict
+				}
+				out.DispatchAdmitted = true
+				return nil
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+		}
+		if row.DispatchAdmitted && admissionKey == "" {
 			out.DispatchAdmitted = true
 			return nil
 		}
@@ -640,6 +686,11 @@ func (r *Repository) AdmitFinancialCommand(ctx context.Context, in e.FinancialCo
 		if err := tx.Model(&row).Updates(map[string]any{"dispatch_admitted": true, "state": "PROCESSING"}).Error; err != nil {
 			return err
 		}
+		if admissionKey != "" {
+			if err := tx.Create(&operationRow{OrganizationID: "SYSTEM_FINANCE", Kind: "financial_dispatch", Key: admissionKey, Fingerprint: e.Fingerprint(original), Result: row.Payload}).Error; err != nil {
+				return err
+			}
+		}
 		out.DispatchAdmitted = true
 		return nil
 	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
@@ -657,6 +708,7 @@ func (r *Repository) CompleteFinancialCommand(ctx context.Context, in e.Financia
 		}
 		original := in
 		original.DispatchAdmitted = false
+		original.DispatchOperationID = ""
 		if row.Fingerprint != e.Fingerprint(original) {
 			return e.ErrConflict
 		}
@@ -677,7 +729,7 @@ func (r *Repository) CompleteFinancialCommand(ctx context.Context, in e.Financia
 		if err := tx.Save(requestRecord(req)).Error; err != nil {
 			return err
 		}
-		terminal := result.State == "SETTLED" || result.State == "REFUNDED" || result.State == "CLOSED_UNPAID" || in.Kind == "CREATE_PURCHASE" && result.PaymentReceiptID != ""
+		terminal := result.State == "SETTLED" || result.State == "REFUNDED" || result.State == "CLOSED_UNPAID" || result.State == "CHANNEL_OPERATION_FAILED" || in.Kind == "CREATE_PURCHASE" && result.PaymentReceiptID != ""
 		state := "PROCESSING"
 		if terminal {
 			state = "DONE"

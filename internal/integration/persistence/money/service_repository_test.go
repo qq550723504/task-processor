@@ -199,3 +199,38 @@ func TestServiceSourceDenialReleasesOnlyUndispatchedReservation(t *testing.T) {
 		t.Fatalf("unknown dispatched refund reservation released: %v", err)
 	}
 }
+func TestServiceKnownFailedShareFreesRefundButNeverClaimsSuccess(t *testing.T) {
+	r := newMoneyRepository(t)
+	ctx := context.Background()
+	in := servicePayment()
+	if _, err := r.AcceptServicePayment(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	op := m.ServiceOperation{OrderID: in.OrderID, OperationID: "closed-platform-share", Kind: m.ServiceShare, AmountMinor: 10, SourceProofID: "customer-acceptance"}
+	if _, err := r.PrepareServiceOperation(ctx, op); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.AdmitServiceOperation(ctx, op); err != nil {
+		t.Fatal(err)
+	}
+	failure := m.ServiceOperationFailure{Operation: op, ProofID: "verified-original-receiver-closed", ProviderReference: "channel-share-detail", Reason: "RECEIVER_CLOSED", OccurredAt: time.Date(2026, 10, 8, 2, 0, 0, 0, time.UTC)}
+	first, err := r.ResolveFailedServiceOperation(ctx, failure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := r.ResolveFailedServiceOperation(ctx, failure)
+	if err != nil || first != again {
+		t.Fatalf("failure receipt changed %+v %+v %v", first, again, err)
+	}
+	if _, err := r.ReadServiceEffect(ctx, op); !errors.Is(err, m.ErrNotFound) {
+		t.Fatalf("failure became share success %v", err)
+	}
+	f, err := r.ReadServiceFunds(ctx, in.OrderID)
+	if err != nil || f.SharedMinor != 0 || f.PendingOperationID != "" {
+		t.Fatalf("known failure erased funds or retained reservation: %+v %v", f, err)
+	}
+	refund := m.ServiceOperation{OrderID: in.OrderID, OperationID: "approved-full-refund", Kind: m.ServiceRefund, AmountMinor: 101, SourceProofID: "approved-refund"}
+	if _, err := r.PrepareServiceOperation(ctx, refund); err != nil {
+		t.Fatalf("failed share blocks original refund %v", err)
+	}
+}

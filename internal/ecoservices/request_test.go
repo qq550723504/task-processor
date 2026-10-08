@@ -78,3 +78,45 @@ func TestChannelReleaseNeverCreatesCustomerAcceptance(t *testing.T) {
 		t.Fatal("channel expiry fabricated customer acceptance")
 	}
 }
+func TestRefundUnknownPaymentProjectionCannotStartService(t *testing.T) {
+	r := serviceRequest()
+	r.State = "ORDER_PENDING"
+	r.PaymentReceiptID = ""
+	if err := ApplyFinancialResult(&r, FinancialResult{OrderID: r.OrderID, PaymentReceiptID: "original-paid-receipt", State: "RECONCILIATION_REQUIRED", Reason: "CHANNEL_REFUND_REQUIRES_RECONCILIATION", Revision: 2}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if r.State != "ORDER_PENDING" || r.PaymentReceiptID == "" || !r.FinancialFence {
+		t.Fatalf("unknown refund became deliverable: %+v", r)
+	}
+	if _, err := TransitionRequest(&r, Command{Scope: Scope{OrganizationID: "provider", ActorID: "provider-user"}, Kind: "start", Version: r.Version}, time.Now()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("unknown refund service started: %v", err)
+	}
+}
+func TestLatePaymentProjectionCannotOverwriteCompletedRefund(t *testing.T) {
+	r := serviceRequest()
+	r.State = "CANCEL_REQUESTED"
+	r.FinancialFence = true
+	r.PaymentReceiptID = "original-money-receipt"
+	if err := ApplyFinancialResult(&r, FinancialResult{OrderID: r.OrderID, PaymentReceiptID: "original-money-receipt", State: "REFUNDED", Revision: 10, FullRefund: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyFinancialResult(&r, FinancialResult{OrderID: r.OrderID, PaymentReceiptID: "original-money-receipt", State: "PAID", Revision: 4}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if r.FinancialState != "REFUNDED" || r.State != "CANCELLED" {
+		t.Fatalf("late original payment erased refund: %+v", r)
+	}
+}
+func TestFullApprovedRefundStopsFurtherServiceAndRetainsAcceptance(t *testing.T) {
+	r := serviceRequest()
+	r.State = "ACCEPTED"
+	r.AcceptanceID = "original-acceptance"
+	r.FinancialFence = true
+	r.Refund = &RefundAgreement{State: "APPROVED", AmountMinor: 100}
+	if err := ApplyFinancialResult(&r, FinancialResult{OrderID: r.OrderID, State: "REFUNDED", FullRefund: true, Revision: 12}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if r.State != "CANCELLED" || r.AcceptanceID != "original-acceptance" {
+		t.Fatalf("fully refunded service remained operable or erased acceptance: %+v", r)
+	}
+}

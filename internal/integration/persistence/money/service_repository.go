@@ -61,6 +61,101 @@ func (serviceEffectRow) TableName() string { return "ledger_service_effect_recei
 func migrateServicePayments(db *gorm.DB) error {
 	return db.AutoMigrate(&channelPaymentClaimRow{}, &servicePaymentRow{}, &serviceReservationRow{}, &serviceEffectRow{})
 }
+
+// A verified refund state without its original refund facts is not available
+// balance. Keep the paid fact and an immutable uncertainty proof together.
+func (r *Repository) ObserveServiceRefundUncertainty(ctx context.Context, in m.ServicePaymentInput, proof string) (m.ServiceReceipt, error) {
+	var out m.ServiceReceipt
+	if r == nil || r.db == nil || in.Validate() != nil || m.ValidateServiceUncertaintyProof(proof) != nil {
+		return out, m.ErrInvalid
+	}
+	fp := m.ServiceFingerprint(struct{ Payment, Proof string }{in.Fingerprint(), proof})
+	identity := "service-uncertainty:" + fp
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		row, err := lockServicePayment(tx, in.OrderID)
+		if err != nil {
+			return err
+		}
+		if row.Fingerprint != in.Fingerprint() || len(row.Receipt) == 0 {
+			return m.ErrConflict
+		}
+		var prior serviceEffectRow
+		if err := tx.Where("operation_id=?", identity).Take(&prior).Error; err == nil {
+			if prior.Fingerprint != fp {
+				return m.ErrConflict
+			}
+			return decodeServiceReceipt(prior.Receipt, &out)
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		out = m.ServiceReceipt{ReceiptID: identity, OrderID: in.OrderID, OperationID: identity, Kind: "REFUND_UNCERTAINTY", RequestFingerprint: in.Fingerprint(), ProviderReference: proof, OccurredAt: m.NormalizeTimestamp(in.Payment.SettledAt)}
+		out.ResultFingerprint = out.Fingerprint()
+		payload, err := json.Marshal(out)
+		if err != nil {
+			return err
+		}
+		if err := tx.Create(&serviceEffectRow{OperationID: identity, OrderID: in.OrderID, Kind: string(out.Kind), Fingerprint: fp, Receipt: payload}).Error; err != nil {
+			return err
+		}
+		if row.ReconciliationReason == "" {
+			return tx.Model(&row).Update("reconciliation_reason", "CHANNEL_REFUND_REQUIRES_RECONCILIATION").Error
+		}
+		return nil
+	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	return out, err
+}
+func (r *Repository) ResolveFailedServiceOperation(ctx context.Context, in m.ServiceOperationFailure) (m.ServiceReceipt, error) {
+	var out m.ServiceReceipt
+	if r == nil || r.db == nil || in.Validate() != nil {
+		return out, m.ErrInvalid
+	}
+	in.OccurredAt = m.NormalizeTimestamp(in.OccurredAt)
+	identity := "service-failure:" + in.Operation.OperationID
+	fp := m.ServiceFingerprint(in)
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		row, err := lockServicePayment(tx, in.Operation.OrderID)
+		if err != nil {
+			return err
+		}
+		var prior serviceEffectRow
+		if err := tx.Where("operation_id=?", identity).Take(&prior).Error; err == nil {
+			if prior.Fingerprint != fp {
+				return m.ErrConflict
+			}
+			return decodeServiceReceipt(prior.Receipt, &out)
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		var reservation serviceReservationRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("operation_id=?", in.Operation.OperationID).Take(&reservation).Error; err != nil {
+			return m.ErrNotFound
+		}
+		if reservation.Fingerprint != m.ServiceFingerprint(in.Operation) || !reservation.Dispatched || reservation.State != "PREPARED" || row.PendingOperationID != in.Operation.OperationID {
+			return m.ErrConflict
+		}
+		var successful int64
+		if err := tx.Model(&serviceEffectRow{}).Where("operation_id=?", in.Operation.OperationID).Count(&successful).Error; err != nil {
+			return err
+		}
+		if successful != 0 {
+			return m.ErrConflict
+		}
+		out = m.ServiceReceipt{ReceiptID: identity, OrderID: row.OrderID, OperationID: in.Operation.OperationID, Kind: m.ServiceEffectKind("FAILED_" + string(in.Operation.Kind)), AmountMinor: 0, RequestFingerprint: m.ServiceFingerprint(in.Operation), ProviderReference: in.ProviderReference, OccurredAt: in.OccurredAt}
+		out.ResultFingerprint = out.Fingerprint()
+		payload, err := json.Marshal(out)
+		if err != nil {
+			return err
+		}
+		if err := tx.Create(&serviceEffectRow{OperationID: identity, OrderID: row.OrderID, Kind: string(out.Kind), Fingerprint: fp, Receipt: payload}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&reservation).Updates(map[string]any{"state": "FAILED", "denial_proof_id": in.ProofID}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&row).Update("pending_operation_id", "").Error
+	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	return out, err
+}
 func claimChannelPayment(tx *gorm.DB, b m.ProviderPaymentBinding, paymentID, purpose string) error {
 	seed := channelPaymentClaimRow{ClaimID: b.ClaimID(), PaymentID: paymentID, Purpose: purpose}
 	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&seed).Error; err != nil {
@@ -192,6 +287,10 @@ func validateServiceOperation(tx *gorm.DB, row servicePaymentRow, in m.ServiceOp
 		if row.ReleasedMinor > 0 || row.AutomaticReleasedMinor > 0 || row.SharedMinor-row.ReturnedMinor != funds.PlatformMinor || in.AmountMinor != funds.ProviderMinor {
 			return m.ErrConflict
 		}
+	case m.ServiceRefundRelease:
+		if row.SharedMinor == 0 || row.ReleasedMinor > 0 || row.AutomaticReleasedMinor > 0 || in.AmountMinor != row.GrossMinor-row.RefundedMinor-row.ChargedBackMinor-row.SharedMinor {
+			return m.ErrConflict
+		}
 	case m.ServiceReturn:
 		var effect serviceEffectRow
 		if err := tx.Where("operation_id=? AND order_id=? AND kind=?", in.OriginalShareID, row.OrderID, string(m.ServiceShare)).Take(&effect).Error; err != nil {
@@ -233,7 +332,7 @@ func (r *Repository) PrepareServiceOperation(ctx context.Context, in m.ServiceOp
 			if existing.Fingerprint != m.ServiceFingerprint(in) {
 				return m.ErrConflict
 			}
-			if existing.State == "ABANDONED" {
+			if existing.State == "ABANDONED" || existing.State == "FAILED" {
 				return m.ErrConflict
 			}
 			return decodeServiceReceipt(existing.Receipt, &out)
@@ -302,7 +401,7 @@ func (r *Repository) AcceptServiceEffect(ctx context.Context, in m.ServiceEffect
 		switch in.Operation.Kind {
 		case m.ServiceShare:
 			row.SharedMinor += amount
-		case m.ServiceFinish:
+		case m.ServiceFinish, m.ServiceRefundRelease:
 			row.ReleasedMinor += amount
 		case m.ServiceReturn:
 			row.ReturnedMinor += amount
@@ -369,13 +468,13 @@ func (r *Repository) AdmitServiceOperation(ctx context.Context, in m.ServiceOper
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("operation_id=?", in.OperationID).Take(&reservation).Error; err != nil {
 			return m.ErrNotFound
 		}
-		if reservation.Fingerprint != m.ServiceFingerprint(in) || reservation.State == "ABANDONED" {
+		if reservation.Fingerprint != m.ServiceFingerprint(in) || reservation.State == "ABANDONED" || reservation.State == "FAILED" || row.ReconciliationReason != "" {
 			return m.ErrConflict
 		}
 		if reservation.Dispatched {
 			return nil
 		}
-		if reservation.State != "PREPARED" || row.PendingOperationID != in.OperationID || row.ReconciliationReason != "" {
+		if reservation.State != "PREPARED" || row.PendingOperationID != in.OperationID {
 			return m.ErrConflict
 		}
 		return tx.Model(&reservation).Update("dispatched", true).Error
