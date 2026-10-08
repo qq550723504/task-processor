@@ -17,3 +17,8 @@ it("rejects injected credentials, unknown routes and invalid payloads",()=>{
 it("refuses dispatch persistence when the browser cannot retain the original key",()=>{
  vi.spyOn(Storage.prototype,"setItem").mockImplementation(()=>{throw new Error("quota")});expect(saveSupplyIntent(intent)).toBe(false);
 });
+
+it("retains only the original attempt identity and SPU for positive readback",()=>{
+ const resolve={...intent,route:"resolve-upload" as const,command:{recordId:id,attemptId:id,spu:"spu-a"}};expect(saveSupplyIntent(resolve)).toBe(true);expect(loadSupplyIntent()).toEqual(resolve);
+ expect(parseSupplyIntent(JSON.stringify({...resolve,command:{...resolve.command,evidence:{outcome:"succeeded"}}}))).toBeNull();
+});

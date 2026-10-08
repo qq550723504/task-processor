@@ -90,6 +90,21 @@ func issueFields(result OfficialDraft) []string {
 	return fields
 }
 
+func TestStockProofPresenceAloneCannotMakeOfficialDraftReady(t *testing.T) {
+	input, rules, inventory := officialFixture()
+	rules.Fill.Fields = append(rules.Fill.Fields, model.FillRule{Field: "proof_of_stock", Show: rulePointer(true), Required: rulePointer(true)})
+	input.Product.SKCs[0].StockProofs = []model.StockProof{{Filename: "stock.pdf", Type: "2", URL: "https://files.example.org/stock.pdf"}}
+	result := BuildOfficial(input, rules, inventory, nil)
+	require.False(t, result.ReadyForUpload, "only actual server-observed stock documents make the draft ready")
+	observation := OfficialStockProofObservation{SKC: 0, Filename: "stock.pdf", Type: "2", SourceURL: "https://files.example.org/stock.pdf", Bytes: 123, ContentHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", MediaType: "application/pdf"}
+	result = BuildOfficial(input, rules, inventory, nil, []OfficialStockProofObservation{observation})
+	require.True(t, result.ReadyForUpload, "%v", result.Issues)
+	observation.Filename = "other.pdf"
+	require.False(t, BuildOfficial(input, rules, inventory, nil, []OfficialStockProofObservation{observation}).ReadyForUpload)
+	input.Product.SKCs[0].StockProofs = append(input.Product.SKCs[0].StockProofs, input.Product.SKCs[0].StockProofs[0])
+	require.False(t, BuildOfficial(input, rules, inventory, nil, []OfficialStockProofObservation{observation}).ReadyForUpload)
+}
+
 func TestOfficialDraftRejectsHiddenPartialFieldsAndMissingAssociatedAuthority(t *testing.T) {
 	input, rules, inventory := officialFixture()
 	rules.Fill.Fields = []model.FillRule{{Field: "quantity_info", Show: rulePointer(false), Required: rulePointer(false)}}

@@ -38,3 +38,14 @@ it("preserves an uncertain review result when the owner or baseline does not mat
  const review={...intent,route:"review-decision",command:{proposalId:id,sourceId:id,recordId:id,productKey:"product",baseVersion:"1",input:{action:"accept",expected_revision:"1"}}} as SupplyIntent;
  await expect(supplyCommand(review)).rejects.toMatchObject({code:"OUTCOME_UNKNOWN"});
 });
+
+it("resolves the original upload with a readback request and preserves uncertain results",async()=>{
+ const resolve:SupplyIntent={...intent,route:"resolve-upload",command:{recordId:id,attemptId:other,spu:"spu-a"}};
+ const fetcher=vi.fn().mockImplementation(()=>Promise.resolve(reply({recordId:id,attemptId:other,status:"outcome_unknown",message:"待核实"})));vi.stubGlobal("fetch",fetcher);
+ await expect(supplyCommand(resolve)).resolves.toMatchObject({status:"outcome_unknown"});await expect(readSupplyCommand(resolve)).resolves.toMatchObject({status:"outcome_unknown"});
+ expect(fetcher.mock.calls[0][0]).toMatch(/uploads\/resolve$/);expect(fetcher.mock.calls[0][1].headers["Idempotency-Key"]).toBeUndefined();expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual(resolve.command);
+});
+it("rejects a readback response for a different original attempt",async()=>{
+ vi.stubGlobal("fetch",vi.fn().mockResolvedValue(reply({recordId:id,attemptId:id,status:"outcome_unknown"})));
+ await expect(supplyCommand({...intent,route:"resolve-upload",command:{recordId:id,attemptId:other,spu:"spu-a"}})).rejects.toMatchObject({code:"OUTCOME_UNKNOWN"});
+});

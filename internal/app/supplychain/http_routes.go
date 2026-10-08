@@ -32,6 +32,8 @@ func SupplyRoutes(app *Application, bind func(context.Context, string) (context.
 		{"GET", "/:preparation_id", "preparation", preparation.PermissionRead}, {"GET", "/:preparation_id/operations", "operations", preparation.PermissionRead},
 		{"GET", "/sources/:source_id/publications/:store_id", "publication", preparation.PermissionRead},
 		{"GET", "/sources/:source_id/targets/:store_id", "target", preparation.PermissionRead}, {"POST", "/targets", "save-target", preparation.PermissionManage}, {"POST", "/target-rules", "rules", preparation.PermissionRead}, {"GET", "/target-commands/:key", "target-command", preparation.PermissionRead}, {"GET", "/records/:record_id", "record", preparation.PermissionRead},
+		{"POST", "/uploads/resolve", "resolve-upload", preparation.PermissionManage},
+		{"GET", "/uploads/:record_id/:attempt_id", "upload-attempt", preparation.PermissionRead},
 		{"POST", "/images/approve", "approve", preparation.PermissionManage}, {"POST", "/images/inventory", "inventory", preparation.PermissionManage},
 		{"POST", "/operations", "create-operation", preparation.PermissionManage}, {"GET", "/operations/by-key/:key", "operation-key", preparation.PermissionRead}, {"GET", "/operations/:operation_id", "operation", preparation.PermissionRead}, {"GET", "/operations/:operation_id/items", "operation-items", preparation.PermissionRead}, {"POST", "/operations/:operation_id/ensure", "ensure", preparation.PermissionManage}, {"POST", "/operations/:operation_id/cancel", "cancel", preparation.PermissionManage},
 	}
@@ -60,6 +62,12 @@ func SupplyRoutes(app *Application, bind func(context.Context, string) (context.
 				return
 			}
 			switch spec.action {
+			case "upload-attempt":
+				if c.Request.URL.RawQuery != "" {
+					supplyError(c, preparation.ErrInvalid)
+					return
+				}
+				output, err = app.ReadUploadAttempt(ctx, c.Param("record_id"), c.Param("attempt_id"))
 			case "optimization-options":
 				q, e := supplyQuery(c.Request)
 				if e != nil || q.Keyword != "" {
@@ -152,6 +160,14 @@ func SupplyRoutes(app *Application, bind func(context.Context, string) (context.
 				} else {
 					output, err = app.QueryRules(ctx, in)
 				}
+			case "resolve-upload":
+				var in ResolveUploadInput
+				_, e := supplyBody(c.Request, &in, false)
+				if e != nil {
+					supplyError(c, e)
+					return
+				}
+				output, err = app.ResolveUpload(ctx, in)
 			case "approve":
 				var in asset.SourceApprovalCommand
 				key, e := supplyBody(c.Request, &in, true)

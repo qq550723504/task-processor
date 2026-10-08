@@ -27,20 +27,21 @@ type TargetInput struct {
 	Draft            goods.OfficialDraftInput `json:"draft"`
 }
 type TargetRecord struct {
-	ID                string                             `json:"id"`
-	TargetID          string                             `json:"targetId"`
-	Revision          int64                              `json:"revision"`
-	Source            preparation.SourceItem             `json:"source"`
-	EffectiveVersion  uint64                             `json:"effectiveVersion,string"`
-	ApplyReceiptID    string                             `json:"applyReceiptId,omitempty"`
-	ProductHash       string                             `json:"productHash"`
-	InventoryHash     string                             `json:"inventoryHash"`
-	RulesHash         string                             `json:"rulesHash"`
-	Merchant          storecenter.ProductMerchantBinding `json:"merchant"`
-	Input             TargetInput                        `json:"input"`
-	Result            goods.OfficialDraft                `json:"result"`
-	ImageObservations []goods.OfficialImageObservation   `json:"imageObservations,omitempty"`
-	CreatedAt         time.Time                          `json:"createdAt"`
+	ID                string                                `json:"id"`
+	TargetID          string                                `json:"targetId"`
+	Revision          int64                                 `json:"revision"`
+	Source            preparation.SourceItem                `json:"source"`
+	EffectiveVersion  uint64                                `json:"effectiveVersion,string"`
+	ApplyReceiptID    string                                `json:"applyReceiptId,omitempty"`
+	ProductHash       string                                `json:"productHash"`
+	InventoryHash     string                                `json:"inventoryHash"`
+	RulesHash         string                                `json:"rulesHash"`
+	Merchant          storecenter.ProductMerchantBinding    `json:"merchant"`
+	Input             TargetInput                           `json:"input"`
+	Result            goods.OfficialDraft                   `json:"result"`
+	ImageObservations []goods.OfficialImageObservation      `json:"imageObservations,omitempty"`
+	ProofObservations []goods.OfficialStockProofObservation `json:"proofObservations,omitempty"`
+	CreatedAt         time.Time                             `json:"createdAt"`
 }
 type TargetReceipt struct {
 	Record   TargetRecord `json:"record"`
@@ -219,9 +220,14 @@ func (s *TargetService) create(ctx context.Context, scope collection.Scope, key 
 	if err != nil {
 		return TargetReceipt{}, err
 	}
-	result := goods.BuildOfficial(input.Draft, rules, inventory, observations)
+	proofs, err := ProbeTargetStockProofs(ctx, s.dependencies.Images, input.Draft)
+	if err != nil {
+		return TargetReceipt{}, err
+	}
+	result := goods.BuildOfficial(input.Draft, rules, inventory, observations, proofs)
 	value := TargetRecord{ID: collection.StableID(scope.OrganizationID, scope.ActorID, "supply-record", key), TargetID: TargetIdentity(scope, source.ID, input.StoreID), Revision: input.ExpectedRevision + 1, Source: source, EffectiveVersion: product.Version, ApplyReceiptID: input.ApplyReceiptID, ProductHash: collection.Digest(product.Snapshot), InventoryHash: collection.Digest(inventory), RulesHash: collection.Digest(rules), Merchant: merchant, Input: input, Result: result, CreatedAt: time.Now().UTC()}
 	value.ImageObservations = observations
+	value.ProofObservations = proofs
 	// Merchant reads can outlast the five-second source proof. Obtain fresh
 	// current source authority before committing the same immutable reference.
 	selected, err = selectSource(ctx, input.SourceID)

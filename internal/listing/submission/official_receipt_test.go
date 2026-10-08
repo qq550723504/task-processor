@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"task-processor/internal/listing/preparation"
+	record "task-processor/internal/listing/record/target"
+	"task-processor/internal/marketplace/shein/goods"
 	model "task-processor/internal/marketplace/shein/model"
 	"task-processor/internal/product/collection"
 	"task-processor/internal/storecenter"
@@ -49,5 +52,33 @@ func TestOfficialCompletionBindsFullResultToExactCommittedAttemptAndPayload(t *t
 	_, err = NewPublishCompletion(scope, uuid.NewString(), "product-a", binding, attempt, claim, payload, receipt.Product)
 	require.ErrorIs(t, err, ErrExecutionEvidenceRequired, "a changed payload cannot finalize the original permit")
 	_, _, err = (OfficialCompletion{}).Read(context.Background())
+	require.ErrorIs(t, err, ErrExecutionEvidenceRequired)
+	// A readback resolves UNKNOWN through its original fence, without a claimed completion.
+	payload.CategoryID--
+	payload.Names = []model.LanguageContent{{Language: "en", Name: "Original title"}}
+	raw, _ = json.Marshal(payload)
+	resolutionID, _ := uuid.NewV7()
+	reservation, err = NewExecutionReservation(AcquireExecutionCommand{Scope: ExecutionScope{scope.OrganizationID}, IntentKey: "readback-a", Target: attempt.Target, Action: OfficialPublishAction, Payload: raw, ClaimOwnerID: "worker-a", Lease: time.Minute}, resolutionID.String(), "original-claim", now)
+	require.NoError(t, err)
+	attempt = reservation.Attempt
+	attempt.FenceEpoch = 1
+	attempt, err = TransitionExecutionToUnknown(attempt, UnknownResponseLost, now.Add(time.Second))
+	require.NoError(t, err)
+	saved := record.TargetRecord{ID: uuid.NewString(), Merchant: binding, Source: preparation.SourceItem{ID: uuid.NewString(), Source: collection.Source{ProductKey: "product-a"}}, Result: goods.OfficialDraft{Product: payload, ReadyForUpload: true}}
+	intent := OfficialIntent{Key: attempt.IntentKey, Owner: scope, Kind: "publish", RecordID: saved.ID, RecordHash: collection.Digest(saved), Source: saved.Source, Target: attempt.Target, Binding: binding, PayloadFingerprint: attempt.PayloadFingerprint, CreatedAt: now}
+	intent.InputHash = OfficialIntentInputHash(intent)
+	readback := model.ProductReadback{CategoryID: payload.CategoryID, ProductTypeID: payload.ProductTypeID, Names: payload.Names, Product: receipt.Product}
+	proofResolution, err := NewPublishResolution(scope, intent, saved, attempt, payload, readback.Product.SPUName, readback)
+	require.NoError(t, err)
+	resolved, err := proofResolution.Read(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, attempt.AttemptID, resolved.Receipt.ID)
+	require.Equal(t, int64(1), resolved.FenceEpoch)
+	foreign := scope
+	foreign.ActorID = "other"
+	_, err = NewPublishResolution(foreign, intent, saved, attempt, payload, readback.Product.SPUName, readback)
+	require.ErrorIs(t, err, ErrExecutionEvidenceRequired)
+	readback.Product.SKCs[0].SKUs[0].SupplierSKU = "foreign-sku"
+	_, err = NewPublishResolution(scope, intent, saved, attempt, payload, readback.Product.SPUName, readback)
 	require.ErrorIs(t, err, ErrExecutionEvidenceRequired)
 }

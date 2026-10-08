@@ -300,3 +300,16 @@ Excel 使用成熟 Excelize v2.11.0，在服务端只读解析 XLSX：压缩文�
 确认使用 Collection import_products(name,products[1..200])，全部行先经 OwnEnvelope 校验；在一个现有 Product DB 事务保存新 own batch、逐行 publication/source 与一个 command receipt，行 operation ID 由原 command OperationID 和行序号固定。任一失败整体回滚；同键同载荷返回原回执，不同载荷冲突，COMMIT-unknown 只核实或重放原 key。当前 OwnPublisher 的调用方事务和再授权合同完整复用，无 provider/Agent 调用。
 
 内容验证、响应丢失核实、ZIP/公式/稀疏坐标拒绝、整批回滚、同键重放为 IMPLEMENTATION_TEST；实现完成后由用户或指定独立验证者试用，不由 Writer 签发产品验收。
+
+
+### 增量实现合同：官方正向 UNKNOWN 核实（2026-10-09）
+
+独立高风险检查 IMPLEMENTATION_READY，无新增 BLOCKER；沿用冻结 §8 与当前 ExecutionKernel 的 EvidenceProviderReadBack → ResolveUnknown，不新增状态或表。浏览器只提交原 record/attempt 与用户明确输入的 SPU，不能提交 evidence、remote result 或 NoEffect。server-only Store MerchantHandle 使用当前 submit/原 member 及精确 Supplier/Application/connection revision；只读查询 /open-api/goods/spu-info。官方只返回已审核商品，未找到、失败、缺字段或截断均保留 UNKNOWN，不解释为未产生副作用。
+
+读取原 actor/member 的 OfficialIntent、原 immutable TargetRecord（无需等于当前 head）与 UNKNOWN attempt/fence；从原 canonical payload 和已确认、精确绑定原商户应用的 image receipts 重建原请求，必须满足 MatchesPublicationRecord 与原 PayloadFingerprint。正向查询匹配请求 SPU、category/productType/brand、适用 SPU/SKC supplierCode、英文 title 与完整无重复 SKC/SKU 分组，使用实际查询响应 hash。private sealed OfficialResolution 绑定原 owner/member、intent、record digest、attempt/epoch、payload、Supplier/Application ID/type/revision。
+
+OfficialRepository 锁原 intent，通过 existing transaction finalizer 在同一事务 ResolveUnknown + 保存原 attempt ID receipt。核实首次先读取已有回执；重放保留原 observed evidence，COMMIT-unknown 仅查询原回执。全过程禁止 Acquire、Send、TransformImage。旧 record 的成功不得标成新 head 已上传。核实只开放成功正向确认；图片 effect 无官方正向查询合同仍保留 UNKNOWN，不开放绕过型人工标记。上述绑定、完整正向响应、事务回滚、重放与不发送均以实现测试验证。
+
+### 增量实现合同：官方库存证明（2026-10-09）
+
+独立边界检查 IMPLEMENTATION_READY；复用官方 proof_of_stock required/show、immutable TargetRecord JSON/hash 和现有 SSRF-safe HTTPS reader。每个 SKC 最多一个公开 HTTPS 文件，类型 1 为实际 JPEG/PNG、类型 2 为 PDF，最多 3MiB。服务器观察固定 SKC/name/type/sourceURL 与 bytes/mediaType/contentHash；浏览器不得提供观察。缺失或不匹配不能 Ready。保存时读取实际文件，任何图片 transform 前及 publish 前重新读取全部文件并比较原 hash；漂移不得追加外部 mutation。没有新表、事实 owner、审批或文件恢复系统。官方接收文件不执行文件内容；本次不新增 PDF 内容审查或安全扫描产品。

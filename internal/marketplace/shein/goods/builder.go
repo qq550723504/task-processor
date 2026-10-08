@@ -65,7 +65,7 @@ type OfficialDraft struct {
 	SubmissionPayload json.RawMessage `json:"submission_payload,omitempty"`
 }
 
-func BuildOfficial(input OfficialDraftInput, rules OfficialRuleSnapshot, inventory asset.ApprovedAssetInventory, observations []OfficialImageObservation) OfficialDraft {
+func BuildOfficial(input OfficialDraftInput, rules OfficialRuleSnapshot, inventory asset.ApprovedAssetInventory, observations []OfficialImageObservation, stockProofs ...[]OfficialStockProofObservation) OfficialDraft {
 	b := officialBuild{rules: rules, inventory: inventory}
 	raw, err := json.Marshal(input)
 	var copied OfficialDraftInput
@@ -77,6 +77,11 @@ func BuildOfficial(input OfficialDraftInput, rules OfficialRuleSnapshot, invento
 	b.result.Product = input.Product
 	b.result.Images = append([]OfficialImageSlot(nil), input.Images...)
 	p := &b.result.Product
+	var proofs []OfficialStockProofObservation
+	if len(stockProofs) == 1 {
+		proofs = stockProofs[0]
+	}
+	b.stockProofs(p, proofs)
 	p.SourceSystem, p.SuitFlag = "OpenAPI", "0"
 	if input.Product.SuitFlag != "" && input.Product.SuitFlag != "0" {
 		b.issue("suit_flag", "unsupported", "官方 API 暂不支持套装商品")

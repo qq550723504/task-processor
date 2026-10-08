@@ -33,3 +33,12 @@ it("requires an explicit stock quantity instead of supplying zero",async()=>{
  await userEvent.type(screen.getByLabelText("库存数量"),"0");expect(screen.getByLabelText("库存数量")).toHaveValue(0);
  await userEvent.clear(screen.getByLabelText("库存数量"));expect(screen.getByLabelText("库存数量")).toHaveValue(null);
 });
+
+it("collects one stock proof only when the current official field is shown",async()=>{
+ const current=rules("semi_managed");current.rules.fill.fill_in_standard_list=[{field_key:"proof_of_stock",module:"skc",required:true,show:true}];state.rules.mockResolvedValue(current);
+ render(<SupplyTargetEditor scope={{userId:"actor",organizationId:"org"}} source={source} storeId={id} command={command} disabled={false} saved={0}/>);
+ await userEvent.click(await screen.findByRole("button",{name:"添加库存证明"}));
+ await userEvent.type(screen.getByLabelText("库存证明文件名 1"),"stock.pdf");await userEvent.selectOptions(screen.getByLabelText("库存证明类型 1"),"2");await userEvent.type(screen.getByLabelText("库存证明链接 1"),"https://files.example.org/stock.pdf");
+ expect(screen.queryByRole("button",{name:"添加库存证明"})).not.toBeInTheDocument();await userEvent.click(screen.getByRole("button",{name:"保存并校验平台资料"}));
+ expect(state.execute.mock.calls[0]![1].draft.product.skc_list[0].proof_of_stock_list).toEqual([{file_name:"stock.pdf",type:"2",url:"https://files.example.org/stock.pdf"}]);
+});

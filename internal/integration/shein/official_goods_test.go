@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"task-processor/internal/marketplace/shein/goods"
 	sheinmodel "task-processor/internal/marketplace/shein/model"
 	"task-processor/internal/storecenter"
 	"testing"
@@ -18,6 +19,31 @@ func goodsCredential() storecenter.OfficialMerchantCredential {
 }
 func goodsProduct() sheinmodel.PublishProduct {
 	return sheinmodel.PublishProduct{CategoryID: 123, ProductTypeID: 456, SourceSystem: "OpenAPI", SuitFlag: "0", Names: []sheinmodel.LanguageContent{{Language: "en", Name: "Real source product"}}, Attributes: []sheinmodel.AttributeValue{}, Sites: []sheinmodel.SiteSelection{{MainSite: "shein", SubSites: []string{"shein-us"}}}, SKCs: []sheinmodel.ProductSKC{{SupplierCode: "merchant-product", SaleAttribute: sheinmodel.AttributeValue{AttributeID: 12, AttributeValueID: func() *int64 { v := int64(34); return &v }()}, ImageInfo: sheinmodel.ImageInfo{Images: []sheinmodel.ProductImage{{Sort: 1, Type: 1, URL: "https://img.shein.com/source.jpg"}}}, SKUs: []sheinmodel.ProductSKU{{SupplierSKU: "sku-a", MallState: 1, Prices: []sheinmodel.ProductPrice{{BasePrice: 12.5, Currency: "USD", SubSite: "shein-us"}}, Stock: []sheinmodel.ProductStock{{Quantity: 3}}, SaleAttributes: []sheinmodel.AttributeValue{}}}}}}
+}
+
+func TestOfficialSPUReadbackUsesSignedReadOnlyContractAndNeverProvesAbsence(t *testing.T) {
+	response := `{"code":"0","info":{"spuName":"spu-real","categoryId":123,"productTypeId":456,"productMultiNameList":[{"language":"en","productName":"Real source product"}],"skcInfoList":[{"skcName":"skc-real","supplierCode":"merchant-product","skuInfoList":[{"skuCode":"remote-sku","supplierSku":"sku-a"}]}],"futureField":true}}`
+	calls := 0
+	client := testClient(t, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "https://openapi.sheincorp.com/open-api/goods/spu-info", r.URL.String())
+		require.NotEmpty(t, r.Header.Get("x-lt-signature"))
+		raw, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.JSONEq(t, `{"spuName":"spu-real","languageList":["en"]}`, string(raw))
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(response)), Header: http.Header{"Content-Type": []string{"application/json"}}}, nil
+	}))
+	v, err := client.QueryProductSPU(context.Background(), goodsCredential(), "spu-real")
+	require.NoError(t, err)
+	require.True(t, goods.CorrelatesProductReadback(goodsProduct(), "spu-real", v))
+	require.Equal(t, goodsHash([]byte(response)), v.Product.ResponseHash)
+	for _, bad := range []string{`{"code":"0003","info":null}`, `{"code":"0","info":{"spuName":"another"}}`, `{"code":"0","code":"0","info":null}`} {
+		response = bad
+		_, err = client.QueryProductSPU(context.Background(), goodsCredential(), "spu-real")
+		require.ErrorIs(t, err, ErrGoodsUnavailable)
+	}
+	require.Equal(t, 4, calls, "each read is single-shot and never publishes")
 }
 
 func TestOfficialGoodsPublishSignsCurrentAPIAndCorrelatesEveryReturnedSKU(t *testing.T) {

@@ -128,7 +128,20 @@ func (s *UploadService) facts(ctx context.Context, scope collection.Scope, saved
 	if binding != saved.Merchant || collection.Digest(currentRules) != saved.RulesHash {
 		return inventory, rules, record.ErrConflict
 	}
+	if err := s.stockProofs(ctx, saved); err != nil {
+		return inventory, rules, err
+	}
 	return inventory, currentRules, nil
+}
+func (s *UploadService) stockProofs(ctx context.Context, saved record.TargetRecord) error {
+	actual, err := record.ProbeTargetStockProofs(ctx, s.dependencies.Images, saved.Input.Draft)
+	if err != nil {
+		return err
+	}
+	if collection.Digest(actual) != collection.Digest(saved.ProofObservations) {
+		return record.ErrConflict
+	}
+	return nil
 }
 func (s *UploadService) channel(ctx context.Context, scope collection.Scope, saved record.TargetRecord) (UploadResult, error) {
 	subject, err := submission.ProductSubjectID(saved.Source.Source.ProductKey, saved.Merchant.Site)
@@ -200,7 +213,7 @@ func (s *UploadService) Upload(ctx context.Context, scope collection.Scope, key,
 	if err != nil {
 		return UploadResult{}, err
 	}
-	if len(actual) == 0 || collection.Digest(actual) != collection.Digest(saved.ImageObservations) || !goods.BuildOfficial(saved.Input.Draft, rules, inventory, actual).ReadyForUpload {
+	if len(actual) == 0 || collection.Digest(actual) != collection.Digest(saved.ImageObservations) || !goods.BuildOfficial(saved.Input.Draft, rules, inventory, actual, saved.ProofObservations).ReadyForUpload {
 		return UploadResult{}, record.ErrNotReady
 	}
 	observations := make([]goods.OfficialImageObservation, 0, len(actual))
@@ -220,7 +233,7 @@ func (s *UploadService) Upload(ctx context.Context, scope collection.Scope, key,
 	if err != nil {
 		return UploadResult{}, err
 	}
-	wire := goods.BuildOfficial(saved.Input.Draft, rules, inventory, observations)
+	wire := goods.BuildOfficial(saved.Input.Draft, rules, inventory, observations, saved.ProofObservations)
 	if !wire.ReadyForUpload || len(wire.SubmissionPayload) == 0 || !submission.MatchesPublicationRecord(saved, wire.SubmissionPayload) {
 		return UploadResult{}, record.ErrNotReady
 	}
@@ -251,6 +264,9 @@ func (s *UploadService) Upload(ctx context.Context, scope collection.Scope, key,
 		return UploadResult{}, err
 	}
 	// Remint after preparation commit so its live Store proof is short-lived.
+	if err = s.stockProofs(ctx, saved); err != nil {
+		return UploadResult{}, err
+	}
 	merchant, err = s.dependencies.Stores.ExecutionMerchant(ctx, scope, saved.Merchant.StoreID, storecenter.ProductPurposePublish, &intent.Binding)
 	if err != nil {
 		return UploadResult{}, err
@@ -337,7 +353,7 @@ func (s *UploadService) transform(ctx context.Context, scope collection.Scope, s
 	}
 	target := submission.ExecutionTarget{Platform: "shein", StoreID: saved.Merchant.StoreID, SubjectID: subject}
 	confirmed := func(receipt submission.OfficialReceipt) (goods.OfficialImageObservation, *UploadResult, error) {
-		if receipt.Kind != "image" || receipt.Image == nil || receipt.Image.ContentHash != observation.ContentHash || receipt.Image.Type != observation.Type || receipt.Binding.SupplierIdentityHash != saved.Merchant.SupplierIdentityHash || receipt.Binding.ApplicationRevision != saved.Merchant.ApplicationRevision {
+		if !matchingImageReceipt(receipt, saved.Merchant, observation) {
 			return observation, nil, record.ErrConflict
 		}
 		observation.RemoteURL, observation.ResponseHash = receipt.Image.RemoteURL, receipt.Image.ResponseHash
@@ -349,6 +365,9 @@ func (s *UploadService) transform(ctx context.Context, scope collection.Scope, s
 		return observation, nil, err
 	}
 	if err = s.authorize(ctx, scope); err != nil {
+		return observation, nil, err
+	}
+	if err = s.stockProofs(ctx, saved); err != nil {
 		return observation, nil, err
 	}
 	merchant, err := s.dependencies.Stores.ExecutionMerchant(ctx, scope, saved.Merchant.StoreID, storecenter.ProductPurposeImage, &saved.Merchant)

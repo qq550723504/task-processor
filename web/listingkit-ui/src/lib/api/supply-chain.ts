@@ -7,7 +7,7 @@ import { supplyReviewCommand,supplyReviewApplyCommandSchema,supplyReviewDecision
 import { SupplyAPIError } from "./supply-error";
 
 export type SupplyScope=CollectionScope;
-export type SupplyIntent=Readonly<SupplyScope & { key:string; route:"transfer"|"save-target"|"approve"|"create-operation"|"review-decision"|"review-apply"; command:unknown }>;
+export type SupplyIntent=Readonly<SupplyScope & { key:string; route:"transfer"|"save-target"|"approve"|"create-operation"|"resolve-upload"|"review-decision"|"review-apply"; command:unknown }>;
 export function supplyIntentRequestSchema(route:SupplyIntent["route"]){
  if(route==="review-decision")return supplyReviewDecisionCommandSchema;
  if(route==="review-apply")return supplyReviewApplyCommandSchema;
@@ -45,6 +45,11 @@ export const readSupplyRecord=async(scope:SupplyScope,id:string,signal?:AbortSig
 export const supplyRules=(scope:SupplyScope,input:c.SupplyTargetInput,signal?:AbortSignal)=>send(`${base}/target-rules`,scope,c.rulesSchema,signal,{method:"POST",command:c.targetInputSchema.parse(input)});
 export const supplyInventory=(scope:SupplyScope,input:z.infer<typeof c.sourceSelectionSchema>,signal?:AbortSignal)=>send(`${base}/images/inventory`,scope,c.inventorySchema,signal,{method:"POST",command:c.sourceSelectionSchema.parse(input)});
 export async function supplyCommand(intent:SupplyIntent,signal?:AbortSignal){
+ if(intent.route==="resolve-upload"){
+  const input=c.resolveUploadSchema.parse(intent.command);
+  const result=await send(`${base}/uploads/resolve`,intent,c.uploadResolutionSchema,signal,{method:"POST",command:input,mutates:true});
+  if(result.recordId!==input.recordId||result.attemptId!==input.attemptId||result.status==="succeeded"&&result.product?.spu_name!==input.spu)throw new SupplyAPIError("OUTCOME_UNKNOWN",503);return result;
+ }
 	if(intent.route==="review-decision"||intent.route==="review-apply")return supplyReviewCommand(intent,signal);
  const schema=c.supplyRequestSchema(intent.route);if(!schema)throw new SupplyAPIError("INVALID_REQUEST",400);
  const suffix=intent.route==="transfer"?"transfer":intent.route==="save-target"?"targets":intent.route==="approve"?"images/approve":"operations";
@@ -55,7 +60,7 @@ export async function readSupplyCommand(intent:SupplyIntent,signal?:AbortSignal)
  const key=collectionID.parse(intent.key);
  // Approval is a safely repeatable local fact commit. Replaying the exact full
  // set with the same key reads its immutable receipt without a platform send.
- if(intent.route==="approve"||intent.route==="review-decision"||intent.route==="review-apply")return supplyCommand(intent,signal);
+ if(intent.route==="approve"||intent.route==="resolve-upload"||intent.route==="review-decision"||intent.route==="review-apply")return supplyCommand(intent,signal);
  const suffix=intent.route==="transfer"?`transfers/by-key/${key}`:intent.route==="save-target"?`target-commands/${key}`:`operations/by-key/${key}`;
  const route=intent.route==="transfer"?"transfer-read":intent.route==="save-target"?"target-command":"operation-key";
  const value=await send(`${base}/${suffix}`,intent,c.supplyResponseSchema(route),signal);
@@ -105,3 +110,5 @@ function commandResult(value:unknown,intent:SupplyIntent,mutates:boolean){
 }
 
 export const readSupplyOptimizationOptions=(scope:SupplyScope,q:Query={},signal?:AbortSignal)=>send(`${base}/optimization-options${query(q)}`,scope,c.optimizationOptionsSchema,signal);
+
+export async function readSupplyUploadAttempt(scope:SupplyScope,record:string,attempt:string,signal?:AbortSignal){const v=await send(`${base}/uploads/${collectionID.parse(record)}/${collectionID.parse(attempt)}`,scope,c.uploadAttemptSchema,signal);if(v.recordId!==record||v.attemptId!==attempt)throw new SupplyAPIError("DEPENDENCY_UNAVAILABLE",502);return v;}

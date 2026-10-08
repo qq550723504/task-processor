@@ -3,6 +3,7 @@ package supplychainapp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -89,6 +90,39 @@ func (r uploadRules) ReadTargetRules(context.Context, collection.Scope, string, 
 
 type uploadProbe struct{}
 
+type stockUploadProbe struct {
+	uploadProbe
+	reads, driftAfter int
+}
+
+func (p *stockUploadProbe) ProbeStockProof(_ context.Context, k int, v model.StockProof) (goods.OfficialStockProofObservation, error) {
+	p.reads++
+	hash := collection.Digest("original stock proof")
+	if p.driftAfter > 0 && p.reads >= p.driftAfter {
+		hash = collection.Digest("changed stock proof")
+	}
+	return goods.OfficialStockProofObservation{SKC: k, Filename: v.Filename, Type: v.Type, SourceURL: v.URL, Bytes: 123, MediaType: "application/pdf", ContentHash: hash}, nil
+}
+
+func TestStockProofDriftStopsBeforeEachNewOfficialMutation(t *testing.T) {
+	for _, when := range []int{2, 4, 6} {
+		t.Run(fmt.Sprint(when), func(t *testing.T) {
+			s, scope, records, merchant, _, _, _ := uploadFixture(t)
+			probe := &stockUploadProbe{driftAfter: when}
+			s.dependencies.Images = probe
+			proof := model.StockProof{Filename: "inventory.pdf", Type: "2", URL: "https://files.example.org/stock.pdf"}
+			records.saved.Input.Draft.Product.SKCs[0].StockProofs = []model.StockProof{proof}
+			records.saved.ProofObservations = []goods.OfficialStockProofObservation{{SKC: 0, Filename: proof.Filename, Type: proof.Type, SourceURL: proof.URL, Bytes: 123, MediaType: "application/pdf", ContentHash: collection.Digest("original stock proof")}}
+			rules := s.dependencies.Rules.(uploadRules)
+			records.saved.Result = goods.BuildOfficial(records.saved.Input.Draft, rules.snapshot, s.dependencies.Assets.(uploadAssets).inventory, nil, records.saved.ProofObservations)
+			_, err := s.Upload(context.Background(), scope, uuid.NewString(), records.saved.ID)
+			require.ErrorIs(t, err, record.ErrConflict)
+			require.Equal(t, map[int]int{2: 0, 4: 2, 6: 3}[when], merchant.transforms)
+			require.Zero(t, merchant.publishes)
+		})
+	}
+}
+
 func (uploadProbe) Probe(_ context.Context, a asset.ApprovedAsset, typ int) (goods.OfficialImageObservation, error) {
 	return goods.OfficialImageObservation{AssetID: a.ID, SourceURL: a.URL, Width: 900, Height: 900, Type: typ, ContentHash: collection.Digest(a.ID), Bytes: 1000, MediaType: "image/jpeg"}, nil
 }
@@ -97,6 +131,8 @@ type uploadMerchant struct {
 	binding               storecenter.ProductMerchantBinding
 	transforms, publishes int
 	loseResponse          bool
+	lastPayload           model.PublishProduct
+	lookups               int
 	denySend              bool
 }
 
@@ -116,6 +152,7 @@ func (m *uploadMerchant) Publish(_ context.Context, input model.PublishProduct) 
 		return model.PublishResult{}, record.ErrForbidden
 	}
 	m.publishes++
+	m.lastPayload = input
 	if m.loseResponse {
 		return model.PublishResult{}, errors.New("response lost")
 	}
@@ -386,4 +423,73 @@ func TestOfficialSuccessPersistenceFailureRetainsUnknownAndNoSecondMutation(t *t
 	_, err = s.Upload(context.Background(), scope, key, records.saved.ID)
 	require.NoError(t, err)
 	require.Equal(t, 1, merchant.transforms)
+}
+
+func (m *uploadMerchant) QuerySPU(_ context.Context, _ string) (model.ProductReadback, error) {
+	m.lookups++
+	p := m.lastPayload
+	group := p.SKCs[0]
+	return model.ProductReadback{CategoryID: p.CategoryID, ProductTypeID: p.ProductTypeID, BrandCode: p.BrandCode, SupplierCode: p.SupplierCode, Names: p.Names, SKCSupplierCodes: map[string]string{"skc-a": group.SupplierCode}, Product: model.PublishResult{SPUName: "spu-a", SKCs: []model.PublishedSKC{{SKCName: "skc-a", SKUs: []model.PublishedSKU{{SupplierSKU: group.SKUs[0].SupplierSKU, SKUCode: "sku-code-a"}}}}, ResponseHash: collection.Digest("actual-readback-response")}}, nil
+}
+func (k *uploadKernel) Get(_ context.Context, scope submission.ExecutionScope, id string) (submission.ExecutionAttempt, error) {
+	for _, v := range k.attempts {
+		if v.AttemptID == id && v.OrganizationID == scope.OrganizationID {
+			return v, nil
+		}
+	}
+	return submission.ExecutionAttempt{}, submission.ErrExecutionNotFound
+}
+func (r *uploadOfficial) ResolveOfficial(ctx context.Context, proof submission.OfficialResolution) (submission.OfficialReceipt, error) {
+	d, e := proof.Read(ctx)
+	if e != nil {
+		return d.Receipt, e
+	}
+	v := d.Receipt
+	a, e := submission.ResolveUnknownExecution(r.kernel.attempts[v.IntentKey], submission.ExecutionEvidence{Kind: submission.EvidenceProviderReadBack, Outcome: submission.ExecutionSucceeded, Reference: v.ID, Fingerprint: v.ResponseHash, ObservedAt: v.ObservedAt}, time.Now())
+	if e != nil {
+		return v, e
+	}
+	r.kernel.attempts[v.IntentKey] = a
+	r.receipts[v.ID] = v
+	return v, nil
+}
+func TestUnknownPublishReadbackPreservesOriginalReceiptAndNeverResends(t *testing.T) {
+	s, scope, records, merchant, kernel, official, auth := uploadFixture(t)
+	ctx := context.Background()
+	merchant.loseResponse = true
+	pending, err := s.Upload(ctx, scope, uuid.NewString(), records.saved.ID)
+	require.NoError(t, err)
+	require.Equal(t, submission.ExecutionOutcomeUnknown, pending.Status)
+	wrong, err := s.ResolveUpload(ctx, scope, ResolveUploadInput{RecordID: records.saved.ID, AttemptID: pending.AttemptID, SPU: "another-spu"})
+	require.NoError(t, err)
+	require.Equal(t, submission.ExecutionOutcomeUnknown, wrong.Status)
+	// A reused successful image belongs to the same application but can have
+	// earlier mutable Store/connection/service observations.
+	for id, receipt := range official.receipts {
+		if receipt.Kind == "image" {
+			receipt.Binding.StoreVersion++
+			receipt.Binding.ConnectionRevision++
+			receipt.Binding.ServiceExpiresAt = receipt.Binding.ServiceExpiresAt.Add(time.Hour)
+			official.receipts[id] = receipt
+		}
+	}
+	input := ResolveUploadInput{RecordID: records.saved.ID, AttemptID: pending.AttemptID, SPU: "spu-a"}
+	resolved, err := s.ResolveUpload(ctx, scope, input)
+	require.NoError(t, err)
+	require.Equal(t, submission.ExecutionSucceeded, resolved.Status)
+	original := official.receipts[pending.AttemptID]
+	again, err := s.ResolveUpload(ctx, scope, input)
+	require.NoError(t, err)
+	require.Equal(t, resolved, again)
+	require.Equal(t, original, official.receipts[pending.AttemptID])
+	require.Equal(t, 1, merchant.publishes)
+	require.Equal(t, 3, merchant.transforms)
+	require.Equal(t, 2, merchant.lookups)
+	attempt, err := kernel.Get(ctx, submission.ExecutionScope{OrganizationID: scope.OrganizationID}, pending.AttemptID)
+	require.NoError(t, err)
+	require.Equal(t, submission.EvidenceProviderReadBack, attempt.Evidence.Kind)
+	auth.denied = true
+	_, err = s.ResolveUpload(ctx, scope, input)
+	require.Error(t, err)
+	require.Equal(t, 2, merchant.lookups)
 }

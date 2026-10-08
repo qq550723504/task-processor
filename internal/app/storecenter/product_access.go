@@ -168,6 +168,20 @@ func (h *MerchantHandle) PublishPermission(ctx context.Context, brand string) (m
 		return h.entry.provider.(OfficialGoodsProvider).QueryProductPublishPermission(ctx, c, brand)
 	})
 }
+func (h *MerchantHandle) QuerySPU(ctx context.Context, spu string) (model.ProductReadback, error) {
+	if h == nil || h.subject.Purpose != storecenter.ProductPurposePublish {
+		return model.ProductReadback{}, ErrProductAccessChanged
+	}
+	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) (model.ProductReadback, error) {
+		provider, ok := h.entry.provider.(interface {
+			QueryProductSPU(context.Context, storecenter.OfficialMerchantCredential, string) (model.ProductReadback, error)
+		})
+		if !ok {
+			return model.ProductReadback{}, ErrProductAccessChanged
+		}
+		return provider.QueryProductSPU(ctx, c, spu)
+	})
+}
 func callMerchant[T any](ctx context.Context, h *MerchantHandle, mutationPurpose string, call func(context.Context, storecenter.OfficialMerchantCredential) (T, error)) (T, error) {
 	var zero T
 	if h == nil || h.owner == nil || ctx == nil || ctx.Err() != nil {

@@ -6,7 +6,7 @@ import type { SupplyIntent } from "./supply-chain";
 
 const storageKey="listingkit.supply.intent";
 const identity=z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
-const envelope=z.object({userId:identity,organizationId:identity,key:collectionID,route:z.enum(["transfer","save-target","approve","create-operation","review-decision","review-apply"]),command:z.unknown()}).strict();
+const envelope=z.object({userId:identity,organizationId:identity,key:collectionID,route:z.enum(["transfer","save-target","approve","create-operation","review-decision","review-apply","resolve-upload"]),command:z.unknown()}).strict();
 export function parseSupplyIntent(raw:string|null):SupplyIntent|null{
  if(!raw || new TextEncoder().encode(raw).length>SUPPLY_MAX_BYTES)return null;
  try{

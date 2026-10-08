@@ -30,6 +30,7 @@ type Application struct {
 	AuthorizeOptimization func(context.Context, preparation.OperationInput) error
 	OptimizationOptions   func(context.Context, collection.Query) (OptimizationOptions, error)
 	StageProjection       ReviewProjection
+	Uploader              *UploadService
 }
 type SourceImageView struct {
 	ID     string `json:"id"`

@@ -20,6 +20,13 @@ describe("private supply chain proxy",()=>{
   const request=new Request(`http://localhost/api/workbench/supply-preparations/operations/${id}/ensure`,{method:"POST",headers:{...scope,"X-Expected-User-ID":"other",Origin:"http://localhost"}});
   const result=await buildWorkbenchUpstreamRequest(request,["supply-preparations","operations",id,"ensure"],"server-token","actor-a");expect(result).toBeInstanceOf(Response);if(result instanceof Response)expect(result.status).toBe(409);
  });
+ it("binds official resolution to the current actor and rejects browser evidence",async()=>{
+  const path=["supply-preparations","uploads","resolve"];
+  const input={recordId:id,attemptId:id,spu:"spu-a"};
+  const request=(body:unknown,origin="http://localhost")=>new Request("http://localhost/api/workbench/supply-preparations/uploads/resolve",{method:"POST",headers:{...scope,Origin:origin,"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const safe=await buildWorkbenchUpstreamRequest(request(input),path,"server-token","actor-a");expect(safe).not.toBeInstanceOf(Response);if(safe instanceof Response)return;expect(safe.sourceMutation).toBe(true);expect(new Headers(safe.init.headers).get("Idempotency-Key")).toBeNull();
+  for(const r of [request({...input,evidence:{outcome:"succeeded"}}),request(input,"https://another.example")]){const rejected=await buildWorkbenchUpstreamRequest(r,path,"server-token","actor-a");expect(rejected).toBeInstanceOf(Response);if(rejected instanceof Response)expect(rejected.status).toBeGreaterThanOrEqual(400)}
+ });
  it("bounds whole-batch stage queries before dispatch",async()=>{
   for(const query of [`storeId=${id}&stage=ready&stage=review`,`storeId=${id}&stage=fake`,`storeId=${id}&stage=ready&limit=101`]){
    const result=await buildWorkbenchUpstreamRequest(new Request(`http://localhost/api/workbench/supply-preparations/${id}/stages?${query}`,{headers:scope}),["supply-preparations",id,"stages"],"server-token","actor-a");expect(result).toBeInstanceOf(Response);if(result instanceof Response)expect(result.status).toBe(400);
