@@ -12,6 +12,7 @@ import (
 func TestMerchantChannelContractUsesApprovedIdentityEncryptedFieldsAndOriginalMedia(t *testing.T) {
 	ids := []string{uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()}
 	a := e.MerchantAttempt{Intent: e.MerchantIntent{ID: uuid.NewString(), OutRequestNo: "immutable-original", FileIDs: ids}, CompanyName: "approved-company", RegistrationNumber: "approved-registration", Dispatched: true, MediaIDs: map[string]string{ids[0]: "license-media", ids[1]: "legal-front-media", ids[2]: "legal-back-media", ids[3]: "ubo-media"}}
+	a.Revision = e.MerchantDetailsRevision{ID: a.Intent.ID, Version: 1, Input: a.Intent}
 	d := e.MerchantDetails{LicenseFileID: ids[0], Legal: e.IdentityDocument{Type: "IDENTIFICATION_TYPE_MAINLAND_IDCARD", Name: "private-legal", Number: "private-id", FrontFileID: ids[1], BackFileID: ids[2], ValidFrom: "2020-01-01", ValidUntil: "长期"}, Beneficiaries: []e.IdentityDocument{{Type: "IDENTIFICATION_TYPE_OVERSEA_PASSPORT", Name: "private-ubo", Number: "private-ubo-id", Address: "private-address", FrontFileID: ids[3], ValidFrom: "2020-01-01", ValidUntil: "长期"}}, AccountBank: "工商银行", AccountNumber: "private-bank", ContactMobile: "private-mobile", MerchantShortName: "服务商", StoreName: "企业网站", StoreURL: "https://provider.example/"}
 	body, err := merchantBody(a, d, func(v string) (string, error) { return "encrypted(" + v + ")", nil })
 	if err != nil {

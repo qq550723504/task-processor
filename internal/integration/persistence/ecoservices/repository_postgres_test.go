@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"net/url"
+	"strings"
 	"sync"
 	e "task-processor/internal/ecoservices"
 	"testing"
@@ -136,6 +137,117 @@ func TestEcoservicesPostgresMerchantOriginalClaimAndImmutableIntent(t *testing.T
 	}
 	if err = r.SaveMerchantMedia(ctx, a, in.FileIDs[0], "late-media"); !errors.Is(err, e.ErrConflict) {
 		t.Fatal("stale writer overwrote new original claim", err)
+	}
+}
+func TestEcoservicesPostgresMerchantCorrectionAtomicCurrentPointerAndProof(t *testing.T) {
+	ctx, _, r, _ := postgresFixture(t)
+	scope, in := merchantFixture(t, r, "provider")
+	if _, err := r.CreateMerchantAttempt(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	old, claimed, err := r.ClaimMerchantAttempt(ctx, scope, in.ApplicationID)
+	if err != nil || !claimed {
+		t.Fatal(err)
+	}
+	for _, id := range in.FileIDs {
+		if err = r.SaveMerchantMedia(ctx, old, id, "media-"+id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old.DispatchActorID = scope.ActorID
+	if err = r.MarkMerchantDispatched(ctx, old); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.ObserveMerchant(ctx, old, merchantObservation(old, "REJECTED", "", ""), []byte("verified-original-rejection")); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.ReleaseMerchantClaim(ctx, old); err != nil {
+		t.Fatal(err)
+	}
+	version := merchantApplication(t, r, in.ApplicationID).Version
+	var wg sync.WaitGroup
+	results := make(chan error, 2)
+	for n := 0; n < 2; n++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			corrected := in
+			corrected.ID = uuid.NewString()
+			corrected.Key = uuid.NewString()
+			corrected.Fingerprint = corrected.ID
+			corrected.SealedDetails = []byte("sealed-correction-" + corrected.ID)
+			corrected.ApplicationVersion = version
+			corrected.ExpectedRevisionVersion = 1
+			_, err := r.CreateMerchantAttempt(ctx, corrected)
+			results <- err
+		}()
+	}
+	wg.Wait()
+	close(results)
+	successes, conflicts := 0, 0
+	for err := range results {
+		if err == nil {
+			successes++
+		} else if errors.Is(err, e.ErrConflict) {
+			conflicts++
+		} else {
+			t.Fatal(err)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatal("correction CAS has multiple winners", successes, conflicts)
+	}
+	app := merchantApplication(t, r, in.ApplicationID)
+	if app.Version != version+1 || app.CurrentMerchantRevisionVersion != 2 {
+		t.Fatal("application/revision not atomic")
+	}
+	current, claimed, err := r.ClaimMerchantAttempt(ctx, scope, in.ApplicationID)
+	if err != nil || !claimed {
+		t.Fatal(err)
+	}
+	if current.Intent.ID != in.ID || current.Intent.OutRequestNo != in.OutRequestNo || current.Revision.ID == old.Revision.ID {
+		t.Fatal("original identity replaced")
+	}
+	if err = r.SaveMerchantMedia(ctx, old, in.FileIDs[0], "stale"); !errors.Is(err, e.ErrConflict) {
+		t.Fatal("old worker wrote current", err)
+	}
+	for _, id := range in.FileIDs {
+		if err = r.SaveMerchantMedia(ctx, current, id, "new-media-"+id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	current.DispatchActorID = scope.ActorID
+	if err = r.MarkMerchantDispatched(ctx, current); err != nil {
+		t.Fatal(err)
+	}
+	proof := e.MerchantSubmissionAcceptance{RevisionID: current.Revision.ID, RevisionVersion: 2, DetailsFingerprint: current.Revision.Input.Fingerprint, Profile: in.Profile, OutRequestNo: in.OutRequestNo, ChannelApplicationID: "1001", VerificationVersion: "verified-current-sdk", SignedResponseDigest: strings.Repeat("a", 64)}
+	if err = r.SaveMerchantAcceptance(ctx, current, proof, []byte("sealed-current-acceptance")); err != nil {
+		t.Fatal(err)
+	}
+	current, err = r.ReadMerchantAttempt(ctx, scope, in.ApplicationID)
+	if err != nil || current.Acceptance == nil {
+		t.Fatal("durable acceptance lost", err)
+	}
+	observation := current.BindQuery(merchantObservation(current, "FINISH", "SIGNED", "1900000011"))
+	if err = r.ObserveMerchant(ctx, current, observation, []byte("verified-current-query")); err != nil {
+		t.Fatal(err)
+	}
+	if merchantApplication(t, r, in.ApplicationID).State != "ACTIVE" {
+		t.Fatal("accepted same-number correction cannot qualify")
+	}
+	for _, kind := range []string{"MERCHANT_DETAILS", "MERCHANT_SUBMISSION_ACCEPTANCE"} {
+		if err = r.db.Model(&versionRow{}).Where("id=? AND kind=?", in.ID, kind).Update("payload", []byte("tampered")).Error; err == nil {
+			t.Fatal("runtime can overwrite immutable revision/proof", kind)
+		}
+	}
+	var count int64
+	r.db.Model(&merchantIntentRow{}).Where("application_id=?", in.ApplicationID).Count(&count)
+	if count != 1 {
+		t.Fatal("second original created")
+	}
+	r.db.Model(&versionRow{}).Where("id=? AND kind=?", in.ID, "MERCHANT_DETAILS").Count(&count)
+	if count != 2 {
+		t.Fatal("losing correction left partial version", count)
 	}
 }
 func TestEcoservicesPostgresRecoveryWorkersRotatePastUnpaidHead(t *testing.T) {

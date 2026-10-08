@@ -5,15 +5,18 @@ import (
 	"context"
 	"errors"
 	"github.com/google/uuid"
+	"strings"
 	e "task-processor/internal/ecoservices"
 	"task-processor/internal/integration/servicepayments"
 	"testing"
 )
 
 type merchantChannelFixture struct {
+	signURL                   string
 	profile                   e.MerchantProfile
 	state                     string
 	unknown                   bool
+	acknowledge               bool
 	submits, uploads, queries int
 	original                  string
 }
@@ -24,17 +27,20 @@ func (p *merchantChannelFixture) UploadMerchantImage(_ context.Context, f e.File
 	p.uploads++
 	return "media-" + f.ID, nil
 }
-func (p *merchantChannelFixture) SubmitMerchant(_ context.Context, a e.MerchantAttempt, _ e.MerchantDetails) error {
+func (p *merchantChannelFixture) SubmitMerchant(_ context.Context, a e.MerchantAttempt, _ e.MerchantDetails) (e.MerchantSubmissionAcceptance, error) {
 	p.submits++
 	p.original = a.Intent.OutRequestNo
-	return e.ErrUnavailable
+	if p.acknowledge {
+		return e.MerchantSubmissionAcceptance{RevisionID: a.Revision.ID, RevisionVersion: a.Revision.Version, DetailsFingerprint: a.Revision.Input.Fingerprint, Profile: a.Intent.Profile, OutRequestNo: a.Intent.OutRequestNo, ChannelApplicationID: "1001", VerificationVersion: "verified-submission-fixture", SignedResponseDigest: strings.Repeat("a", 64)}, nil
+	}
+	return e.MerchantSubmissionAcceptance{}, e.ErrUnavailable
 }
 func (p *merchantChannelFixture) QueryMerchant(_ context.Context, a e.MerchantAttempt) (e.MerchantObservation, error) {
 	p.queries++
 	if p.unknown {
 		return e.MerchantObservation{}, e.ErrUnavailable
 	}
-	return e.MerchantObservation{Profile: p.profile, OutRequestNo: a.Intent.OutRequestNo, ChannelApplicationID: "1001", State: p.state, SignState: "SIGNED", MerchantID: "1900000011", VerificationVersion: "verified-original-fixture"}, nil
+	return e.MerchantObservation{Profile: p.profile, OutRequestNo: a.Intent.OutRequestNo, ChannelApplicationID: "1001", State: p.state, SignState: "SIGNED", MerchantID: "1900000011", SignURL: p.signURL, VerificationVersion: "verified-original-fixture"}, nil
 }
 
 type merchantAuthorizerFixture struct{ calls, revokeAt int }
@@ -142,12 +148,27 @@ func TestMerchantPermissionRevokedAfterMediaStopsExternalApplication(t *testing.
 		t.Fatal("revocation fabricated dispatch", err)
 	}
 }
-func TestMerchantHumanCanResumeSealedOriginalAfterPageReload(t *testing.T){
- r,s,p,a,scope,in,d:=merchantServiceFixture(t);a.revokeAt=2;ctx:=context.Background();key:=uuid.NewString()
- if _,err:=s.Submit(ctx,scope,key,in.ApplicationID,in.ApplicationVersion,d);!errors.Is(err,e.ErrForbidden){t.Fatal(err)}
- original,_:=r.ReadMerchantAttempt(ctx,scope,in.ApplicationID);p.state="FINISH"
- resumed,err:=e.NewMerchantOnboarding(r,p,sFiles(t,r),merchantProtection(t),&merchantAuthorizerFixture{});if err!=nil{t.Fatal(err)}
- scope.ActorID="new-authorized-operator";view,err:=resumed.Resume(ctx,scope,in.ApplicationID,in.ApplicationVersion)
- if err!=nil||view.State!="FINISH"||p.submits!=1||p.original!=original.Intent.OutRequestNo||p.uploads!=3{t.Fatal("reload cannot continue encrypted original without new intent",err)}
- after,_:=r.ReadMerchantAttempt(ctx,scope,in.ApplicationID);if after.Intent.ID!=original.Intent.ID||after.Intent.Key!=key||after.Intent.ActorID!=original.Intent.ActorID{t.Fatal("resume changed immutable original")}
+func TestMerchantHumanCanResumeSealedOriginalAfterPageReload(t *testing.T) {
+	r, s, p, a, scope, in, d := merchantServiceFixture(t)
+	a.revokeAt = 2
+	ctx := context.Background()
+	key := uuid.NewString()
+	if _, err := s.Submit(ctx, scope, key, in.ApplicationID, in.ApplicationVersion, d); !errors.Is(err, e.ErrForbidden) {
+		t.Fatal(err)
+	}
+	original, _ := r.ReadMerchantAttempt(ctx, scope, in.ApplicationID)
+	p.state = "FINISH"
+	resumed, err := e.NewMerchantOnboarding(r, p, sFiles(t, r), merchantProtection(t), &merchantAuthorizerFixture{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope.ActorID = "new-authorized-operator"
+	view, err := resumed.Resume(ctx, scope, in.ApplicationID, merchantApplication(t, r, in.ApplicationID).Version)
+	if err != nil || view.State != "FINISH" || p.submits != 1 || p.original != original.Intent.OutRequestNo || p.uploads != 3 {
+		t.Fatal("reload cannot continue encrypted original without new intent", err)
+	}
+	after, _ := r.ReadMerchantAttempt(ctx, scope, in.ApplicationID)
+	if after.Intent.ID != original.Intent.ID || after.Intent.Key != key || after.Intent.ActorID != original.Intent.ActorID {
+		t.Fatal("resume changed immutable original")
+	}
 }

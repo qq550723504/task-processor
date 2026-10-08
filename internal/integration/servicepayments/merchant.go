@@ -2,12 +2,14 @@ package servicepayments
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/go-pay/gopay"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	e "task-processor/internal/ecoservices"
+	"task-processor/internal/integration/paymentsecurity"
 )
 
 func (p *WeChat) MerchantProfile() e.MerchantProfile {
@@ -30,7 +32,7 @@ func merchantBody(a e.MerchantAttempt, d e.MerchantDetails, encrypt func(string)
 	if !a.Dispatched || encrypt == nil || a.Intent.OutRequestNo == "" || a.CompanyName == "" || a.RegistrationNumber == "" {
 		return nil, e.ErrConflict
 	}
-	for _, id := range a.Intent.FileIDs {
+	for _, id := range a.Revision.Input.FileIDs {
 		if a.MediaIDs[id] == "" {
 			return nil, e.ErrConflict
 		}
@@ -83,19 +85,31 @@ func merchantBody(a e.MerchantAttempt, d e.MerchantDetails, encrypt func(string)
 	}
 	return body, nil
 }
-func (p *WeChat) SubmitMerchant(ctx context.Context, a e.MerchantAttempt, d e.MerchantDetails) error {
+func (p *WeChat) SubmitMerchant(ctx context.Context, a e.MerchantAttempt, d e.MerchantDetails) (e.MerchantSubmissionAcceptance, error) {
+	empty := e.MerchantSubmissionAcceptance{}
 	if !p.NewMerchantApplicationsEnabled() || a.Intent.Profile != p.MerchantProfile() {
-		return e.ErrUnavailable
+		return empty, e.ErrUnavailable
+	}
+	input := a.Revision.Input
+	if a.Revision.ID == "" || a.Revision.Version < 1 || input.Profile != a.Intent.Profile || input.OutRequestNo != a.Intent.OutRequestNo || e.Fingerprint([]any{e.Scope{OrganizationID: input.OrganizationID, ActorID: input.ActorID}, input.Key, input.ApplicationID, input.ApplicationVersion, input.Profile, d}) != input.Fingerprint {
+		return empty, e.ErrConflict
 	}
 	body, err := merchantBody(a, d, p.client.V3EncryptText)
 	if err != nil {
-		return err
+		return empty, err
 	}
 	r, err := p.client.V3EcommerceApply(ctx, body)
-	if err != nil || r == nil || r.Code != 0 || r.Response == nil || r.Response.OutRequestNo != a.Intent.OutRequestNo || r.Response.ApplymentId < 1 {
-		return e.ErrUnavailable
+	if err != nil || r == nil || r.Code != 0 || r.Response == nil || r.Response.OutRequestNo != a.Intent.OutRequestNo || r.Response.ApplymentId < 1 || !paymentsecurity.VerifiedWeChatResponse(r.SignInfo, p.config.PublicKeyID, p.publicKey, p.now()) {
+		return empty, e.ErrUnavailable
 	}
-	return nil
+	var signed struct {
+		ApplymentID  int64  `json:"applyment_id"`
+		OutRequestNo string `json:"out_request_no"`
+	}
+	if json.Unmarshal([]byte(r.SignInfo.SignBody), &signed) != nil || signed.ApplymentID != r.Response.ApplymentId || signed.OutRequestNo != a.Intent.OutRequestNo {
+		return empty, e.ErrConflict
+	}
+	return e.MerchantSubmissionAcceptance{RevisionID: a.Revision.ID, RevisionVersion: a.Revision.Version, DetailsFingerprint: input.Fingerprint, Profile: a.Intent.Profile, OutRequestNo: a.Intent.OutRequestNo, ChannelApplicationID: strconv.FormatInt(signed.ApplymentID, 10), VerificationVersion: "wechat-v3:" + p.config.PublicKeyID, SignedResponseDigest: e.FileDigest([]byte(r.SignInfo.SignBody))}, nil
 }
 func controlledMerchantURL(raw string) bool {
 	if raw == "" {
@@ -113,7 +127,7 @@ func (p *WeChat) QueryMerchant(ctx context.Context, a e.MerchantAttempt) (e.Merc
 	if err == nil && r != nil && r.Code == http.StatusNotFound && r.ErrResponse.Code == "RESOURCE_NOT_EXISTS" && p.verifiedError(r.SignInfo, "RESOURCE_NOT_EXISTS") {
 		return e.MerchantObservation{Profile: a.Intent.Profile, OutRequestNo: a.Intent.OutRequestNo, State: "NOT_FOUND", VerificationVersion: "wechat-v3:" + p.config.PublicKeyID}, nil
 	}
-	if err != nil || r == nil || r.Code != 0 || r.Response == nil {
+	if err != nil || r == nil || r.Code != 0 || r.Response == nil || !paymentsecurity.VerifiedWeChatResponse(r.SignInfo, p.config.PublicKeyID, p.publicKey, p.now()) {
 		return empty, e.ErrUnavailable
 	}
 	v := r.Response

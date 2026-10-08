@@ -23,17 +23,18 @@ type IdentityDocument struct {
 	ValidUntil  string `json:"validUntil"`
 }
 type MerchantDetails struct {
-	LicenseFileID        string             `json:"licenseFileId"`
-	Legal                IdentityDocument   `json:"legal"`
-	SoleLegalBeneficiary bool               `json:"soleLegalBeneficiary"`
-	Beneficiaries        []IdentityDocument `json:"beneficiaries"`
-	ContactMobile        string             `json:"contactMobile"`
-	AccountBank          string             `json:"accountBank"`
-	AccountNumber        string             `json:"accountNumber"`
-	BankBranchName       string             `json:"bankBranchName"`
-	MerchantShortName    string             `json:"merchantShortName"`
-	StoreName            string             `json:"storeName"`
-	StoreURL             string             `json:"storeUrl"`
+	ExpectedRevisionVersion int64              `json:"expectedRevisionVersion,string"`
+	LicenseFileID           string             `json:"licenseFileId"`
+	Legal                   IdentityDocument   `json:"legal"`
+	SoleLegalBeneficiary    bool               `json:"soleLegalBeneficiary"`
+	Beneficiaries           []IdentityDocument `json:"beneficiaries"`
+	ContactMobile           string             `json:"contactMobile"`
+	AccountBank             string             `json:"accountBank"`
+	AccountNumber           string             `json:"accountNumber"`
+	BankBranchName          string             `json:"bankBranchName"`
+	MerchantShortName       string             `json:"merchantShortName"`
+	StoreName               string             `json:"storeName"`
+	StoreURL                string             `json:"storeUrl"`
 }
 type MerchantProfile struct{ Version, PlatformMerchantID string }
 type MerchantIntent struct {
@@ -43,9 +44,14 @@ type MerchantIntent struct {
 	SealedDetails                                                              []byte
 	FileIDs                                                                    []string
 	LicenseFileID                                                              string
+	ExpectedRevisionVersion                                                    int64
 }
 type MerchantAttempt struct {
 	Intent                          MerchantIntent
+	Current                         bool
+	Revision                        MerchantDetailsRevision
+	Acceptance                      *MerchantSubmissionAcceptance
+	SealedAcceptance                []byte
 	CompanyName, RegistrationNumber string
 	State, ClaimToken               string
 	DispatchActorID                 string
@@ -71,8 +77,12 @@ type MerchantObservation struct {
 	OutRequestNo, ChannelApplicationID, State, SignState, MerchantID string
 	SignURL, LegalValidationURL, Reason, VerificationVersion         string
 	Bank                                                             *BankValidation
+	RevisionID, AcceptanceFingerprint                                string
+	RevisionVersion                                                  int64
 }
 type MerchantView struct {
+	RevisionVersion     int64           `json:"revisionVersion,string"`
+	CanCorrect          bool            `json:"canCorrect"`
 	VerificationPending bool            `json:"verificationPending"`
 	ID                  string          `json:"id"`
 	ApplicationID       string          `json:"applicationId"`
@@ -91,6 +101,7 @@ type MerchantRepository interface {
 	ClaimMerchantAttempt(context.Context, Scope, string) (MerchantAttempt, bool, error)
 	SaveMerchantMedia(context.Context, MerchantAttempt, string, string) error
 	MarkMerchantDispatched(context.Context, MerchantAttempt) error
+	SaveMerchantAcceptance(context.Context, MerchantAttempt, MerchantSubmissionAcceptance, []byte) error
 	ObserveMerchant(context.Context, MerchantAttempt, MerchantObservation, []byte) error
 	ReleaseMerchantClaim(context.Context, MerchantAttempt) error
 }
@@ -115,7 +126,7 @@ type MerchantOnboardingPort interface {
 	MerchantProfile() MerchantProfile
 	NewMerchantApplicationsEnabled() bool
 	UploadMerchantImage(context.Context, File, []byte) (string, error)
-	SubmitMerchant(context.Context, MerchantAttempt, MerchantDetails) error
+	SubmitMerchant(context.Context, MerchantAttempt, MerchantDetails) (MerchantSubmissionAcceptance, error)
 	QueryMerchant(context.Context, MerchantAttempt) (MerchantObservation, error)
 }
 type MerchantProtection interface {
@@ -195,7 +206,7 @@ func ValidateMerchantDetails(d MerchantDetails) ([]string, error) {
 	return unique, nil
 }
 func (s *MerchantOnboarding) Submit(ctx context.Context, scope Scope, key, appID string, version int64, d MerchantDetails) (MerchantView, error) {
-	if scope.Platform || !validText(scope.OrganizationID, 128) || !validText(scope.ActorID, 256) || !ValidID(key) || !ValidID(appID) || version < 1 {
+	if scope.Platform || !validText(scope.OrganizationID, 128) || !validText(scope.ActorID, 256) || !ValidID(key) || !ValidID(appID) || version < 1 || d.ExpectedRevisionVersion < 0 {
 		return MerchantView{}, ErrInvalid
 	}
 	ids, err := ValidateMerchantDetails(d)
@@ -211,6 +222,7 @@ func (s *MerchantOnboarding) Submit(ctx context.Context, scope Scope, key, appID
 	id := uuid.NewSHA1(uuid.NameSpaceOID, []byte("ecoservices-merchant:"+scope.OrganizationID+":"+key)).String()
 	intent := MerchantIntent{ID: id, ApplicationID: appID, ApplicationVersion: version, OrganizationID: scope.OrganizationID, ActorID: scope.ActorID, Key: key, Profile: s.channel.MerchantProfile(), OutRequestNo: strings.ReplaceAll(id, "-", ""), FileIDs: ids, LicenseFileID: d.LicenseFileID}
 	intent.Fingerprint = Fingerprint([]any{scope, key, appID, version, intent.Profile, d})
+	intent.ExpectedRevisionVersion = d.ExpectedRevisionVersion
 	plain, _ := json.Marshal(d)
 	intent.SealedDetails, err = s.protection.Seal(id, string(plain))
 	if err != nil {
@@ -220,6 +232,9 @@ func (s *MerchantOnboarding) Submit(ctx context.Context, scope Scope, key, appID
 	if err != nil {
 		return MerchantView{}, err
 	}
+	if !attempt.Current || attempt.Revision.ReviewedApplicationVersion == 0 {
+		return s.view(attempt)
+	}
 	return s.continueOriginal(ctx, scope, attempt.Intent.ApplicationID)
 }
 func (s *MerchantOnboarding) continueOriginal(ctx context.Context, scope Scope, appID string) (MerchantView, error) {
@@ -228,42 +243,57 @@ func (s *MerchantOnboarding) continueOriginal(ctx context.Context, scope Scope, 
 		return MerchantView{}, err
 	}
 	if !claimed {
+		if err = s.verifyAcceptance(attempt); err != nil {
+			return MerchantView{}, err
+		}
+		if attempt.Dispatched && !attempt.CanObserve() {
+			return s.pendingView(attempt)
+		}
 		return s.view(attempt)
 	}
 	defer s.repo.ReleaseMerchantClaim(ctx, attempt)
 	if attempt.Intent.Profile != s.channel.MerchantProfile() {
 		return MerchantView{}, ErrUnavailable
 	}
+	if err = s.verifyAcceptance(attempt); err != nil {
+		return MerchantView{}, err
+	}
 	// A marked intent is queried first. Only verified absence plus this live
 	// human admission permits another dispatch of the SAME original intent.
 	if attempt.Dispatched {
+		// A corrected MAY_HAVE_DISPATCHED without durable acceptance cannot be
+		// associated by a same-number query or retried, even after lease expiry.
+		if !attempt.CanObserve() {
+			return s.pendingView(attempt)
+		}
 		obs, qerr := s.channel.QueryMerchant(ctx, attempt)
 		if qerr != nil {
 			return MerchantView{}, ErrUnavailable
 		}
 		if obs.State != "NOT_FOUND" {
-			return s.accept(ctx, attempt, obs)
+			return s.accept(ctx, attempt, attempt.BindQuery(obs))
 		}
 		if !obs.Matches(attempt) {
 			return MerchantView{}, ErrConflict
 		}
-		if attempt.State != "PREPARING" || len(attempt.SealedObservation) > 0 {
+		if attempt.Revision.Version > 1 || attempt.State != "PREPARING" || len(attempt.SealedObservation) > 0 {
 			return MerchantView{}, ErrConflict
 		}
 	}
-	raw, err := s.protection.Open(attempt.Intent.ID, attempt.Intent.SealedDetails)
+	input := attempt.Revision.Input
+	raw, err := s.protection.Open(attempt.Revision.ID, input.SealedDetails)
 	var d MerchantDetails
 	if err != nil || json.Unmarshal([]byte(raw), &d) != nil {
 		return MerchantView{}, ErrConflict
 	}
-	originalScope := Scope{OrganizationID: attempt.Intent.OrganizationID, ActorID: attempt.Intent.ActorID}
-	if Fingerprint([]any{originalScope, attempt.Intent.Key, appID, attempt.Intent.ApplicationVersion, attempt.Intent.Profile, d}) != attempt.Intent.Fingerprint {
+	originalScope := Scope{OrganizationID: input.OrganizationID, ActorID: input.ActorID}
+	if Fingerprint([]any{originalScope, input.Key, appID, input.ApplicationVersion, input.Profile, d}) != input.Fingerprint {
 		return MerchantView{}, ErrConflict
 	}
 	if _, err = ValidateMerchantDetails(d); err != nil {
 		return MerchantView{}, err
 	}
-	for _, id := range attempt.Intent.FileIDs {
+	for _, id := range input.FileIDs {
 		if attempt.MediaIDs[id] != "" {
 			continue
 		}
@@ -294,17 +324,40 @@ func (s *MerchantOnboarding) continueOriginal(ctx context.Context, scope Scope, 
 		return MerchantView{}, err
 	}
 	attempt.Dispatched = true
-	// Even a lost reply recovers by original number. No unverified SDK error is
-	// interpreted as a definitive absence or permission to create a new intent.
-	_ = s.channel.SubmitMerchant(ctx, attempt, d)
+	proof, submitErr := s.channel.SubmitMerchant(ctx, attempt, d)
+	if submitErr == nil {
+		if !proof.Matches(attempt) {
+			return MerchantView{}, ErrConflict
+		}
+		raw, _ := json.Marshal(proof)
+		sealed, sealErr := s.protection.Seal(attempt.Revision.ID+":acceptance", string(raw))
+		if sealErr != nil {
+			return MerchantView{}, ErrUnavailable
+		}
+		if err = s.repo.SaveMerchantAcceptance(ctx, attempt, proof, sealed); err != nil {
+			return MerchantView{}, err
+		}
+		attempt.Acceptance = &proof
+		attempt.SealedAcceptance = sealed
+	}
+	if !attempt.CanObserve() {
+		return s.pendingView(attempt)
+	}
 	obs, err := s.channel.QueryMerchant(ctx, attempt)
 	if err != nil || obs.State == "NOT_FOUND" {
 		return MerchantView{}, ErrUnavailable
 	}
-	return s.accept(ctx, attempt, obs)
+	return s.accept(ctx, attempt, attempt.BindQuery(obs))
 }
 func (o MerchantObservation) Matches(a MerchantAttempt) bool {
-	return o.Profile == a.Intent.Profile && o.OutRequestNo == a.Intent.OutRequestNo && validText(o.VerificationVersion, 256)
+	if o.Profile != a.Intent.Profile || o.OutRequestNo != a.Intent.OutRequestNo || !validText(o.VerificationVersion, 256) {
+		return false
+	}
+	if a.Revision.Version == 1 {
+		return true
+	}
+	return a.CanObserve() && o.RevisionID == a.Revision.ID && o.RevisionVersion == a.Revision.Version &&
+		o.AcceptanceFingerprint == Fingerprint(*a.Acceptance) && o.ChannelApplicationID == a.Acceptance.ChannelApplicationID
 }
 func (s *MerchantOnboarding) accept(ctx context.Context, a MerchantAttempt, o MerchantObservation) (MerchantView, error) {
 	if !o.Matches(a) {
@@ -316,7 +369,7 @@ func (s *MerchantOnboarding) accept(ctx context.Context, a MerchantAttempt, o Me
 		return v, err
 	}
 	raw, _ := json.Marshal(o)
-	sealed, err := s.protection.Seal(a.Intent.ID+":observation", string(raw))
+	sealed, err := s.protection.Seal(a.Revision.ID+":observation", string(raw))
 	if err != nil {
 		return MerchantView{}, ErrUnavailable
 	}
@@ -336,21 +389,36 @@ func (s *MerchantOnboarding) Read(ctx context.Context, scope Scope, appID string
 	if err != nil {
 		return MerchantView{}, err
 	}
+	if err = s.verifyAcceptance(a); err != nil {
+		return MerchantView{}, err
+	}
+	if a.Dispatched && !a.CanObserve() {
+		return s.pendingView(a)
+	}
 	// Read does not create, submit or retry a channel application.
 	if a.Dispatched && a.Intent.Profile == s.channel.MerchantProfile() {
-		a, claimed, err := s.repo.ClaimMerchantAttempt(ctx, scope, appID)
+		var claimed bool
+		a, claimed, err = s.repo.ClaimMerchantAttempt(ctx, scope, appID)
 		if err != nil {
 			return MerchantView{}, err
 		}
 		if claimed {
 			defer s.repo.ReleaseMerchantClaim(ctx, a)
+		}
+		if err = s.verifyAcceptance(a); err != nil {
+			return MerchantView{}, err
+		}
+		if a.Dispatched && !a.CanObserve() {
+			return s.pendingView(a)
+		}
+		if claimed && a.Dispatched {
 			o, err := s.channel.QueryMerchant(ctx, a)
 			if err != nil {
 				v, viewErr := s.view(a)
 				v.VerificationPending = true
 				return v, viewErr
 			}
-			return s.accept(ctx, a, o)
+			return s.accept(ctx, a, a.BindQuery(o))
 		}
 	}
 	v, err := s.view(a)
@@ -360,11 +428,11 @@ func (s *MerchantOnboarding) Read(ctx context.Context, scope Scope, appID string
 	return v, err
 }
 func (s *MerchantOnboarding) view(a MerchantAttempt) (MerchantView, error) {
-	v := MerchantView{ID: a.Intent.ID, ApplicationID: a.Intent.ApplicationID, State: a.State, UpdatedAt: a.UpdatedAt}
+	v := MerchantView{ID: a.Intent.ID, ApplicationID: a.Intent.ApplicationID, RevisionVersion: a.Revision.Version, State: a.State, UpdatedAt: a.UpdatedAt, CanCorrect: a.State == "REJECTED" && a.CanObserve()}
 	if len(a.SealedObservation) == 0 {
 		return v, nil
 	}
-	raw, err := s.protection.Open(a.Intent.ID+":observation", a.SealedObservation)
+	raw, err := s.protection.Open(a.Revision.ID+":observation", a.SealedObservation)
 	var o MerchantObservation
 	if err != nil || json.Unmarshal([]byte(raw), &o) != nil || !o.Matches(a) {
 		return MerchantView{}, ErrConflict
@@ -375,4 +443,19 @@ func (s *MerchantOnboarding) view(a MerchantAttempt) (MerchantView, error) {
 	v.Reason = o.Reason
 	v.Bank = o.Bank
 	return v, nil
+}
+
+func (s *MerchantOnboarding) verifyAcceptance(a MerchantAttempt) error {
+	if a.Acceptance == nil {
+		return nil
+	}
+	raw, err := s.protection.Open(a.Revision.ID+":acceptance", a.SealedAcceptance)
+	var p MerchantSubmissionAcceptance
+	if err != nil || json.Unmarshal([]byte(raw), &p) != nil || !p.Matches(a) || Fingerprint(p) != Fingerprint(*a.Acceptance) {
+		return ErrConflict
+	}
+	return nil
+}
+func (s *MerchantOnboarding) pendingView(a MerchantAttempt) (MerchantView, error) {
+	return MerchantView{ID: a.Intent.ID, ApplicationID: a.Intent.ApplicationID, RevisionVersion: a.Revision.Version, State: a.State, UpdatedAt: a.UpdatedAt, VerificationPending: true}, nil
 }

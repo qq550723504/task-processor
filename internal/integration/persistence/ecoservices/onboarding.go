@@ -67,152 +67,213 @@ type merchantProgressRow struct {
 	DispatchActorID                         string
 	AdmittedAt                              *time.Time
 	MediaIDs, SealedObservation             []byte
+	AcceptanceFingerprint                   string
 	UpdatedAt                               time.Time
 }
 
 func (merchantProgressRow) TableName() string { return "ecoservices_merchant_progress" }
-func merchantFact(in merchantIntentRow, p merchantProgressRow) (e.MerchantAttempt, error) {
-	var a e.MerchantAttempt
-	if json.Unmarshal(in.Payload, &a.Intent) != nil || a.Intent.ID != in.ID || a.Intent.ApplicationID != in.ApplicationID || a.Intent.OrganizationID != in.OrganizationID || a.Intent.OutRequestNo != in.OutRequestNo || a.Intent.Fingerprint != in.Fingerprint {
-		return a, e.ErrConflict
-	}
-	a.CompanyName = in.CompanyName
-	a.RegistrationNumber = in.RegistrationNumber
-	a.State = p.State
-	a.ClaimToken = p.ClaimToken
-	a.ClaimUntil = p.ClaimUntil
-	a.Dispatched = p.Dispatched
-	a.DispatchActorID = p.DispatchActorID
-	a.SealedObservation = p.SealedObservation
-	a.UpdatedAt = p.UpdatedAt
-	a.MediaIDs = map[string]string{}
-	if len(p.MediaIDs) > 0 && json.Unmarshal(p.MediaIDs, &a.MediaIDs) != nil {
-		return a, e.ErrConflict
-	}
-	return a, nil
-}
 func (r *Repository) CreateMerchantAttempt(ctx context.Context, in e.MerchantIntent) (e.MerchantAttempt, error) {
 	var a e.MerchantAttempt
-	if !e.ValidID(in.ID) || !e.ValidID(in.ApplicationID) || !e.ValidID(in.Key) || in.OrganizationID == "" || in.ActorID == "" || in.Fingerprint == "" || len(in.SealedDetails) == 0 || len(in.SealedDetails) > 65580 || len(in.FileIDs) < 2 || len(in.FileIDs) > 11 || in.Profile.Version == "" || in.Profile.PlatformMerchantID == "" || in.OutRequestNo == "" {
+	if !e.ValidID(in.ID) || !e.ValidID(in.ApplicationID) || !e.ValidID(in.Key) || in.OrganizationID == "" || in.ActorID == "" || in.Fingerprint == "" || len(in.SealedDetails) == 0 || len(in.SealedDetails) > 65580 || len(in.FileIDs) < 2 || len(in.FileIDs) > 11 || in.Profile.Version == "" || in.Profile.PlatformMerchantID == "" || in.OutRequestNo == "" || in.ExpectedRevisionVersion < 0 {
 		return a, e.ErrInvalid
 	}
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		command := e.Command{Scope: e.Scope{OrganizationID: in.OrganizationID, ActorID: in.ActorID}, Kind: "merchant_submit", Key: in.Key, Fingerprint: in.Fingerprint}
+		if err := lockOperation(tx, command); err != nil {
+			return err
+		}
 		var row applicationRow
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=? AND organization_id=?", in.ApplicationID, in.OrganizationID).Take(&row).Error; err != nil {
 			return e.ErrNotFound
-		}
-		var old merchantIntentRow
-		if err := tx.Where("application_id=?", in.ApplicationID).Take(&old).Error; err == nil {
-			if old.ID != in.ID || old.Fingerprint != in.Fingerprint {
-				return e.ErrConflict
-			}
-			var progress merchantProgressRow
-			if err = tx.Where("id=?", old.ID).Take(&progress).Error; err != nil {
-				return err
-			}
-			a, err = merchantFact(old, progress)
-			return err
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
 		}
 		app, err := applicationFact(row)
 		if err != nil {
 			return err
 		}
+		var receipt operationRow
+		if err = tx.Where("organization_id=? AND kind=? AND key=?", in.OrganizationID, "merchant_submit", in.Key).Take(&receipt).Error; err == nil {
+			if receipt.Fingerprint != in.Fingerprint {
+				return e.ErrConflict
+			}
+			var ref struct {
+				IntentID, RevisionID string
+				Version              int64
+			}
+			if json.Unmarshal(receipt.Result, &ref) != nil || ref.IntentID == "" || ref.RevisionID == "" || ref.Version < 1 {
+				return e.ErrConflict
+			}
+			currentID := app.CurrentMerchantRevisionID
+			app.CurrentMerchantRevisionID = ref.RevisionID
+			app.CurrentMerchantRevisionVersion = ref.Version
+			a, err = loadMerchantAttempt(tx, app)
+			if err == nil && a.Intent.ID != ref.IntentID {
+				return e.ErrConflict
+			}
+			a.Current = ref.RevisionID == currentID
+			return err
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if app.Version != in.ApplicationVersion || app.MerchantID != "" {
+			return e.ErrConflict
+		}
 		if app.State != "APPROVED" || !app.AgreementAccepted || app.AgreementVersion != e.PolicyVersion {
 			return e.ErrNotQualified
 		}
-		if app.Version != in.ApplicationVersion {
-			return e.ErrConflict
-		}
-		reviewedLicense := false
-		for _, id := range app.FileIDs {
-			if id == in.LicenseFileID {
-				reviewedLicense = true
-			}
-		}
-		if !reviewedLicense {
-			return e.ErrConflict
-		}
-		seen := map[string]bool{}
-		for _, id := range in.FileIDs {
-			if !e.ValidID(id) || seen[id] {
-				return e.ErrInvalid
-			}
-			seen[id] = true
-			var f fileRow
-			if err := tx.Where("id=? AND organization_id=? AND parent_kind=? AND parent_id=? AND state=?", id, in.OrganizationID, "APPLICATION", in.ApplicationID, "CONFIRMED").Take(&f).Error; err != nil {
-				return e.ErrNotFound
-			}
-			if f.SizeBytes < 1 || f.SizeBytes > 2<<20 || f.ContentType != "image/jpeg" && f.ContentType != "image/png" {
-				return e.ErrInvalid
-			}
-		}
-		if !seen[in.LicenseFileID] {
-			return e.ErrInvalid
+		if err = merchantFiles(tx, in); err != nil {
+			return err
 		}
 		now := time.Now().UTC()
-		raw, _ := json.Marshal(in)
-		record := merchantIntentRow{ID: in.ID, ApplicationID: in.ApplicationID, OrganizationID: in.OrganizationID, OutRequestNo: in.OutRequestNo, Fingerprint: in.Fingerprint, CompanyName: app.CompanyName, RegistrationNumber: app.RegistrationNumber, Payload: raw, CreatedAt: now}
-		progress := merchantProgressRow{ID: in.ID, State: "PREPARING", MediaIDs: []byte("{}"), UpdatedAt: now}
-		if err := tx.Create(&record).Error; err != nil {
+		var root merchantIntentRow
+		var previous e.MerchantAttempt
+		var detailVersion int64 = 1
+		if err = tx.Where("application_id=?", app.ID).Take(&root).Error; err == nil {
+			previous, err = loadMerchantAttempt(tx, app)
+			if err != nil {
+				return err
+			}
+			// A lease expiry is not dispatch evidence. Only the saved, trusted terminal
+			// observation for the current revision permits a different sealed payload.
+			var p merchantProgressRow
+			if err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=?", previous.Revision.ID).Take(&p).Error; err != nil {
+				return err
+			}
+			if in.ExpectedRevisionVersion != previous.Revision.Version || previous.State != "REJECTED" || !previous.Dispatched || len(previous.SealedObservation) == 0 || p.ChannelApplicationID == "" || p.ClaimUntil.After(now) || !previous.CanObserve() || in.Profile != previous.Intent.Profile {
+				return e.ErrConflict
+			}
+			in.OutRequestNo = previous.Intent.OutRequestNo
+			detailVersion = previous.Revision.Version + 1
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			if in.ExpectedRevisionVersion != 0 || app.CurrentMerchantRevisionID != "" {
+				return e.ErrConflict
+			}
+			if !merchantReviewedLicense(app, in.LicenseFileID) {
+				return e.ErrConflict
+			}
+			raw, _ := json.Marshal(in)
+			root = merchantIntentRow{ID: in.ID, ApplicationID: in.ApplicationID, OrganizationID: in.OrganizationID, OutRequestNo: in.OutRequestNo, Fingerprint: in.Fingerprint, CompanyName: app.CompanyName, RegistrationNumber: app.RegistrationNumber, Payload: raw, CreatedAt: now}
+			if err = tx.Create(&root).Error; err != nil {
+				return err
+			}
+		} else {
 			return err
 		}
-		if err := tx.Create(&progress).Error; err != nil {
+		revision := e.MerchantDetailsRevision{ID: in.ID, Version: detailVersion, Input: in, ReviewedApplicationVersion: app.Version, AgreementVersion: app.AgreementVersion}
+		if detailVersion > 1 && in.LicenseFileID != previous.Revision.Input.LicenseFileID {
+			for n, id := range app.FileIDs {
+				if id == previous.Revision.Input.LicenseFileID {
+					app.FileIDs[n] = in.LicenseFileID
+				}
+			}
+			if !merchantReviewedLicense(app, in.LicenseFileID) {
+				return e.ErrConflict
+			}
+			app.State = "SUBMITTED"
+			app.AgreementAccepted = false
+			app.ReviewReason = ""
+			revision.ReviewedApplicationVersion = 0
+		}
+		revision.ApprovalFingerprint = merchantApprovalFingerprint(app)
+		payload, _ := json.Marshal(revision)
+		if err = tx.Create(&versionRow{ID: root.ID, Kind: "MERCHANT_DETAILS", Version: detailVersion, ActorID: in.ActorID, Payload: payload, CreatedAt: now}).Error; err != nil {
 			return err
 		}
-		a, err = merchantFact(record, progress)
+		if err = tx.Create(&merchantProgressRow{ID: revision.ID, State: "PREPARING", MediaIDs: []byte("{}"), UpdatedAt: now}).Error; err != nil {
+			return err
+		}
+		app.CurrentMerchantRevisionID = revision.ID
+		app.CurrentMerchantRevisionVersion = detailVersion
+		app.OnboardingState = "PREPARING"
+		app.Version++
+		app.UpdatedAt = now
+		if err = saveMerchantApplication(tx, app, in.ActorID, now); err != nil {
+			return err
+		}
+		result, _ := json.Marshal(struct {
+			IntentID, RevisionID string
+			Version              int64
+		}{root.ID, revision.ID, detailVersion})
+		if err = tx.Create(&operationRow{OrganizationID: in.OrganizationID, Kind: "merchant_submit", Key: in.Key, Fingerprint: in.Fingerprint, Result: result}).Error; err != nil {
+			return err
+		}
+		a, err = loadMerchantAttempt(tx, app)
 		return err
 	})
 	return a, err
 }
 func (r *Repository) ReadMerchantAttempt(ctx context.Context, scope e.Scope, appID string) (e.MerchantAttempt, error) {
+	var a e.MerchantAttempt
 	if scope.Platform {
-		return e.MerchantAttempt{}, e.ErrForbidden
+		return a, e.ErrForbidden
 	}
-	var in merchantIntentRow
-	if err := r.db.WithContext(ctx).Where("application_id=? AND organization_id=?", appID, scope.OrganizationID).Take(&in).Error; err != nil {
-		return e.MerchantAttempt{}, e.ErrNotFound
-	}
-	var p merchantProgressRow
-	if err := r.db.WithContext(ctx).Where("id=?", in.ID).Take(&p).Error; err != nil {
-		return e.MerchantAttempt{}, err
-	}
-	return merchantFact(in, p)
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row applicationRow
+		if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Where("id=? AND organization_id=?", appID, scope.OrganizationID).Take(&row).Error; err != nil {
+			return e.ErrNotFound
+		}
+		app, err := applicationFact(row)
+		if err != nil {
+			return err
+		}
+		a, err = loadMerchantAttempt(tx, app)
+		return err
+	})
+	return a, err
 }
 func (r *Repository) ClaimMerchantAttempt(ctx context.Context, scope e.Scope, appID string) (e.MerchantAttempt, bool, error) {
 	var a e.MerchantAttempt
 	var claimed bool
+	if scope.Platform {
+		return a, false, e.ErrForbidden
+	}
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if scope.Platform {
-			return e.ErrForbidden
-		}
-		var in merchantIntentRow
-		if err := tx.Where("application_id=? AND organization_id=?", appID, scope.OrganizationID).Take(&in).Error; err != nil {
+		var row applicationRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=? AND organization_id=?", appID, scope.OrganizationID).Take(&row).Error; err != nil {
 			return e.ErrNotFound
 		}
+		app, err := applicationFact(row)
+		if err != nil {
+			return err
+		}
+		a, err = loadMerchantAttempt(tx, app)
+		if err != nil {
+			return err
+		}
 		var p merchantProgressRow
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=?", in.ID).Take(&p).Error; err != nil {
+		if err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=?", a.Revision.ID).Take(&p).Error; err != nil {
 			return err
 		}
 		now := time.Now().UTC()
 		if !p.ClaimUntil.After(now) {
-			p.ClaimToken = uuid.NewString()
-			p.ClaimUntil = now.Add(90 * time.Second)
-			if err := tx.Model(&p).Updates(map[string]any{"claim_token": p.ClaimToken, "claim_until": p.ClaimUntil}).Error; err != nil {
+			a.ClaimToken = uuid.NewString()
+			a.ClaimUntil = now.Add(90 * time.Second)
+			if err = tx.Model(&p).Updates(map[string]any{"claim_token": a.ClaimToken, "claim_until": a.ClaimUntil}).Error; err != nil {
 				return err
 			}
 			claimed = true
 		}
-		var err error
-		a, err = merchantFact(in, p)
-		return err
+		return nil
 	})
 	return a, claimed, err
 }
 func merchantClaim(tx *gorm.DB, a e.MerchantAttempt) (merchantProgressRow, error) {
 	var p merchantProgressRow
-	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=?", a.Intent.ID).Take(&p).Error; err != nil {
+	var row applicationRow
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=? AND organization_id=?", a.Intent.ApplicationID, a.Intent.OrganizationID).Take(&row).Error; err != nil {
+		return p, e.ErrNotFound
+	}
+	app, err := applicationFact(row)
+	if err != nil {
+		return p, err
+	}
+	if app.CurrentMerchantRevisionID != a.Revision.ID || app.CurrentMerchantRevisionVersion != a.Revision.Version {
+		return p, e.ErrConflict
+	}
+	current, err := loadMerchantAttempt(tx, app)
+	if err != nil || current.Intent.ID != a.Intent.ID || current.Revision.Input.Fingerprint != a.Revision.Input.Fingerprint {
+		return p, e.ErrConflict
+	}
+	if err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=?", a.Revision.ID).Take(&p).Error; err != nil {
 		return p, err
 	}
 	if a.ClaimToken == "" || p.ClaimToken != a.ClaimToken || !p.ClaimUntil.After(time.Now().UTC()) {
@@ -227,7 +288,7 @@ func (r *Repository) SaveMerchantMedia(ctx context.Context, a e.MerchantAttempt,
 			return err
 		}
 		valid := false
-		for _, v := range a.Intent.FileIDs {
+		for _, v := range a.Revision.Input.FileIDs {
 			if v == id {
 				valid = true
 			}
@@ -257,7 +318,7 @@ func (r *Repository) MarkMerchantDispatched(ctx context.Context, a e.MerchantAtt
 		if err != nil {
 			return err
 		}
-		if app.State != "APPROVED" || app.MerchantID != "" || !app.AgreementAccepted || app.AgreementVersion != e.PolicyVersion || app.CompanyName != a.CompanyName || app.RegistrationNumber != a.RegistrationNumber || a.DispatchActorID == "" {
+		if app.State != "APPROVED" || app.MerchantID != "" || !app.AgreementAccepted || app.AgreementVersion != e.PolicyVersion || app.CompanyName != a.CompanyName || app.RegistrationNumber != a.RegistrationNumber || a.DispatchActorID == "" || !merchantReviewedLicense(app, a.Revision.Input.LicenseFileID) || merchantApprovalFingerprint(app) != a.Revision.ApprovalFingerprint {
 			return e.ErrNotQualified
 		}
 		p, err := merchantClaim(tx, a)
@@ -268,7 +329,7 @@ func (r *Repository) MarkMerchantDispatched(ctx context.Context, a e.MerchantAtt
 		if json.Unmarshal(p.MediaIDs, &ids) != nil {
 			return e.ErrConflict
 		}
-		for _, id := range a.Intent.FileIDs {
+		for _, id := range a.Revision.Input.FileIDs {
 			if ids[id] == "" {
 				return e.ErrConflict
 			}
@@ -300,6 +361,9 @@ func (r *Repository) ObserveMerchant(ctx context.Context, a e.MerchantAttempt, o
 		if err != nil {
 			return err
 		}
+		if a.Revision.Version > 1 && (p.AcceptanceFingerprint == "" || a.Acceptance == nil || p.AcceptanceFingerprint != e.Fingerprint(*a.Acceptance)) {
+			return e.ErrConflict
+		}
 		if !p.Dispatched || p.ChannelApplicationID != "" && p.ChannelApplicationID != o.ChannelApplicationID {
 			return e.ErrConflict
 		}
@@ -311,6 +375,9 @@ func (r *Repository) ObserveMerchant(ctx context.Context, a e.MerchantAttempt, o
 			return e.ErrConflict
 		}
 		if o.State == "FINISH" {
+			if (app.State != "APPROVED" && app.State != "ACTIVE") || !app.AgreementAccepted || app.AgreementVersion != e.PolicyVersion || !merchantReviewedLicense(app, a.Revision.Input.LicenseFileID) || merchantApprovalFingerprint(app) != a.Revision.ApprovalFingerprint {
+				return e.ErrNotQualified
+			}
 			binding := merchantBindingRow{ApplicationID: app.ID, OrganizationID: app.OrganizationID, MerchantID: o.MerchantID, OriginalAttemptID: a.Intent.ID, Proof: sealed}
 			if err = tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&binding).Error; err != nil {
 				return err
@@ -349,5 +416,11 @@ func (r *Repository) ObserveMerchant(ctx context.Context, a e.MerchantAttempt, o
 	})
 }
 func (r *Repository) ReleaseMerchantClaim(ctx context.Context, a e.MerchantAttempt) error {
-	return r.db.WithContext(ctx).Model(&merchantProgressRow{}).Where("id=? AND claim_token=?", a.Intent.ID, a.ClaimToken).Updates(map[string]any{"claim_token": "", "claim_until": time.Time{}}).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		p, err := merchantClaim(tx, a)
+		if err != nil {
+			return err
+		}
+		return tx.Model(&p).Updates(map[string]any{"claim_token": "", "claim_until": time.Time{}}).Error
+	})
 }

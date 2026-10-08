@@ -45,21 +45,23 @@ func validText(v string, max int) bool {
 }
 
 type Application struct {
-	ID                 string     `json:"id"`
-	OrganizationID     string     `json:"-"`
-	CompanyName        string     `json:"companyName"`
-	RegistrationNumber string     `json:"registrationNumber"`
-	Categories         []Category `json:"categories"`
-	Regions            []string   `json:"regions"`
-	FileIDs            []string   `json:"fileIds"`
-	State              string     `json:"state"`
-	Version            int64      `json:"version,string"`
-	AgreementVersion   string     `json:"agreementVersion"`
-	AgreementAccepted  bool       `json:"agreementAccepted"`
-	MerchantID         string     `json:"-"`
-	OnboardingState    string     `json:"onboardingState"`
-	ReviewReason       string     `json:"reviewReason"`
-	UpdatedAt          time.Time  `json:"updatedAt"`
+	CurrentMerchantRevisionID      string     `json:"currentMerchantRevisionId,omitempty"`
+	CurrentMerchantRevisionVersion int64      `json:"currentMerchantRevisionVersion,string,omitempty"`
+	ID                             string     `json:"id"`
+	OrganizationID                 string     `json:"-"`
+	CompanyName                    string     `json:"companyName"`
+	RegistrationNumber             string     `json:"registrationNumber"`
+	Categories                     []Category `json:"categories"`
+	Regions                        []string   `json:"regions"`
+	FileIDs                        []string   `json:"fileIds"`
+	State                          string     `json:"state"`
+	Version                        int64      `json:"version,string"`
+	AgreementVersion               string     `json:"agreementVersion"`
+	AgreementAccepted              bool       `json:"agreementAccepted"`
+	MerchantID                     string     `json:"-"`
+	OnboardingState                string     `json:"onboardingState"`
+	ReviewReason                   string     `json:"reviewReason"`
+	UpdatedAt                      time.Time  `json:"updatedAt"`
 }
 type Listing struct {
 	ID                     string   `json:"id"`
