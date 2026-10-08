@@ -148,6 +148,18 @@ func (s *ServicePurchases) Execute(ctx context.Context, c ServicePurchaseCommand
 	if err := s.acceptPayment(ctx, &o); err != nil {
 		return serviceResult(o), err
 	}
+	if c.Kind == "CREATE_PURCHASE" && o.PaymentReceiptID != "" {
+		// Cached payment and an in-flight operation do not hide a newer
+		// canonical money fence. Keep the original operation for readback.
+		f, err := s.funds.ReadServiceFunds(ctx, c.OrderID)
+		if err != nil {
+			return serviceResult(o), err
+		}
+		confirmed, err := s.projectServiceFundsFence(ctx, &o, f)
+		if err != nil || !confirmed {
+			return serviceResult(o), err
+		}
+	}
 	recoverOriginal := o.ActiveCommand != nil && o.ActiveCommand.ID == c.ID && o.Operation != nil && o.Operation.Dispatched
 	if o.State == "RECONCILIATION_REQUIRED" && !recoverOriginal {
 		if r, ok := o.CompletedCommands[c.ID]; ok && r.State == "RECONCILIATION_REQUIRED" {

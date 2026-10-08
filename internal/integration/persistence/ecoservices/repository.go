@@ -670,7 +670,7 @@ func (r *Repository) PendingFinancialCommands(ctx context.Context, limit int) ([
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		now := time.Now().UTC()
 		var rows []financialRow
-		dueOrders := tx.Model(&requestRow{}).Select("order_id").Where("funds_expire_at<=? AND payment_receipt_id<>'' AND financial_fence=false AND state NOT IN ? AND financial_state NOT IN ?", now, []string{"CANCELLED"}, []string{"SETTLED", "REFUNDED"})
+		dueOrders := tx.Model(&requestRow{}).Select("order_id").Where("payment_receipt_id<>'' AND financial_fence=false AND state NOT IN ? AND financial_state NOT IN ? AND (funds_expire_at<=? OR state IN ?)", []string{"CANCELLED"}, []string{"SETTLED", "REFUNDED"}, now, []string{"PAID_READY", "SERVICING", "AWAITING_ACCEPTANCE"})
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).Where("next_attempt_at<=? AND (state IN ? OR (state='DONE' AND kind='CREATE_PURCHASE' AND order_id IN (?)))", now, []string{"PENDING", "PROCESSING"}, dueOrders).Order("next_attempt_at,created_at,id").Limit(limit).Find(&rows).Error; err != nil {
 			return err
 		}

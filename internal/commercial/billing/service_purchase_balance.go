@@ -7,14 +7,14 @@ import (
 
 // Expiry is a reason to verify original channel funds, never an acceptance fact.
 func (s *ServicePurchases) observeExpiredFunds(ctx context.Context, o *ServicePurchaseOrder) (bool, error) {
-	if o.PaymentReceiptID == "" || o.FundsExpireAt == nil || s.now().Before(*o.FundsExpireAt) {
+	if o.PaymentReceiptID == "" {
 		return true, nil
 	}
 	f, err := s.funds.ReadServiceFunds(ctx, o.Source.OrderID)
 	if err != nil {
 		return false, err
 	}
-	if f.ReconciliationReason == "" && f.ExpectedUnsplitMinor() > 0 {
+	if f.ReconciliationReason == "" && o.FundsExpireAt != nil && !s.now().Before(*o.FundsExpireAt) && f.ExpectedUnsplitMinor() > 0 {
 		provider, ok := s.provider.(ServiceUnsplitProvider)
 		if !ok {
 			return false, ErrFeatureUnavailable
@@ -31,11 +31,15 @@ func (s *ServicePurchases) observeExpiredFunds(ctx context.Context, o *ServicePu
 			return false, err
 		}
 	}
+	return s.projectServiceFundsFence(ctx, o, f)
+}
+
+func (s *ServicePurchases) projectServiceFundsFence(ctx context.Context, o *ServicePurchaseOrder, f money.ServiceFundsView) (bool, error) {
 	if f.ReconciliationReason != "" {
 		if o.State != "RECONCILIATION_REQUIRED" || o.Reason != f.ReconciliationReason {
 			o.State = "RECONCILIATION_REQUIRED"
 			o.Reason = f.ReconciliationReason
-			if err = s.save(ctx, o); err != nil {
+			if err := s.save(ctx, o); err != nil {
 				return false, err
 			}
 		}

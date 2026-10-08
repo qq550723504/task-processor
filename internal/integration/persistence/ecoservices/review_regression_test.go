@@ -111,12 +111,13 @@ func TestRefundProposalAndApprovalReadCanonicalRemainingAmount(t *testing.T) {
 }
 
 func TestRejectedDeliveryReasonSurvivesReadReplayAndReplacement(t *testing.T) {
-	r, s := fixture(t)
-	req := e.Request{ID: uuid.NewString(), BuyerOrganizationID: "buyer", ProviderOrganizationID: "provider", State: "AWAITING_ACCEPTANCE", Version: 1, Delivery: &e.Delivery{Version: 3, Content: "delivery", SubmittedAt: time.Now().UTC()}}
-	if err := r.db.Create(requestRecord(req)).Error; err != nil {
+	r, s, _, _, _, req, _ := fulfillmentFundsFixture(t)
+	req.State = "AWAITING_ACCEPTANCE"
+	req.Delivery = &e.Delivery{Version: 3, Content: "delivery", SubmittedAt: time.Now().UTC()}
+	if err := r.db.Save(requestRecord(req)).Error; err != nil {
 		t.Fatal(err)
 	}
-	c := e.Command{Scope: e.Scope{OrganizationID: "buyer", ActorID: "buyer-user"}, Key: uuid.NewString(), ID: req.ID, Kind: "reject", Version: 1, DeliveryVersion: 3, Reason: "Missing registration document"}
+	c := e.Command{Scope: e.Scope{OrganizationID: "buyer", ActorID: "buyer-user"}, Key: uuid.NewString(), ID: req.ID, Kind: "reject", Version: req.Version, DeliveryVersion: 3, Reason: "Missing registration document"}
 	first, err := s.Mutate(context.Background(), c)
 	if err != nil {
 		t.Fatal(err)

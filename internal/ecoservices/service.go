@@ -88,6 +88,40 @@ func (s *Service) Mutate(ctx context.Context, c Command) (Result, error) {
 	}
 	c.Fingerprint = ""
 	c.Fingerprint = Fingerprint(c)
+	if c.Kind == "start" || c.Kind == "deliver" || c.Kind == "accept" || c.Kind == "reject" {
+		// Replays keep their immutable result. New fulfillment must read the
+		// current funds through the original purchase, outside the E lock.
+		if result, found, err := s.repo.ReadMutationResult(ctx, c); err != nil || found {
+			return result, err
+		}
+		page, err := s.repo.Read(ctx, Query{Scope: c.Scope, Kind: "requests", ID: c.ID, Page: 1, PageSize: 1})
+		if err != nil {
+			return Result{}, err
+		}
+		if len(page.Requests) != 1 {
+			return Result{}, ErrNotFound
+		}
+		if s.trading == nil {
+			return Result{}, ErrUnavailable
+		}
+		request := page.Requests[0]
+		original, err := s.repo.OriginalFinancialCommand(ctx, request.OrderID)
+		if err != nil {
+			return Result{}, err
+		}
+		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		result, err := s.trading.ExecuteServiceCommand(callCtx, original)
+		cancel()
+		if err != nil || result.OrderID != request.OrderID || result.PaymentReceiptID == "" || result.PaymentReceiptID != request.PaymentReceiptID {
+			return Result{}, ErrUnavailable
+		}
+		if result.State == "RECONCILIATION_REQUIRED" {
+			if err := s.repo.CompleteFinancialCommand(ctx, original, result); err != nil {
+				return Result{}, err
+			}
+			return Result{}, ErrConflict
+		}
+	}
 	if c.Kind == "refund_propose" || c.Kind == "refund_review" {
 		// A replay returns the immutable original result before querying money.
 		if result, found, err := s.repo.ReadMutationResult(ctx, c); err != nil || found {
