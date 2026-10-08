@@ -54,7 +54,7 @@ func ValidateApprovalCommit(commit ApprovalCommit) error {
 		assetIDs[approved.ID] = struct{}{}
 		identity := identityFor(commit.ActionID, approved)
 		if _, exists := identities[identity]; exists {
-			return fmt.Errorf("%w: duplicate run/revision/slot/attempt/action identity", ErrInvalidApproval)
+			return fmt.Errorf("%w: duplicate typed approval identity", ErrInvalidApproval)
 		}
 		identities[identity] = struct{}{}
 	}
@@ -70,28 +70,28 @@ func ValidateInventoryScope(scope InventoryScope) error {
 }
 
 type approvalIdentity struct {
-	runID        string
-	planRevision int64
-	slotID       string
-	attempt      int
-	actionID     string
+	originIdentity string
+	runID          string
+	planRevision   int64
+	slotID         string
+	attempt        int
+	actionID       string
 }
 
 func identityFor(actionID string, approved ApprovedAsset) approvalIdentity {
 	return approvalIdentity{
-		runID:        approved.RunID,
-		planRevision: approved.PlanRevision,
-		slotID:       approved.SlotID,
-		attempt:      approved.Attempt,
-		actionID:     actionID,
+		originIdentity: approved.ApprovalIdentity(),
+		runID:          approved.RunID,
+		planRevision:   approved.PlanRevision,
+		slotID:         approved.SlotID,
+		attempt:        approved.Attempt,
+		actionID:       actionID,
 	}
 }
 
 func validateApprovedAsset(approved ApprovedAsset) error {
 	for name, value := range map[string]string{
 		"asset id": approved.ID,
-		"run id":   approved.RunID,
-		"slot id":  approved.SlotID,
 	} {
 		if !validIdentityPart(value) {
 			return fmt.Errorf("%s must be non-empty and canonical", name)
@@ -103,10 +103,20 @@ func validateApprovedAsset(approved ApprovedAsset) error {
 	if approved.SourceAssetID != "" && !validIdentityPart(approved.SourceAssetID) {
 		return errors.New("source asset id must be canonical when provided")
 	}
-	if approved.PlanRevision <= 0 {
+	if approved.SourceApproval != nil {
+		if !validateSourceApproval(approved) {
+			return errors.New("invalid source approval provenance or mixed origin")
+		}
+	} else if !validIdentityPart(approved.RunID) || !validIdentityPart(approved.SlotID) || approved.PlanRevision <= 0 || approved.Attempt <= 0 {
+		return errors.New("image agent identity must be complete")
+	}
+	if approved.SelectionReceipt != nil && (!validIdentityPart(approved.SelectionReceipt.ActionID) || !validIdentityPart(approved.SelectionReceipt.AssetID)) {
+		return errors.New("selection receipt identity must be complete")
+	}
+	if approved.SourceApproval == nil && approved.PlanRevision <= 0 {
 		return errors.New("plan revision must be positive")
 	}
-	if approved.Attempt <= 0 {
+	if approved.SourceApproval == nil && approved.Attempt <= 0 {
 		return errors.New("attempt must be positive")
 	}
 	if !approved.Role.valid() {
@@ -153,6 +163,14 @@ func cloneApprovedAssets(assets []ApprovedAsset) []ApprovedAsset {
 	out := make([]ApprovedAsset, len(assets))
 	for index, approved := range assets {
 		out[index] = approved
+		if approved.SourceApproval != nil {
+			copy := *approved.SourceApproval
+			out[index].SourceApproval = &copy
+		}
+		if approved.SelectionReceipt != nil {
+			copy := *approved.SelectionReceipt
+			out[index].SelectionReceipt = &copy
+		}
 		if approved.Operations != nil {
 			out[index].Operations = make([]string, len(approved.Operations))
 			copy(out[index].Operations, approved.Operations)

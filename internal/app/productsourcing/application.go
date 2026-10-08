@@ -34,7 +34,7 @@ func NewInternalProducer(db *gorm.DB, live sourcing.LiveOrganizationAccess, perm
 }
 
 // NewPublicAcquisition admits external public evidence as its own producer.
-func NewPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer, charges orgresource.ConsumerChargePort) (*AcquisitionService, error) {
+func NewPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer, charges orgresource.ConsumerChargePort, options ...AcquisitionPublicationOption) (*AcquisitionService, error) {
 	if ctx == nil || provider == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
@@ -42,7 +42,7 @@ func NewPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOr
 	if err != nil {
 		return nil, err
 	}
-	store, err := sourcingpersistence.NewRepositoryWithAcquisitionGuard(db, newCatalogBridge, newPublicationChargeGuard)
+	store, err := acquisitionPublicationStore(db, options)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func NewPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOr
 // NewBrowserPublicAcquisition admits the server-side browser provider under the
 // same anonymous public producer, store, and authorization as NewPublicAcquisition.
 // providerBudget bounds only the provider call; publication keeps its own bound.
-func NewBrowserPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer, providerBudget time.Duration, charges orgresource.ConsumerChargePort) (*BrowserAcquisitionService, error) {
+func NewBrowserPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer, providerBudget time.Duration, charges orgresource.ConsumerChargePort, options ...AcquisitionPublicationOption) (*BrowserAcquisitionService, error) {
 	if ctx == nil || provider == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
@@ -76,7 +76,7 @@ func NewBrowserPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing
 	if err != nil {
 		return nil, err
 	}
-	store, err := sourcingpersistence.NewRepositoryWithAcquisitionGuard(db, newCatalogBridge, newPublicationChargeGuard)
+	store, err := acquisitionPublicationStore(db, options)
 	if err != nil {
 		return nil, err
 	}

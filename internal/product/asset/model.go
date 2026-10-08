@@ -37,15 +37,17 @@ func (r Role) valid() bool {
 // ApprovedAsset is an immutable approved product-asset fact. Repositories
 // defensively copy its slice fields at their input and output boundaries.
 type ApprovedAsset struct {
-	ID            string   `json:"id"`
-	RunID         string   `json:"run_id"`
-	PlanRevision  int64    `json:"plan_revision"`
-	SlotID        string   `json:"slot_id"`
-	Attempt       int      `json:"attempt"`
-	Role          Role     `json:"role"`
-	URL           string   `json:"url"`
-	SourceAssetID string   `json:"source_asset_id,omitempty"`
-	Width         int      `json:"width,omitempty"`
-	Height        int      `json:"height,omitempty"`
-	Operations    []string `json:"operations,omitempty"`
+	SourceApproval   *SourceApprovalProvenance `json:"source_approval,omitempty"`
+	SelectionReceipt *SelectionReceipt         `json:"selection_receipt,omitempty"`
+	ID               string                    `json:"id"`
+	RunID            string                    `json:"run_id"`
+	PlanRevision     int64                     `json:"plan_revision"`
+	SlotID           string                    `json:"slot_id"`
+	Attempt          int                       `json:"attempt"`
+	Role             Role                      `json:"role"`
+	URL              string                    `json:"url"`
+	SourceAssetID    string                    `json:"source_asset_id,omitempty"`
+	Width            int                       `json:"width,omitempty"`
+	Height           int                       `json:"height,omitempty"`
+	Operations       []string                  `json:"operations,omitempty"`
 }

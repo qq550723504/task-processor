@@ -158,6 +158,21 @@ Product字段优化继续经 Product Review → Catalog 新版本；原始版本
 
 Title Apply 成功后核对 receipt 指向的 ProductVersion，再生成绑定该版本的新 target record；Asset 仅引用批准 inventory 的确切版本与 hash。每个被修改字段都必须有匹配它的 owner receipt 或明确用户手动资料来源。缺回执、部分 Apply 失败、原字段/规则/模板版本漂移时仍为待审核/待补全或冲突，不能上传。用户修改生成新不可变 record，并使旧校验及绑定失效；重新校验后才可开始上传。title-only 批准不覆盖描述、图片或法律事实。
 
+### 7.3 实施发现：直接上传的原图批准合同
+
+2026-10-08 实查 `product/asset/model.go`、`approval.go` 与 Asset persistence：当前批准身份只有 ImageAgent RunID / PlanRevision / SlotID / Attempt，未提供原始来源图的人工确认入口。这是关闭 Agent 的直接上传 Must 的新 happy-path BLOCKER；不允许为来源图伪造 Agent run/plan，也不允许强制用户开启 AI。该受影响边界补齐独立增量准入后才修改 Asset 正式路径；其余未受影响的 collection 冻结合同继续有效。
+
+最小修正由既有 Asset owner 扩展当前 approval/inventory 合同：
+
+- `SourceApprovalCommand` 只接收 action key、CollectionItemID、expected source publication/version、所选来源图片 identity 与角色；客户端不能提供替换 URL 或自报 Organization/Actor。source selector 由 collection owner 重新核对当前读/管理权限及 actor-private 原始资料，返回 exact Catalog 图片列表与来源 receipt。用户显式选择确认原图，原图不会被标为 AI 生成。
+- Asset 服务比较原图 identity/URL/来源引用摘要与 selector 返回的不可变来源事实，并记录 `OriginKind=human_source`、SourcePublicationID、SourceSnapshotVersion、SourceAssetID、source-reference hash、人为 action/Actor/Member 及 payload hash。human_source 的 RunID/PlanRevision/SlotID/Attempt 必须留空/零；image_agent origin 保留现有字段及批准身份，不能把 source 身份装进 Agent 字段。引用摘要不宣称已验证远端图片内容字节。
+- 扩展同一 Asset approved fact 的来源 discriminator/identity，并在 schema 初始化定义 source/agent 两种合法字段组合与唯一 identity。所有批准仍调用同一个 Asset repository/UoW、action replay/hash 比较与 inventory head；没有第二份 Listing-owned批准表或独立库存事实源。来源与 Agent 图片通过相同 ApprovedAssetInventory read Port 按确切 Product/version/platform 消费。
+- 每次确认保存用户此次明确选定的完整资产集合，可包含 human_source 与当前 exact inventory 中的 image_agent 图片；这些既有图片必须以 owner 读取的批准 identity/receipt 匹配，客户端不能改 URL 或角色后借用旧批准。一次 action 原子替换该 Product/version/platform 的 inventory head，并保留不可变历史。禁止把所有历史 source/Agent approval 求并集；未选中的图片不会随旧记录自动进入新资料。Source selector 同时绑定 preparation 的确切 target/effective version，标题变更后采用新 action 明确绑定，而非静默复制旧版本库存。
+- 原始 provenance 的 `OriginalPublicationID / OriginalSnapshotVersion` 与库存消费 scope 的 `EffectiveCatalogVersion` 分别保存。标题 Apply 后原始来源版本仍不可变；新的显式选择 action 由 Asset 核对 effective Catalog 中图片 identity/URL/source-reference hash 与原批准一致，生成完整集合的当前版本绑定，使 `inventory.Scope.SourceSnapshotVersion == product.Version` 继续成立。同一原始人为 receipt 可作为新 action 的出处，不能宽松跨版本读取、fallback 或覆写原始 provenance。改变图片或角色必须重新批准，再生成 target record。
+- 当前 source 确认是本地、可重放的人为批准，没有 provider 调用、费用或平台副作用；无需新增人工审核平台。测试原图替换/跨actor拒绝、同键载荷冲突、撤权、批准与库存原子保存、Agent identity 不被错误解释，以及关闭 Agent 的真正可提交路径。
+
+增量准入状态：**IMPLEMENTATION_READY**。2026-10-08 独立 reviewer `/root/supply_architecture_review` 核对实际代码，确认缺口为“核心 happy path 无法完成”的 BLOCKER，并准入本节最小修正。保留原始 provenance / effective inventory version 分离、完整集合替换、同键冲突、来源替换/跨 Actor/撤权拒绝、混合 origin 读取与关闭 Agent 可提交路径为 IMPLEMENTATION_TEST。这是实际新 Blocker 的窄增量复核，不是第三轮正常全面架构审核或新增产品决定；实现与真实上传尚未完成。
+
 ## 8. SHEIN官方上传与UNKNOWN
 
 官方资料查证于2026-10-08：

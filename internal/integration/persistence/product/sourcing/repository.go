@@ -43,12 +43,21 @@ type AcquisitionPublicationGuard interface {
 }
 type AcquisitionPublicationGuardFactory func(*gorm.DB) AcquisitionPublicationGuard
 
+// PublicationObserver saves only source references in the producer's transaction.
+// It is called for a new publication, never as a replay/backfill mechanism.
+type PublicationObserver interface {
+	Published(context.Context, sourcing.AtomicPublication, sourcing.PublicationReceipt) error
+}
+type PublicationObserverFactory func(*gorm.DB) (PublicationObserver, error)
+
 type repository struct {
-	db               *gorm.DB
-	catalog          CatalogBridgeFactory
-	acquisitionGuard AcquisitionPublicationGuardFactory
-	fault            func(string) error
-	now              func() time.Time
+	db                *gorm.DB
+	catalog           CatalogBridgeFactory
+	acquisitionGuard  AcquisitionPublicationGuardFactory
+	observer          PublicationObserverFactory
+	callerTransaction bool
+	fault             func(string) error
+	now               func() time.Time
 }
 
 type transactionReader struct{ repository *repository }
@@ -71,6 +80,29 @@ func NewRepositoryWithAcquisitionGuard(db *gorm.DB, catalog CatalogBridgeFactory
 	repository := store.(*repository)
 	repository.acquisitionGuard = guard
 	return repository, nil
+}
+
+func NewRepositoryWithPublicationObserver(db *gorm.DB, catalog CatalogBridgeFactory, guard AcquisitionPublicationGuardFactory, observer PublicationObserverFactory) (sourcing.PublicationStore, error) {
+	if observer == nil {
+		return nil, sourcing.ErrSourcePublicationUnavailable
+	}
+	store, err := NewRepositoryWithAcquisitionGuard(db, catalog, guard)
+	if err != nil {
+		return nil, err
+	}
+	store.(*repository).observer = observer
+	return store, nil
+}
+
+// NewTransactionWriter delegates commit/rollback to its owning Product UoW.
+func NewTransactionWriter(tx *gorm.DB, catalog CatalogBridgeFactory) (sourcing.PublicationStore, error) {
+	if tx == nil || tx.Dialector.Name() != "postgres" || catalog == nil {
+		return nil, sourcing.ErrSourcePublicationUnavailable
+	}
+	if _, ok := tx.Statement.ConnPool.(gorm.TxCommitter); !ok {
+		return nil, sourcing.ErrSourcePublicationUnavailable
+	}
+	return &repository{db: tx, catalog: catalog, now: time.Now, callerTransaction: true}, nil
 }
 
 // NewTransactionReader binds exact source-evidence reads to a live
@@ -197,7 +229,19 @@ func (r *repository) Publish(ctx context.Context, publication sourcing.AtomicPub
 		}
 		receipt = receiptFromRecord(existing)
 		if chargeGuard != nil {
-			return chargeGuard.Complete(ctx, receipt)
+			if err := chargeGuard.Complete(ctx, receipt); err != nil {
+				return err
+			}
+		}
+		if r.observer != nil {
+			observer, err := r.observer(tx)
+			if err != nil {
+				return err
+			}
+			if observer == nil {
+				return sourcing.ErrSourcePublicationUnavailable
+			}
+			return observer.Published(ctx, publication, receipt)
 		}
 		return nil
 	})
@@ -215,6 +259,9 @@ func (r *repository) Publish(ctx context.Context, publication sourcing.AtomicPub
 // recovery contract must distinguish a failure known before COMMIT from an
 // acknowledgement failure after COMMIT was attempted.
 func (r *repository) writeTransaction(ctx context.Context, fn func(*gorm.DB) error) (err error) {
+	if r.callerTransaction {
+		return fn(r.db.WithContext(ctx))
+	}
 	tx := r.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
 		return tx.Error
