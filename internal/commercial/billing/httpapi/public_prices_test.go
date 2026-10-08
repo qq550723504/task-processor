@@ -1,11 +1,15 @@
 package httpapi
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,9 +23,13 @@ import (
 type publicTestCatalog struct {
 	billing.OfferCatalog
 	items []billing.Offer
+	reads *atomic.Int32
 }
 
 func (s publicTestCatalog) ListResourceOffers(context.Context) ([]billing.Offer, error) {
+	if s.reads != nil {
+		s.reads.Add(1)
+	}
 	return s.items, nil
 }
 
@@ -31,6 +39,41 @@ type publicTestReader struct{ billing.OrderReader }
 type publicTestWallet struct{ billing.WalletPort }
 type publicTestGrants struct {
 	billing.PurchasedResourceGrantPort
+}
+
+func TestPublicCatalogRejectsStalledRequestBodyWithoutReading(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		name, framing, path string
+	}{
+		{"content-length", "Content-Length: 1", PublicResourceOfferPath},
+		{"chunked", "Transfer-Encoding: chunked", PublicResourceOfferPath},
+		{"query-with-body", "Content-Length: 1", PublicResourceOfferPath + "?organization_id=secret"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var reads atomic.Int32
+			service, err := billing.NewService(publicTestCatalog{reads: &reads}, publicTestQuotes{}, publicTestOrders{}, publicTestReader{}, publicTestWallet{}, publicTestGrants{})
+			require.NoError(t, err)
+			engine := gin.New()
+			engine.GET(PublicResourceOfferPath, NewHandler(service).PublicResourceOffers)
+			server := httptest.NewServer(engine)
+			defer server.Close()
+			conn, err := net.DialTimeout("tcp", strings.TrimPrefix(server.URL, "http://"), time.Second)
+			require.NoError(t, err)
+			defer conn.Close()
+			require.NoError(t, conn.SetDeadline(time.Now().Add(time.Second)))
+			// Send only headers: the declared body never arrives. A buffered
+			// httptest request cannot exercise the blocked network read/drain.
+			_, err = fmt.Fprintf(conn, "GET %s HTTP/1.1\r\nHost: localhost\r\n%s\r\n\r\n", tc.path, tc.framing)
+			require.NoError(t, err)
+			response, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: http.MethodGet})
+			require.NoError(t, err, "rejection must not wait for a body byte")
+			defer response.Body.Close()
+			require.Equal(t, http.StatusBadRequest, response.StatusCode)
+			require.True(t, response.Close, "unread body bytes must not be reused")
+			require.Zero(t, reads.Load(), "invalid anonymous requests must not read the catalog")
+		})
+	}
 }
 
 func TestPublicCatalogOnlyExposesSellablePrices(t *testing.T) {

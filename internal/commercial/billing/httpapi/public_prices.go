@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -38,16 +37,16 @@ func ValidatePublicPriceDescriptor(r httproute.Descriptor) bool {
 func (h *Handler) PublicResourceOffers(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	c.Header("X-Content-Type-Options", "nosniff")
-	if c.Request.Method != http.MethodGet || c.Request.URL.RawQuery != "" || c.Request.URL.ForceQuery {
+	if c.Request.ContentLength != 0 || len(c.Request.TransferEncoding) != 0 {
+		// Reject the declared body without reading it. Closing the connection
+		// and bounding net/http's drain also covers a peer that stops sending.
+		httproute.RejectUnreadRequestBody(c)
 		writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
 		return
 	}
-	if c.Request.Body != nil && c.Request.Body != http.NoBody {
-		body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1))
-		if err != nil || len(body) != 0 {
-			writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
-			return
-		}
+	if c.Request.Method != http.MethodGet || c.Request.URL.RawQuery != "" || c.Request.URL.ForceQuery {
+		writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+		return
 	}
 	if h == nil || h.service == nil {
 		writeServiceError(c, billing.ErrFeatureUnavailable)
