@@ -1,12 +1,12 @@
 # 通知中心 V1：站内通知与业务状态投影
 
-> Status: DESIGNING / NOT_READY
+> Status: APPROVED / IMPLEMENTATION_READY
 > Design Basis: Independent Architecture
 > Execution Issue: [#608](https://github.com/qq550723504/task-processor/issues/608)
 > Delivery Batch: 当前登录用户从顶部通知入口查看官方消息、自己有权看到的业务提醒，并回到原业务完成操作。
 > Product decisions: 用户于 2026-10-08 要求通知中心开工，选择 Figma 完整通知中心范围，并明确通知类型应按系统业务判断，不能局限于 Figma 示例。
 > Investigation baseline: main `01cdce76040f56fc4eb7cdef301f5a4850893190`。
-> 正式业务代码必须等当前执行 Issue 完成独立 Architecture Review 并记录 IMPLEMENTATION_READY 后才能修改。本文不是已交付能力声明。
+> 独立 Architecture Review 两轮已完成，设计已冻结；执行 Issue 记录 Ready 后可按本合同正式实现。本文不是已交付能力声明。
 
 ## 1. 用户结果、范围与依据
 
@@ -182,7 +182,7 @@ V1 不做跨 source k-way merge 的错误优化。一次源收集先完整枚举
 
 snapshot 来源为一次被完整收集且授权的 reference 集合，带每个 source observedAt；不是多个 owner 在同一时刻的跨库历史快照。UI在保存期间显示 pending，成功后重读；不得只清 browser unread dots。时间水位会错误消灭迟到的旧时间消息，客户端自报集合会错过其他页，两者均禁用。
 
-snapshot 创建也使用该主体/context 的 UUID Idempotency-Key：payload固定category+ALL+source schema version，同key同payload返回原snapshot（过期则STALЕ，不重新收集），异payload conflict；新snapshot与其创建命令回执共事务。单条read同样将exact ref和committed command receipt共事务；原read同key重放不标新revision。用户/context snapshot配额用同一scope锁串行检查，不能并发越限。
+snapshot 创建也使用该主体/context 的 UUID Idempotency-Key：payload固定category+ALL+source schema version，同key同payload返回原snapshot（过期则STALE，不重新收集），异payload conflict；新snapshot与其创建命令回执共事务。单条read同样将exact ref和committed command receipt共事务；原read同key重放不标新revision。用户/context snapshot配额用同一scope锁串行检查，不能并发越限。
 
 ## 5. 身份、企业与业务操作
 
@@ -265,14 +265,16 @@ Legacy decision: N/A（仅复用当前合格 Console 和 source owner；不是�
 
 ## 9. 当前准入缺口与开工边界
 
-本设计覆盖完整用户通知中心及当前业务类型。第一轮独立Architecture Review对初稿724921c0给出NOT_READY，三条finding均命中“核心happy path按当时设计无法完成”，分类BLOCKER、阻塞正式实施。一次增量定稿如下，等待第二轮只复核相关增量：
+本设计覆盖完整用户通知中心及当前业务类型。第一轮独立Architecture Review对初稿724921c0给出NOT_READY，三条finding均命中“核心happy path按当时设计无法完成”，分类BLOCKER、阻塞正式实施。一次增量定稿后，第二轮只复核相关增量，结论IMPLEMENTATION_READY：
 
 1. B1：逐源authorized纯读seam、identity/revision/真实时间或unknown、完整keyset枚举与Task/Review去重，已明确于 §3.2–3.4。reader未编码本身不是设计Blocker；生产实现留同一PR。
 2. B2：bulk snapshot、realm/context绑定、TTL/容量、完整分类/去重/计数、source改变/撤权/响应丢失与提交协议，已明确于 §4.1。
 3. B3：官方audience、不可变发布/带expected-version撤回、可信realm与scope descriptors/初始化注入，已明确于 §5–6.1。
 4. Planner遗漏归IMPLEMENTATION_TEST，现已纳入目录/读取合同。权限与业务状态/UNKNOWN/commit响应丢失等实现测试按 §10收敛，不扩建验证平台。
 
-正式业务代码仍等待第二轮明确IMPLEMENTATION_READY并在执行Issue记录Ready；不能以本次文档定稿自行签发准入。第二轮后只有新增的真实Blocker重开架构，非Blocker转实现测试或Backlog。
+独立Reviewer `notification_architecture_review` 在第二轮复核 HEAD `28908decdec995f9ac58f06977a7330c794ecb77` 的设计 blob `1b7394e0c32ca478c7773cac8c4d569a8644fd17`，确认 B1/B2/B3 已关闭，无新的设计级BLOCKER，明确IMPLEMENTATION_READY。本文后续仅记录该准入/修正STALE拼写，不改变已复核产品或领域合同；评审证据与当前HEAD保持在主要PR #609。
+
+执行Issue记录Ready后可正式编码。剩余逐源权限/纯读/全分页/稳定tuple、snapshot并发及commit重放、route selector与UI隔离均归IMPLEMENTATION_TEST，在同一Delivery Batch按 §10完成；实际测试失败仍须修复当前Must。只有新增的真实Blocker重开架构，非Blocker不恢复全局设计评审。
 
 DEPENDENCY_MISSING sources 保留各自阻塞与 owner；不把库存/广告等业务引擎作为站内通知基础部分开工前置，但完整类型落地仍不能声称完成。执行 Issue 必须公开这些缺口，用户要求的完整通知范围不因设计表格存在而完成。
 
