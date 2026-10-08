@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	e "task-processor/internal/ecoservices"
 )
 
-func assertLatePaymentReopensOnlyOriginalCancellation(t *testing.T, ctx context.Context, r *Repository, s *e.Service) {
+func assertLatePaymentReopensOnlyOriginalCancellation(t *testing.T, ctx context.Context, r *Repository, s *e.Service, closedBeforePayment bool) {
 	t.Helper()
 	req, create := checkoutAdmissionFixture(t, r)
 	if err := r.db.Create(applicationRecord(e.Application{ID: uuid.NewString(), OrganizationID: "provider", State: "ACTIVE", Version: 1, MerchantID: "original-sub"})).Error; err != nil {
@@ -37,8 +38,18 @@ func assertLatePaymentReopensOnlyOriginalCancellation(t *testing.T, ctx context.
 	}
 	cancel.DispatchOperationID = ""
 	closed := e.FinancialResult{OrderID: req.OrderID, State: "CLOSED_UNPAID", ReceiptID: "channel-closed:original", Revision: 10}
-	if err := r.CompleteFinancialCommand(ctx, cancel, closed); err != nil {
-		t.Fatal(err)
+	wantOriginalResult := ""
+	if closedBeforePayment {
+		if err := r.CompleteFinancialCommand(ctx, cancel, closed); err != nil {
+			t.Fatal(err)
+		}
+		wantOriginalResult = mustJSON(t, closed)
+	} else {
+		// B has closed the original trade, but that worker has not yet saved
+		// its closure projection in E when the late payment worker arrives.
+		if err := r.db.Model(&financialRow{}).Where("id=?", cancel.ID).Update("next_attempt_at", time.Now().UTC().Add(time.Minute)).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := r.WakeOriginalServicePurchase(ctx, req.OrderID); err != nil {
 		t.Fatal(err)
@@ -55,8 +66,8 @@ func assertLatePaymentReopensOnlyOriginalCancellation(t *testing.T, ctx context.
 	if err := r.db.Where("id=?", cancel.ID).Take(&cancelRow).Error; err != nil {
 		t.Fatal(err)
 	}
-	if cancelRow.State != "PROCESSING" || cancelRow.RecoveryGeneration != 1 || cancelRow.Fingerprint != e.Fingerprint(cancel) || !cancelRow.DispatchAdmitted || string(cancelRow.Result) != mustJSON(t, closed) {
-		t.Fatalf("original cancellation/proof was not reactivated: %+v", cancelRow)
+	if cancelRow.State != "PROCESSING" || cancelRow.RecoveryGeneration != 1 || cancelRow.Fingerprint != e.Fingerprint(cancel) || !cancelRow.DispatchAdmitted || string(cancelRow.Result) != wantOriginalResult {
+		t.Fatalf("original cancellation/proof was not reactivated: state=%s generation=%d", cancelRow.State, cancelRow.RecoveryGeneration)
 	}
 	page, err := r.Read(ctx, e.Query{Scope: e.Scope{OrganizationID: "buyer"}, Kind: "requests", ID: req.ID, Page: 1, PageSize: 1})
 	if err != nil || len(page.Requests) != 1 || page.Requests[0].State != "CANCEL_REQUESTED" || page.Requests[0].FinancialState != "CANCELLATION_PENDING" || page.Requests[0].PaymentReceiptID != paid.PaymentReceiptID {
@@ -117,8 +128,12 @@ func mustJSON(t *testing.T, v any) string {
 }
 
 func TestLatePaymentReopensOnlyOriginalCancellation(t *testing.T) {
-	r, s := fixture(t)
-	assertLatePaymentReopensOnlyOriginalCancellation(t, context.Background(), r, s)
+	for _, closedBeforePayment := range []bool{true, false} {
+		t.Run(map[bool]string{true: "closed-in-E", false: "closure-projection-delayed"}[closedBeforePayment], func(t *testing.T) {
+			r, s := fixture(t)
+			assertLatePaymentReopensOnlyOriginalCancellation(t, context.Background(), r, s, closedBeforePayment)
+		})
+	}
 }
 
 func TestLateCancellationRequiresTrustedPaymentAndCurrentClosure(t *testing.T) {

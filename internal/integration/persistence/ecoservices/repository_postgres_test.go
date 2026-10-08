@@ -66,8 +66,12 @@ func postgresFixture(t *testing.T) (context.Context, *gorm.DB, *Repository, *e.S
 	return ctx, db, repo, service
 }
 func TestEcoservicesPostgresLatePaymentReopensOriginalCancellation(t *testing.T) {
-	ctx, _, r, s := postgresFixture(t)
-	assertLatePaymentReopensOnlyOriginalCancellation(t, ctx, r, s)
+	for _, closedBeforePayment := range []bool{true, false} {
+		t.Run(map[bool]string{true: "closed-in-E", false: "closure-projection-delayed"}[closedBeforePayment], func(t *testing.T) {
+			ctx, _, r, s := postgresFixture(t)
+			assertLatePaymentReopensOnlyOriginalCancellation(t, ctx, r, s, closedBeforePayment)
+		})
+	}
 }
 
 func TestEcoservicesPostgresMerchantOriginalClaimAndImmutableIntent(t *testing.T) {
