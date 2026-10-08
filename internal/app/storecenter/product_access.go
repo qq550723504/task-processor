@@ -116,67 +116,65 @@ func merchantBinding(subject storecenter.ProductExecutionSubject, storeID string
 	return MerchantBinding{OrganizationID: subject.OrganizationID, StoreID: storeID, Site: "shein-us", StoreVersion: m.StoreVersion, ConnectionRevision: m.Connection.Version, ApplicationRevision: m.Attempt.AppVersion, SupplierIdentityHash: hex.EncodeToString(hash[:]), ServiceExpiresAt: m.ServiceExpiresAt.UTC()}
 }
 func (h *MerchantHandle) Publish(ctx context.Context, input model.PublishProduct) (model.PublishResult, error) {
-	credential, err := h.credential(ctx)
-	if err != nil || h.subject.Purpose != storecenter.ProductPurposePublish || !h.mutationSent.CompareAndSwap(false, true) {
-		return model.PublishResult{}, ErrProductAccessChanged
-	}
-	return h.owner.provider.PublishProduct(ctx, credential, input)
+	return callMerchant(ctx, h, storecenter.ProductPurposePublish, func(ctx context.Context, c storecenter.OfficialMerchantCredential) (model.PublishResult, error) {
+		return h.owner.provider.PublishProduct(ctx, c, input)
+	})
 }
 func (h *MerchantHandle) TransformImage(ctx context.Context, input model.TransformImage) (model.TransformedImage, error) {
-	credential, err := h.credential(ctx)
-	if err != nil || h.subject.Purpose != storecenter.ProductPurposeImage || !h.mutationSent.CompareAndSwap(false, true) {
-		return model.TransformedImage{}, ErrProductAccessChanged
-	}
-	return h.owner.provider.TransformProductImage(ctx, credential, input)
+	return callMerchant(ctx, h, storecenter.ProductPurposeImage, func(ctx context.Context, c storecenter.OfficialMerchantCredential) (model.TransformedImage, error) {
+		return h.owner.provider.TransformProductImage(ctx, c, input)
+	})
 }
 func (h *MerchantHandle) Sites(ctx context.Context) ([]model.MainSite, error) {
-	c, e := h.credential(ctx)
-	if e != nil {
-		return nil, e
-	}
-	return h.owner.provider.QueryProductSites(ctx, c)
+	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) ([]model.MainSite, error) {
+		return h.owner.provider.QueryProductSites(ctx, c)
+	})
 }
 func (h *MerchantHandle) Categories(ctx context.Context) ([]model.Category, error) {
-	c, e := h.credential(ctx)
-	if e != nil {
-		return nil, e
-	}
-	return h.owner.provider.QueryProductCategories(ctx, c)
+	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) ([]model.Category, error) {
+		return h.owner.provider.QueryProductCategories(ctx, c)
+	})
 }
 func (h *MerchantHandle) FillStandards(ctx context.Context, id int64) (model.FillStandards, error) {
-	c, e := h.credential(ctx)
-	if e != nil {
-		return model.FillStandards{}, e
-	}
-	return h.owner.provider.QueryProductFillStandards(ctx, c, id)
+	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) (model.FillStandards, error) {
+		return h.owner.provider.QueryProductFillStandards(ctx, c, id)
+	})
 }
 func (h *MerchantHandle) Attributes(ctx context.Context, id int64) (model.AttributeTemplate, error) {
-	c, e := h.credential(ctx)
-	if e != nil {
-		return model.AttributeTemplate{}, e
-	}
-	return h.owner.provider.QueryProductAttributes(ctx, c, id)
+	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) (model.AttributeTemplate, error) {
+		return h.owner.provider.QueryProductAttributes(ctx, c, id)
+	})
 }
 func (h *MerchantHandle) LinkedRules(ctx context.Context, input model.LinkedRulesRequest) ([]model.LinkedRules, error) {
-	c, e := h.credential(ctx)
-	if e != nil {
-		return nil, e
-	}
-	return h.owner.provider.QueryProductLinkedRules(ctx, c, input)
+	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) ([]model.LinkedRules, error) {
+		return h.owner.provider.QueryProductLinkedRules(ctx, c, input)
+	})
 }
 func (h *MerchantHandle) Brands(ctx context.Context) ([]model.Brand, error) {
-	c, e := h.credential(ctx)
-	if e != nil {
-		return nil, e
-	}
-	return h.owner.provider.QueryProductBrands(ctx, c)
+	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) ([]model.Brand, error) {
+		return h.owner.provider.QueryProductBrands(ctx, c)
+	})
 }
 func (h *MerchantHandle) PublishPermission(ctx context.Context, brand string) (model.PublishPermission, error) {
-	c, e := h.credential(ctx)
-	if e != nil {
-		return model.PublishPermission{}, e
+	return callMerchant(ctx, h, "", func(ctx context.Context, c storecenter.OfficialMerchantCredential) (model.PublishPermission, error) {
+		return h.owner.provider.QueryProductPublishPermission(ctx, c, brand)
+	})
+}
+func callMerchant[T any](ctx context.Context, h *MerchantHandle, mutationPurpose string, call func(context.Context, storecenter.OfficialMerchantCredential) (T, error)) (T, error) {
+	var zero T
+	if h == nil || h.owner == nil || ctx == nil || ctx.Err() != nil {
+		return zero, ErrProductAccessChanged
 	}
-	return h.owner.provider.QueryProductPublishPermission(ctx, c, brand)
+	ctx, cancel := context.WithDeadline(ctx, h.expiresAt)
+	defer cancel()
+	credential, err := h.credential(ctx)
+	if err != nil {
+		return zero, err
+	}
+	if mutationPurpose != "" && (h.subject.Purpose != mutationPurpose || !h.mutationSent.CompareAndSwap(false, true)) {
+		return zero, ErrProductAccessChanged
+	}
+	return call(ctx, credential)
 }
 func privateCredentialHash(material storecenter.ProductExecutionMaterial) string {
 	hash := sha256.Sum256([]byte(material.Attempt.KeyID + "\x00" + material.Attempt.Ciphertext))

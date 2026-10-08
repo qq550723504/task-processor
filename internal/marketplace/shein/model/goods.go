@@ -55,15 +55,24 @@ type ProductSKU struct {
 	Attributes           []AttributeValue `json:"sku_scope_attribute_list,omitempty"`
 	ImageInfo            *ImageInfo       `json:"image_info,omitempty"`
 	Quantity             *QuantityInfo    `json:"quantity_info,omitempty"`
-	PackageType          *int             `json:"package_type,omitempty"`
+	PackageType          *string          `json:"package_type,omitempty"`
 	CompetingProductLink string           `json:"competing_product_link,omitempty"`
+	Cost                 *CostPrice       `json:"cost_info,omitempty"`
+	MinimumStockQuantity string           `json:"minimum_stock_quantity,omitempty"`
+	StopPurchase         *int             `json:"stop_purchase,omitempty"`
 }
 type ProductSKC struct {
-	SupplierCode  string            `json:"supplier_code,omitempty"`
-	SaleAttribute AttributeValue    `json:"sale_attribute"`
-	ImageInfo     ImageInfo         `json:"image_info"`
-	Names         []LanguageContent `json:"skc_multi_language_name_list,omitempty"`
-	SKUs          []ProductSKU      `json:"sku_list"`
+	SupplierCode         string             `json:"supplier_code,omitempty"`
+	SaleAttribute        AttributeValue     `json:"sale_attribute"`
+	ImageInfo            ImageInfo          `json:"image_info"`
+	Names                []LanguageContent  `json:"skc_multi_language_name_list,omitempty"`
+	ShelfWay             string             `json:"shelf_way,omitempty"`
+	ShelfRequire         string             `json:"shelf_require,omitempty"`
+	HopeOnSaleDate       string             `json:"hope_on_sale_date,omitempty"`
+	SuggestedRetailPrice *RetailPrice       `json:"suggested_retail_price,omitempty"`
+	SiteDetailImages     []SiteDetailImages `json:"site_detail_image_info_list,omitempty"`
+	StockProofs          []StockProof       `json:"proof_of_stock_list,omitempty"`
+	SKUs                 []ProductSKU       `json:"sku_list"`
 }
 type PublishProduct struct {
 	CategoryID        int64             `json:"category_id"`
@@ -78,10 +87,58 @@ type PublishProduct struct {
 	Attributes        []AttributeValue  `json:"product_attribute_list"`
 	Sites             []SiteSelection   `json:"site_list"`
 	SKCs              []ProductSKC      `json:"skc_list"`
+	ImageInfo         *ImageInfo        `json:"image_info,omitempty"`
+	SizeAttributes    []SizeAttribute   `json:"size_attribute_list,omitempty"`
+	Sample            *SampleInfo       `json:"sample_info,omitempty"`
 	FillConfiguration *struct {
 		FilledQuantityToSKU bool `json:"filled_quantity_to_sku"`
 	} `json:"fill_configuration_info,omitempty"`
 	FillConfigurationTags []string `json:"fill_configuration_tags,omitempty"`
+}
+type CostPrice struct {
+	Price    string `json:"cost_price"`
+	Currency string `json:"currency"`
+}
+type RetailPrice struct {
+	Price    float64 `json:"price"`
+	Currency string  `json:"currency"`
+}
+type SizeAttribute struct {
+	AttributeID                 int64  `json:"attribute_id"`
+	ExtraValue                  string `json:"attribute_extra_value"`
+	RelatedSaleAttributeID      *int64 `json:"relate_sale_attribute_id,omitempty"`
+	RelatedSaleAttributeValueID *int64 `json:"relate_sale_attribute_value_id,omitempty"`
+}
+type SiteDetailImages struct {
+	Sites  []string      `json:"site_abbr_list"`
+	Images []DetailImage `json:"image_info_list"`
+}
+type DetailImage struct {
+	Sort int    `json:"image_sort"`
+	URL  string `json:"image_url"`
+}
+type StockProof struct {
+	Filename string `json:"file_name"`
+	Type     string `json:"type"`
+	URL      string `json:"url"`
+}
+type SampleInfo struct {
+	Spec        SampleSpec `json:"sample_spec"`
+	JudgeType   int        `json:"sample_judge_type"`
+	ReserveFlag int        `json:"reserve_sample_flag"`
+	SpotFlag    int        `json:"spot_flag"`
+}
+type SampleSpec struct {
+	Main SampleMainSpec  `json:"main_spec"`
+	Sub  []SampleSubSpec `json:"sub_spec_list"`
+}
+type SampleMainSpec struct {
+	AttributeID int64 `json:"attribute_id"`
+	ValueID     int64 `json:"attribute_value_id"`
+}
+type SampleSubSpec struct {
+	AttributeID string `json:"attribute_id"`
+	ValueID     string `json:"attribute_value_id"`
 }
 
 type Site struct {

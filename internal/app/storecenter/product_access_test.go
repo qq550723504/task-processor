@@ -40,13 +40,15 @@ type productProvider struct {
 	OfficialGoodsProvider
 	calls      int
 	appVersion string
+	deadline   time.Time
 }
 
 func (p *productProvider) Application() storecenter.OfficialApplication {
 	return storecenter.OfficialApplication{AppID: "app-a", Version: p.appVersion}
 }
-func (p *productProvider) PublishProduct(_ context.Context, c storecenter.OfficialMerchantCredential, input model.PublishProduct) (model.PublishResult, error) {
+func (p *productProvider) PublishProduct(ctx context.Context, c storecenter.OfficialMerchantCredential, input model.PublishProduct) (model.PublishResult, error) {
 	p.calls++
+	p.deadline, _ = ctx.Deadline()
 	return model.PublishResult{SPUName: "spu-a"}, nil
 }
 
@@ -71,6 +73,7 @@ func TestProductHandleReauthorizesBeforeSendAndCannotSerializeOrRepeatMutation(t
 	result, err := handle.Publish(ctx, model.PublishProduct{})
 	require.NoError(t, err)
 	require.Equal(t, "spu-a", result.SPUName)
+	require.False(t, provider.deadline.After(handle.expiresAt), "provider call cannot outlive merchant handle authority")
 	_, err = handle.Publish(ctx, model.PublishProduct{})
 	require.ErrorIs(t, err, ErrProductAccessChanged)
 	require.Equal(t, 1, provider.calls)

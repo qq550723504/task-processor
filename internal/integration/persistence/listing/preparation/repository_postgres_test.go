@@ -2,6 +2,8 @@ package preparationpersistence
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -56,7 +58,9 @@ func TestPostgresTransferCapturesAllPagesAndReplaysOriginalMembership(t *testing
 	for index := 0; index < 205; index++ {
 		itemID, publication, product := uuid.NewString(), uuid.NewString(), uuid.NewString()
 		chosen = append(chosen, itemID)
-		require.NoError(t, db.Create(&catalogstore.SnapshotVersionRecord{TenantID: scope.OrganizationID, ProductKey: product, Version: 1, PublicationID: publication, PayloadHash: collection.Digest(product), SnapshotJSON: []byte(`{"title":"商品"}`)}).Error)
+		snapshotJSON := []byte(`{"title":"商品"}`)
+		hash := sha256.Sum256(snapshotJSON)
+		require.NoError(t, db.Create(&catalogstore.SnapshotVersionRecord{TenantID: scope.OrganizationID, ProductKey: product, Version: 1, PublicationID: publication, PayloadHash: hex.EncodeToString(hash[:]), SnapshotJSON: snapshotJSON}).Error)
 		require.NoError(t, db.Exec("INSERT INTO product_collection_items(organization_id,actor_id,member_id,id,batch_id,product_key,publication_id,original_version,source_kind,source_operation_id,revision,created_at) VALUES(?,?,?,?,?,?,?,1,'own','',1,now())", scope.OrganizationID, scope.ActorID, scope.MemberID, itemID, batchID, product, publication).Error)
 	}
 	repository, err := NewRepository(ctx, db)
@@ -101,6 +105,28 @@ func TestPostgresTransferCapturesAllPagesAndReplaysOriginalMembership(t *testing
 	require.NoError(t, err)
 	require.True(t, replay.Replayed)
 	require.Equal(t, receipt.Preparation, replay.Preparation)
+	snapshots, err := catalogstore.NewBoundedSnapshotReader(db, 2<<20)
+	require.NoError(t, err)
+	selector, err := preparation.NewSourceSelector(service, collections, repository, snapshots)
+	require.NoError(t, err)
+	var archivedSource preparation.SourceItem
+	for _, source := range append(append(page.Items, second.Items...), third.Items...) {
+		if source.CollectionItemID == chosen[0] {
+			archivedSource = source
+		}
+	}
+	require.NotEmpty(t, archivedSource.ID)
+	selected, err := selector.Select(actor, archivedSource.ID)
+	require.NoError(t, err, "fixed source must survive later collection archive")
+	selectedScope, source, snapshot, err := selected.Read(actor)
+	require.NoError(t, err)
+	require.Equal(t, scope, selectedScope)
+	require.Equal(t, archivedSource, source)
+	require.Equal(t, "商品", snapshot.Snapshot.Title)
+	_, _, _, err = (preparation.AuthorizedSource{}).Read(actor)
+	require.ErrorIs(t, err, preparation.ErrForbidden)
+	_, err = repository.ReadRetainedSource(actor, collection.Scope{scope.OrganizationID, scope.ActorID, "rejoined-member"}, archivedSource.ID)
+	require.ErrorIs(t, err, preparation.ErrNotFound)
 	changed := input
 	changed.ExpectedRevision++
 	_, err = service.Transfer(actor, key, changed)
