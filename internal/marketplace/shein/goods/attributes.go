@@ -213,17 +213,31 @@ func (b *officialBuild) validateVariantMatrix() {
 	}
 }
 func (b *officialBuild) validateLinkedRules() {
-	productGroups := 0
-	for _, group := range b.rules.Linked {
-		if group.GroupID == "product" {
-			productGroups++
-		}
+	combinations := LinkedRuleGroups(b.result.Product)
+	expected := map[string]int{}
+	for i, combination := range combinations {
+		expected[combination.ID] = i
 	}
-	if productGroups != 1 {
+	seen := map[string]bool{}
+	for _, group := range b.rules.Linked {
+		_, ok := expected[group.GroupID]
+		if !ok || seen[group.GroupID] || group.Attributes == nil {
+			b.issue("linked_attributes", "rule_unavailable", "关联属性结果与当前规格组合不匹配")
+			return
+		}
+		seen[group.GroupID] = true
+	}
+	if len(seen) != len(expected) {
 		b.issue("linked_attributes", "rule_unavailable", "当前属性组合的关联必填规则未查询")
 		return
 	}
 	for _, group := range b.rules.Linked {
+		combination := combinations[expected[group.GroupID]]
+		var skcIndex, skuIndex int
+		isSKU := group.GroupID != "product"
+		if isSKU {
+			_, _ = fmt.Sscanf(group.GroupID, "sku-%d-%d", &skcIndex, &skuIndex)
+		}
 		for _, rule := range group.Attributes {
 			attribute, ok := b.attribute(rule.AttributeID)
 			if !ok || attribute.Type == nil {
@@ -257,14 +271,20 @@ func (b *officialBuild) validateLinkedRules() {
 					b.issue(fmt.Sprintf("%s.%d", path, rule.AttributeID), "missing", "填写关联必填属性，并选择规则允许的值")
 				}
 			}
-			if attribute.Dimension != nil && *attribute.Dimension == 1 {
+			if *attribute.Type == 1 {
+				if !isSKU {
+					b.issue("linked_attributes", "rule_unavailable", "销售属性关联规则缺少规格范围")
+					continue
+				}
+				check(fmt.Sprintf("skc_list.%d.sku_list.%d.sale_attribute_list", skcIndex, skuIndex), combination.Attributes)
+			} else if attribute.Dimension != nil && *attribute.Dimension == 1 {
 				check("product_attribute_list", b.result.Product.Attributes)
 			} else if attribute.Dimension != nil && *attribute.Dimension == 3 {
-				for i, skc := range b.result.Product.SKCs {
-					for j, sku := range skc.SKUs {
-						check(fmt.Sprintf("skc_list.%d.sku_list.%d.sku_scope_attribute_list", i, j), sku.Attributes)
-					}
+				if !isSKU {
+					b.issue("linked_attributes", "rule_unavailable", "SKU 属性关联规则缺少规格范围")
+					continue
 				}
+				check(fmt.Sprintf("skc_list.%d.sku_list.%d.sku_scope_attribute_list", skcIndex, skuIndex), b.result.Product.SKCs[skcIndex].SKUs[skuIndex].Attributes)
 			} else {
 				b.issue("linked_attributes", "rule_unavailable", "关联属性所属层级不可用")
 			}

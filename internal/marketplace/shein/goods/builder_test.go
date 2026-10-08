@@ -23,6 +23,7 @@ func officialFixture() (OfficialDraftInput, OfficialRuleSnapshot, asset.Approved
 	}
 	rules := OfficialRuleSnapshot{Categories: []model.Category{{ID: 123, ProductTypeID: 456, Leaf: rulePointer(true)}}, Sites: []model.MainSite{{ID: "shein", Sites: []model.Site{{Abbreviation: "shein-us", Status: rulePointer(1), StoreType: rulePointer(2), Currency: "USD"}}}}, Fill: model.FillStandards{DefaultLanguage: "en", DefaultTitleMaximum: rulePointer(150), SupplierCodeInSPU: rulePointer(false), Fields: []model.FillRule{}, Pictures: []model.PictureRule{{Field: "switch_spu_picture", Enabled: rulePointer(false)}, {Field: "sku_image_required", Enabled: rulePointer(false)}}}, Attributes: model.AttributeTemplate{ProductTypeID: 456, MainAttributeStatus: rulePointer(1), Attributes: []model.Attribute{{ID: 12, Name: "Default", Type: rulePointer(1), Show: rulePointer(1), MainLabel: rulePointer(1), Mode: rulePointer(2), Status: rulePointer(3), MaximumSelections: rulePointer(1), Options: []model.AttributeOption{{ID: 34, Show: rulePointer(1), Name: "Default"}}}}}, Linked: []model.LinkedRules{{GroupID: "product", Attributes: []model.LinkedAttributeRule{}}}, Brands: []model.Brand{}}
 	inventory := asset.ApprovedAssetInventory{Scope: asset.InventoryScope{TenantID: "org-a", ProductKey: "product-a", TargetPlatform: "shein", SourceSnapshotVersion: 1}, Assets: []asset.ApprovedAsset{{ID: "main", URL: "https://images.example.org/main.jpg", Width: 900, Height: 900}, {ID: "detail", URL: "https://images.example.org/detail.jpg", Width: 900, Height: 900}, {ID: "square", URL: "https://images.example.org/square.jpg", Width: 900, Height: 900}}}
+	rules.Linked = append(rules.Linked, model.LinkedRules{GroupID: "sku-0-0", Attributes: []model.LinkedAttributeRule{}})
 	return input, rules, inventory
 }
 func TestOfficialDraftUsesExactMerchantRulesAndNeverInventsRemoteImageEvidence(t *testing.T) {
@@ -63,6 +64,7 @@ func TestOfficialDraftSKUImagesDependOnQuantityAndCategoryNotSKUCount(t *testing
 	second := input.Product.SKCs[0].SKUs[0]
 	second.SupplierSKU = "second-sku"
 	input.Product.SKCs[0].SKUs = append(input.Product.SKCs[0].SKUs, second)
+	rules.Linked = append(rules.Linked, model.LinkedRules{GroupID: "sku-0-1", Attributes: []model.LinkedAttributeRule{}})
 	// Actual sales templates must distinguish two SKUs; this fixture adds one.
 	rules.Attributes.Attributes = append(rules.Attributes.Attributes, model.Attribute{ID: 56, Name: "Size", Type: rulePointer(1), Show: rulePointer(1), MainLabel: rulePointer(0), Mode: rulePointer(2), Status: rulePointer(3), MaximumSelections: rulePointer(1), Options: []model.AttributeOption{{ID: 78, Show: rulePointer(1)}, {ID: 79, Show: rulePointer(1)}}})
 	input.Product.SKCs[0].SKUs[0].SaleAttributes = []model.AttributeValue{{AttributeID: 56, AttributeValueID: rulePointer(int64(78))}}
@@ -119,6 +121,7 @@ func TestOfficialDraftConsumesBothLinkedValueRangesAndPreservesInput(t *testing.
 	rules.Attributes.Attributes = append(rules.Attributes.Attributes, model.Attribute{ID: 56, Name: "Material", Type: rulePointer(4), Show: rulePointer(1), Mode: rulePointer(3), Status: rulePointer(2), Dimension: rulePointer(1), Options: []model.AttributeOption{{ID: 91, Show: rulePointer(1)}, {ID: 92, Show: rulePointer(1)}}})
 	rules.Linked = []model.LinkedRules{{GroupID: "product", Attributes: []model.LinkedAttributeRule{{AttributeID: 56, Values: []int64{91}, PrefilledValues: []int64{92}}}}}
 	input.Product.Attributes = []model.AttributeValue{{AttributeID: 56, AttributeValueID: rulePointer(int64(92))}}
+	rules.Linked = append(rules.Linked, model.LinkedRules{GroupID: "sku-0-0", Attributes: []model.LinkedAttributeRule{}})
 	result := BuildOfficial(input, rules, inventory, nil)
 	require.Empty(t, result.Issues)
 	require.Empty(t, input.Product.SKCs[0].ImageInfo.Images)
@@ -149,4 +152,24 @@ func TestOfficialDraftOnlyPublishesSupplierCodesInMerchantChosenDimension(t *tes
 	result = BuildOfficial(input, rules, inventory, nil)
 	require.Equal(t, "source-product", result.Product.SupplierCode)
 	require.Empty(t, result.Product.SKCs[0].SupplierCode)
+}
+
+func TestOfficialDraftAppliesAssociatedRangesOnlyToTheirExactSKUCombination(t *testing.T) {
+	input, rules, inventory := officialFixture()
+	second := input.Product.SKCs[0].SKUs[0]
+	second.SupplierSKU = "sku-two"
+	input.Product.SKCs[0].SKUs = append(input.Product.SKCs[0].SKUs, second)
+	rules.Attributes.Attributes = append(rules.Attributes.Attributes,
+		model.Attribute{ID: 56, Name: "Size", Type: rulePointer(1), Show: rulePointer(1), MainLabel: rulePointer(0), Mode: rulePointer(2), Status: rulePointer(3), MaximumSelections: rulePointer(1), Options: []model.AttributeOption{{ID: 78, Show: rulePointer(1)}, {ID: 79, Show: rulePointer(1)}}},
+		model.Attribute{ID: 57, Name: "Material", Type: rulePointer(4), Show: rulePointer(1), Mode: rulePointer(3), Status: rulePointer(2), Dimension: rulePointer(3), Options: []model.AttributeOption{{ID: 91, Show: rulePointer(1)}, {ID: 92, Show: rulePointer(1)}}})
+	for i := range input.Product.SKCs[0].SKUs {
+		input.Product.SKCs[0].SKUs[i].SaleAttributes = []model.AttributeValue{{AttributeID: 56, AttributeValueID: rulePointer(int64(78 + i))}}
+		input.Product.SKCs[0].SKUs[i].Attributes = []model.AttributeValue{{AttributeID: 57, AttributeValueID: rulePointer(int64(91 + i))}}
+	}
+	rules.Linked = []model.LinkedRules{{GroupID: "product", Attributes: []model.LinkedAttributeRule{}}, {GroupID: "sku-0-0", Attributes: []model.LinkedAttributeRule{{AttributeID: 57, Values: []int64{91}}}}, {GroupID: "sku-0-1", Attributes: []model.LinkedAttributeRule{{AttributeID: 57, PrefilledValues: []int64{92}}}}}
+	result := BuildOfficial(input, rules, inventory, nil)
+	require.Empty(t, result.Issues, "SKU two's allowed range must not be applied to SKU one")
+	rules.Linked = rules.Linked[:2]
+	result = BuildOfficial(input, rules, inventory, nil)
+	require.Contains(t, issueFields(result), "linked_attributes", "every actual combination needs a current result")
 }

@@ -14,17 +14,31 @@ type RetainedSourceRepository interface {
 	ReadRetainedSource(context.Context, Scope, string) (SourceItem, error)
 }
 type SourceSelector struct {
-	service   *Service
-	owners    CollectionOwnerAuthority
-	sources   RetainedSourceRepository
-	snapshots catalog.VersionedSnapshotReader
+	service         *Service
+	owners          CollectionOwnerAuthority
+	sources         RetainedSourceRepository
+	snapshots       catalog.VersionedSnapshotReader
+	execution       collection.ExecutionAuthorizer
+	executionOwners ExecutionOwnerAuthority
+}
+
+type ExecutionOwnerAuthority interface {
+	AuthorizeExecutionOwner(context.Context, Scope) (collection.AuthorizedOwner, error)
 }
 
 func NewSourceSelector(service *Service, owners CollectionOwnerAuthority, sources RetainedSourceRepository, snapshots catalog.VersionedSnapshotReader) (*SourceSelector, error) {
 	if service == nil || owners == nil || sources == nil || snapshots == nil {
 		return nil, ErrUnavailable
 	}
-	return &SourceSelector{service, owners, sources, snapshots}, nil
+	return &SourceSelector{service: service, owners: owners, sources: sources, snapshots: snapshots}, nil
+}
+
+func (s *SourceSelector) WithExecution(authorization collection.ExecutionAuthorizer, owners ExecutionOwnerAuthority) (*SourceSelector, error) {
+	if s == nil || authorization == nil || owners == nil {
+		return nil, ErrUnavailable
+	}
+	s.execution, s.executionOwners = authorization, owners
+	return s, nil
 }
 
 type AuthorizedSource struct {
@@ -70,6 +84,33 @@ func (s *SourceSelector) Select(ctx context.Context, id string) (AuthorizedSourc
 	if err != nil || ownerScope != scope {
 		return AuthorizedSource{}, ErrForbidden
 	}
+	return s.readSelected(ctx, scope, owner, id)
+}
+
+func (s *SourceSelector) SelectForExecution(ctx context.Context, scope Scope, id string) (AuthorizedSource, error) {
+	if s == nil || ctx == nil || s.execution == nil || s.executionOwners == nil || scope.Validate() != nil {
+		return AuthorizedSource{}, ErrForbidden
+	}
+	if !collection.ValidID(id) {
+		return AuthorizedSource{}, ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	defer cancel()
+	if err := s.execution.AuthorizeExecution(ctx, scope, PermissionRead); err != nil {
+		return AuthorizedSource{}, ErrForbidden
+	}
+	owner, err := s.executionOwners.AuthorizeExecutionOwner(ctx, scope)
+	if err != nil {
+		return AuthorizedSource{}, err
+	}
+	current, err := owner.Scope(ctx)
+	if err != nil || current != scope {
+		return AuthorizedSource{}, ErrForbidden
+	}
+	return s.readSelected(ctx, scope, owner, id)
+}
+
+func (s *SourceSelector) readSelected(ctx context.Context, scope Scope, owner collection.AuthorizedOwner, id string) (AuthorizedSource, error) {
 	source, err := s.sources.ReadRetainedSource(ctx, scope, id)
 	if err != nil {
 		return AuthorizedSource{}, err

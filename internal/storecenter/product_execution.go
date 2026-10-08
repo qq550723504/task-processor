@@ -35,6 +35,19 @@ type ProductExecutionMaterial struct {
 	Connection       OfficialConnectionView
 	Attempt          OfficialConnectionAttempt `json:"-"`
 }
+
+// ProductMerchantBinding is a public reference to current Store authority. It
+// contains no credential and never grants durable execution on its own.
+type ProductMerchantBinding struct {
+	OrganizationID       string    `json:"organization_id"`
+	StoreID              string    `json:"store_id"`
+	Site                 string    `json:"site"`
+	StoreVersion         int64     `json:"store_version"`
+	ConnectionRevision   int64     `json:"connection_revision"`
+	ApplicationRevision  string    `json:"application_revision"`
+	SupplierIdentityHash string    `json:"supplier_identity_hash"`
+	ServiceExpiresAt     time.Time `json:"service_expires_at"`
+}
 type ProductExecutionReader interface {
 	ReadProductExecution(context.Context, ProductExecutionSubject, string, ProductExecutionAuthorizer, time.Time) (ProductExecutionMaterial, error)
 }

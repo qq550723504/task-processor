@@ -25,16 +25,7 @@ type OfficialGoodsProvider interface {
 	PublishProduct(context.Context, storecenter.OfficialMerchantCredential, model.PublishProduct) (model.PublishResult, error)
 	TransformProductImage(context.Context, storecenter.OfficialMerchantCredential, model.TransformImage) (model.TransformedImage, error)
 }
-type MerchantBinding struct {
-	OrganizationID       string    `json:"organization_id"`
-	StoreID              string    `json:"store_id"`
-	Site                 string    `json:"site"`
-	StoreVersion         int64     `json:"store_version"`
-	ConnectionRevision   int64     `json:"connection_revision"`
-	ApplicationRevision  string    `json:"application_revision"`
-	SupplierIdentityHash string    `json:"supplier_identity_hash"`
-	ServiceExpiresAt     time.Time `json:"service_expires_at"`
-}
+type MerchantBinding = storecenter.ProductMerchantBinding
 type OfficialProductAccess struct {
 	reader        storecenter.ProductExecutionReader
 	authorization storecenter.ProductExecutionAuthorizer

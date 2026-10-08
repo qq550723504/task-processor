@@ -1,0 +1,86 @@
+package supplychainapp
+
+import (
+	"context"
+	"time"
+
+	"task-processor/internal/authidentity"
+	"task-processor/internal/authruntime/zitadel"
+	"task-processor/internal/authz"
+	"task-processor/internal/listing/preparation"
+	"task-processor/internal/product/collection"
+	"task-processor/internal/storecenter"
+	"task-processor/internal/workbenchcontext"
+)
+
+// The same current owner contract serves request and worker callers. Original
+// member identity comes from a verified request or the durable scoped command;
+// only live exact IAM grants and current role policy grant execution.
+type OrganizationExecutionAuthorizer struct {
+	Client             *zitadel.AuthorizationClient
+	ServiceToken       func(context.Context) (string, error)
+	ProjectID          string
+	Permissions        *authz.ListingKitAuthorizer
+	OrganizationStatus workbenchcontext.OrganizationBusinessStatusChecker
+}
+
+func (a OrganizationExecutionAuthorizer) current(ctx context.Context, scope collection.Scope) ([]string, error) {
+	if ctx == nil || ctx.Err() != nil || scope.Validate() != nil || a.Client == nil || a.ServiceToken == nil || a.ProjectID == "" || a.Permissions == nil || a.OrganizationStatus == nil {
+		return nil, collection.ErrForbidden
+	}
+	if _, bounded := ctx.Deadline(); !bounded {
+		return nil, collection.ErrForbidden
+	}
+	if identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx); ok && (identity.TenantID != scope.OrganizationID || identity.EffectiveOrganizationID != scope.OrganizationID || identity.UserID != scope.ActorID || identity.EffectiveMemberID != scope.MemberID || !time.Now().Before(identity.TokenExpiresAt)) {
+		return nil, collection.ErrForbidden
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	token, err := a.ServiceToken(ctx)
+	if err != nil {
+		return nil, collection.ErrForbidden
+	}
+	grant, err := a.Client.ReadExactServiceProjectAuthorization(ctx, token, scope.ActorID, a.ProjectID, scope.OrganizationID)
+	if err != nil || !grant.Found || grant.State != "STATE_ACTIVE" || grant.AuthorizationID != scope.MemberID {
+		return nil, collection.ErrForbidden
+	}
+	suspended, err := a.OrganizationStatus.IsOrganizationSuspended(ctx, scope.OrganizationID)
+	if err != nil || suspended || ctx.Err() != nil {
+		return nil, collection.ErrForbidden
+	}
+	return grant.Roles, nil
+}
+func (a OrganizationExecutionAuthorizer) AuthorizeExecution(ctx context.Context, scope collection.Scope, permission string) error {
+	if permission != collection.PermissionRead && permission != collection.PermissionManage && permission != preparation.PermissionRead && permission != preparation.PermissionManage && permission != preparation.PermissionSubmit {
+		return collection.ErrForbidden
+	}
+	roles, err := a.current(ctx, scope)
+	if err != nil || !authz.AllowedOrganization(ctx, a.Permissions, scope.ActorID, scope.OrganizationID, roles, permission) {
+		return collection.ErrForbidden
+	}
+	return nil
+}
+func (a OrganizationExecutionAuthorizer) AuthorizeProductExecution(ctx context.Context, subject storecenter.ProductExecutionSubject) (storecenter.ProductExecutionAuthorization, error) {
+	scope := collection.Scope{OrganizationID: subject.OrganizationID, ActorID: subject.ActorID, MemberID: subject.MemberID}
+	permissions := []string{preparation.PermissionRead, authz.PermissionWorkbenchStoreRead}
+	switch subject.Purpose {
+	case storecenter.ProductPurposeRules:
+	case storecenter.ProductPurposePublish, storecenter.ProductPurposeImage:
+		permissions = append(permissions, collection.PermissionRead, preparation.PermissionManage, preparation.PermissionSubmit)
+	default:
+		return storecenter.ProductExecutionAuthorization{}, storecenter.ErrNotFound
+	}
+	roles, err := a.current(ctx, scope)
+	if err != nil {
+		return storecenter.ProductExecutionAuthorization{}, storecenter.ErrNotFound
+	}
+	for _, permission := range permissions {
+		if !authz.AllowedOrganization(ctx, a.Permissions, scope.ActorID, scope.OrganizationID, roles, permission) {
+			return storecenter.ProductExecutionAuthorization{}, storecenter.ErrNotFound
+		}
+	}
+	return storecenter.ProductExecutionAuthorization{Allowed: true, Access: storecenter.StoreMemberAccess{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID, MemberID: scope.MemberID, Administrator: a.Permissions.IsTenantAdmin("", roles), CanWrite: subject.Purpose != storecenter.ProductPurposeRules}}, nil
+}
+
+var _ collection.ExecutionAuthorizer = OrganizationExecutionAuthorizer{}
+var _ storecenter.ProductExecutionAuthorizer = OrganizationExecutionAuthorizer{}

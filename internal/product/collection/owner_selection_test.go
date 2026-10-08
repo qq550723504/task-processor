@@ -29,3 +29,40 @@ func TestRetainedSourceOwnerProofStillRequiresCurrentDataReadAndOriginalMembersh
 	_, err = service.AuthorizeOwner(ctx)
 	require.ErrorIs(t, err, ErrForbidden)
 }
+
+type executionOwnerAuth struct {
+	scope  Scope
+	denied bool
+}
+
+func (a *executionOwnerAuth) AuthorizeExecution(_ context.Context, scope Scope, permission string) error {
+	if a.denied || scope != a.scope || permission != PermissionRead {
+		return ErrForbidden
+	}
+	return nil
+}
+func TestExecutionOwnerProofUsesLiveOriginalMembershipWithoutRequestIdentity(t *testing.T) {
+	scope := Scope{"org-a", "actor-a", "member-a"}
+	current := &executionOwnerAuth{scope: scope}
+	owner := ExecutionOwnerAuthority{Authorization: current}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	proof, err := owner.AuthorizeExecutionOwner(ctx, scope)
+	require.NoError(t, err)
+	_, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+	require.False(t, ok, "durable work does not forge a JWT identity")
+	got, err := proof.Scope(ctx)
+	require.NoError(t, err)
+	require.Equal(t, scope, got)
+	current.denied = true
+	_, err = proof.Scope(ctx)
+	require.ErrorIs(t, err, ErrForbidden, "revocation after mint must stop consumption")
+	current.denied = false
+	_, err = owner.AuthorizeExecutionOwner(ctx, Scope{scope.OrganizationID, scope.ActorID, "new-member"})
+	require.ErrorIs(t, err, ErrForbidden)
+	proof.execution.expiresAt = time.Now().Add(-time.Second)
+	_, err = proof.Scope(ctx)
+	require.ErrorIs(t, err, ErrForbidden)
+	_, err = owner.AuthorizeExecutionOwner(context.Background(), scope)
+	require.ErrorIs(t, err, ErrForbidden, "execution authority requires a bounded activity context")
+}
