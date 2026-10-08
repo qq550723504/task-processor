@@ -1,7 +1,7 @@
 import {afterEach,expect,it,vi} from "vitest";
 import {proxyEcoservices} from "./ecoservices-proxy";
 import {WORKBENCH_COOKIE_NAME} from "./workbench-proxy";
-import {ecoMerchantSchema} from "@/lib/api/ecoservices";
+import {ecoMerchantSchema,ecoCheckoutSchema} from "@/lib/api/ecoservices";
 import {ecoservicesEndpoint} from "./ecoservices-proxy";
 afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs()});
 const id="4841d296-ef14-4c16-8d25-a7667e534feb";
@@ -18,6 +18,13 @@ it("bounds original merchant resume and never exposes arbitrary channel fields o
 });
 const headers={"X-Expected-User-ID":"actor","X-Expected-Organization-ID":"org",cookie:WORKBENCH_COOKIE_NAME+"=org",Origin:"http://localhost:3000"};
 function configure(){vi.stubEnv("LISTINGKIT_SERVICE_API_BASE","http://127.0.0.1:9000/api/v1");vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL","http://localhost:3000")}
+it("delivers the original supported Native up QR through the BFF and browser contract",async()=>{
+ configure();const codeUrl="weixin://wxpay/bizpayurl/up?pr=original";
+ const fetch=vi.fn().mockResolvedValue(Response.json({orderId:id,codeUrl}));vi.stubGlobal("fetch",fetch);
+ const request=new Request("http://localhost:3000/api/ecoservices/orders/"+id+"/checkout",{method:"POST",headers:{...headers,"Content-Type":"application/json","If-Match":'"7"'},body:"{}"});
+ const response=await proxyEcoservices(request,"server-token","actor");expect(response.status).toBe(200);
+ expect(ecoCheckoutSchema.parse(await response.json())).toEqual({orderId:id,codeUrl});expect(fetch).toHaveBeenCalledTimes(1);
+});
 it("forwards exact application correction versions and rejects malformed versions",async()=>{
  configure();const application={id,companyName:"corrected",registrationNumber:"registration",categories:["COMPANY_REGISTRATION"],regions:["China"],fileIds:[id],state:"SUBMITTED",version:"3",agreementVersion:"current",agreementAccepted:false,onboardingState:"NOT_STARTED",reviewReason:"",updatedAt:"2026-10-08T00:00:00Z"};const fetch=vi.fn().mockImplementation(()=>Promise.resolve(Response.json({application})));vi.stubGlobal("fetch",fetch);const body=JSON.stringify({companyName:"corrected",registrationNumber:"registration",categories:["COMPANY_REGISTRATION"],regions:["China"],fileIds:[id]});
  const make=(cas:string)=>new Request("http://localhost:3000/api/ecoservices/applications",{method:"POST",headers:{...headers,"Content-Type":"application/json","Idempotency-Key":id,"If-Match":cas},body});
