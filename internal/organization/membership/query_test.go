@@ -68,3 +68,28 @@ func TestFilteredDirectoryEnforcesQueryAndOriginalCapabilities(t *testing.T) {
 		}
 	}
 }
+
+func TestProtectedCurrentRolesRemainFilterableWithoutBecomingAssignable(t *testing.T) {
+	for _, role := range []string{"listingkit_admin", testOperateRole} {
+		t.Run(role, func(t *testing.T) {
+			a, err := authz.NewListingKitAuthorizer(nil, []string{role})
+			if err != nil {
+				t.Fatal(err)
+			}
+			d := &queryDirectory{directoryStub: directoryStub{page: Page{Items: []Member{{ID: "grant", UserID: "protected", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{role}, State: "active"}}, Total: 1}}}
+			s := testService(d, a, "project", role)
+			result, err := s.List(scopedContext("listingkit_admin"), PageRequest{Limit: 20, Filter: ListFilter{Role: role}})
+			if err != nil || d.calls != 1 || len(result.Items) != 1 {
+				t.Fatalf("role=%s result=%+v reads=%d err=%v", role, result, d.calls, err)
+			}
+			for _, assignable := range result.AssignableRoles {
+				if assignable == role {
+					t.Fatal("protected role became assignable")
+				}
+			}
+			if result.Items[0].CanChangeRole || result.Items[0].CanRemove || s.ValidInvitationRole(context.Background(), "effective-b", role) {
+				t.Fatal("protected member or role became editable")
+			}
+		})
+	}
+}

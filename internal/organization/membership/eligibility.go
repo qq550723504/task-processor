@@ -12,9 +12,10 @@ import (
 )
 
 func (s *Service) assignable(ctx context.Context, organization, role string) bool {
-	if s.protectedRoles[role] {
-		return false
-	}
+	return !s.protectedRoles[role] && s.definedRole(ctx, organization, role)
+}
+
+func (s *Service) definedRole(ctx context.Context, organization, role string) bool {
 	if role == "listingkit_admin" {
 		return true
 	}

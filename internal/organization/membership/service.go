@@ -65,7 +65,7 @@ func (s *Service) List(ctx context.Context, page PageRequest) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if page.Filter.Role != "" && !s.assignable(ctx, identity.EffectiveOrganizationID, page.Filter.Role) {
+	if page.Filter.Role != "" && !s.definedRole(ctx, identity.EffectiveOrganizationID, page.Filter.Role) {
 		return Result{}, ErrInvalidRequest
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

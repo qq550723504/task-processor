@@ -55,13 +55,14 @@ func TestRegistryConformanceCanonicalInspectionVerticalSlice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewListingKitAuthorizer(): %v", err)
 	}
+	casbin.SetRolePolicyReader(canonicalInspectionRolePolicy{})
 	authorizer, err := commercetoolauth.NewCasbinAuthorizer(casbin)
 	if err != nil {
 		t.Fatalf("NewCasbinAuthorizer(): %v", err)
 	}
 
 	now := time.Date(2026, 9, 11, 12, 0, 0, 0, time.UTC)
-	grants := &conformanceGrantLoader{grants: []authidentity.OrganizationGrant{{OrganizationID: "org-a", ProjectID: "project-1", Roles: []string{"listingkit_operator"}}}}
+	grants := &conformanceGrantLoader{grants: []authidentity.OrganizationGrant{{OrganizationID: "org-a", ProjectID: "project-1", Roles: []string{authz.EnterpriseRoleKey("org-a", 1)}}}}
 	organizationResolver := workbenchcontext.NewResolver(grants, "project-1", "v1", nil, workbenchcontext.WithResolverClock(func() time.Time { return now }))
 	principalResolver, err := commercetoolauth.NewWorkbenchPrincipalResolver(commercetoolauth.CachedReadOrganizationResolverFunc(func(ctx context.Context, request commercetoolauth.OrganizationRequest) (authidentity.AuthenticatedIdentity, error) {
 		return organizationResolver.Resolve(ctx, httproute.OrganizationAccessPolicyCachedRead, workbenchcontext.ResolveInput{
@@ -109,7 +110,7 @@ func TestRegistryConformanceCanonicalInspectionVerticalSlice(t *testing.T) {
 
 	// Reconstructing the callable boundary still reads the immutable fact.
 	grants.err = nil
-	grants.grants = []authidentity.OrganizationGrant{{OrganizationID: "org-a", ProjectID: "project-1", Roles: []string{"listingkit_operator"}}}
+	grants.grants = []authidentity.OrganizationGrant{{OrganizationID: "org-a", ProjectID: "project-1", Roles: []string{authz.EnterpriseRoleKey("org-a", 1)}}}
 	restarted, err := canonicalinspect.NewInvoker(reader, agent, commercetool.InvocationDependencies{
 		PrincipalResolver: principalResolver, Authorizer: authorizer, Recorder: audits,
 		Tracer: traceProvider.Tracer("canonicalinspect-conformance-restarted"), Now: func() time.Time { return now }, AuditTimeout: time.Second,
@@ -232,4 +233,16 @@ func captureConformanceCatalogState(t *testing.T, db *gorm.DB) conformanceCatalo
 		t.Fatalf("load heads: %v", err)
 	}
 	return state
+}
+
+type canonicalInspectionRolePolicy struct{}
+
+func (canonicalInspectionRolePolicy) RoleModules(_ context.Context, org string, keys []string) (map[string][]string, error) {
+	result := map[string][]string{}
+	for _, key := range keys {
+		if key == authz.EnterpriseRoleKey(org, 1) {
+			result[key] = []string{"agents"}
+		}
+	}
+	return result, nil
 }

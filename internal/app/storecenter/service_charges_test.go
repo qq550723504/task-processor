@@ -26,8 +26,8 @@ func (serviceContextAccess) AuthorizeStoreMember(ctx context.Context, org string
 	if !ok || id.EffectiveOrganizationID != org {
 		return storecenter.StoreMemberAccess{}, storecenter.ErrNotFound
 	}
-	a := authz.DefaultListingKitAuthorizer()
-	return storecenter.StoreMemberAccess{OrganizationID: org, ActorID: id.UserID, MemberID: id.EffectiveMemberID, Administrator: a.IsTenantAdmin(id.UserID, id.Roles), CanWrite: a.Authorize(id.UserID, id.Roles, authz.PermissionWorkbenchStoreUpdate)}, nil
+	a := serviceTestAuthorizer()
+	return storecenter.StoreMemberAccess{OrganizationID: org, ActorID: id.UserID, MemberID: id.EffectiveMemberID, Administrator: a.IsTenantAdmin(id.UserID, id.Roles), CanWrite: authz.AllowedOrganization(ctx, a, id.UserID, org, id.Roles, authz.PermissionWorkbenchStoreUpdate)}, nil
 }
 
 type delayedStoreSettlement struct{ orgresource.ConsumerChargePort }
@@ -103,7 +103,7 @@ func newServiceChargeFixture(t *testing.T) serviceChargeFixture {
 	require.NoError(t, err)
 	repo, err := storecenter.NewMemberScopedStoreRepository(storeDB, serviceContextAccess{})
 	require.NoError(t, err)
-	member, admin := serviceContext("operator", "member-a", "listingkit_operator"), serviceContext("admin", "member-admin", "listingkit_admin")
+	member, admin := serviceContext("operator", "member-a", authz.EnterpriseRoleKey("org-a", 1)), serviceContext("admin", "member-admin", "listingkit_admin")
 	store, err := storecenter.NewStore(storecenter.CreateStoreInput{ID: uuid.NewString(), OrganizationID: "org-a", ActorSubject: "operator", Name: "Store", Platform: "shein", Region: "SG", ExternalStoreID: "external", CreateIdempotencyKey: uuid.NewString(), OccurredAt: time.Now().UTC().Add(-time.Minute)})
 	require.NoError(t, err)
 	store, _, err = repo.CreateOrReplay(member, "org-a", store)
@@ -120,7 +120,7 @@ func serviceApplication(t *testing.T, f serviceChargeFixture, port orgresource.C
 	t.Helper()
 	executor, err := NewServiceLifecycleExecutor(f.repo, port, connectedStore{})
 	require.NoError(t, err)
-	application, err := storecenter.NewServiceLifecycleApplication(f.repo, executor, connectedStore{}, authz.DefaultListingKitAuthorizer(), storecenter.Phase1ServiceQuantityPolicy{}, time.Now)
+	application, err := storecenter.NewServiceLifecycleApplication(f.repo, executor, connectedStore{}, serviceTestAuthorizer(), storecenter.Phase1ServiceQuantityPolicy{}, time.Now)
 	require.NoError(t, err)
 	return application
 }
@@ -200,4 +200,24 @@ func TestServiceChargeReleasesOriginalMemberWhenGrantRevokedBeforeBinding(t *tes
 	require.NoError(t, err)
 	require.EqualValues(t, 1, store.Version())
 	require.Nil(t, store.Snapshot().ServiceExpiresAt)
+}
+
+type serviceRolePolicyFixture struct{}
+
+func (serviceRolePolicyFixture) RoleModules(_ context.Context, org string, keys []string) (map[string][]string, error) {
+	result := map[string][]string{}
+	for _, key := range keys {
+		if key == authz.EnterpriseRoleKey(org, 1) {
+			result[key] = []string{"stores"}
+		}
+	}
+	return result, nil
+}
+func serviceTestAuthorizer() *authz.ListingKitAuthorizer {
+	a, err := authz.NewListingKitAuthorizer(nil, nil)
+	if err != nil {
+		panic(err)
+	}
+	a.SetRolePolicyReader(serviceRolePolicyFixture{})
+	return a
 }

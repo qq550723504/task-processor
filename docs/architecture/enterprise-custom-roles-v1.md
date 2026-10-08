@@ -204,23 +204,31 @@ or shared/real account mutations are authorized.
 
 ### Concrete initialization and permission mapping
 
-`internal/zitadelprovision` extends the existing local project/enterprise bootstrap
-with an opt-in role-slot initialization, using the existing bootstrap credential
-only. Existing `ensureProjectGrant` is not used to add slots to populated grants:
-the slot path reads the exact grant, creates a new grant when absent, or verifies
-an exact already-initialized grant. A mismatched existing grant returns an error
-without UpdateProjectGrant. All native role/grant reads are fully paginated and
-bounded; the existing default role search must not truncate the slot inventory.
-The home project's owner organization also receives slots and uses project roles
-directly, without a self project grant. Bootstrap emits non-secret exact-scope
-slot inventory after native read-back. `organization-membership-schema-init`
-accepts this explicit inventory file, validates deterministic keys and scope, and
-inserts slots idempotently in its schema-owner transaction. It cannot install an
-alternate key, rebind a populated slot or import users/assignments. Compose's
-existing initialization owner wires this file only for a fresh instance.
-Every slot-enabled bootstrap entry and repeated initialization uses the same exact
-Administrator + enterprise slot set and refuses an existing mismatched grant;
-the previous fixed-role helper cannot run first and remove the slots.
+The fresh Compose path uses the existing OpenTofu initialization owner in
+`deployments/zitadel/terraform`. It derives all 64 keys from each actual native
+organization ID, registers them and the fixed administrator role, and emits
+`enterprise-role-slots.json` from the exact Terraform inventory after native
+initialization succeeds. Apply runs with `-parallelism=1` for the native provider's
+project-role event constraint. The initializer marks the first attempt with
+`.terraform-started` and records `.terraform-complete` only after success;
+a completed instance exits without reapplying native roles or grants, and an
+incomplete first attempt refuses to rewrite an existing instance.
+
+The opt-in `internal/zitadelprovision` bootstrap is also used by the existing local
+acceptance fixture. It resolves actual native organization IDs before deriving
+slots. The slot path reads the exact grant, creates it when absent or verifies an
+exact already-initialized grant; a mismatched existing grant returns an error
+without UpdateProjectGrant. Native role/grant reads are fully paginated and
+bounded. The home project's owner uses project roles without a self project
+grant. Every slot-enabled entry and repeated fixture initialization verifies the
+same Administrator + enterprise slot set; the previous fixed-role helper cannot
+run first and remove slots.
+
+`organization-membership-schema-init` consumes the explicit fresh inventory,
+validates deterministic keys and scope, and inserts slots idempotently in its
+schema-owner transaction. It cannot install an alternate key, rebind a populated
+slot or import users/assignments. Runtime role creation/save never invokes either
+native initializer.
 
 Product acquisition does not grant ListingKitAdminRead/Write. Those constants
 currently collide with unrelated optional SHEIN record and Commercial overview
@@ -228,8 +236,10 @@ routes. The current Product Agent execution/routes, Product Review read/write
 routes/service and product catalog/asset/readiness inspect tool definitions use
 the existing LocalAgentWrite permission instead. Each retains its independent
 enterprise, owner, TenantAdmin, Human Review, budget and provider gates. Agent
-configuration's domain-availability probe uses LocalAgentWrite; writes still
-require AgentConfigure. Commercial overview uses CommercialRead in both route
+configuration's domain-availability probe uses LocalAgentWrite and reports
+source-evidence inspection as a required ProductSourcingWrite capability; missing
+acquisition permission disables execution with a visible reason, without adding
+that permission to the My Agents module. Writes still require AgentConfigure. Commercial overview uses CommercialRead in both route
 and service. No SHEIN record authorization or financial semantics are changed.
 
 The HTTP module attaches the Membership role-policy reader to the one shared

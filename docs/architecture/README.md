@@ -73,6 +73,8 @@ Use these as the main source of truth for structural work:
   - tenant self-service subscription offer/quote/order, source-bound subscription activation, settlement and recovery contract for #478/#479
 - `store-center-current-application-v1.md`
   - #552 current Console Store record management, owner pools, quota, authorization and single-state hard-cut; service activation remains a separate unopened capability
+- `enterprise-custom-roles-v1.md`
+  - IMPLEMENTATION_READY #598 Figma members and enterprise role definitions, native role slots, scoped permissions and mutation receipts
 - `httpapi-assembly-boundaries.md`
   - HTTP API ownership, route/module builder boundaries, and app/httpapi limits
 - `app-assembly-boundaries.md`

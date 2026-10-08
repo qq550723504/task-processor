@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { createRoleInput, saveRoleInput, enterpriseRoleKey, parseEnterpriseRoles, parseRoleMutation } from "@/lib/api/enterprise-roles";
+import {
+  createRoleInput,
+  saveRoleInput,
+  enterpriseRoleKey,
+  parseEnterpriseRoles,
+  parseRoleMutation,
+} from "@/lib/api/enterprise-roles";
 import {
   MemberError,
   memberSummarySchema,
@@ -59,8 +65,27 @@ function endpoint(url: URL, method: string) {
   const path = url.pathname.slice(base.length);
   const parts = path.split("/");
   if (!url.search && parts[0] === "roles") {
-    if (parts.length === 1 && ["GET", "POST"].includes(method)) return {path, operation:false, schema:method === "POST" ? createRoleInput : null, roles:method === "GET", roleMutation:method === "POST"};
-    if (parts.length === 3 && enterpriseRoleKey.safeParse(parts[1]).success && parts[2] === "permissions" && method === "POST") return {path, operation:false, schema:saveRoleInput, roleMutation:true};
+    if (parts.length === 1 && ["GET", "POST"].includes(method))
+      return {
+        path,
+        operation: false,
+        schema: method === "POST" ? createRoleInput : null,
+        roles: method === "GET",
+        roleMutation: method === "POST",
+      };
+    if (
+      parts.length === 3 &&
+      enterpriseRoleKey.safeParse(parts[1]).success &&
+      parts[2] === "permissions" &&
+      method === "POST"
+    )
+      return {
+        path,
+        operation: false,
+        schema: saveRoleInput,
+        roleMutation: true,
+        targetRoleId: parts[1],
+      };
     return null;
   }
   if (!url.search && path === "members/summary" && method === "GET")
@@ -106,14 +131,20 @@ function endpoint(url: URL, method: string) {
   }
   if (method === "GET" && parts[0] === "members" && parts.length === 1) {
     if (url.search.length > 2049 || url.search.includes(";")) return null;
-    try { for (const part of url.search.slice(1).split("&")) decodeURIComponent(part.replace(/\+/g," ")); } catch { return null; }
+    try {
+      for (const part of url.search.slice(1).split("&"))
+        decodeURIComponent(part.replace(/\+/g, " "));
+    } catch {
+      return null;
+    }
     for (const [key, value] of url.searchParams) {
       if (url.searchParams.getAll(key).length !== 1) return null;
-      if (["q","role","state"].includes(key)) {
+      if (["q", "role", "state"].includes(key)) {
         if (key !== "q" && value === "") return null;
         continue;
       }
-      if (!["limit","offset"].includes(key) || !/^\d+$/.test(value)) return null;
+      if (!["limit", "offset"].includes(key) || !/^\d+$/.test(value))
+        return null;
       const n = Number(value);
       if (
         (key === "limit" && (n < 1 || n > 100)) ||
@@ -121,7 +152,14 @@ function endpoint(url: URL, method: string) {
       )
         return null;
     }
-    if (!memberListFilterSchema.safeParse({q:url.searchParams.get("q") ?? "",role:url.searchParams.get("role") ?? "",state:url.searchParams.get("state") ?? ""}).success) return null;
+    if (
+      !memberListFilterSchema.safeParse({
+        q: url.searchParams.get("q") ?? "",
+        role: url.searchParams.get("role") ?? "",
+        state: url.searchParams.get("state") ?? "",
+      }).success
+    )
+      return null;
     return { path, operation: false, schema: null };
   }
   if (url.search) return null;
@@ -260,31 +298,37 @@ export async function proxyMembers(
         response.status,
         memberErrorCode(response.status, payload),
       );
-    const result = route.roles ? parseEnterpriseRoles(payload)
-      : route.roleMutation ? parseRoleMutation(payload, headers.get("Idempotency-Key")!)
-      : route.summary
-      ? memberSummarySchema.parse(payload)
-      : route.invitationSummary
-        ? invitationSummarySchema.parse(payload)
-        : route.invitations
-          ? invitationsSchema.parse(payload)
-          : route.invitation
-            ? parseInvitation(
-                payload,
-                route.schema
-                  ? headers.get("Idempotency-Key")!
-                  : route.path.split("/")[1],
-              )
-            : route.operations
-              ? parseMemberOperations(payload)
-              : route.operation
-                ? parseMemberOperation(
+    const result = route.roles
+      ? parseEnterpriseRoles(payload)
+      : route.roleMutation
+        ? parseRoleMutation(
+            payload,
+            headers.get("Idempotency-Key")!,
+            route.targetRoleId,
+          )
+        : route.summary
+          ? memberSummarySchema.parse(payload)
+          : route.invitationSummary
+            ? invitationSummarySchema.parse(payload)
+            : route.invitations
+              ? invitationsSchema.parse(payload)
+              : route.invitation
+                ? parseInvitation(
                     payload,
                     route.schema
                       ? headers.get("Idempotency-Key")!
                       : route.path.split("/")[1],
                   )
-                : parseMembers(payload);
+                : route.operations
+                  ? parseMemberOperations(payload)
+                  : route.operation
+                    ? parseMemberOperation(
+                        payload,
+                        route.schema
+                          ? headers.get("Idempotency-Key")!
+                          : route.path.split("/")[1],
+                      )
+                    : parseMembers(payload);
     if (route.operations && "items" in result && "next" in result) {
       const limit = Number(url.searchParams.get("limit") ?? "20"),
         after = url.searchParams.get("after") ?? "";

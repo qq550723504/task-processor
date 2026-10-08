@@ -11,7 +11,35 @@ import { AgentPage } from "./agent-page";
 const scope = vi.hoisted(() => ({
   user: { id: "actor" },
   effectiveOrganization: { id: "org-a", name: "企业A" },
-  roles: ["listingkit_admin"], permissions: ["listingkit.admin.read","listingkit.admin.write","product_sourcing.write","local_agent.write","listingkit.image_agent.read","listingkit.image_agent.write","workbench.agent.read","workbench.agent.use","workbench.agent.configure","workbench.chat.read","workbench.chat.use","workbench.task.read","workbench.knowledge.read","workbench.knowledge.manage","workbench.store.read","workbench.store.create","workbench.store.update","workbench.store.lifecycle","workbench.store.delete","workbench.source_account.read","workbench.source_account.manage","workbench.organization_member.read","workbench.organization_member.manage","workbench.commercial.read","workbench.commercial.purchase","workbench.commercial.wallet_topup"],
+  roles: ["listingkit_admin"],
+  permissions: [
+    "listingkit.admin.read",
+    "listingkit.admin.write",
+    "product_sourcing.write",
+    "local_agent.write",
+    "listingkit.image_agent.read",
+    "listingkit.image_agent.write",
+    "workbench.agent.read",
+    "workbench.agent.use",
+    "workbench.agent.configure",
+    "workbench.chat.read",
+    "workbench.chat.use",
+    "workbench.task.read",
+    "workbench.knowledge.read",
+    "workbench.knowledge.manage",
+    "workbench.store.read",
+    "workbench.store.create",
+    "workbench.store.update",
+    "workbench.store.lifecycle",
+    "workbench.store.delete",
+    "workbench.source_account.read",
+    "workbench.source_account.manage",
+    "workbench.organization_member.read",
+    "workbench.organization_member.manage",
+    "workbench.commercial.read",
+    "workbench.commercial.purchase",
+    "workbench.commercial.wallet_topup",
+  ],
   isLoading: false,
   isSwitching: false,
   error: null,
@@ -122,4 +150,69 @@ it("drops a late protected response after switching A to B to A", async () => {
     ),
   );
   expect(screen.queryByText("旧企业受保护内容")).toBeNull();
+});
+
+it("shows the required acquisition permission when title execution cannot use evidence", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json({
+        items: [
+          {
+            ...item,
+            agent: {
+              ...item.agent,
+              activation: "ENABLED",
+              revision: "1",
+              activationEpoch: "1",
+            },
+            canConfigure: false,
+            canUse: false,
+            canReadRuns: true,
+            capabilities: [
+              {
+                id: "text.generate",
+                support: "REQUIRED",
+                readiness: "AVAILABLE",
+                reason: "模型已接入",
+                observedAt: "2026-10-08T00:00:00Z",
+              },
+              {
+                id: "product.source-evidence",
+                support: "REQUIRED",
+                readiness: "REQUIRES_AUTHORIZATION",
+                reason: "标题执行需要1688采集模块权限",
+                observedAt: "2026-10-08T00:00:00Z",
+              },
+              {
+                id: "knowledge.context",
+                support: "OPTIONAL",
+                readiness: "UNAVAILABLE",
+                reason: "未接入",
+                observedAt: "2026-10-08T00:00:00Z",
+              },
+              {
+                id: "image.generate",
+                support: "NOT_SUPPORTED",
+                readiness: "UNAVAILABLE",
+                reason: "未提供",
+                observedAt: "2026-10-08T00:00:00Z",
+              },
+              {
+                id: "platform.write",
+                support: "NOT_SUPPORTED",
+                readiness: "UNAVAILABLE",
+                reason: "未提供",
+                observedAt: "2026-10-08T00:00:00Z",
+              },
+            ],
+          },
+        ],
+        nextCursor: "",
+      }),
+    ),
+  );
+  render(<AgentPage mode="mine" />);
+  expect(await screen.findByText("标题执行需要1688采集模块权限")).toBeTruthy();
+  expect(screen.getByText("采集证据读取")).toBeTruthy();
 });
