@@ -1,12 +1,12 @@
 # 生态服务 V1：第三方入驻、服务交付与在线收款结算
 
-状态：**DESIGN_DRAFT / NOT_READY**。本文件是 [Issue #603](https://github.com/qq550723504/task-processor/issues/603) 的设计草案，尚未完成独立 Architecture Review，不授权生产代码、schema、真实渠道操作或部署。
+状态：**IMPLEMENTATION_READY**。本文件是 [Issue #603](https://github.com/qq550723504/task-processor/issues/603) 的冻结设计基线；独立高风险 Architecture Review 已通过，允许唯一 Writer 按本范围实施和必要自检，不授权真实渠道操作、合并或部署。
 设计日期：2026-10-08。只读代码基线：`main @ 01cdce76040f56fc4eb7cdef301f5a4850893190`。设计负责人：会话 `01a1199e-0e7e-7441-9173-6365078417a0`。
 
 ## 1. 已确认产品决定与待决项
 
 用户在本会话明确确认：按当前 Figma 生态服务设计交付；允许第三方服务商入驻，由第三方处理需求与交付；平台在线收款，再向第三方结算；**平台抽成 10%，支付手续费由平台承担，第三方服务不产生个人推广佣金；客户验收后，通过支付渠道分账**。同日用户批准下述取消/退款规则，并回复“按这两项推进”：首版采用微信平台收付通，一次付款、验收后分账；超过渠道冻结期限的服务暂不开放在线下单，分阶段付款留到后续。
-费率必须在成交报价/订单中封存，后续费率变更不能改写既有交易。本文件其余技术方案均为待审草案，不把方案建议记为用户决定。
+费率必须在成交报价/订单中封存，后续费率变更不能改写既有交易。本文件技术合同经独立评审冻结；技术选型不冒充用户产品决定。
 
 | 项目 | 当前状态 | 对本批次的影响 |
 | --- | --- | --- |
@@ -264,7 +264,7 @@ E1/E4的pending command本身就是有界durable outbox，不另建通用平台�
 | GET/POST application、agreement、onboarding | CurrentIdentity + LiveWrite，workbench.ecoservices.join；目标原申请属于当前服务商org | 申请加入/申请进度 |
 | GET/POST provider listings / publish | CurrentIdentity + LiveWrite，workbench.ecoservices.manage；原服务商org、准入状态 | 申请加入后的服务发布面板 |
 | GET requests / summary / detail | CurrentIdentity + LiveWrite，workbench.ecoservices.read；当前org为原buyer/provider之一，按侧投影 | 我的服务/我承接的需求 |
-| POST quote / start / delivery | CurrentIdentity + LiveWrite，workbench.ecoservices.manage；原provider org | 我的服务里的服务商处理面板 |
+| POST quote / start / delivery / refund proposal or confirmation | CurrentIdentity + LiveWrite，workbench.ecoservices.manage；原provider org，退款确认绑定双方一致的精确金额/版本 | 我的服务里的服务商处理面板 |
 | POST request / quote confirmation / accept / reject / cancel / refund proposal | CurrentIdentity + LiveWrite，workbench.ecoservices.purchase；原buyer org/精确版本 | 客户详情和付款面板 |
 | checkout / financial status | CurrentIdentity + LiveWrite，purchase + 原buyer org；只读真实billing结果 | 二维码付款和订单资金进度 |
 | files create/confirm/download | CurrentIdentity + LiveWrite，当前业务action与原parent关系；platform只按平台路由取目标 | 私有资质、客户材料、交付文件 |
@@ -297,4 +297,15 @@ Schema按现有owner SQL/provision模式交付，全新安装、空业务数据�
 
 ## 12. 独立评审记录
 
-当前候选等待独立高风险Architecture Review，正式业务代码未修改。独立Reviewer先读本文件已确认决定、AR1和AGENTS，只审本批新增资金、跨企业权限、持久化/幂等及原渠道副作用边界，最多两轮正常评审。Finding逐条分类并说明受影响Must/具体操作/阻塞层级；AR1不得被重新升级为BLOCKER。达到IMPLEMENTATION_READY后的普通实现细化在必要测试中收敛，不创建版本化设计文档链。
+2026-10-08，独立只读 Reviewer `ecoservices_architecture_review` 审查准确设计提交 `0e4d1683477fcd5af21c1f5cf8484ef5d40b1730`（PR #604）。结论：未发现成立的设计 BLOCKER，可进入 IMPLEMENTATION_READY。评审时正式生产代码、schema、配置均未修改。本轮为第 1 轮，不代表产品验收或真实资金开放。
+
+以下 Finding 均分类为 IMPLEMENTATION_TEST，必须在同一主要 PR 合并前实施并验证，不重新打开已冻结设计：
+
+| Finding | 受影响 Must / 后果 | Action |
+| --- | --- | --- |
+| 非计佣的旧接受入口及消费者旁路 | 服务退款合法且不产生推广佣金 | service purpose 精确接受/回读；旧普通入口拒绝；退款/拒付和推广消费者验证，保留充值/普通计佣回归 |
+| cancel/checkout 跨 owner 与迟到付款 | 开始前取消全额退款；不能重新生成支付能力 | cancel 先提交禁止新 checkout；在途只核实/关闭原单；迟到可信支付入原资金事实并转原退款，不进入可交付 |
+| 零佣金、验收前部分退款 | 10% 与累计同比例退款 | 以已确认累计退款净额计算；零 share/return 由本地不可变无经济效果证明跳过；验证小额累计、全退及回退后退款失败 |
+| 双方退款协商精确版本入口 | 开始后双方协商、平台审核 | 服务商提案/确认绑定原订单、金额及版本；变更金额/版本使旧同意失效；平台只消费双确认同版本 |
+
+AR1 为 ACCEPTED_RISK，不增加自动验收/超期退款；真实渠道资格、手续费配置、冻结/退款/回退时限在开放前核实。渠道已知终态失败记明确人工原因，不能无限记为 UNKNOWN。正式实施及最终交付检查沿本设计与 AGENTS，不创建版本化设计文档链。
