@@ -56,7 +56,7 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
  const locked=busy||!!intent||mediaBlocked;
  useEffect(()=>context.registerOrganizationSwitchGuard(()=>!flight.current),[context]);
  useEffect(()=>{active.current=true;return()=>{active.current=false;abort.current?.abort()}},[]);
- function fail(value:unknown){setError(value instanceof ImageSetError?value.code:value instanceof Error?value.message:"IMAGE_UNAVAILABLE")}
+ const fail=useCallback((value:unknown)=>{setError(value instanceof ImageSetError?value.code:value instanceof Error?value.message:"IMAGE_UNAVAILABLE")},[]);
  const remember=useCallback((p:ImageSetRun)=>{if(!active.current)return;setRun(p);localStorage.setItem(storageKey+":run",p.runId)},[storageKey]);
  const clearIntent=useCallback(()=>{localStorage.removeItem(storageKey+":intent");setIntent(null)},[storageKey]);
  function installTemplate(t:ImageAgentTemplate,evidence?:Record<string,string>){
@@ -74,8 +74,10 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
   const binding=JSON.stringify([p.runId,p.plan.Target,p.plan.Source]);
   if(p.plan.Target.Platform==="shein"&&(rulesBinding.current!==binding||!["executing","evaluating","repairing"].includes(p.status))){
    setRequirements(undefined);setPreview(null);
-   const value=await imageSetRequest(stableScope,"requirements",imageSetRequirementsSchema,{body:{target:p.plan.Target,effectiveCatalogVersion:p.plan.Source.EffectiveVersion,...p.plan.Source.ApplyReceiptID?{applyReceiptId:p.plan.Source.ApplyReceiptID}:{}},signal});if(!isCurrent())return;
-   rulesBinding.current=binding;setRequirements(value);
+   try{
+    const value=await imageSetRequest(stableScope,"requirements",imageSetRequirementsSchema,{body:{target:p.plan.Target,effectiveCatalogVersion:p.plan.Source.EffectiveVersion,...p.plan.Source.ApplyReceiptID?{applyReceiptId:p.plan.Source.ApplyReceiptID}:{}},signal});if(!isCurrent())return;
+    rulesBinding.current=binding;setRequirements(value);
+   }catch(e){if(!isCurrent())return;rulesBinding.current="";fail(e)}
   }
   if(p.plan.Regeneration){
    const parent=await imageSetRequest(stableScope,"read",imageSetRunSchema,{runId:p.plan.Regeneration.RunID,signal});if(!isCurrent())return;
@@ -83,7 +85,7 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
   }else setPriorRuns([]);
   if(p.status==="completed"){setMessage("本次批准已保存为正式商品素材。");if(notified.current!==p.runId){notified.current=p.runId;savedCallback.current?.()}}
   return p;
- },[stableScope,remember]);
+ },[stableScope,remember,fail]);
  useEffect(()=>{
   const controller=new AbortController();abort.current=controller;
   void (async()=>{

@@ -263,6 +263,21 @@ it(`keeps a recovery intent with ${mismatch} unresolved and replays its exact ac
 });
 }
 
+for(const receiptFound of [true,false]){
+it(`notifies a saved SHEIN result and verifies its original resume receipt despite unavailable current rules (receipt=${receiptFound})`,async()=>{
+ const p={...sheinProjection(),status:"completed",approvalAvailable:false,regenerationAvailable:false},saved=vi.fn(),real=fetch.getMockImplementation()!;
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:run`,runId);
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:intent`,JSON.stringify({action:"resume",runId,body:{actionId:operation}}));
+ fetch.mockImplementation((url,init)=>String(url).endsWith("/requirements")?Promise.resolve(Response.json({code:"IMAGE_UNAVAILABLE"},{status:503})):String(url).endsWith(`/runs/${runId}`)?Promise.resolve(Response.json(p)):String(url).endsWith(`/approvals/${operation}`)?Promise.resolve(receiptFound?Response.json({actionId:operation,selectionDigest:digest,assets:[{id:"image",role:"main",url:"https://images.test/result.png"}]}):Response.json({code:"IMAGE_NOT_FOUND"},{status:404})):real(url,init));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation} onSaved={saved}/>);
+ await waitFor(()=>expect(saved).toHaveBeenCalledOnce());fireEvent.click(screen.getByRole("button",{name:"核实原请求"}));
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith(`/approvals/${operation}`))).toBe(true));
+ if(receiptFound)await waitFor(()=>expect(localStorage.getItem(`product-image-set:actor:org:acquisition:${operation}:intent`)).toBeNull());
+ else expect(localStorage.getItem(`product-image-set:actor:org:acquisition:${operation}:intent`)).not.toBeNull();
+ expect(saved).toHaveBeenCalledOnce();expect(screen.queryByText(/规则 current-official-rules/)).not.toBeInTheDocument();
+ expect(fetch.mock.calls.some(([url])=>/\/(prepare|regenerate|confirm|resume|approve)$/.test(String(url)))).toBe(false);
+});
+}
 for (const receiptFound of [true,false]) {
 it(`verifies a lost resume response using its original immutable approval receipt (found=${receiptFound})`,async()=>{
  state=projection("completed",templateId);
