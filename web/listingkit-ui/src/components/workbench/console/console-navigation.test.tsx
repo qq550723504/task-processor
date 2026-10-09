@@ -1,12 +1,31 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ecoRequest } from "@/lib/api/ecoservices";
 import { ConsoleNavigation } from "./console-navigation";
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 
 const query=vi.hoisted(()=>({value:""}));
 vi.mock("next/navigation",()=>({useSearchParams:()=>new URLSearchParams(query.value)}));
 afterEach(()=>{cleanup();query.value="";});
+
+vi.mock("@/lib/api/ecoservices", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/api/ecoservices")>(), ecoRequest: vi.fn() }));
+
+it("discovers platform review through the original global backend gate without enterprise grants", async () => {
+  vi.mocked(ecoRequest).mockResolvedValue({ applications: [], total: "0" });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(<QueryClientProvider client={client}><ConsoleNavigation pathname="/workbench/services/review" ariaLabel="主导航" ecoservicesAvailable userId="platform-user" /></QueryClientProvider>);
+  expect(await screen.findByRole("link", { name: "平台审核" })).toHaveAttribute("href", "/workbench/services/review");
+  expect(screen.getByRole("link", { name: "平台审核" })).toHaveAttribute("aria-current", "page");
+  expect(ecoRequest).toHaveBeenCalledWith({ userId: "platform-user", organizationId: "" }, "applications?page=1&pageSize=20", expect.anything(), expect.anything(), true);
+  vi.mocked(ecoRequest).mockRejectedValue(new Error("ECOSERVICES_FORBIDDEN"));
+  view.rerender(<QueryClientProvider client={client}><ConsoleNavigation pathname="/workbench/services/review" ariaLabel="主导航" ecoservicesAvailable userId="enterprise-admin-only" /></QueryClientProvider>);
+  expect(screen.queryByRole("link", { name: "平台审核" })).not.toBeInTheDocument();
+  view.rerender(<QueryClientProvider client={client}><ConsoleNavigation pathname="/workbench/services/review" ariaLabel="主导航" ecoservicesAvailable={false} userId="platform-user" /></QueryClientProvider>);
+  expect(screen.queryByRole("link", { name: "平台审核" })).not.toBeInTheDocument();
+});
+
 
 it("only advertises Chat and BusinessTask when the current application mounts AI Workbench", () => {
   const view = render(<ConsoleNavigation pathname="/workbench/ai/chat" ariaLabel="主导航" aiWorkbenchAvailable={false} />);

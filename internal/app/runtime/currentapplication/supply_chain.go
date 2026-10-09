@@ -29,6 +29,9 @@ func (c *Config) validateSupplyChain() error {
 		return errors.New("supply chain requires bounded supply_asset_runtime Asset access")
 	}
 	owners := []*DatabaseConfig{&c.SourceAccountDatabase, c.ProductAcquisitionDatabase, c.CommercialOwnerDatabase, c.MoneyOwnerDatabase, &c.StoreCenter.Database, c.NotificationCenterDatabase}
+	if c.Ecoservices != nil && c.Ecoservices.Enabled {
+		owners = append(owners, &c.Ecoservices.Database)
+	}
 	if c.ProductAgent != nil {
 		owners = append(owners, &c.ProductAgent.Database, &c.ProductAgent.ReviewDatabase)
 	}

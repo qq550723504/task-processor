@@ -32,6 +32,7 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
+	Ecoservices                *EcoservicesConfig                        `json:"ecoservices,omitempty"`
 	NotificationCenterDatabase *DatabaseConfig                           `json:"notificationCenterDatabase,omitempty"`
 	Knowledge                  *KnowledgeConfig                          `json:"knowledge,omitempty"`
 	StoreCenter                *StoreCenterConfig                        `json:"storeCenter,omitempty"`
@@ -297,6 +298,9 @@ func (cfg *Config) validate() error {
 			return errors.New("notification center requires its restricted role and at most four connections")
 		}
 		other := []*DatabaseConfig{&cfg.SourceAccountDatabase, cfg.CommercialOwnerDatabase, cfg.MoneyOwnerDatabase, cfg.ProductAcquisitionDatabase}
+		if cfg.Ecoservices != nil {
+			other = append(other, &cfg.Ecoservices.Database)
+		}
 		if cfg.StoreCenter != nil {
 			other = append(other, &cfg.StoreCenter.Database)
 		}
@@ -490,6 +494,9 @@ func (cfg *Config) validate() error {
 		return err
 	}
 	if err := cfg.validateKnowledge(); err != nil {
+		return err
+	}
+	if err := cfg.validateEcoservices(); err != nil {
 		return err
 	}
 	if cfg.ProductAgent != nil {

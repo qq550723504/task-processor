@@ -22,6 +22,7 @@ func maintainedOperationalCommands() map[string]struct{} {
 		"1688-batch-import":                   {},
 		"1688-local-agent":                    {},
 		"commercial-owner-schema-migrate":     {},
+		"ecoservices-schema-init":             {},
 		"fingerprint-browser-installer":       {},
 		"knowledge-schema-init":               {},
 		"notification-center-schema-init":     {},

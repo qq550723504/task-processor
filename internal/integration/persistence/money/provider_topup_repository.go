@@ -2,6 +2,7 @@ package money
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"math"
@@ -81,6 +82,9 @@ func (r *Repository) AcceptAndPostProviderTopUp(ctx context.Context, in m.Provid
 		return out, m.ErrInvalid
 	}
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := claimChannelPayment(tx, in.Binding, in.Payment.PaymentID, m.PaymentPurposeWalletTopUp); err != nil {
+			return err
+		}
 		seed := providerTopUpRow{ClaimID: in.Binding.ClaimID(), PaymentID: in.Payment.PaymentID, CommercialOrderID: in.CommercialOrderID, OrganizationID: in.OrganizationID, Fingerprint: in.Fingerprint()}
 		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&seed).Error; err != nil {
 			return err
@@ -161,7 +165,7 @@ func (r *Repository) AcceptAndPostProviderTopUp(ctx context.Context, in m.Provid
 			return err
 		}
 		return tx.Model(&providerTopUpRow{}).Where("claim_id = ?", seed.ClaimID).Update("receipt", payload).Error
-	})
+	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	return out, err
 }
 

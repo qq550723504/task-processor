@@ -3995,9 +3995,30 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "accountallocation", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "commercial", "billing", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "subjectverification", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	// #603 admits the feature-local HTTP adapter, never the framework-free domain.
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "ecoservices", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "app", "supplychain", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "product", "collection", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	return allowedHTTPPackages
+}
+
+func TestEcoservicesHTTPBoundaryRegistration(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowed := businessHTTPPackages(root)
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{"ecoservices/httpapi/handler.go", true},
+		{"ecoservices/service.go", false},
+		{"ecoservices/httpapi_extra/handler.go", false},
+		{"ecoservices/httpapi2/handler.go", false},
+		{"ecoservices-extra/httpapi/handler.go", false},
+	} {
+		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(tc.path)), allowed); got != tc.want {
+			t.Errorf("HTTP boundary allows %s = %v, want %v", tc.path, got, tc.want)
+		}
+	}
 }
 
 func TestMembershipHTTPBoundaryRegistration(t *testing.T) {

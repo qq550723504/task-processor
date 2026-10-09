@@ -7,6 +7,7 @@ import { isProductAcquisitionAvailable } from "@/lib/server/product-acquisition-
 import { isKnowledgeAvailable } from "@/lib/server/knowledge-availability";
 import { configuredProductReviewOrigin } from "@/lib/server/product-title-review-request";
 import { isSheinRecordsAvailable } from "@/lib/server/shein-records-availability";
+import {isEcoservicesAvailable} from "@/lib/server/ecoservices-availability";
 import { isNotificationCenterAvailable } from "@/lib/server/notification-availability";
 import "./globals.css";
 
@@ -43,7 +44,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang="zh-CN" className="h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full bg-background text-foreground">
-        <ApplicationFrame supplyChainAvailable={process.env.LISTINGKIT_PRODUCT_COLLECTIONS_ENABLED === "true" && process.env.LISTINGKIT_SUPPLY_CHAIN_ENABLED === "true"} productCollectionsAvailable={process.env.LISTINGKIT_PRODUCT_COLLECTIONS_ENABLED === "true"} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={isKnowledgeAvailable()} productReviewAvailable={configuredProductReviewOrigin() !== null} sheinRecordsAvailable={isSheinRecordsAvailable()} notificationCenterAvailable={isNotificationCenterAvailable()}>{children}</ApplicationFrame>
+        <ApplicationFrame ecoservicesAvailable={isEcoservicesAvailable()} supplyChainAvailable={process.env.LISTINGKIT_PRODUCT_COLLECTIONS_ENABLED === "true" && process.env.LISTINGKIT_SUPPLY_CHAIN_ENABLED === "true"} productCollectionsAvailable={process.env.LISTINGKIT_PRODUCT_COLLECTIONS_ENABLED === "true"} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={isKnowledgeAvailable()} productReviewAvailable={configuredProductReviewOrigin() !== null} sheinRecordsAvailable={isSheinRecordsAvailable()} notificationCenterAvailable={isNotificationCenterAvailable()}>{children}</ApplicationFrame>
       </body>
     </html>
   );

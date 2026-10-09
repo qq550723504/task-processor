@@ -48,7 +48,15 @@ func TestListingKitAuthorizerDoesNotTreatListingKitAdminAsPlatformAdmin(t *testi
 	require.NoError(t, err)
 
 	require.False(t, authorizer.Authorize("", []string{"listingkit_admin"}, PermissionListingKitPlatformAdm))
+	require.False(t, authorizer.Authorize("", []string{"admin"}, PermissionListingKitPlatformAdm))
+	require.True(t, authorizer.IsTenantAdmin("", []string{"admin"}))
 	require.True(t, authorizer.Authorize("", []string{"platform_admin"}, PermissionListingKitPlatformAdm))
+}
+
+func TestExplicitlyConfiguredAdminRoleRetainsPlatformAuthority(t *testing.T) {
+	authorizer, err := NewListingKitAuthorizer(nil, []string{"admin"})
+	require.NoError(t, err)
+	require.True(t, authorizer.Authorize("", []string{"admin"}, PermissionListingKitPlatformAdm))
 }
 
 func TestListingKitAuthorizerUsesConfiguredPlatformAdminSemanticsConsistently(t *testing.T) {

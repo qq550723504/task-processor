@@ -178,7 +178,7 @@ func (r *Repository) RecordSettledPayment(ctx context.Context, payment money.Pay
 		if canonical.PaymentPurpose != payment.PaymentPurpose || canonical.CommissionTreatment != payment.CommissionTreatment || canonical.PayerBinding != payment.PayerBinding {
 			return economics.ErrInvalid
 		}
-		if payment.PaymentPurpose == money.PaymentPurposeWalletTopUp {
+		if payment.PaymentPurpose == money.PaymentPurposeWalletTopUp || payment.PaymentPurpose == money.PaymentPurposeServicePurchase {
 			return nil
 		}
 		commission, err := economics.CommissionForCashMinor(payment.CommissionableAmountMinor)
@@ -250,7 +250,7 @@ func (r *Repository) RecordRefund(ctx context.Context, refund money.RefundSettle
 		} else if err != nil {
 			return economics.ErrUnavailable
 		}
-		if excluded, err := nonCommissionableTopUp(tx, refund.PaymentID); excluded || err != nil {
+		if excluded, err := nonCommissionablePayment(tx, refund.PaymentID); excluded || err != nil {
 			return err
 		}
 		var claim earningClaim
@@ -332,7 +332,7 @@ func (r *Repository) RecordChargeback(ctx context.Context, chargeback money.Char
 		} else if err != nil {
 			return economics.ErrUnavailable
 		}
-		if excluded, err := nonCommissionableTopUp(tx, chargeback.PaymentID); excluded || err != nil {
+		if excluded, err := nonCommissionablePayment(tx, chargeback.PaymentID); excluded || err != nil {
 			return err
 		}
 		var claim earningClaim
@@ -399,12 +399,12 @@ func (r *Repository) ObserveChargebackSettlement(ctx context.Context, chargeback
 	return r.RecordChargeback(ctx, chargeback)
 }
 
-func nonCommissionableTopUp(tx *gorm.DB, paymentID string) (bool, error) {
+func nonCommissionablePayment(tx *gorm.DB, paymentID string) (bool, error) {
 	var p canonicalPaymentRow
 	if err := tx.Where("payment_id = ?", paymentID).Take(&p).Error; err != nil {
 		return false, economics.ErrUnavailable
 	}
-	if p.PaymentPurpose != money.PaymentPurposeWalletTopUp {
+	if p.PaymentPurpose != money.PaymentPurposeWalletTopUp && p.PaymentPurpose != money.PaymentPurposeServicePurchase {
 		return false, nil
 	}
 	fact := money.PaymentSettlement{PaymentID: p.PaymentID, PaymentPurpose: p.PaymentPurpose, CommissionTreatment: p.CommissionTreatment, PayerBinding: p.PayerBinding, PayerUserID: p.PayerUserID, Currency: p.Currency, GrossAmountMinor: p.GrossAmountMinor, DiscountAmountMinor: p.DiscountAmountMinor, CommissionableAmountMinor: p.CommissionableAmountMinor, Status: money.PaymentStatus(p.Status), SettledAt: p.SettledAt, ProviderReference: p.ProviderReference, Version: p.Version}

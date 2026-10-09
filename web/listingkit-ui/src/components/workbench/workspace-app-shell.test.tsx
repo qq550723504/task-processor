@@ -75,6 +75,12 @@ describe("WorkspaceAppShell", () => {
   function injectProfileContext(overrides: Record<string, unknown> = {}) {
     injectedWorkbenchContext.value = { user: { id: "stale-user" }, homeOrganizationId: "org-a", organizations: [], effectiveOrganization: null, roles: [], permissions: [], selectionRequired: false, isLoading: false, isSwitching: false, error: null, blockingError: null, retry: vi.fn(), switchOrganization: vi.fn(), ...overrides };
   }
+
+  it("allows the exact global ecosystem review route without choosing an enterprise",()=>{
+    navigation.pathname="/workbench/services/review";injectProfileContext({selectionRequired:true});
+    render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><WorkspaceAppShell ecoservicesAvailable><p>platform review consumer</p></WorkspaceAppShell></QueryClientProvider>);
+    expect(screen.getByText("platform review consumer")).toBeVisible();expect(navigation.replace).not.toHaveBeenCalled();
+  });
   it.each([{}, { isLoading: true }, { selectionRequired: true }, { error: { code: "DEPENDENCY_UNAVAILABLE" } }, { blockingError: { code: "ORGANIZATION_ACCESS_REVOKED" } }])("allows only exact profile through enterprise gates: %j", overrides => {
     navigation.pathname = "/workbench/account/profile"; injectProfileContext(overrides);
     render(<WorkspaceAppShell><p>personal profile</p></WorkspaceAppShell>);

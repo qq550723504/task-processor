@@ -69,6 +69,8 @@ Use these as the main source of truth for structural work:
     contract/fake execution does not imply real model or product availability
 - `commercial-wallet-billing-contract.md`
   - canonical money/wallet, commercial offer/quote/order, and purchased-resource ownership contract for #457
+- `ecosystem-services-v1.md`
+  - #603 frozen IMPLEMENTATION_READY third-party onboarding, original service purchase, exact customer acceptance and channel settlement contract; real channel qualification and product acceptance remain separate gates
 - `self-service-subscription-purchase-contract.md`
   - tenant self-service subscription offer/quote/order, source-bound subscription activation, settlement and recovery contract for #478/#479
 - `store-center-current-application-v1.md`

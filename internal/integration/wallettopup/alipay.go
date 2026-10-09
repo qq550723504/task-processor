@@ -17,6 +17,7 @@ import (
 	"github.com/go-pay/gopay/pkg/xhttp"
 
 	"task-processor/internal/commercial/billing"
+	"task-processor/internal/integration/paymentsecurity"
 )
 
 type AlipayConfig struct {
@@ -57,9 +58,7 @@ func aliKey(raw string) string {
 	return strings.Join(strings.Fields(raw), "")
 }
 func providerHTTP() *xhttp.Client {
-	c := xhttp.NewClient().SetTimeout(10 * time.Second)
-	c.HttpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return billing.ErrInvalid }
-	return c
+	return paymentsecurity.HTTP()
 }
 func (p *Alipay) Merchant() billing.TopUpMerchant { return p.config.Merchant }
 func (p *Alipay) Available() bool                 { return p.config.NewPayments }

@@ -32,7 +32,7 @@ export function isWorkbenchRoute(pathname: string | null): boolean {
   );
 }
 
-export function ApplicationFrame({ children, productAcquisitionAvailable = false, productCollectionsAvailable = false, supplyChainAvailable = false, knowledgeAvailable = false, productReviewAvailable = false, sheinRecordsAvailable = false, notificationCenterAvailable = false }: Readonly<{ children: React.ReactNode; productAcquisitionAvailable?: boolean; productCollectionsAvailable?: boolean; supplyChainAvailable?: boolean; knowledgeAvailable?: boolean; productReviewAvailable?: boolean; sheinRecordsAvailable?: boolean; notificationCenterAvailable?: boolean }>) {
+export function ApplicationFrame({ children, productAcquisitionAvailable = false, productCollectionsAvailable = false, supplyChainAvailable = false, knowledgeAvailable = false, productReviewAvailable = false, ecoservicesAvailable = false, sheinRecordsAvailable = false, notificationCenterAvailable = false }: Readonly<{ children: React.ReactNode; productAcquisitionAvailable?: boolean; productCollectionsAvailable?: boolean; supplyChainAvailable?: boolean; knowledgeAvailable?: boolean; productReviewAvailable?: boolean; ecoservicesAvailable?: boolean; sheinRecordsAvailable?: boolean; notificationCenterAvailable?: boolean }>) {
   const pathname = usePathname();
 
   // Public marketing, legal, and login routes must not initialize the authenticated
@@ -54,7 +54,7 @@ export function ApplicationFrame({ children, productAcquisitionAvailable = false
           <QueryProvider>
             <ToastProvider>
               <WorkbenchContextProvider>
-                <WorkspaceAppShell productCollectionsAvailable={productCollectionsAvailable} supplyChainAvailable={supplyChainAvailable} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable} productReviewAvailable={productReviewAvailable} sheinRecordsAvailable={sheinRecordsAvailable} notificationCenterAvailable={notificationCenterAvailable}>{children}</WorkspaceAppShell>
+                <WorkspaceAppShell productCollectionsAvailable={productCollectionsAvailable} supplyChainAvailable={supplyChainAvailable} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable} productReviewAvailable={productReviewAvailable} ecoservicesAvailable={ecoservicesAvailable} sheinRecordsAvailable={sheinRecordsAvailable} notificationCenterAvailable={notificationCenterAvailable}>{children}</WorkspaceAppShell>
               </WorkbenchContextProvider>
             </ToastProvider>
           </QueryProvider>

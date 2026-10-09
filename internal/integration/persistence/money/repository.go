@@ -94,14 +94,17 @@ func AutoMigrate(db *gorm.DB) error {
 	if err := AutoMigrateWallet(db); err != nil {
 		return err
 	}
-	return migrateProviderTopUp(db)
+	if err := migrateProviderTopUp(db); err != nil {
+		return err
+	}
+	return migrateServicePayments(db)
 }
 
 func (r *Repository) RecordPaymentSettlement(ctx context.Context, payment money.PaymentSettlement) error {
 	if r == nil || r.db == nil || payment.Validate() != nil {
 		return money.ErrInvalid
 	}
-	if payment.PaymentPurpose == money.PaymentPurposeWalletTopUp {
+	if payment.PaymentPurpose == money.PaymentPurposeWalletTopUp || payment.PaymentPurpose == money.PaymentPurposeServicePurchase {
 		return money.ErrUnsupportedMutation
 	}
 	row := paymentRow{PaymentID: payment.PaymentID, PayerUserID: payment.PayerUserID, Currency: payment.Currency, GrossAmountMinor: payment.GrossAmountMinor, DiscountAmountMinor: payment.DiscountAmountMinor, CommissionableAmountMinor: payment.CommissionableAmountMinor, Status: string(payment.Status), SettledAt: money.NormalizeTimestamp(payment.SettledAt), ProviderReference: payment.ProviderReference, Version: payment.Version}
@@ -153,6 +156,9 @@ func (r *Repository) RecordRefundSettlement(ctx context.Context, refund money.Re
 			return money.ErrUnavailable
 		}
 		var existing refundRow
+		if payment.PaymentPurpose == money.PaymentPurposeServicePurchase {
+			return money.ErrUnsupportedMutation
+		}
 		err := tx.Where("refund_id = ?", refund.RefundID).Take(&existing).Error
 		if err == nil {
 			if existing.PaymentID != refund.PaymentID || existing.AmountMinor != refund.AmountMinor || !existing.OccurredAt.Equal(money.NormalizeTimestamp(refund.OccurredAt)) || existing.ProviderReference != refund.ProviderReference {
@@ -188,6 +194,9 @@ func (r *Repository) RecordChargebackSettlement(ctx context.Context, chargeback 
 	if handled, err := r.recordProviderReversal(ctx, chargeback.PaymentID, chargeback.ChargebackID, money.WalletReversalChargeback, chargeback.AmountMinor, chargeback.OccurredAt, chargeback.ProviderReference); handled || err != nil {
 		return err
 	}
+	if handled, err := r.recordServiceChargeback(ctx, chargeback); handled || err != nil {
+		return err
+	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := lockOrdinaryReversal(tx, chargeback.PaymentID); err != nil {
 			return money.ErrUnavailable
@@ -200,6 +209,9 @@ func (r *Repository) RecordChargebackSettlement(ctx context.Context, chargeback 
 			return money.ErrUnavailable
 		}
 		var existing chargebackRow
+		if payment.PaymentPurpose == money.PaymentPurposeServicePurchase {
+			return money.ErrUnsupportedMutation
+		}
 		err := tx.Where("chargeback_id = ?", chargeback.ChargebackID).Take(&existing).Error
 		if err == nil {
 			if existing.PaymentID != chargeback.PaymentID || existing.AmountMinor != chargeback.AmountMinor || !existing.OccurredAt.Equal(money.NormalizeTimestamp(chargeback.OccurredAt)) || existing.ProviderReference != chargeback.ProviderReference {

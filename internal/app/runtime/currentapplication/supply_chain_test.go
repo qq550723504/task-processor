@@ -10,6 +10,7 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/mocks"
 	"gorm.io/gorm"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -84,6 +85,83 @@ func supplyRuntimeConfig(t *testing.T) *Config {
 	c.StoreCenter = &StoreCenterConfig{Enabled: true, Database: DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "store_center_runtime", Password: "fixture", Database: "stores", MaxConnections: 2}, OfficialApplications: []OfficialStoreConnectionConfig{{Type: storecenter.ApplicationSelfOperated, AppID: "fixture-app", Version: "v1", APIOrigin: "https://openapi.sheincorp.com", CallbackURL: "https://localhost/callback", AppSecretFile: filepath.Join(root, "secret"), CredentialKeyFile: filepath.Join(root, "key"), CredentialKeyID: "fixture-key"}}}
 	c.SupplyChain = &SupplyChainConfig{AssetDatabase: DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "supply_asset_runtime", Password: "fixture", Database: "assets", MaxConnections: 2}, TemporalAddress: "127.0.0.1:7233", TemporalNamespace: "default"}
 	return c
+}
+
+func ecoservicesSupplyRuntimeConfig(t *testing.T) *Config {
+	c := supplyRuntimeConfig(t)
+	eco := ecoservicesTestConfig()
+	c.Ecoservices = eco.Ecoservices
+	c.Ecoservices.Database.Host = c.SourceAccountDatabase.Host
+	c.Ecoservices.Database.Port = c.SourceAccountDatabase.Port
+	c.MoneyOwnerDatabase = eco.MoneyOwnerDatabase
+	return c
+}
+
+func TestSupplyAndEcoservicesCannotDeclareTheSameDatabase(t *testing.T) {
+	c := ecoservicesSupplyRuntimeConfig(t)
+	require.NoError(t, c.validate())
+	c.SupplyChain.AssetDatabase.Database = c.Ecoservices.Database.Database
+	require.ErrorContains(t, c.validate(), "supply assets require their independently owned database")
+}
+
+func TestSupplyAndEcoservicesRuntimePoolsStayIndependent(t *testing.T) {
+	for _, alias := range []bool{false, true} {
+		t.Run(map[bool]string{false: "both features", true: "shared injected pool"}[alias], func(t *testing.T) {
+			c := ecoservicesSupplyRuntimeConfig(t)
+			app := c.StoreCenter.OfficialApplications[0]
+			require.NoError(t, os.WriteFile(app.AppSecretFile, []byte(strings.Repeat("synthetic", 4)), 0600))
+			require.NoError(t, os.WriteFile(app.CredentialKeyFile, []byte(base64.StdEncoding.EncodeToString(make([]byte, 32))), 0600))
+			privatizeSyntheticTestFile(t, app.AppSecretFile)
+			privatizeSyntheticTestFile(t, app.CredentialKeyFile)
+			source, product, commercial, money, store, assets, eco := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
+			if alias {
+				eco = assets
+			}
+			workflow := &mocks.Client{}
+			constructed, assembled := 0, 0
+			closed := map[*gorm.DB]int{}
+			stop := errors.New("bounded combination construction stop")
+			err := Run(context.Background(), c, logrus.New(), Dependencies{
+				IdentityPreflight:      func(context.Context, IdentityConfig) error { return nil },
+				OpenSourceAccount:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+				OpenProductAcquisition: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return product, nil },
+				OpenCommercialOwner:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
+				OpenMoneyOwner:         func(context.Context, DatabaseConfig) (*gorm.DB, error) { return money, nil },
+				OpenStoreCenter:        func(context.Context, DatabaseConfig) (*gorm.DB, error) { return store, nil },
+				OpenSupplyAssets:       func(context.Context, DatabaseConfig) (*gorm.DB, error) { return assets, nil },
+				DialSupplyWorkflow: func(context.Context, string, string) (client.Client, func() error, error) {
+					return workflow, func() error { return nil }, nil
+				},
+				OpenEcoservices: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return eco, nil },
+				NewEcoservices: func(context.Context, *gorm.DB, *EcoservicesConfig, *logrus.Logger) (*EcoservicesRuntime, error) {
+					constructed++
+					return &EcoservicesRuntime{DB: eco}, nil
+				},
+				NewApplicationWithFeatures: func(_ context.Context, _ *gorm.DB, f ApplicationFeatures, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+					assembled++
+					require.Same(t, eco, f.Ecoservices.DB)
+					require.Same(t, assets, f.SupplyAssetDB)
+					require.NotNil(t, f.OfficialStoreApplications)
+					require.True(t, f.ProductCollections)
+					return nil, stop
+				},
+				Listen:        func(string, string) (net.Listener, error) { return nil, stop },
+				CloseDatabase: func(db *gorm.DB) error { closed[db]++; return nil },
+			})
+			if alias {
+				require.ErrorContains(t, err, "ecoservices requires an independent owner pool")
+				require.Zero(t, constructed)
+				require.Zero(t, assembled)
+			} else {
+				require.ErrorIs(t, err, stop)
+				require.Equal(t, 1, constructed)
+				require.Equal(t, 1, assembled)
+			}
+			for _, db := range []*gorm.DB{source, product, commercial, money, store, assets, eco} {
+				require.Equal(t, 1, closed[db], "each original owner pool must close once")
+			}
+		})
+	}
 }
 func TestSupplyManifestPinsExistingAssetOwnerAndDedicatedRole(t *testing.T) {
 	c := supplyRuntimeConfig(t)

@@ -20,6 +20,7 @@ import (
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
+	ehttp "task-processor/internal/ecoservices/httpapi"
 	"task-processor/internal/httproute"
 	"task-processor/internal/imageagent"
 	moneystore "task-processor/internal/integration/persistence/money"
@@ -113,6 +114,8 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
+	ecoservicesConfigs        int
+	ecoservices               *EcoservicesDependencies
 	notifications             int
 	notificationDB            *gorm.DB
 	agentConfigurationDB      *gorm.DB
@@ -349,6 +352,19 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	if supplied.knowledgeServices > 1 || supplied.knowledgeServices > 0 && supplied.knowledge == nil {
 		return nil, errors.New("knowledge service unavailable or supplied more than once")
 	}
+	if supplied.ecoservicesConfigs > 1 || supplied.ecoservicesConfigs > 0 && (supplied.ecoservices == nil || supplied.ecoservices.DB == nil || supplied.ecoservices.Channel == nil || supplied.ecoservices.Objects == nil || supplied.ecoservices.Protection == nil || supplied.commercialOwnerDB == nil || supplied.moneyOwnerDB == nil) {
+		return nil, errors.New("ecoservices dependencies unavailable or supplied more than once")
+	}
+	if supplied.ecoservices != nil {
+		if supplied.supplyChain != nil && supplied.ecoservices.DB == supplied.supplyChain.AssetDB {
+			return nil, errors.New("ecoservices requires its independent owner pool")
+		}
+		for _, existing := range []*gorm.DB{sourceAccountDB, supplied.commercialOwnerDB, supplied.moneyOwnerDB, supplied.referralDB, supplied.productAcquisitionDB, supplied.imageAgentDB, supplied.storeCenterDB, supplied.localTrialDB, supplied.agentConfigurationDB, supplied.notificationDB} {
+			if supplied.ecoservices.DB == existing {
+				return nil, errors.New("ecoservices requires its independent owner pool")
+			}
+		}
+	}
 	if supplied.storeCenters > 0 {
 		if supplied.storeCenterDB == nil || factories.buildStoreCenter == nil || supplied.commercialOwnerDB == nil {
 			return nil, errors.New("store center dependencies unavailable")
@@ -487,6 +503,15 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, fmt.Errorf("build current commercial module: %w", err)
 	}
 	modules := []kernelmodule.Module{workbench.module, commercial, sourceAccount}
+	var ecoservicesRecovery func(context.Context) error
+	if supplied.ecoservices != nil {
+		handler, recover, err := buildEcoservices(ctx, *supplied.ecoservices, supplied.commercialOwnerDB, supplied.moneyOwnerDB, authorizer, cfg)
+		if err != nil {
+			return nil, err
+		}
+		modules = append(modules, ecoservicesRouteModule{handler: handler})
+		ecoservicesRecovery = recover
+	}
 	if supplied.knowledgeServices > 0 {
 		handler, err := knowledgehttp.NewHandler(supplied.knowledge)
 		if err != nil {
@@ -743,6 +768,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, err
 	}
 	routeFeatures := currentApplicationOptionalRoutes{
+		Ecoservices:         supplied.ecoservices != nil,
 		SupplyChain:         supplied.supplyChains > 0,
 		Collections:         supplied.productCollections > 0,
 		NotificationCenter:  supplied.notifications > 0,
@@ -763,6 +789,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, err
 	}
 	server := buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies)
+	if ecoservicesRecovery != nil {
+		runtimeContext := supplied.runtimeContext
+		if runtimeContext == nil {
+			runtimeContext = context.Background()
+		}
+		startCommercialRecoveryLoop(runtimeContext, server, ecoservicesRecovery, 15*time.Second, "ecoservices original commands", logger)
+	}
 	if supplyRuntime != nil {
 		*supplied.supplyChain.Worker = supplyRuntime.worker
 	}
@@ -837,6 +870,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	Ecoservices         bool
 	SupplyChain         bool
 	Collections         bool
 	NotificationCenter  bool
@@ -856,6 +890,11 @@ type currentApplicationOptionalRoutes struct {
 
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if optional.Ecoservices {
+		for _, r := range ehttp.Routes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
 	if optional.SupplyChain {
 		for _, r := range supplyhttp.SupplyRoutes(nil, nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
@@ -1003,6 +1042,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {
+		if descriptor.Path == ehttp.NotifyPath || descriptor.Path == ehttp.Base || strings.HasPrefix(descriptor.Path, ehttp.Base+"/") || descriptor.Path == ehttp.AdminBase || strings.HasPrefix(descriptor.Path, ehttp.AdminBase+"/") {
+			if !optional.Ecoservices {
+				return errors.New("ecoservices feature not admitted")
+			}
+			if err := validateEcoservicesDescriptor(descriptor); err != nil {
+				return err
+			}
+		}
 		if descriptor.Path == supplyhttp.SupplyBasePath || strings.HasPrefix(descriptor.Path, supplyhttp.SupplyBasePath+"/") {
 			if !optional.SupplyChain {
 				return errors.New("supply chain feature not admitted")

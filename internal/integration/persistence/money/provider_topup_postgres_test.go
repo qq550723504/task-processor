@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -43,10 +45,28 @@ func newMoneyPostgresRuntime(t *testing.T) (context.Context, *gorm.DB, *Reposito
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = pool.Close() })
-	if err := AutoMigrate(db); err != nil {
+	// Use the delivered canonical payment definition before AutoMigrate adds
+	// owner tables. The installer creates this table before the money owner;
+	// AutoMigrate-first would silently omit its business CHECK constraints.
+	schema, err := os.ReadFile("../../../../deployments/docker/referrals-compose/terraform/referral-economics-schema.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := strings.Index(string(schema), "CREATE TABLE IF NOT EXISTS public.ledger_payment_settlements (")
+	if start < 0 {
+		t.Fatal("delivered canonical payment definition missing")
+	}
+	statement, _, ok := strings.Cut(string(schema)[start:], ";")
+	if !ok {
+		t.Fatal("delivered canonical payment definition incomplete")
+	}
+	if err := db.Exec(statement).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := referralstore.Install(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	if err := AutoMigrate(db); err != nil {
 		t.Fatal(err)
 	}
 	runtimePassword := uuid.NewString()
@@ -78,6 +98,9 @@ func newMoneyPostgresRuntime(t *testing.T) (context.Context, *gorm.DB, *Reposito
 	if err := db.Exec(`CREATE ROLE money_owner_runtime LOGIN PASSWORD '` + moneyPassword + `'; GRANT CONNECT ON DATABASE topup TO money_owner_runtime; GRANT USAGE ON SCHEMA public TO money_owner_runtime;
  GRANT SELECT,INSERT ON public.ledger_payment_settlements,public.ledger_refund_settlements,public.ledger_chargeback_settlements,public.ledger_organization_wallet_entries,public.ledger_organization_wallet_reserve_decisions,public.ledger_organization_topup_settlements,public.ledger_organization_wallet_reversals,public.ledger_topup_reversal_receipts,public.ledger_topup_excess_reconciliations TO money_owner_runtime;
  GRANT SELECT,INSERT,UPDATE ON public.ledger_organization_wallets,public.ledger_organization_wallet_reservations,public.ledger_provider_topup_claims,public.ledger_topup_refund_holds TO money_owner_runtime;`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`GRANT SELECT,INSERT ON public.ledger_channel_payment_claims,public.ledger_service_effect_receipts,public.ledger_service_refund_review_admissions,public.ledger_service_fulfillment_admissions TO money_owner_runtime; GRANT SELECT,INSERT,UPDATE ON public.ledger_service_payment_bindings,public.ledger_service_operation_reservations TO money_owner_runtime`).Error; err != nil {
 		t.Fatal(err)
 	}
 	moneyURL, _ := url.Parse(dsn)

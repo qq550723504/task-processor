@@ -103,6 +103,7 @@ consider the applicable guards, including:
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 - `TestMembershipHTTPBoundaryRegistration` — permits only the membership HTTP subtree; rejects the domain root, siblings, other organizations and similar prefixes.
 - `TestSubjectVerificationHTTPBoundaryRegistration` — permits only the approved subject verification HTTP subtree; rejects the domain root, siblings and similar prefixes.
+- `TestEcoservicesHTTPBoundaryRegistration` — permits only the approved ecosystem HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `TestNotificationCenterHTTPBoundaryRegistration` — permits only the approved notification center HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `depguard: source_handoff_legacy_http`
 - `TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets`
@@ -391,6 +392,7 @@ Supporting context documents must not be listed as review references unless prom
 - `docs/architecture/project-boundaries.md`
 - `docs/architecture/product-agent-runtime-contract.md`
 - `docs/architecture/commercial-wallet-billing-contract.md`
+- `docs/architecture/ecosystem-services-v1.md`
 - `docs/architecture/self-service-subscription-purchase-contract.md`
 - `docs/architecture/store-center-current-application-v1.md`
 - `docs/architecture/httpapi-assembly-boundaries.md`

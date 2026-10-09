@@ -20,9 +20,11 @@ type PaymentStatus string
 const PaymentSettled PaymentStatus = "SETTLED"
 
 const (
-	PaymentPurposeWalletTopUp   = "WALLET_TOP_UP"
-	CommissionNonCommissionable = "NON_COMMISSIONABLE"
-	PayerUnattributedExternal   = "UNATTRIBUTED_EXTERNAL"
+	PaymentPurposeWalletTopUp     = "WALLET_TOP_UP"
+	PaymentPurposeServicePurchase = "SERVICE_PURCHASE"
+	PayerOrganizationServiceBuyer = "ORGANIZATION_SERVICE_BUYER"
+	CommissionNonCommissionable   = "NON_COMMISSIONABLE"
+	PayerUnattributedExternal     = "UNATTRIBUTED_EXTERNAL"
 )
 
 type PaymentSettlement struct {
@@ -69,6 +71,10 @@ func (p PaymentSettlement) Validate() error {
 	}
 	if p.PaymentPurpose == PaymentPurposeWalletTopUp {
 		if p.CommissionTreatment != CommissionNonCommissionable || p.PayerBinding != PayerUnattributedExternal || p.PayerUserID != "" || p.CommissionableAmountMinor != 0 || p.DiscountAmountMinor != 0 || p.Currency != WalletCurrencyCNY {
+			return ErrInvalid
+		}
+	} else if p.PaymentPurpose == PaymentPurposeServicePurchase {
+		if p.CommissionTreatment != CommissionNonCommissionable || p.PayerBinding != PayerOrganizationServiceBuyer || p.PayerUserID != "" || p.CommissionableAmountMinor != 0 || p.DiscountAmountMinor != 0 || p.Currency != WalletCurrencyCNY {
 			return ErrInvalid
 		}
 	} else if p.PaymentPurpose != "" || p.CommissionTreatment != "" || p.PayerBinding != "" || strings.TrimSpace(p.PayerUserID) == "" || p.CommissionableAmountMinor <= 0 {

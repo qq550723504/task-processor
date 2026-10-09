@@ -135,7 +135,8 @@ func AutoMigrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(&offerRow{}, &quoteRow{}, &orderRow{}, &orderItemRow{}); err != nil {
 		return err
 	}
-	return migrateTopUp(db)
+	if err := migrateTopUp(db); err != nil { return err }
+	return migrateServicePurchases(db)
 }
 
 func (r *Repository) SaveOffer(ctx context.Context, offer billing.Offer) error {

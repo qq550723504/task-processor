@@ -72,7 +72,7 @@ func TestStandaloneSourceMediaUsesActualSignedImmutableS3PutAndReadback(t *testi
 	raw := b.Bytes()
 	hash := sha256.Sum256(raw)
 	id := collection.MediaIdentity{Hash: hex.EncodeToString(hash[:]), Bytes: int64(len(raw))}
-	auth := &storageMediaAuth{scope: collection.Scope{"org", "actor", "member"}}
+	auth := &storageMediaAuth{scope: collection.Scope{OrganizationID: "org", ActorID: "actor", MemberID: "member"}}
 	s := productsourcing.SourceMedia{Storage: storage, Authorization: auth}
 	v, e := s.Upload(context.Background(), id, raw)
 	require.NoError(t, e)

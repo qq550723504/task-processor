@@ -42,3 +42,21 @@ func TestNotificationDatabaseRequiresIndependentBoundedRuntimeRole(t *testing.T)
 		})
 	}
 }
+
+func TestNotificationAndEcoservicesConfigRequireIndependentDatabases(t *testing.T) {
+	for _, alias := range []bool{false, true} {
+		t.Run(map[bool]string{false: "independent", true: "same database different roles"}[alias], func(t *testing.T) {
+			cfg := ecoservicesTestConfig()
+			notice := cfg.Ecoservices.Database
+			notice.Database = "notification_center"
+			notice.User = "notification_center_runtime"
+			if alias {
+				notice.Database = cfg.Ecoservices.Database.Database
+			}
+			cfg.NotificationCenterDatabase = &notice
+			if err := cfg.validate(); (err != nil) != alias {
+				t.Fatalf("alias=%v: %v", alias, err)
+			}
+		})
+	}
+}

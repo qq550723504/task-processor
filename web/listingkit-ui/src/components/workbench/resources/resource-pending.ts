@@ -38,9 +38,9 @@ function subscribe(listener: () => void) {
   };
 }
 const serverSnapshot = () => "initializing";
-function decode<T>(value: string | null, schema: z.ZodType<T>): T | null {
+function decode<T>(value: string | null, schema: z.ZodType<T>, maxLength: number): T | null {
   if (value === null) return null;
-  if (value.length > 8192) throw new Error("Pending command exceeds bound");
+  if (value.length > maxLength) throw new Error("Pending command exceeds bound");
   return schema.parse(JSON.parse(value));
 }
 
@@ -51,13 +51,16 @@ export function useResourcePending<T extends { key: string }>(
   scope: MemberResourceScope,
   object: readonly string[],
   schema: z.ZodType<T>,
+  options: { storage?: "local" | "session"; maxLength?: number } = {},
 ) {
+  const maxLength = options.maxLength ?? 8192;
+  const storage = () => options.storage === "local" ? localStorage : sessionStorage;
   const storageKey = `resource.pending:${JSON.stringify([scope.expectedUserId, scope.expectedOrganizationId, ...object])}`;
   const raw = useSyncExternalStore(
     subscribe,
     () => {
       try {
-        return sessionStorage.getItem(storageKey);
+        return storage().getItem(storageKey);
       } catch {
         return "unreadable";
       }
@@ -68,34 +71,38 @@ export function useResourcePending<T extends { key: string }>(
     if (raw === "initializing")
       return { command: null, ready: false, error: false };
     try {
-      return { command: decode(raw, schema), ready: true, error: false };
+      return { command: decode(raw, schema, maxLength), ready: true, error: false };
     } catch {
       return { command: null, ready: false, error: true };
     }
-  }, [raw, schema]);
+  }, [raw, schema, maxLength]);
+  function read() {
+    return decode(storage().getItem(storageKey), schema, maxLength);
+  }
   function persist(command: T) {
     const validated = schema.parse(command);
-    const original = decode(sessionStorage.getItem(storageKey), schema);
+    const original = read();
     const encoded = JSON.stringify(validated);
+    if (encoded.length > maxLength) throw new Error("Pending command exceeds bound");
     if (original && JSON.stringify(original) !== encoded)
       throw new Error("Original operation is still pending");
-    sessionStorage.setItem(storageKey, encoded);
-    if (sessionStorage.getItem(storageKey) !== encoded)
+    storage().setItem(storageKey, encoded);
+    if (storage().getItem(storageKey) !== encoded)
       throw new Error("Pending command could not be saved");
     window.dispatchEvent(new Event(event));
   }
   function clear(command: T) {
-    const original = decode(sessionStorage.getItem(storageKey), schema);
+    const original = read();
     if (
       !original ||
       original.key !== command.key ||
       JSON.stringify(original) !== JSON.stringify(schema.parse(command))
     )
       throw new Error("Original operation changed");
-    sessionStorage.removeItem(storageKey);
-    if (sessionStorage.getItem(storageKey) !== null)
+    storage().removeItem(storageKey);
+    if (storage().getItem(storageKey) !== null)
       throw new Error("Pending command could not be cleared");
     window.dispatchEvent(new Event(event));
   }
-  return { ...local, persist, clear };
+  return { ...local, persist, clear, read, storageKey };
 }
