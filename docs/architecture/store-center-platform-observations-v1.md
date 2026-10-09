@@ -4,7 +4,7 @@ Refs [#614](https://github.com/qq550723504/task-processor/issues/614)、#137。
 
 - Product Decision: **PD-STORE-CENTER-READONLY-COMMERCE-2026-10-09**。
 - Design Basis: **Independent Architecture**。
-- Admission Status: **NOT_READY / DESIGNING**；未批准前不得修改正式业务代码或 schema。
+- Admission Status: **IMPLEMENTATION_READY / FROZEN**；独立准入见§12，共享路径仍须完成§9 owner协调。
 - 调查基线：`main @ d95807f13475d27c0b8691f044cca6320a540d06`。
 - 一个 Writer、一个主要分支：`codex/store-products-orders-v1`。
 
@@ -71,21 +71,24 @@ Threat Model 的 Must：当前 Effective Organization、真实原成员/module g
 
 每个短活动取得最长10秒、受request/activity deadline约束的非序列化handle。每次平台调用重新检查当前成员/module、Store member grant、active记录、active且未过期服务、verified connected attempt、应用模式/版本及私密凭据hash。校验不成功拒绝；已有 Supply 目的在其原 authorizer 下保持原权限。凭据只在当前调用前解密，不进入工作流、DB观察、API、日志或错误。
 
-permission沿当前authz点分命名，最小四项 `workbench.store-products.read/sync`、`workbench.store-orders.read/sync`；sync同时须read和Store read，普通read也须Store read及当前store grant。两个module独立可授予；订单不依赖Supply/Agent权限。原请求绑定 verified org/actor/member；worker从原持久命令取同scope，用当前 exact IAM重新查原成员，不制造JWT或延长request proof。平台管理员必须具有当前企业授权，既有tenant admin仅沿Store owner允许的admin规则。
+permission沿当前authz点分命名，最小四项 `workbench.store.products.read/sync`、`workbench.store.orders.read/sync`；sync同时须read和Store read，普通read也须Store read及当前store grant。两个module独立可授予；订单不依赖Supply/Agent权限。原请求绑定 verified org/actor/member；worker从原持久命令取同scope，用当前 exact IAM重新查原成员，不制造JWT或延长request proof。平台管理员必须具有当前企业授权，既有tenant admin仅沿Store owner允许的admin规则。
 
 ## 5. 最小持久化与事务
 
 复用当前 Store 的专用数据库，新增明确的 observation schema（`shein_observations`），不把观察写入Product/Catalog或复制Store身份/凭据表。观察repo只访问本schema，Store仍由自身repository访问。schema-owner初始化和serving role/readiness最小清单同步；constructor不AutoMigrate，不以owner连接serve。当前Store verifier有严格表/权限准入，接线owner须显式调整enabled capability合同，缺schema/grant fail closed。
 
-三类最小表：
+同一owner下四类最小表，父命令回执显式存储，不能放在进程内存或以假的StoreID代替：
 
 1. `syncs`：Organization/Store/SyncID、原Actor/Member、kind、幂等command key/hash、固定source binding、固定时间窗、status、checkpoint revision/page/window、取得/完成时间、安全错误码、coverage note。唯一(org,actor,key)，同key不同store/kind/range/hash冲突；same key永远查询原同步，不因重试创建新身份。
 2. `records`：Organization/Store/SyncID/kind/platformID、allowlisted typed projection、observedAt；复合唯一/FK均带org+store+sync。平台商品按SPU保存内部完整层级，订单按orderNo；记录来源binding由sync固定，不保存credential、raw json或敏感字段。
 3. `heads`：Organization/Store/kind→最近完整遍历generation、revision；固定外键不跨scope。失败/部分结果保留原head；当前sync部分结果独立可查看且显式不完整，不能覆写完整head。
+4. `commands`：Organization/原Actor/Member/用户key、payload hash、kind、固定时间窗、实际StoreID→child SyncID集合；唯一(org,actor,key)。begin在同事务保存父回执及全部child syncs，single-store同样走该回执，避免切店或同key重试重选集合。父行不伪造StoreID，也不成为新的任务/平台事实源。
 
 begin命令和同步事实在一事务提交，再以稳定 `store-observations/<org>/<syncId>` workflow ID调用已有Temporal Start/Describe。启动响应丢失只核实同ID，DB事实pending，不称running。显式重试/读取原sync通过 `EnsureExecution` 恢复同ID，terminal只读；不另建scheduler/outbox平台。原scope key碰撞返回409；数据库COMMIT不确定查询同key回执。
 
 逐页先读取当前checkpoint，重新授权到原binding，再只读provider；验证响应、allowlist/US归一化；返回后重新核对原binding/live权限。在单DB事务锁sync行、比较checkpoint revision，将本页记录与下个checkpoint原子保存；CAS失败丢弃旧页并读当前进度。retry不按旧游标覆盖新数据。每页输入与安全摘要有稳定hash；同页重复成员/内容冲突标coverage不完整，不伪造成功。每个observedAt是实际响应取得时间。
+
+完成发布在同一DB事务锁sync与head，将末页/checkpoint、terminal状态和head原子提交。begin事务在(org,store,kind)内分配单调generation序号；head仅提升到同source较新序号，较旧sync晚到也可保留自己的完整结果，但不能倒退当前head。partial/failed/suspended绝不提升head，任何页的coverage不完整标记sticky持久保存，后续成功页不能清除。
 
 没有跨Store/IAM/观察库原子假设：短proof不是永久访问权；即使撤权前页已提交，也不会成为后续读权限。每次读head/partial/详情/同步状态都重新授权当前请求，并核对org/store和source binding。supplier/application/connection变化不读取旧source观察，不自动迁移到新商家；重新同步后形成新head。记录名称变更可造成binding过期，安全拒绝并提示重新同步，不在本批发明宽松binding兼容。
 
@@ -95,19 +98,19 @@ begin命令和同步事实在一事务提交，再以稳定 `store-observations/
 
 商品从page1以10 SPU/页全量扫描。记下首个meta.count，结束检查页序、计数、重复identity及metadata漂移；到达边界才标completed，否则partial。官方无原子快照保证，即使遍历完成也仅表示在取得时间跨度内完成遍历，不能据列表消失推断删除/下架；与前一head不做删除同步、库存对账或平台回写。统计完全由同一generation中取得的US SKC集合计算，显示遍历范围/时间和源SPU count。
 
-订单固定结束时间、起点最近30天或用户明确范围，拆为不超过48小时的UTC+8 created/down-issued查询窗口，每窗口30/page；边界采用相邻窗口共享秒并按orderNo去重，不能跳过边界记录。每页详情校验后保存US记录。created范围不等于updated范围，不把订单更新时间作为筛选下单时间。每个窗口计数上限10000；可按时间二分缩窄窗口直到1秒。若同1秒仍达上限/无法证实完整，terminal partial显示具体区间与原因，不能跨过继续宣布全量。保存dedupe不会把未得到的订单判取消。
+订单固定结束时间、起点最近30天或用户明确范围，拆为不超过48小时的UTC+8 created/down-issued查询窗口，每窗口30/page；固定`queryType=1/queryOrderType=4`且不传orderStatus，避免默认漏认证仓。边界采用相邻窗口共享秒并按orderNo去重，不能跳过边界记录。每页详情校验后保存US记录。created范围不等于updated范围，不把订单更新时间作为筛选下单时间。每个窗口计数上限10000；可按时间二分缩窄窗口直到1秒。若同1秒仍达上限/无法证实完整，terminal partial显示具体区间与原因，不能跨过继续宣布全量。保存dedupe不会把未得到的订单判取消。
 
 每个activity最多一个平台列表页和一批对应详情，deadline≤30秒，外部每call≤5秒，响应≤2MiB/页，最多10 SPU或30订单；嵌套成员、字符串、字段和DB单记录也有硬上限。workflow串行分页，不在全部店铺并行轰炸provider；用Temporal retry/backoff处理临时读取错误，无平台mutation UNKNOWN/resend语义。有限重试耗尽保存failed，授权明确撤销/connection漂移保存suspended，不把IAM outage当永久撤权。
 
 一个sync最多5000商品页/30000订单页、最长24小时，达到限额为partial并显示范围；这是明确的资源保护，不能自动扩大权限/预建海量容量平台。长workflow在小批页数后ContinueAsNew，只传org/syncId，全部进度仍在SQL。暂停/崩溃/请求超时/response lost用原identity+checkpoint继续只读，没有生产内存runner或新恢复平台。
 
-“全部店铺”只从当前成员Store目录分页取得真实授权店铺，再为每店铺相同用户操作创建固定子同步；逐店结果独立，不用一个success掩盖unsupported/failed。读取跨店列表先求当前授权店铺集合，再按该集合读取各head；某店被撤权立即从结果/统计排除。未同步或部分店铺让聚合coverage为incomplete，已知部分可以显示但不叫全库总量。不支持全托管订单在该店明确unsupported，其余店不受阻。
+“全部店铺”只从当前成员Store目录分页取得真实授权店铺，再为每店铺相同用户操作创建固定子同步；child key稳定派生自父用户key+StoreID+kind，载荷固定选定集合与时间范围。父命令回执在begin事务固定该集合；同key重试查原集合，不重新选店或替换MemberID。逐店结果独立，不用一个success掩盖unsupported/failed。读取跨店列表先求当前授权店铺集合，再按该集合读取各head；某店被撤权立即从结果/统计排除。未同步或部分店铺让聚合coverage为incomplete，已知部分可以显示但不叫全库总量。不支持全托管订单在该店明确unsupported，其余店不受阻。
 
 ## 7. 详情、物流和平台处理
 
 商品详情只从当前授权source generation、scope-qualifiedSPU读取；US site、SKU、售价/供货价和逐仓库存不丢维度。订单详情从当前授权同步记录的orderNo重新进行只读详情查询，校验US/site和订单identity后展示最新观察；没有该scope内记录不能用任意orderNo穿透查询。详情失败保留上次取得时间并明确陈旧，不能冒充新值。
 
-物流请求只接受授权orderNo和其当前详情中的packageNo选择；服务端重新取当前详情并核对package成员，再自行取得waybill调用Track。客户端传入waybill/returnOrderNo/任意URL拒绝。response缺轨迹显示“平台尚未提供”，不显示已送达。Track只allowlist carrier/waybill与description/nodeCode/timeMillis；不保存用户地址或物流请求raw body。返回后再次授权，binding漂移丢弃结果。
+物流请求只接受授权orderNo和其当前详情中的packageNo选择；服务端重新取当前详情并核对package成员，使用packageNo（不要求waybill已生成）或其中实际waybill调用Track。客户端传入waybill/returnOrderNo/任意URL拒绝。response缺轨迹显示“平台尚未提供”，不显示已送达。Track只allowlist carrier/waybill与description/nodeCode/timeMillis；不保存用户地址或物流请求raw body。返回后再次授权，binding漂移丢弃结果。
 
 “到SHEIN处理”使用官方文档已确认的 `https://sellerhub.shein.com/`，新窗口noopener，显示订单号供复制；未经验证不构造特定订单深链、携带credential或自动登录/跳转执行。此按钮不能签发已发货/售后成功。
 
@@ -129,7 +132,7 @@ Console正常入口 `/workbench/store-products`、`/workbench/store-orders`，�
 | 官方transport allowlist | 为新增只读endpoint放行POST/GET精确方法；待协调integration owner，不修改Publish实现 |
 | authz module与permission默认策略 | 两module及四permission；待协调authz owner |
 | Console导航 | 两个正常入口由pending改为connected；待协调导航owner |
-| Store显式schema/readiness与runtime/Temporal | 新观察schema/最小privilege/module注入/workflow注册；唯一启动Writer会话`01a11f74-2565-78e0-9118-4fe1ff53e726` |
+| Store显式schema/readiness与runtime/Temporal | 新观察schema/最小privilege/module注入/workflow注册；唯一启动Writer会话`01a11f74-2565-78e0-9118-4fe1ff53e726`；原Store、Supply、resource构造的Store preflight均须消费一致enabled清单，固定public search_path；新repo使用schema-qualified表 |
 
 运行组合依赖Storepool、member directory/authorizer、三类OfficialApplicationRegistry、observerrepo与Temporalclient。schema只用于已授权新空实例；缺观察表/配置/worker时capability unavailable，不回退legacy或用fixture作生产值。后续真实试用保留volume，stop/restart与destroy分离。此文档不授予真实schema执行、读取商家数据或部署。
 
@@ -154,4 +157,13 @@ Cutover/deletion condition: 本首版不消费旧同步、数字Tenant/Store、L
 
 ## 12. Architecture Review
 
-尚未执行；第1轮待只读独立Reviewer。没有IMPLEMENTATION_READY时不修改正式路径。评审只覆盖本批新读权限/私密数据、观察事务/恢复与用户happy path，不恢复已撤回履约mutation或扩建通用框架。
+2026-10-09 第1轮只读独立Reviewer `/root/store_observations_architecture_review` 核对设计候选`826e6ebba`、实际Store material/registry/current_schema、授权及官方文档，结论 **IMPLEMENTATION_READY**，无BLOCKER。§5/6/7/9补入其最小澄清；不是新增全局设计或第三轮评审。
+
+| Finding | 当前Must/后果 | Classification / Action |
+| --- | --- | --- |
+| 完成与head并发发布 | 重启恢复、旧页不得覆写新结果 | IMPLEMENTATION_TEST：锁sync/head，terminal/checkpoint/head原子提交；单调序号与CAS；partial标记sticky |
+| 全部店铺子key | 多店同步与同key重试 | IMPLEMENTATION_TEST：父回执固定集合；child key确定派生；不重选store/member |
+| 官方列表默认仓库范围与物流package | 完整消费者订单/合法未生成运单物流 | IMPLEMENTATION_TEST：queryType1/queryOrderType4/no status；窗口覆盖验证；packageNo即可，不强制waybill |
+| 新schema与已有Store verifier | 运行组合不能被新增权限整体拒绝 | IMPLEMENTATION_TEST：所有Store/Supply/resource preflight一致enabled最小清单，保留未启用时严格拒绝 |
+
+原成员撤权、只读句柄/source binding、私密allowlist和物流成员边界准入成立。实现验证撤销sync权限后worker停止、相同Actor新MemberID不能接管旧命令。评审不替代共享owner协调，也不替代真实平台/运行组合/用户验收；这些均NOT_RUN。
