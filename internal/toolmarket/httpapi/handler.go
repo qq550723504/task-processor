@@ -292,9 +292,6 @@ func (h *Handler) serve(c *gin.Context, s spec) {
 				cmd.Enabled = *input.Enabled
 			}
 		}
-		if e == nil && cmd.Enabled && !h.Readiness.LocalCapture && !h.Readiness.OnlineCapture {
-			e = tm.ErrUnavailable
-		}
 	case "create":
 		e = body(c, &cmd.Demand)
 	case "progress":
@@ -318,7 +315,13 @@ func (h *Handler) serve(c *gin.Context, s spec) {
 		}
 		return nil
 	}
-	v, e := h.Repository.Execute(ctx, cmd, guard)
+	beforeApply := func(context.Context) error {
+		if cmd.Operation == "activation" && cmd.Enabled && !h.Readiness.LocalCapture && !h.Readiness.OnlineCapture {
+			return tm.ErrUnavailable
+		}
+		return nil
+	}
+	v, e := h.Repository.Execute(ctx, cmd, guard, beforeApply)
 	if e != nil {
 		failure(c, e)
 		return

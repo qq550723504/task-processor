@@ -23,9 +23,14 @@ func (*repo) Requests(context.Context, tm.Scope, bool, string, int) (tm.RequestP
 func (*repo) Detail(context.Context, tm.Scope, bool, string) (tm.Detail, error) {
 	return tm.Detail{}, tm.ErrNotFound
 }
-func (r *repo) Execute(ctx context.Context, c tm.Command, g func(context.Context) error) (tm.Receipt, error) {
+func (r *repo) Execute(ctx context.Context, c tm.Command, g func(context.Context) error, beforeApply ...func(context.Context) error) (tm.Receipt, error) {
 	if e := g(ctx); e != nil {
 		return tm.Receipt{}, e
+	}
+	for _, admit := range beforeApply {
+		if e := admit(ctx); e != nil {
+			return tm.Receipt{}, e
+		}
 	}
 	r.called = true
 	return tm.Receipt{ID: c.ID, Revision: "1"}, nil

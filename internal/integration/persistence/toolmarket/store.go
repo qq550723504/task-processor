@@ -178,13 +178,16 @@ func (s *Store) Detail(ctx context.Context, scope tm.Scope, platform bool, id st
 	}
 	return result, nil
 }
-func (s *Store) Execute(ctx context.Context, c tm.Command, guard func(context.Context) error) (tm.Receipt, error) {
+func (s *Store) Execute(ctx context.Context, c tm.Command, guard func(context.Context) error, beforeApply ...func(context.Context) error) (tm.Receipt, error) {
 	var result tm.Receipt
 	if !c.Valid() {
 		return result, tm.ErrInvalid
 	}
 	if guard == nil {
 		return result, tm.ErrForbidden
+	}
+	if len(beforeApply) > 1 || len(beforeApply) == 1 && beforeApply[0] == nil {
+		return result, tm.ErrInvalid
 	}
 	raw, _ := json.Marshal(c)
 	digest := sha256.Sum256(raw)
@@ -220,6 +223,11 @@ func (s *Store) Execute(ctx context.Context, c tm.Command, guard func(context.Co
 				return tm.ErrUnavailable
 			}
 			return guard(ctx)
+		}
+		if len(beforeApply) == 1 {
+			if e := beforeApply[0](ctx); e != nil {
+				return e
+			}
 		}
 		now := time.Now().UTC().Truncate(time.Microsecond)
 		result = tm.Receipt{CommandID: c.Key, Operation: c.Operation, ID: c.ID, CommittedAt: now}

@@ -4,7 +4,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ToolPage } from "./tool-page";
 const context = vi.hoisted(() => ({
   user: { id: "actor" },
-  effectiveOrganization: { id: "org-a", name: "A企业" },
+  effectiveOrganization: { id: "org-a", name: "A企业" } as {
+    id: string;
+    name: string;
+  } | null,
   permissions: [
     "workbench.tools.read",
     "workbench.tools.manage",
@@ -50,7 +53,7 @@ beforeEach(() => {
   vi.unstubAllGlobals();
   context.effectiveOrganization = { id: "org-a", name: "A企业" };
 });
-const mount = (mode: "official" | "mine" | "custom") =>
+const mount = (mode: "official" | "mine" | "custom" | "admin") =>
   render(
     <QueryClientProvider
       client={
@@ -104,6 +107,73 @@ it("enables a real enterprise choice and rereads server state", async () => {
     ),
   ).toBe(true);
 });
+it("specialists without enterprise membership record versioned progress", async () => {
+  context.effectiveOrganization = null;
+  const id = "aa1043df-c64c-499d-9c99-57598f7bff18",
+    now = "2026-10-09T00:00:00Z";
+  let updated = false;
+  const writes: RequestInit[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        writes.push(init);
+        updated = true;
+        return Response.json({
+          commandId: new Headers(init.headers).get("Idempotency-Key"),
+          operation: "progress",
+          id,
+          revision: "2",
+          committedAt: now,
+        });
+      }
+      const record = {
+        id,
+        organizationId: "customer-org",
+        kind: "DATA",
+        title: "采购商品资料",
+        description: "保存授权来源商品资料",
+        stage: updated ? "EVALUATING" : "SUBMITTED",
+        revision: updated ? "2" : "1",
+        createdAt: now,
+        updatedAt: now,
+      };
+      if (url.endsWith("/" + id))
+        return Response.json({
+          request: record,
+          events: [
+            {
+              revision: record.revision,
+              stage: record.stage,
+              note: updated ? "正在核实采集范围" : "需求已保存",
+              occurredAt: now,
+            },
+          ],
+        });
+      return Response.json({
+        items: [{ ...record, description: undefined }],
+        nextCursor: "",
+      });
+    }),
+  );
+  mount("admin");
+  fireEvent.click(
+    await screen.findByRole("button", { name: /采购商品资料.*待评估/ }),
+  );
+  fireEvent.change(await screen.findByLabelText("处理阶段"), {
+    target: { value: "EVALUATING" },
+  });
+  fireEvent.change(screen.getByLabelText("真实处理进度 / 关闭原因"), {
+    target: { value: "正在核实采集范围" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "记录进度" }));
+  await screen.findByText("正在核实采集范围");
+  expect(writes).toHaveLength(1);
+  expect(new Headers(writes[0].headers).get("If-Match")).toBe('"1"');
+  expect(new Headers(writes[0].headers).get("X-Expected-Organization-ID")).toBe(
+    "",
+  );
+});
 it("unknown response retains its original key through remount", async () => {
   const keys: string[] = [];
   vi.stubGlobal(
@@ -142,6 +212,35 @@ it("readonly members cannot enable the enterprise tool", async () => {
   expect(
     await screen.findByRole("button", { name: "立即启用" }),
   ).toBeDisabled();
+});
+it("online-only enabled tools do not expose an unavailable local receiver", async () => {
+  const activation = {
+    toolId: tool.id,
+    enabled: true,
+    revision: "1",
+    updatedAt: "2026-10-09T00:00:00Z",
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({
+          tools: [
+            { ...tool, activation, localCapture: false, download: false },
+          ],
+          canManage: true,
+          canCustomize: true,
+        }),
+      ),
+  );
+  mount("mine");
+  await screen.findByRole("heading", { name: "商品采集插件" });
+  expect(
+    screen.queryByRole("link", { name: "打开插件接收页" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText("本地插件采集尚未开放")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "在线采集 →" })).toBeInTheDocument();
 });
 it("customization submission opens its persisted demand and progress", async () => {
   const id = "aa1043df-c64c-499d-9c99-57598f7bff18",
@@ -190,7 +289,7 @@ it("customization submission opens its persisted demand and progress", async () 
             },
           ],
         });
-      const { description: _description, ...summary } = record;
+      const summary = { ...record, description: undefined };
       return Response.json({ items: [summary], nextCursor: "" });
     }),
   );

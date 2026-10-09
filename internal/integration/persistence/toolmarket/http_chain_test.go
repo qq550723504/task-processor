@@ -70,3 +70,31 @@ func TestEnterpriseDemandAndSpecialistProgressHTTPChain(t *testing.T) {
 	detail = send("GET", api.Base+"/requests/"+receipt.ID, "", "")
 	require.Equal(t, 404, detail.Code)
 }
+func TestCommittedActivationReplaysWhenCapabilityGoesOffline(t *testing.T) {
+	_, store := fixture(t)
+	gin.SetMode(gin.TestMode)
+	h := &api.Handler{Repository: store, Readiness: tm.Readiness{LocalCapture: true}, Authorize: func(context.Context, string, bool) (tm.Scope, error) {
+		return tm.Scope{ActorID: "admin-a", OrganizationID: "org-a"}, nil
+	}}
+	router := gin.New()
+	for _, r := range api.Routes(h) {
+		router.Handle(r.Method, r.Path, r.Handler)
+	}
+	send := func(key string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("PUT", api.Base+"/activations/"+tm.AcquisitionID, strings.NewReader(`{"enabled":true}`))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Idempotency-Key", key)
+		r.Header.Set("If-None-Match", "*")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, r)
+		return w
+	}
+	key := uuid.NewString()
+	first := send(key)
+	require.Equal(t, 200, first.Code)
+	h.Readiness = tm.Readiness{}
+	replay := send(key)
+	require.Equal(t, 200, replay.Code)
+	require.Equal(t, first.Body.String(), replay.Body.String())
+	require.Equal(t, 503, send(uuid.NewString()).Code)
+}

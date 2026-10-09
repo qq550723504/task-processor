@@ -444,8 +444,14 @@ function ScopedPage({ mode, scope }: { mode: Mode; scope: ToolScope }) {
                       <p>
                         在 Edge 或 Chrome 中采集当前1688商品，回到应用确认导入。
                       </p>
-                      <DownloadButton scope={scope} enabled={t.download} />
-                      <Link href="/capture/1688">打开插件接收页</Link>
+                      {t.localCapture ? (
+                        <>
+                          <DownloadButton scope={scope} enabled={t.download} />
+                          <Link href="/capture/1688">打开插件接收页</Link>
+                        </>
+                      ) : (
+                        <p role="status">本地插件采集尚未开放</p>
+                      )}
                     </div>
                     <div>
                       <h3>在线采集</h3>

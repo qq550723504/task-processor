@@ -156,7 +156,9 @@ type Repository interface {
 	Activations(context.Context, Scope) ([]Activation, error)
 	Requests(context.Context, Scope, bool, string, int) (RequestPage, error)
 	Detail(context.Context, Scope, bool, string) (Detail, error)
-	Execute(context.Context, Command, func(context.Context) error) (Receipt, error)
+	// beforeApply checks current capability only for a new application. Durable
+	// receipts replay after fresh authorization even when capability is offline.
+	Execute(context.Context, Command, func(context.Context) error, ...func(context.Context) error) (Receipt, error)
 }
 type Tool struct {
 	ID            string      `json:"id"`
