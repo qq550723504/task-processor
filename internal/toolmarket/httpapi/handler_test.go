@@ -57,15 +57,16 @@ func TestBuildRoutesRequiresAllInjectedDependencies(t *testing.T) {
 	}
 	for _, h := range []*Handler{
 		nil,
-		{Bind: bound, Authorize: authorize},
-		{Repository: &repo{}, Authorize: authorize},
-		{Repository: &repo{}, Bind: bound},
+		{Bind: bound, Authorize: authorize, ReadAuthorize: authorize},
+		{Repository: &repo{}, Authorize: authorize, ReadAuthorize: authorize},
+		{Repository: &repo{}, Bind: bound, ReadAuthorize: authorize},
+		{Repository: &repo{}, Bind: bound, Authorize: authorize},
 	} {
 		routes, err := BuildRoutes(h)
 		require.ErrorIs(t, err, tm.ErrUnavailable)
 		require.Nil(t, routes)
 	}
-	routes, err := BuildRoutes(&Handler{Repository: &repo{}, Bind: bound, Authorize: authorize})
+	routes, err := BuildRoutes(&Handler{Repository: &repo{}, Bind: bound, Authorize: authorize, ReadAuthorize: authorize})
 	require.NoError(t, err)
 	require.Len(t, routes, 10)
 	for _, route := range routes {
@@ -83,6 +84,10 @@ func TestStrictBodyAndFreshAuthorizationPreventWrite(t *testing.T) {
 		}
 		return tm.Scope{ActorID: "admin", OrganizationID: "org-a"}, nil
 	}}
+	h.ReadAuthorize = func(context.Context, string, bool) (tm.Scope, error) {
+		t.Fatal("mutation must never use cached authorization")
+		return tm.Scope{}, tm.ErrForbidden
+	}
 	router := gin.New()
 	for _, r := range Routes(h) {
 		router.Handle(r.Method, r.Path, r.Handler)
@@ -101,4 +106,54 @@ func TestStrictBodyAndFreshAuthorizationPreventWrite(t *testing.T) {
 	require.Equal(t, 400, send(`{"enabled":true,"enabled":false}`).Code)
 	require.Equal(t, 403, send(`{"enabled":true}`).Code)
 	require.False(t, db.called)
+}
+
+func TestHTTPReadsUseCachedAuthorizationAndWritesRecheckLiveGrant(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := &repo{}
+	reads, writes := 0, 0
+	liveAllowed := true
+	h := &Handler{Repository: db, Readiness: tm.Readiness{LocalCapture: true},
+		ReadAuthorize: func(context.Context, string, bool) (tm.Scope, error) {
+			reads++
+			return tm.Scope{ActorID: "admin", OrganizationID: "org-a"}, nil
+		},
+		Authorize: func(context.Context, string, bool) (tm.Scope, error) {
+			writes++
+			if !liveAllowed {
+				return tm.Scope{}, tm.ErrForbidden
+			}
+			return tm.Scope{ActorID: "admin", OrganizationID: "org-a"}, nil
+		},
+	}
+	router := gin.New()
+	for _, r := range Routes(h) {
+		router.Handle(r.Method, r.Path, r.Handler)
+	}
+	get := httptest.NewRecorder()
+	router.ServeHTTP(get, httptest.NewRequest("GET", Base+"/market", nil))
+	require.Equal(t, 200, get.Code)
+	require.Contains(t, get.Body.String(), `"canManage":true`)
+	require.Equal(t, 3, reads, "read permission and both action flags follow CachedRead")
+	require.Zero(t, writes)
+	send := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest("PUT", Base+"/activations/"+tm.AcquisitionID, strings.NewReader(`{"enabled":true}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Idempotency-Key", "1510eced-9831-49de-a28c-098cb16deba1")
+		req.Header.Set("If-None-Match", "*")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+	require.Equal(t, 200, send().Code)
+	require.Equal(t, 2, writes, "mutation preflight and repository guard both use LiveWrite")
+	require.Equal(t, 3, reads)
+	db.called = false
+	liveAllowed = false
+	get = httptest.NewRecorder()
+	router.ServeHTTP(get, httptest.NewRequest("GET", Base+"/mine", nil))
+	require.Equal(t, 200, get.Code, "valid cached reads survive live grant revocation within the existing cache contract")
+	require.Equal(t, 403, send().Code)
+	require.False(t, db.called)
+	require.Equal(t, 6, reads)
 }

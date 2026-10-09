@@ -11,14 +11,20 @@
    拒绝既有schema，不迁移/覆盖。runtime startup仅调用`VerifySchema(ctx, db)`和`New(db)`。
 2. 复用当前组织resolver、现有`*authz.ListingKitAuthorizer`：
    `toolmarketauth.New(resolver, authorizer)`；设置`Handler.Bind=a.Bind`和
-   `Handler.Authorize=a.Authorize`。不得替换成基于浏览器权限数组或缓存角色的闭包。
-   企业在每次授权及事务回调使用当前LiveWrite；manage额外限制listingkit_admin。
+   `Handler.ReadAuthorize=a.AuthorizeRead`、`Handler.Authorize=a.Authorize`。
+   不得替换成基于浏览器权限数组或缓存角色的闭包。
+   企业GET、插件下载及按钮权限展示使用当前CachedRead；写请求及事务回调使用当前LiveWrite。
+   缺任一授权依赖拒绝构建；写入不得因实时目录失败回退到缓存。manage额外限制listingkit_admin。
    平台verified-roles路由仅检查当前未过期平台identity与现有platform_admin策略，
    不传客户org，不要求客户成员关系。
 3. 现有Casbin初始化纳入`authz.ToolMarketPolicies()`；WorkbenchPermissions纳入
-   tools.read/manage/customize。既有受保护viewer获得read，operator获得read/customize，
-   listingkit_admin获得三项。自定义模块只能纳入read/customize，不能manage或platform_admin。
-   `tools`和`tools-custom`模块目录及当前菜单可用性由共享Writer一次接线，不新建角色体系。
+   tools.read/manage/customize。静态许可只给现有listingkit_admin三项；旧viewer/operator已
+   被当前scoped policy退休，不能配置成platformAdminRoles来恢复权限。
+   共享Writer在已有模块目录将`tools`和`tools-custom`设为Available，分别消费
+   `authz.ToolMarketModulePermissions("tools")`和`authz.ToolMarketModulePermissions("tools-custom")`。
+   当前企业自定义角色通过既有RoleModules获得read或read/customize，不得获得manage/platform_admin。
+   WorkbenchPermissions只负责权限展示，不能代替模块grant；目录须在创建authorizer之前接好。
+   模块目录及当前菜单可用性由共享Writer一次接线，不新建角色体系。
 4. 从当前已注入、实际开放的采集receiver与online模块推导`Handler.Readiness`。
    enterprise启用不是授权或能力存在的依据。下载仅在local receiver开放且包验证通过时可用。
    数据结果继续走当前`/workbench/data/mine`，保持现有collections安装门控。
@@ -35,7 +41,8 @@ repo, err := toolmarketpersistence.New(db)
 admission, err := toolmarketauth.New(resolver, authorizer)
 // check err
 h := &toolmarkethttp.Handler{
-    Repository: repo, Bind: admission.Bind, Authorize: admission.Authorize,
+    Repository: repo, Bind: admission.Bind,
+    ReadAuthorize: admission.AuthorizeRead, Authorize: admission.Authorize,
     Readiness: toolmarket.Readiness{LocalCapture: receiverReady, OnlineCapture: onlineReady},
 }
 // optional package is validated below; failure leaves download unavailable
@@ -89,5 +96,7 @@ Handler不暴露原始包bytes注入口，ConfigurePackage内部调用LoadPackag
 ## 验证界限
 
 开发自检覆盖PG原子性/并发/隔离/撤权、HTTP严格边界、平台授权、BFF与UI原key恢复。
+模块权限测试使用计划接线的受控目录及真实ListingKitAuthorizer，证明原生企业角色可读/
+提交、不能启用或获得平台权限；该证据不替代共享Writer对当前安装的模块目录实际接线。
 这些是本批代码证据。共享runtime接线、当前安装插件、真实1688/provider、用户试用均
 需要独立实际执行；未执行保持NOT_RUN。无合并、关单、共享部署或真实数据授权。
