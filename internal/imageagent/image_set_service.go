@@ -405,9 +405,7 @@ func (s *Service) validateImageSetRegeneration(ctx context.Context, identity Exe
 	if parent.Plan.Set == nil || parent.PendingCommand != nil || parent.Run.BusinessTaskID != input.ContextID || ValidateImageSetAdmission(parent.Run, parent.Plan) != nil {
 		return nil, ErrCommandBlocked
 	}
-	switch parent.Run.Status {
-	case RunStatusAwaitingFinalApproval, RunStatusCompleted, RunStatusBlocked, RunStatusFailed, RunStatusCancelled:
-	default:
+	if !ImageSetClosedRunStatus(parent.Run.Status) {
 		return nil, ErrCommandBlocked
 	}
 	digest, err := ImageSetClosedEffectsDigest(parent.Plan, parent.Slots, parent.RecoverableEffects)

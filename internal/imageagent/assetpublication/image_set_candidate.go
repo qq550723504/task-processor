@@ -45,15 +45,15 @@ func (r *ImageSetCandidateReader) ReadImageSetCandidate(ctx context.Context, sou
 		return productasset.ImageSetCandidate{}, err
 	}
 	run := projection.Run
-	if run.ID != choice.RunID || run.TenantID != source.TenantID || run.UserID != source.ActorID || run.MemberID != source.MemberID || run.TargetPlatform != source.TargetPlatform || run.BusinessTaskID != source.ItemID || run.Status != imageagent.RunStatusAwaitingFinalApproval || run.ActivePlanRevision != choice.PlanRevision || projection.Plan.Revision != choice.PlanRevision || imageagent.ValidateImageSetAdmission(run, projection.Plan) != nil {
+	if run.ID != choice.RunID || run.TenantID != source.TenantID || run.UserID != source.ActorID || run.MemberID != source.MemberID || run.TargetPlatform != source.TargetPlatform || run.BusinessTaskID != source.ItemID || run.ActivePlanRevision != choice.PlanRevision || projection.Plan.Revision != choice.PlanRevision || imageagent.ValidateImageSetAdmission(run, projection.Plan) != nil {
 		return bad()
 	}
 	bound := projection.Plan.Set.Source
 	if string(bound.ContextKind) != source.ContextKind || bound.ProductID != source.ProductKey || bound.OperationID != source.ItemID || bound.OriginalPublicationID != source.OriginalPublicationID || bound.OriginalVersion != source.OriginalSnapshotVersion || bound.EffectiveVersion != source.EffectiveCatalogVersion || bound.ApplyReceiptID != source.ApplyReceiptID || bound.CatalogHash != projection.AssetCatalog.Manifest.Hash || projection.AssetCatalog.ProductContext.ProductID != source.ProductKey {
 		return bad()
 	}
-	digest, err := imageagent.ImageSetResultDigest(projection.Plan, projection.Slots, projection.RecoverableEffects)
-	if err != nil || digest != choice.ResultDigest || digest != projection.ResultDigest {
+	digest, err := imageagent.ImageSetCandidateResultDigest(projection)
+	if err != nil || digest != choice.ResultDigest {
 		return bad()
 	}
 	execution, err := imageagent.ImageSetSlotExecutionInput(projection, choice.SlotID, choice.Attempt)

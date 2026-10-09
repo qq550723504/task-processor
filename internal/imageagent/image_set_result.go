@@ -19,6 +19,32 @@ func ImageSetClosedEffectsDigest(plan Plan, slots []SlotProjection, recoverable 
 	return imageSetEffectsDigest(plan, slots, recoverable, false)
 }
 
+// These statuses permit checking closed effects; the status alone never proves
+// closure, settlement or materialization.
+func ImageSetClosedRunStatus(status RunStatus) bool {
+	switch status {
+	case RunStatusAwaitingFinalApproval, RunStatusCompleted, RunStatusBlocked, RunStatusFailed, RunStatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Candidate reuse is distinct from terminating a Run's approval. A cancelled
+// parent may never have entered final approval, so derive its exact candidate
+// digest from the original persisted plan/slots. Never overwrite or ignore a
+// conflicting stored digest, and keep UNKNOWN/unclosed effects ineligible.
+func ImageSetCandidateResultDigest(projection RunProjection) (string, error) {
+	if !ImageSetClosedRunStatus(projection.Run.Status) || projection.Run.ActivePlanRevision != projection.Plan.Revision || ValidateImageSetAdmission(projection.Run, projection.Plan) != nil {
+		return "", ErrRevisionConflict
+	}
+	digest, err := ImageSetResultDigest(projection.Plan, projection.Slots, projection.RecoverableEffects)
+	if err != nil || projection.ResultDigest != "" && projection.ResultDigest != digest || projection.Run.Status == RunStatusAwaitingFinalApproval && projection.ResultDigest == "" {
+		return "", ErrRevisionConflict
+	}
+	return digest, nil
+}
+
 func imageSetEffectsDigest(plan Plan, slots []SlotProjection, recoverable []RecoverableEffect, requireAccepted bool) (string, error) {
 	if plan.Set == nil || ValidateSubmittedPlan(plan) != nil || len(slots) != len(plan.Slots) || len(recoverable) != 0 {
 		return "", ErrRevisionConflict

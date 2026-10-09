@@ -503,11 +503,16 @@ func (a *fullImageApplication) response(p imageagent.RunProjection) (gin.H, erro
 		slots = append(slots, gin.H{"slotId": definition.ID, "status": slot.Slot.Status, "attempt": slot.Attempt, "errorCode": slot.ErrorCode, "recipe": definition.Recipe, "candidates": candidates, "closure": slot.Closure})
 	}
 	closed := false
-	if p.Run.ImageAdmission != nil && p.PendingCommand == nil {
+	if p.Run.ImageAdmission != nil && p.PendingCommand == nil && imageagent.ImageSetClosedRunStatus(p.Run.Status) {
 		_, e := imageagent.ImageSetClosedEffectsDigest(p.Plan, p.Slots, p.RecoverableEffects)
 		closed = e == nil
 	}
 	response := gin.H{"runId": p.Run.ID, "status": p.Run.Status, "planRevision": p.Plan.Revision, "planDigest": prepared.PlanDigest, "quoteDigest": prepared.QuoteDigest, "images": prepared.Images, "points": prepared.Points, "settledPoints": settled, "plan": p.Plan.Set, "slots": slots, "resultDigest": p.ResultDigest, "originals": p.AssetCatalog.Assets, "recoverableEffects": p.RecoverableEffects, "pendingCommand": p.PendingCommand, "approvalAvailable": p.Run.Status == imageagent.RunStatusAwaitingFinalApproval && p.ResultDigest != "" && closed, "regenerationAvailable": closed, "block": p.Run.Block}
+	candidateDigest, candidateErr := imageagent.ImageSetCandidateResultDigest(p)
+	response["candidateSelectionAvailable"] = candidateErr == nil
+	if candidateErr == nil {
+		response["resultDigest"] = candidateDigest
+	}
 	response["confirmationActionId"], response["generationAdmitted"] = "", p.Run.ImageAdmission != nil
 	if p.Run.ImageAdmission != nil {
 		response["confirmationActionId"] = p.Run.ImageAdmission.Command.ConfirmActionID

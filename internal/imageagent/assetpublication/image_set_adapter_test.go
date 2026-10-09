@@ -104,6 +104,20 @@ func TestSynchronousImageSetOutputCanBeSelectedWithDistinctOrMissingRequestID(t 
 			require.NoError(t, err)
 			require.Equal(t, built.Candidates[0].AssetID, selected.Asset.ID)
 			require.Equal(t, 1, submits, "selection must never submit again")
+			for _, status := range []imageagent.RunStatus{imageagent.RunStatusCompleted, imageagent.RunStatusFailed, imageagent.RunStatusBlocked, imageagent.RunStatusCancelled} {
+				projection.Run.Status = status
+				projection.ResultDigest = ""
+				digest, err := imageagent.ImageSetCandidateResultDigest(projection)
+				require.NoError(t, err)
+				require.Equal(t, choice.ResultDigest, digest)
+				reader, err := NewImageSetCandidateReader(staticProjectionSource{projection: projection}, facts, facts, artifacts)
+				require.NoError(t, err)
+				selected, err := reader.ReadImageSetCandidate(ctx, source, choice)
+				require.NoError(t, err)
+				require.Equal(t, built.Candidates[0].AssetID, selected.Asset.ID)
+				require.Equal(t, fact.IntentID, selected.Asset.GenerationEvidence.IntentID)
+				require.Equal(t, 1, submits, "terminal-parent reuse must not create another provider request")
+			}
 		})
 	}
 }

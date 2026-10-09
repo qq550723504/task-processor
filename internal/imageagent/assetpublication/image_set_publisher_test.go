@@ -33,7 +33,7 @@ func TestImageSetPublisherConsumesExactSelectionAfterOriginalPublicationBoundary
 	require.Equal(t, []string{"selected-image"}, ack.AssetIDs)
 	require.Equal(t, selection, selector.commands[0])
 	require.Equal(t, projection.ResultDigest, ack.ResultDigest)
-	for _, kind := range []string{"no_boundary", "changed_selection", "changed_result"} {
+	for _, kind := range []string{"no_boundary", "changed_selection", "changed_result", "completed", "failed", "blocked", "cancelled"} {
 		t.Run(kind, func(t *testing.T) {
 			changed := projection
 			receipt := *projection.PendingCommand
@@ -45,6 +45,8 @@ func TestImageSetPublisherConsumesExactSelectionAfterOriginalPublicationBoundary
 				receipt.SelectionDigest = strings.Repeat("c", 64)
 			case "changed_result":
 				receipt.ResultDigest = strings.Repeat("c", 64)
+			case "completed", "failed", "blocked", "cancelled":
+				changed.Run.Status = imageagent.RunStatus(kind)
 			}
 			rejected := &selectedSetFixture{}
 			p, err := NewImageSetPublisher(staticProjectionSource{projection: changed}, rejected)

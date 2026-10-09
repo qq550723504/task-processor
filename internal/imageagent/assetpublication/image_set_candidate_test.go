@@ -118,32 +118,82 @@ func TestImageSetCandidateReaderBindsOriginalFactsInKnownPartialRun(t *testing.T
 	require.Equal(t, projection.ResultDigest, result.Result.ResultDigest)
 }
 
-func TestImageSetCandidateReaderRejectsDriftAndUnsettledOriginalFacts(t *testing.T) {
-	for _, kind := range []string{"member", "publication", "source_version", "unknown", "unsettled", "wrong_quote", "wrong_artifact", "wrong_native_size"} {
-		t.Run(kind, func(t *testing.T) {
+func TestImageSetCandidateReaderReusesSettledCandidatesFromClosedParentRuns(t *testing.T) {
+	for _, status := range []imageagent.RunStatus{imageagent.RunStatusCompleted, imageagent.RunStatusFailed, imageagent.RunStatusBlocked, imageagent.RunStatusCancelled} {
+		for _, storedDigest := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/stored_digest=%t", status, storedDigest), func(t *testing.T) {
+				projection, facts, source, choice := imageSetCandidateFixture(t)
+				projection.Run.Status = status
+				if !storedDigest {
+					projection.ResultDigest = "" // Cancellation can close before final approval.
+				}
+				reader, err := NewImageSetCandidateReader(staticProjectionSource{projection: projection}, facts, facts, staticPublicURLResolver{})
+				require.NoError(t, err)
+				result, err := reader.ReadImageSetCandidate(context.Background(), source, choice)
+				require.NoError(t, err)
+				require.Equal(t, choice.RunID, result.Asset.RunID)
+				require.Equal(t, choice.AssetID, result.Asset.ID)
+				require.Equal(t, choice.ResultDigest, result.Result.ResultDigest)
+				require.Equal(t, facts.fact.Settlement.ProofDigest, result.Asset.GenerationEvidence.SettlementProofDigest)
+			})
+		}
+	}
+}
+
+func TestImageSetCandidateReaderRejectsParentsStillExecuting(t *testing.T) {
+	for _, status := range []imageagent.RunStatus{imageagent.RunStatusAwaitingPlanApproval, imageagent.RunStatusPlanning, imageagent.RunStatusExecuting, imageagent.RunStatusEvaluating, imageagent.RunStatusRepairing} {
+		t.Run(string(status), func(t *testing.T) {
 			projection, facts, source, choice := imageSetCandidateFixture(t)
-			switch kind {
-			case "member":
-				source.MemberID = "other"
-			case "publication":
-				source.OriginalPublicationID = "other"
-			case "source_version":
-				source.EffectiveCatalogVersion = 2
-			case "unknown":
-				projection.RecoverableEffects = []imageagent.RecoverableEffect{{SlotID: "closeup", Attempt: 1, Code: imageagent.SlotProviderOutcomeUnknownCode}}
-			case "unsettled":
-				facts.fact.Settlement = imageagent.GenerationSettlementReceipt{}
-			case "wrong_quote":
-				facts.fact.Intent.Points++
-			case "wrong_artifact":
-				facts.effect.FinalManifest.Assets[0].SHA256 = strings.Repeat("b", 64)
-			case "wrong_native_size":
-				facts.effect.FinalManifest.Assets[0].Width = 1200
-			}
+			projection.Run.Status = status
 			reader, err := NewImageSetCandidateReader(staticProjectionSource{projection: projection}, facts, facts, staticPublicURLResolver{})
 			require.NoError(t, err)
 			_, err = reader.ReadImageSetCandidate(context.Background(), source, choice)
-			require.Error(t, err)
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+		})
+	}
+}
+
+func TestImageSetCandidateReaderRejectsDriftAndUnsettledOriginalFacts(t *testing.T) {
+	for _, status := range []imageagent.RunStatus{imageagent.RunStatusAwaitingFinalApproval, imageagent.RunStatusCompleted, imageagent.RunStatusFailed, imageagent.RunStatusBlocked, imageagent.RunStatusCancelled} {
+		t.Run(string(status), func(t *testing.T) {
+			for _, kind := range []string{"member", "publication", "source_version", "unknown", "unsettled", "wrong_quote", "wrong_artifact", "wrong_native_size", "stored_digest", "choice_digest", "materialization_pending", "missing_admission", "active_revision"} {
+				t.Run(kind, func(t *testing.T) {
+					projection, facts, source, choice := imageSetCandidateFixture(t)
+					projection.Run.Status = status
+					switch kind {
+					case "member":
+						source.MemberID = "other"
+					case "publication":
+						source.OriginalPublicationID = "other"
+					case "source_version":
+						source.EffectiveCatalogVersion = 2
+					case "unknown":
+						projection.RecoverableEffects = []imageagent.RecoverableEffect{{SlotID: "closeup", Attempt: 1, Code: imageagent.SlotProviderOutcomeUnknownCode}}
+					case "unsettled":
+						facts.fact.Settlement = imageagent.GenerationSettlementReceipt{}
+					case "wrong_quote":
+						facts.fact.Intent.Points++
+					case "wrong_artifact":
+						facts.effect.FinalManifest.Assets[0].SHA256 = strings.Repeat("b", 64)
+					case "wrong_native_size":
+						facts.effect.FinalManifest.Assets[0].Width = 1200
+					case "stored_digest":
+						projection.ResultDigest = strings.Repeat("b", 64)
+					case "choice_digest":
+						choice.ResultDigest = strings.Repeat("b", 64)
+					case "materialization_pending":
+						facts.effect.Phase = imageagent.SlotEffectV3Phase("staged")
+					case "missing_admission":
+						projection.Run.ImageAdmission = nil
+					case "active_revision":
+						projection.Run.ActivePlanRevision++
+					}
+					reader, err := NewImageSetCandidateReader(staticProjectionSource{projection: projection}, facts, facts, staticPublicURLResolver{})
+					require.NoError(t, err)
+					_, err = reader.ReadImageSetCandidate(context.Background(), source, choice)
+					require.Error(t, err)
+				})
+			}
 		})
 	}
 }

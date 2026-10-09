@@ -10,7 +10,7 @@ const template={templateId,agentId:"product.image.agent",lifecycle:"ACTIVE",revi
 const entry={agent:{agentId:"product.image.agent",activation:"ENABLED",revision:"1",activationEpoch:"1",defaultTemplate:{templateId,revision:"1"},updatedAt:now},name:"Images",description:"Full images",definitionVersion:"v1.0.0",parameterSchema:"image-config-v1",canConfigure:true,canUse:true,canReadRuns:true,capabilities:[{id:"image.generate",support:"REQUIRED",readiness:"AVAILABLE",reason:"",observedAt:now}]};
 const source={ContextKind:"acquisition",ProductID:"p",OperationID:operation,OriginalPublicationID:"publication",OriginalVersion:1,EffectiveVersion:1};
 function projection(status="awaiting_plan_approval",confirmationActionId=""){
- return {runId,status,confirmationActionId,generationAdmitted:!!confirmationActionId,planRevision:1,planDigest:sha,quoteDigest:digest,images:2,points:20,settledPoints:status==="awaiting_plan_approval"?0:20,resultDigest:status==="awaiting_plan_approval"?"":sha,approvalAvailable:status==="awaiting_final_approval",regenerationAvailable:status==="awaiting_final_approval",plan:{Source:source,Target:{Platform:"product",StoreID:"",Site:"",CategoryID:0}},slots:["main","detail"].map((slotId,i)=>({slotId,status:status==="awaiting_plan_approval"?"pending":"accepted",attempt:status==="awaiting_plan_approval"?0:1,errorCode:"",recipe:{Purpose:i?"detail_closeup":"product_identity",Background:"white",Language:"en",Placement:{Group:i?"detail":"carousel",Order:1},References:[{AssetID:"original"}],Quote:{Points:10}},candidates:status==="awaiting_plan_approval"?[]:[{assetId:`generated-${i}`,url:`https://images.test/generated-${i}.png`,width:1024,height:1024}],closure:status==="awaiting_plan_approval"?null:{Kind:"generated",Points:10}})),originals:[{ID:"original",DisplayURL:"https://images.test/original.png",Width:1024,Height:1024}],recoverableEffects:null,pendingCommand:null,block:null};
+ return {runId,status,confirmationActionId,generationAdmitted:!!confirmationActionId,planRevision:1,planDigest:sha,quoteDigest:digest,images:2,points:20,settledPoints:status==="awaiting_plan_approval"?0:20,resultDigest:status==="awaiting_plan_approval"?"":sha,approvalAvailable:status==="awaiting_final_approval",candidateSelectionAvailable:["awaiting_final_approval","completed","failed","blocked","cancelled"].includes(status),regenerationAvailable:status==="awaiting_final_approval",plan:{Source:source,Target:{Platform:"product",StoreID:"",Site:"",CategoryID:0}},slots:["main","detail"].map((slotId,i)=>({slotId,status:status==="awaiting_plan_approval"?"pending":"accepted",attempt:status==="awaiting_plan_approval"?0:1,errorCode:"",recipe:{Purpose:i?"detail_closeup":"product_identity",Background:"white",Language:"en",Placement:{Group:i?"detail":"carousel",Order:1},References:[{AssetID:"original"}],Quote:{Points:10}},candidates:status==="awaiting_plan_approval"?[]:[{assetId:`generated-${i}`,url:`https://images.test/generated-${i}.png`,width:1024,height:1024}],closure:status==="awaiting_plan_approval"?null:{Kind:"generated",Points:10}})),originals:[{ID:"original",DisplayURL:"https://images.test/original.png",Width:1024,Height:1024}],recoverableEffects:null,pendingCommand:null,block:null};
 }
 let state:ReturnType<typeof projection>,approved:boolean,fetch:ReturnType<typeof vi.fn<(input:unknown,init?:RequestInit)=>Promise<Response>>>;
 beforeEach(()=>{
@@ -115,20 +115,34 @@ it("prepares the displayed immutable default content version even after the temp
  const request=fetch.mock.calls.find(([url])=>String(url).endsWith("/prepare"))!;
  expect(JSON.parse(String(request[1]!.body)).template).toEqual({templateId,revision:"1"});
 });
-it("can combine new subset output with unapproved successful original outputs without another generation",async()=>{
+for (const parentStatus of ["awaiting_final_approval","completed","failed","blocked","cancelled"]) {
+it(`can combine new subset output with successful ${parentStatus} parent outputs without another generation`,async()=>{
  const parentId="44444444-4444-4444-8444-444444444444";
- const parent={...projection("awaiting_final_approval",templateId),runId:parentId};
+ const parent={...projection(parentStatus,templateId),runId:parentId};
  const child={...projection("awaiting_final_approval",operation),images:1,slots:projection("awaiting_final_approval").slots.slice(0,1),plan:{...state.plan,Regeneration:{RunID:parentId}}};
  state=child;localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:run`,runId);
  const real=fetch.getMockImplementation()!;
  fetch.mockImplementation((url,init)=>String(url).endsWith(`/runs/${parentId}`)?Promise.resolve(Response.json(parent)):real(url,init));
  render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
  fireEvent.click((await screen.findAllByRole("button",{name:"选择采用"}))[0]);
- const original=await screen.findAllByRole("button",{name:"采用原任务结果"});expect(original).toHaveLength(2);fireEvent.click(original[1]);
+ const original=await screen.findAllByRole("button",{name:"采用原任务结果"});expect(original).toHaveLength(2);expect(original[1]).toBeEnabled();fireEvent.click(original[1]);
  fireEvent.click(screen.getByRole("button",{name:"预览完整选择"}));
  await screen.findByRole("button",{name:"人工批准并保存素材"});
  const request=fetch.mock.calls.find(([url])=>String(url).endsWith("/preview"))!;
  const choices=JSON.parse(String(request[1]!.body)).choices;
  expect(choices.map((v:{run_id:string,slot_id:string})=>[v.run_id,v.slot_id])).toEqual([[runId,"main"],[parentId,"detail"]]);
  expect(fetch.mock.calls.some(([url])=>/\/(prepare|regenerate|confirm)$/.test(String(url)))).toBe(false);
+});
+}
+it("keeps an UNKNOWN parent's successful-looking candidates unavailable for reuse",async()=>{
+ const parentId="44444444-4444-4444-8444-444444444444";
+ const parent={...projection("blocked",templateId),runId:parentId,candidateSelectionAvailable:false,resultDigest:"",recoverableEffects:[{SlotID:"detail",Attempt:1,Code:"provider_outcome_unknown"}]};
+ const child={...projection("awaiting_final_approval",operation),plan:{...state.plan,Regeneration:{RunID:parentId}}};state=child;
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:run`,runId);
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation((url,init)=>String(url).endsWith(`/runs/${parentId}`)?Promise.resolve(Response.json(parent)):real(url,init));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ const choices=await screen.findAllByRole("button",{name:"采用原任务结果"});
+ choices.forEach(button=>expect(button).toBeDisabled());
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
 });
