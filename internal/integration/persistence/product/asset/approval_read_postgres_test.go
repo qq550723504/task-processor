@@ -2,6 +2,8 @@ package assetpersistence
 
 import (
 	"context"
+	"encoding/json"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -23,7 +25,7 @@ func TestBoundedExactApprovalReadIgnoresCurrentHeadAndRejectsCorruption(t *testi
 	require.NoError(t, err)
 	schema := "approval487_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	require.NoError(t, root.Exec("CREATE SCHEMA "+schema).Error)
-	db, err := gorm.Open(postgres.Open(dsn+" search_path="+schema), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	db, err := gorm.Open(postgres.Open(approvalSchemaDSN(dsn, schema)), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		pool, _ := db.DB()
@@ -56,7 +58,29 @@ func TestBoundedExactApprovalReadIgnoresCurrentHeadAndRejectsCorruption(t *testi
 	require.NoError(t, err)
 	_, err = tiny.ReadApprovalCommit(context.Background(), first.TenantID, first.ActionID)
 	require.ErrorIs(t, err, productasset.ErrInventoryTooLarge)
+	inventoryReader, err := NewBoundedApprovedInventoryReader(db, 2<<20)
+	require.NoError(t, err)
+	oversized, err := json.Marshal(strings.Repeat("x", 70<<10))
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&ApprovalReceiptRecord{}).Where("tenant_id = ? AND action_id = ?", second.TenantID, second.ActionID).Update("selection_json", oversized).Error)
+	_, err = inventoryReader.GetApprovedInventory(context.Background(), productasset.InventoryScope{TenantID: second.TenantID, ProductKey: second.ProductKey, TargetPlatform: "product", SourceSnapshotVersion: 1})
+	require.ErrorIs(t, err, productasset.ErrInventoryTooLarge, "ordered inventory reads must bound selection receipts before transferring them")
+	require.NoError(t, db.Model(&ApprovalReceiptRecord{}).Where("tenant_id = ? AND action_id = ?", second.TenantID, second.ActionID).Update("selection_json", nil).Error)
 	require.NoError(t, db.Model(&ApprovedAssetRecord{}).Where("tenant_id = ? AND action_id = ?", first.TenantID, first.ActionID).Update("payload_json", []byte(`{"id":"corrupt"}`)).Error)
 	_, err = reader.ReadApprovalCommit(context.Background(), first.TenantID, first.ActionID)
 	require.ErrorIs(t, err, productasset.ErrRepositoryStateInvalid)
+}
+
+func approvalSchemaDSN(dsn, schema string) string {
+	if strings.Contains(dsn, "://") {
+		parsed, err := url.Parse(dsn)
+		if err != nil {
+			return ""
+		}
+		query := parsed.Query()
+		query.Set("search_path", schema)
+		parsed.RawQuery = query.Encode()
+		return parsed.String()
+	}
+	return dsn + " search_path=" + schema
 }

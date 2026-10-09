@@ -86,11 +86,19 @@ func (r *repository) CommitApproval(ctx context.Context, commit productasset.App
 	if err != nil {
 		return productasset.ApprovalReceipt{}, repositoryStateInvalid("marshal approval receipt", err)
 	}
+	var selectionJSON []byte
+	if commit.ImageSet != nil {
+		selectionJSON, err = json.Marshal(commit.ImageSet)
+		if err != nil || len(selectionJSON) > 64<<10 {
+			return productasset.ApprovalReceipt{}, productasset.ErrInvalidApproval
+		}
+	}
 
 	receipt := productasset.ApprovalReceipt{}
 	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		candidate := ApprovalReceiptRecord{
-			TenantID: commit.TenantID, ActionID: commit.ActionID,
+			SelectionJSON: selectionJSON,
+			TenantID:      commit.TenantID, ActionID: commit.ActionID,
 			PayloadHash: payloadHash, AssetIDsJSON: assetIDsJSON,
 		}
 		created := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&candidate)
@@ -99,6 +107,11 @@ func (r *repository) CommitApproval(ctx context.Context, commit productasset.App
 		}
 		if created.RowsAffected == 0 {
 			return loadExistingReceipt(tx, commit, payloadHash, &receipt)
+		}
+		if commit.ImageSet != nil {
+			if err := compareImageInventoryHead(tx, commit); err != nil {
+				return err
+			}
 		}
 
 		inserted := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&assetRecords)
@@ -169,13 +182,14 @@ func (r *repository) ReadApprovalCommit(ctx context.Context, tenantID, actionID 
 	var commit productasset.ApprovalCommit
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if r.maxApprovedInventoryBytes > 0 {
-			var size struct{ ReceiptBytes, AssetBytes int64 }
+			var size struct{ ReceiptBytes, AssetBytes, SelectionBytes int64 }
 			if err := tx.Raw(`SELECT
 				COALESCE((SELECT octet_length(CAST(asset_ids_json AS text)) FROM product_approval_receipts WHERE tenant_id = ? AND action_id = ?), 0) AS receipt_bytes,
-				COALESCE((SELECT SUM(octet_length(CAST(payload_json AS text))) FROM product_approved_assets WHERE tenant_id = ? AND action_id = ?), 0) AS asset_bytes`, tenantID, actionID, tenantID, actionID).Scan(&size).Error; err != nil {
+				COALESCE((SELECT octet_length(CAST(selection_json AS text)) FROM product_approval_receipts WHERE tenant_id = ? AND action_id = ?), 0) AS selection_bytes,
+				COALESCE((SELECT SUM(octet_length(CAST(payload_json AS text))) FROM product_approved_assets WHERE tenant_id = ? AND action_id = ?), 0) AS asset_bytes`, tenantID, actionID, tenantID, actionID, tenantID, actionID).Scan(&size).Error; err != nil {
 				return mapRepositoryError("measure exact approval", err)
 			}
-			if size.ReceiptBytes > int64(r.maxApprovedInventoryBytes) || size.AssetBytes > int64(r.maxApprovedInventoryBytes)-size.ReceiptBytes {
+			if size.SelectionBytes > 64<<10 || size.ReceiptBytes > int64(r.maxApprovedInventoryBytes) || size.SelectionBytes > int64(r.maxApprovedInventoryBytes)-size.ReceiptBytes || size.AssetBytes > int64(r.maxApprovedInventoryBytes)-size.ReceiptBytes-size.SelectionBytes {
 				return productasset.ErrInventoryTooLarge
 			}
 		}
@@ -203,6 +217,11 @@ func (r *repository) ReadApprovalCommit(ctx context.Context, tenantID, actionID 
 		}
 		first := rows[0]
 		commit = productasset.ApprovalCommit{TenantID: tenantID, ProductKey: first.ProductKey, TargetPlatform: first.TargetPlatform, ActionID: actionID, SourceSnapshotVersion: first.SourceSnapshotVersion, Assets: make([]productasset.ApprovedAsset, len(assetIDs))}
+		if len(receipt.SelectionJSON) > 0 {
+			if len(receipt.SelectionJSON) > 64<<10 || json.Unmarshal(receipt.SelectionJSON, &commit.ImageSet) != nil || commit.ImageSet == nil {
+				return repositoryStateInvalid("decode exact selection", errors.New("selection metadata invalid"))
+			}
+		}
 		for index, assetID := range assetIDs {
 			row, ok := byID[assetID]
 			if !ok || row.ProductKey != commit.ProductKey || row.TargetPlatform != commit.TargetPlatform || row.SourceSnapshotVersion != commit.SourceSnapshotVersion {
@@ -264,6 +283,23 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 			return productasset.ApprovedAssetInventory{}, mapRepositoryError("load approved inventory head", err)
 		}
 		actionID = head.ActionID
+	}
+	var selection struct{ IsImageSet bool }
+	if err := r.db.WithContext(ctx).Model(&ApprovalReceiptRecord{}).Select("CASE WHEN selection_json IS NULL THEN FALSE ELSE TRUE END AS is_image_set").Where("tenant_id = ? AND action_id = ?", scope.TenantID, actionID).Take(&selection).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return productasset.ApprovedAssetInventory{}, productasset.ErrRepositoryStateInvalid
+		}
+		return productasset.ApprovedAssetInventory{}, mapRepositoryError("read inventory selection kind", err)
+	}
+	if selection.IsImageSet {
+		commit, err := r.ReadApprovalCommit(ctx, scope.TenantID, actionID)
+		if err != nil {
+			return productasset.ApprovedAssetInventory{}, err
+		}
+		if commit.ProductKey != scope.ProductKey || commit.TargetPlatform != scope.TargetPlatform || scope.SourceSnapshotVersion > 0 && commit.SourceSnapshotVersion != scope.SourceSnapshotVersion {
+			return productasset.ApprovedAssetInventory{}, productasset.ErrRepositoryStateInvalid
+		}
+		return productasset.CloneApprovedAssetInventory(productasset.ApprovedAssetInventory{Scope: scope, Assets: commit.Assets}), nil
 	}
 	if r.maxApprovedInventoryBytes > 0 {
 		if err := r.enforceApprovedInventoryReadBound(ctx, scope, actionID); err != nil {
@@ -363,33 +399,38 @@ func advanceVersionedInventoryHead(tx *gorm.DB, commit productasset.ApprovalComm
 }
 
 type canonicalApprovalPayload struct {
-	TenantID              string                   `json:"tenant_id"`
-	ProductKey            string                   `json:"product_key"`
-	TargetPlatform        string                   `json:"target_platform,omitempty"`
-	ActionID              string                   `json:"action_id"`
-	SourceSnapshotVersion uint64                   `json:"source_snapshot_version,omitempty"`
-	Assets                []canonicalApprovedAsset `json:"assets"`
+	ImageSet              *productasset.ImageSetSelection `json:"image_set,omitempty"`
+	TenantID              string                          `json:"tenant_id"`
+	ProductKey            string                          `json:"product_key"`
+	TargetPlatform        string                          `json:"target_platform,omitempty"`
+	ActionID              string                          `json:"action_id"`
+	SourceSnapshotVersion uint64                          `json:"source_snapshot_version,omitempty"`
+	Assets                []canonicalApprovedAsset        `json:"assets"`
 }
 
 type canonicalApprovedAsset struct {
-	OriginKind       productasset.Origin                    `json:"origin_kind"`
-	SourceApproval   *productasset.SourceApprovalProvenance `json:"source_approval,omitempty"`
-	SelectionReceipt *productasset.SelectionReceipt         `json:"selection_receipt,omitempty"`
-	ID               string                                 `json:"id"`
-	RunID            string                                 `json:"run_id"`
-	PlanRevision     int64                                  `json:"plan_revision"`
-	SlotID           string                                 `json:"slot_id"`
-	Attempt          int                                    `json:"attempt"`
-	Role             productasset.Role                      `json:"role"`
-	URL              string                                 `json:"url"`
-	SourceAssetID    string                                 `json:"source_asset_id"`
-	Width            int                                    `json:"width"`
-	Height           int                                    `json:"height"`
-	Operations       []string                               `json:"operations"`
+	Presentation       *productasset.ImagePresentation        `json:"presentation,omitempty"`
+	OfficialPlacement  *productasset.ImageOfficialPlacement   `json:"official_placement,omitempty"`
+	GenerationEvidence *productasset.GenerationEvidence       `json:"generation_evidence,omitempty"`
+	OriginKind         productasset.Origin                    `json:"origin_kind"`
+	SourceApproval     *productasset.SourceApprovalProvenance `json:"source_approval,omitempty"`
+	SelectionReceipt   *productasset.SelectionReceipt         `json:"selection_receipt,omitempty"`
+	ID                 string                                 `json:"id"`
+	RunID              string                                 `json:"run_id"`
+	PlanRevision       int64                                  `json:"plan_revision"`
+	SlotID             string                                 `json:"slot_id"`
+	Attempt            int                                    `json:"attempt"`
+	Role               productasset.Role                      `json:"role"`
+	URL                string                                 `json:"url"`
+	SourceAssetID      string                                 `json:"source_asset_id"`
+	Width              int                                    `json:"width"`
+	Height             int                                    `json:"height"`
+	Operations         []string                               `json:"operations"`
 }
 
 func canonicalApprovedAssetFromDomain(approved productasset.ApprovedAsset) canonicalApprovedAsset {
 	return canonicalApprovedAsset{
+		Presentation: approved.Presentation, OfficialPlacement: approved.OfficialPlacement, GenerationEvidence: approved.GenerationEvidence,
 		OriginKind: approved.OriginKind(), SourceApproval: approved.SourceApproval, SelectionReceipt: approved.SelectionReceipt,
 		ID: approved.ID, RunID: approved.RunID, PlanRevision: approved.PlanRevision,
 		SlotID: approved.SlotID, Attempt: approved.Attempt, Role: approved.Role,
@@ -400,6 +441,7 @@ func canonicalApprovedAssetFromDomain(approved productasset.ApprovedAsset) canon
 
 func (approved canonicalApprovedAsset) domainAsset() productasset.ApprovedAsset {
 	return productasset.ApprovedAsset{
+		Presentation: approved.Presentation, OfficialPlacement: approved.OfficialPlacement, GenerationEvidence: approved.GenerationEvidence,
 		SourceApproval: approved.SourceApproval, SelectionReceipt: approved.SelectionReceipt,
 		ID: approved.ID, RunID: approved.RunID, PlanRevision: approved.PlanRevision,
 		SlotID: approved.SlotID, Attempt: approved.Attempt, Role: approved.Role,
@@ -410,6 +452,7 @@ func (approved canonicalApprovedAsset) domainAsset() productasset.ApprovedAsset 
 
 func approvalPayloadHash(commit productasset.ApprovalCommit) (string, error) {
 	payload := canonicalApprovalPayload{
+		ImageSet: commit.ImageSet,
 		TenantID: commit.TenantID, ProductKey: commit.ProductKey, TargetPlatform: commit.TargetPlatform, ActionID: commit.ActionID,
 		SourceSnapshotVersion: commit.SourceSnapshotVersion,
 		Assets:                make([]canonicalApprovedAsset, len(commit.Assets)),
