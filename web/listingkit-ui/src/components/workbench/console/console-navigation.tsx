@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ecoPageSchema, ecoRequest } from "@/lib/api/ecoservices";
 import { consoleNavigation, findConsoleRoute, type ConsoleNavNode } from "@/lib/workbench/console-navigation";
 
-export function ConsoleNavigation({ pathname, ariaLabel, onNavigate, toolMarketAvailable = false, productAcquisitionAvailable = false, productCollectionsAvailable = false, supplyChainAvailable = false, knowledgeAvailable = false, aiWorkbenchAvailable = false, productReviewAvailable = false, ecoservicesAvailable = false, sheinRecordsAvailable = false, userId }: { pathname: string; ariaLabel: string; onNavigate?: () => void; toolMarketAvailable?: boolean; productAcquisitionAvailable?: boolean; productCollectionsAvailable?: boolean; supplyChainAvailable?: boolean; knowledgeAvailable?: boolean; aiWorkbenchAvailable?: boolean; productReviewAvailable?: boolean; ecoservicesAvailable?: boolean; sheinRecordsAvailable?: boolean; userId?: string }) {
+export function ConsoleNavigation({ pathname, ariaLabel, onNavigate, toolMarketAvailable = false, productAcquisitionAvailable = false, productCollectionsAvailable = false, supplyChainAvailable = false, knowledgeAvailable = false, projectCenterAvailable = false, aiWorkbenchAvailable = false, productReviewAvailable = false, ecoservicesAvailable = false, sheinRecordsAvailable = false, userId }: { pathname: string; ariaLabel: string; onNavigate?: () => void; toolMarketAvailable?: boolean; productAcquisitionAvailable?: boolean; productCollectionsAvailable?: boolean; supplyChainAvailable?: boolean; knowledgeAvailable?: boolean; projectCenterAvailable?:boolean; aiWorkbenchAvailable?: boolean; productReviewAvailable?: boolean; ecoservicesAvailable?: boolean; sheinRecordsAvailable?: boolean; userId?: string }) {
   const trail = findConsoleRoute(pathname)?.trail ?? [];
   const query=useSearchParams(), selection=new URLSearchParams();
   if(pathname.startsWith("/workbench/supply/mine"))for(const key of ["preparation","store"]){const value=query?.get(key);if(value&&collectionID.safeParse(value).success)selection.set(key,value);}
@@ -26,7 +26,7 @@ export function ConsoleNavigation({ pathname, ariaLabel, onNavigate, toolMarketA
     if (node.href !== "/workbench/ai") return node;
     const children = (node.children ?? [])
       .filter(child => aiWorkbenchAvailable || child.href !== "/workbench/ai/chat" && (child.href !== "/workbench/ai/tasks" || independentTaskAvailable))
-      .map(child => child.href === "/workbench/ai/tasks" && !aiWorkbenchAvailable ? {
+      .map(child => child.href === "/workbench/ai/projects" ? {...child,availability:projectCenterAvailable?"connected" as const:"unavailable" as const,children:projectCenterAvailable?child.children:undefined} : child.href === "/workbench/ai/tasks" && !aiWorkbenchAvailable ? {
         ...child,
         children: child.children?.filter(entry => entry.href === "/workbench/ai/tasks/pending" && productReviewAvailable || entry.href === "/workbench/ai/tasks/completed" && sheinRecordsAvailable),
       } : child.href === "/workbench/ai/knowledge" && knowledgeAvailable ? { ...child, availability: "connected" as const } : child);

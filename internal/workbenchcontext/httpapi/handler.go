@@ -23,9 +23,16 @@ type Handler struct {
 	workbenchAuthorizer          *authz.ListingKitAuthorizer
 	profileReader                authidentity.SelfProfileReader
 	aiWorkbenchAvailable         bool
+	projectCenterAvailable       bool
 	aiWorkbenchAdmission         func(string) bool
 	aiWorkbenchPlanningReadiness func(context.Context, string) string
 	aiWorkbenchTitleReadiness    func(context.Context, string) string
+}
+
+func (h *Handler) SetProjectCenterAvailable(v bool) {
+	if h != nil {
+		h.projectCenterAvailable = v
+	}
 }
 
 // SetAIWorkbenchAvailable is called during composition, before HTTP serving.
@@ -205,6 +212,7 @@ func (h *Handler) writeContext(c *gin.Context) {
 		SelectionRequired:            effectiveOrganizationID == nil && len(organizations) > 1,
 		Organizations:                organizations,
 		AIWorkbenchAvailable:         available,
+		ProjectCenterAvailable:       h.projectCenterAvailable,
 		AIWorkbenchPlanningReadiness: planningReadiness,
 		AIWorkbenchTitleReadiness:    titleReadiness,
 	})
@@ -225,6 +233,7 @@ type contextResponse struct {
 	EffectiveOrganizationID      *string                `json:"effectiveOrganizationId"`
 	SelectionRequired            bool                   `json:"selectionRequired"`
 	Organizations                []organizationResponse `json:"organizations"`
+	ProjectCenterAvailable       bool                   `json:"projectCenterAvailable,omitempty"`
 	AIWorkbenchAvailable         bool                   `json:"aiWorkbenchAvailable,omitempty"`
 	AIWorkbenchPlanningReadiness string                 `json:"aiWorkbenchPlanningReadiness,omitempty"`
 	AIWorkbenchTitleReadiness    string                 `json:"aiWorkbenchTitleReadiness,omitempty"`

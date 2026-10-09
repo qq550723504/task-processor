@@ -85,7 +85,7 @@ var workbenchCommercialPermissions = []string{
 // WorkbenchPermissions is a bounded display contract, never a policy source.
 func WorkbenchPermissions() []string {
 	result := []string{PermissionListingKitAdminRead, PermissionListingKitAdminWrite, PermissionProductSourcingWrite, PermissionLocalAgentWrite, PermissionImageAgentRead, PermissionImageAgentWrite, PermissionWorkbenchAgentRead, PermissionWorkbenchAgentUse, PermissionWorkbenchAgentConfigure}
-	for _, group := range [][]string{workbenchToolPermissions, workbenchChatPermissions, workbenchKnowledgePermissions, workbenchEcoservicesPermissions, workbenchSupplyPermissions, workbenchStorePermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
+	for _, group := range [][]string{[]string{"workbench.project.read", "workbench.project.manage"}, workbenchToolPermissions, workbenchChatPermissions, workbenchKnowledgePermissions, workbenchEcoservicesPermissions, workbenchSupplyPermissions, workbenchStorePermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
 		result = append(result, group...)
 	}
 	return result
@@ -234,6 +234,16 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		}
 	}
 
+	for _, role := range []string{"listingkit_viewer", "listingkit_operator", "listingkit_admin", "platform_admin"} {
+		if _, e := enforcer.AddPolicy(role, "workbench.project.read"); e != nil {
+			return nil, e
+		}
+		if role != "listingkit_viewer" {
+			if _, e := enforcer.AddPolicy(role, "workbench.project.manage"); e != nil {
+				return nil, e
+			}
+		}
+	}
 	for _, policy := range ToolMarketPolicies() {
 		if _, err := enforcer.AddPolicy(policy); err != nil {
 			return nil, err
