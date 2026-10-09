@@ -152,14 +152,18 @@ func TransitionRequest(r *Request, c Command, now time.Time) (*FinancialCommand,
 			r.Refund.ProviderConfirmed = true
 		}
 	case "refund_review", "refund_review_reject":
-		if r.Refund == nil || r.Refund.State != "NEGOTIATING" || c.RefundVersion != r.Refund.Version || !r.Refund.BuyerConfirmed || !r.Refund.ProviderConfirmed || !validText(c.Reason, 2000) {
+		if r.Refund == nil || r.Refund.State != "NEGOTIATING" || c.RefundVersion != r.Refund.Version || !validText(c.Reason, 2000) {
 			return nil, ErrConflict
 		}
 		if c.Kind == "refund_review_reject" {
 			r.Refund.State = "REJECTED"
+			r.Refund.Review = &RefundReview{Reason: c.Reason, ActorID: c.Scope.ActorID, ReviewedAt: now}
 			// Closing this dispute cannot clear an independent channel money hold.
 			r.FinancialFence = r.FinancialState == "RECONCILIATION_REQUIRED"
 			break
+		}
+		if !r.Refund.BuyerConfirmed || !r.Refund.ProviderConfirmed {
+			return nil, ErrConflict
 		}
 		if c.RefundableAmount == nil {
 			return nil, ErrUnavailable
@@ -168,6 +172,7 @@ func TransitionRequest(r *Request, c Command, now time.Time) (*FinancialCommand,
 			return nil, ErrInvalid
 		}
 		r.Refund.State = "APPROVED"
+		r.Refund.Review = &RefundReview{Reason: c.Reason, ActorID: c.Scope.ActorID, ReviewedAt: now}
 		r.FinancialFence = true
 		r.FinancialState = "REFUND_PENDING"
 		financial = makeCommand("REFUND", r.Refund.AmountMinor)

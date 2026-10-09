@@ -102,12 +102,18 @@ type DeliveryRejection struct {
 	RejectedAt      time.Time `json:"rejectedAt"`
 }
 type RefundAgreement struct {
-	Version           int64  `json:"version,string"`
-	AmountMinor       int64  `json:"amountMinor,string"`
-	Reason            string `json:"reason"`
-	BuyerConfirmed    bool   `json:"buyerConfirmed"`
-	ProviderConfirmed bool   `json:"providerConfirmed"`
-	State             string `json:"state"`
+	Version           int64         `json:"version,string"`
+	AmountMinor       int64         `json:"amountMinor,string"`
+	Reason            string        `json:"reason"`
+	BuyerConfirmed    bool          `json:"buyerConfirmed"`
+	ProviderConfirmed bool          `json:"providerConfirmed"`
+	State             string        `json:"state"`
+	Review            *RefundReview `json:"review,omitempty"`
+}
+type RefundReview struct {
+	Reason     string    `json:"reason"`
+	ActorID    string    `json:"actorId"`
+	ReviewedAt time.Time `json:"reviewedAt"`
 }
 type Request struct {
 	ID                      string           `json:"id"`

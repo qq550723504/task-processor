@@ -29,7 +29,7 @@
 | 场景 | 已批准处理 | 金额与结算约束 |
 | --- | --- | --- |
 | 服务开始前取消 | 原路全额退款 | 开始与取消互斥；退款处理中不允许开始服务或触发分账 |
-| 服务开始后取消或拒收 | 客户与服务商协商具体退款金额，由平台审核后执行 | 拒收本身不等于退款成功；审核绑定订单、交付及协商版本；争议期间不派发新分账 |
+| 服务开始后取消或拒收 | 客户与服务商协商具体退款金额，双确认后平台批准执行；平台可驳回未一致提议（§12.4） | 拒收本身不等于退款成功；审核绑定订单、交付及协商版本；当前提议 hold 结束后原验收结算可恢复，独立 RECON 保留 |
 | 已完成分账后退款 | 先核实并完成原交易所需的渠道分账回退，再原路退款 | 渠道回退、原收款商户退款余额与客户退款分别核实，不以一个成功代替全部成功 |
 | 部分或全额退款的分配 | 平台佣金随退款金额同比例退回，手续费仍由平台承担 | 累计分配基于累计有效成交净额计算；全额退款后平台佣金及服务商销售份额均为零；每次变化新增调整 receipt |
 
@@ -329,7 +329,7 @@ Schema按现有owner SQL/provision模式交付，全新安装、空业务数据�
 | 非计佣的旧接受入口及消费者旁路 | 服务退款合法且不产生推广佣金 | service purpose 精确接受/回读；旧普通入口拒绝；退款/拒付和推广消费者验证，保留充值/普通计佣回归 |
 | cancel/checkout 跨 owner 与迟到付款 | 开始前取消全额退款；不能重新生成支付能力 | cancel 先提交禁止新 checkout；在途只核实/关闭原单；迟到可信支付入原资金事实并转原退款，不进入可交付 |
 | 零佣金、验收前部分退款 | 10% 与累计同比例退款 | 以已确认累计退款净额计算；零 share/return 由本地不可变无经济效果证明跳过；验证小额累计、全退及回退后退款失败 |
-| 双方退款协商精确版本入口 | 开始后双方协商、平台审核 | 服务商提案/确认绑定原订单、金额及版本；变更金额/版本使旧同意失效；平台只消费双确认同版本 |
+| 双方退款协商精确版本入口 | 开始后双方协商、平台审核 | 服务商提案/确认绑定原订单、金额及版本；变更金额/版本使旧同意失效；平台批准只消费双确认同版本；未一致提议的驳回按后续用户批准§12.4 |
 
 AR1 为 ACCEPTED_RISK，不增加自动验收/超期退款；真实渠道资格、手续费配置、冻结/退款/回退时限在开放前核实。渠道已知终态失败记明确人工原因，不能无限记为 UNKNOWN。正式实施及最终交付检查沿本设计与 AGENTS，不创建版本化设计文档链。
 
@@ -371,4 +371,37 @@ Design Basis：原 Independent Architecture 的有界浏览器消费者恢复边
 - contract→实现：E Page typed bool → E repository same scope canonical EXISTS → 原HTTP manage descriptor → 既有BFF/shared ecoPageSchema → Join服务发布consumer。复用现有当前资源和成熟GORM/React Query，不造qualification API/新菜单/角色/权限平台；Legacy无兼容/迁移。
 - TDD验证：read/manage无join + qualified true正常新建/编辑/发布入口；false/missing/error零放行、identity/org/permissions key隔离、无 applications/merchant/files查询。E真实repository无申请/已准入空目录/其它企业/冻结投影，非provider Page不泄露；原无资格mutations拒绝且跨企业/CAS保留；BFF严格bool传递。仅相关现有Go/UI/BFF测试，真实浏览器新版和用户验收NOT_RUN。
 
-Design Basis：原 Independent Architecture 的有界读取投影增量；2026-10-09现有独立Reviewer检查本新增typed响应字段/消费者边界，无设计BLOCKER，确认IMPLEMENTATION_READY，先于正式代码修改。实施验证包括权限/scope变化后的旧缓存、已打开表单fail closed；其余冻结协议不重审。产品已授权运营人员按manage管理原企业服务，无新增产品决定；退款#19仍用户待决，未修改。
+Design Basis：原 Independent Architecture 的有界读取投影增量；2026-10-09现有独立Reviewer检查本新增typed响应字段/消费者边界，无设计BLOCKER，确认IMPLEMENTATION_READY，先于正式代码修改。实施验证包括权限/scope变化后的旧缓存、已打开表单fail closed；其余冻结协议不重审。产品已授权运营人员按manage管理原企业服务，无新增产品决定。退款#19后续产品决定见§12.4。
+
+### 12.4 驳回未一致退款提议（2026-10-09，IMPLEMENTATION_READY）
+
+Product Authority：用户在原会话明确“按两项推荐方案修复”，批准平台按原订单、当前提议版本和审核理由驳回尚未达成一致的提议，只解除该提议 hold，使已验收订单继续原结算。原 finding #19 为 BLOCKER：已验收核心结算可能永久 SOURCE_DENIED；不扩大 AR1，不引入通用争议或自动裁决。
+
+- 复用原平台 `refund_review_reject` 权限、command/key、request CAS 和 refund version。当前 NEGOTIATING 提议可由平台驳回，不要求双方同意；审批执行 `refund_review` 仍必须双确认同版本同金额。缺理由、旧版本、非平台、非协商中提议均拒绝。持久化原审核理由/actor/time，不能把平台驳回解释为退款执行同意。
+- E 原 request/refund 为提议与 hold owner。只将当前提议标记 REJECTED；独立 FinancialState RECONCILIATION_REQUIRED 仍保留 fence。B 原交易/command 和 M reservation/effect owner 不变：已派发/UNKNOWN 仅核实原操作，不借驳回清除；SOURCE_DENIED 恢复原 SETTLE/order/transaction/merchant。若尚未派发的 reservation 已由 M durable ABANDONED，原 operation 与 denial proof 保留且不复活，复用既有 B AttemptGenerations 派生下一稳定 operation/provider request ID；不能用该机制轮换已派发/UNKNOWN，不重复副作用，不改原付款/结算身份。
+- UI 沿原平台审核入口显示拒绝操作和原原因输入；未双确认仅禁止批准，允许平台拒绝。无新 endpoint/角色/菜单/事实 owner。报价、成交、交付验收、已确认退款及资金恢复不变。
+- TDD：买方/服务商单方提议→平台拒绝→原验收结算；旧提议版本/撤权/缺理由拒绝；未一致仍不能退款审批；独立 RECON 保持；实际 SOURCE_DENIED/未派发 reservation 经原 command 恢复原 SETTLE，原交易和资金身份固定，原 ABANDONED proof 保留且只合法派生稳定下一 operation，派发/UNKNOWN 不重放。复用原 Go repository/service 与 UI 测试。
+
+Design Basis：Independent Architecture 的有界平台拒绝 authority 增量；用户决定已确认，原 Reviewer ecoservices_architecture_review 独立核实原 E admission/B SOURCE_DENIED/M ABANDONED 恢复协议，明确 IMPLEMENTATION_READY，无本增量设计 BLOCKER，先于正式生产修改。只复核该实际增量；批准仍双确认、版本/理由/actor/time 及独立 RECON 在实施测试收敛。Legacy：无兼容或迁移；真实渠道/新版运行/用户验收仍 NOT_RUN。
+
+### 12.5 渠道券与实际应结净收入（2026-10-09，设计调查中，NOT_READY）
+
+Product Authority：同一次用户明确批准，平台按商户实际应结净收入抽 10%，CASH 充值券资金计入，NOCASH 免充值减价扣除；现金/券退款按原渠道规则及实际回执，手续费仍平台承担。100 元成交/20 元 CASH→10/90；20 元 NOCASH→8/72。原 finding #23 为 BLOCKER：合法付款被共享通知/查单拒绝，单一 quoted gross 无法表示券结算与现金退款。仅原 E/B/M/GoPay 边界增量；不增加发券、营销、补差、垫资、债务或第二账本。
+
+原报价/amount.total、交易/profile/merchant/幂等身份和封存政策不改。新成交使用显式新政策 basis/version，不静默重定义 CUMULATIVE_NET_FLOOR_V1。B durable verified observation 保存现金与原 voucher ID/type/amount；M 原付款封存同一资金明细和应结额。退款保存原 payer_refund、discount_refund 及逐券 ID/type/refund_amount，与原付款券精确关联；不由 discount_refund 合计猜 NOCASH，不本地估算现金退款。缺失、未知或矛盾明细保持原单待核实，不伪造成功或改号。
+
+当前只读渠道调查已确认：[电商退款查询](https://pay.wechatpay.cn/doc/v3/partner/4012476911)只在受理后提供实际逐券退款，无已核实 preview；[现金退款规则](https://pay.wechatpay.cn/doc/v3/partner/4013080622)不构成混合券/多次逐券尾差分配证明。[原分账回退](https://pay.wechatpay.cn/doc/v3/partner/4012477737)及[分账FAQ](https://pay.wechatpay.cn/doc/v3/partner/4012525463)允许回退先于或后于退款、同原分账多次回退。原冻结的“全部对应佣金先回退再退款”与混合券不确定部分退款有冲突。2026-10-09 已向用户提出一次最小顺序例外，尚未批准；下列 phase 候选不是已批准的正式协议，未经该决定与独立 Ready 不修改生产。
+
+有界合同候选（只原 E/B/M/GoPay）：
+
+- 新成交封存 `CHANNEL_SETTLEMENT_NET_FLOOR_V2` 及独立 service purchase policy version。原 quote gross/total、原 fee payer 与 NON_COMMISSIONABLE 不变；原 V1 的零券合同不重新解释或迁移。B payment observation 及 M original ServicePaymentInput 增加 bounded verified payment amounts：payer cash 与每券 ID、CASH/NOCASH、面额；精确 gross=payer+所有券，商户应结 S0=payer+ΣCASH。券ID唯一、币种CNY、金额非负/有界、不未知。纯现金也显式封存该 V2 amounts，不用空字段 fallback。规范排序保证相同明细不同数组顺序不会改事实 fingerprint。
+- B 的 verified native query/notify/close后迟到付款共用同一 amounts 校验；签名/原 profile/mch/app/交易/total/date 不放松。receipt 明细在原 durable inbox 中保存，再原 wake、M payment acceptance，不能在 wake 前因为合法券而拒绝。未知/缺失/矛盾仍原单待核实，无成功或新身份。SDK 的原始 verified response/decrypted notify 数据须核实 required 金额字段存在，不能把缺字段零值当成全券支付或零现金退款。
+- 原 M binding 固定 nominal gross，保存应结额、实际 cash refund 累计与逐券 refund 累计；M 原 ServiceEffect/receipt 带 actual refund amounts，仍同一事务/不可变effect/receipt fingerprint与原 reservation，重复 receipt 完全匹配后回读，不重复累计。原 `RefundedMinor` 表示已确认名义退款，`SettlementRefundedMinor` 表示 payer_refund+原 CASH 券 refund_amount；merchant remaining S=S0−累计实际应结减少，platform=floor(S×原bps/10000)、provider=S−platform，先整除/余数计算避免溢出。取整按累计 S，不按每次退款单独取整。
+- 原 refund observation 保存 payer_refund、discount_refund 及逐券 promotion_id/type/amount/refund_amount，按精确原付款 coupon ID 关联 funding type；refund response 的 COUPON/DISCOUNT 标记不是 CASH/NOCASH 的推断来源。unknown/重复/越累计券面额/现金累计超原 payer/nominal金额不平/外部advance资金或原身份不匹配均不接受成功。退款执行金额 R 始终原批准 nominal 数额，不改报价或把申请额偷换为现金数额。原 payment/cash/voucher事实不能被后到通知替换。
+- **待批准最小顺序例外**：同原 REFUND command 串行 `RETURN_PRE → REFUND → RETURN_POST`，不同 RETURN phase 使用确定的原 command+phase operation ID/out_return_no，都绑定同一原 SHARE proof/request；不新 SHARE、不轮换原 REFUND 身份。设当前 merchant应结 S、剩余 NOCASH 面额 N、名义退款 R、平台已确认净分账 Q，实际应结减少下界 L=max(0,R−N)，preReturn=max(0,Q−floor((S−L)×10%))；0额仅本地无经济效果 receipt。实际 REFUND SUCCESS 后从原明细核实 X=R−ΣNOCASH refund_amount；postReturn=Q−preReturn−floor((S−X)×10%)，必须非负且不超原share剩余额。无NOCASH/剩余全退/上下界floor同值保持确定的先回退后退款；其它情况不估算X。
+- M 原退款 reservation 只允许封存的原 nominal R/SourceProofID、该 V2 phase plan 与 original SHARE关联，校验可证明下界/pre-return及当前 canonical余额，不能全局删除旧 refund guard。实际 refund effect提交后可暂时 Q大于新platform目标；只有该原 pending refund补差 phase可继续 RETURN，禁止新 SETTLE/finish/share及其它资金command直到净分账匹配。B 保存refund真实SUCCESS，不把渠道已退款记UNKNOWN，但command/E hold直到postReturn确认才完成。phase目标因并发/新事实不匹配保持RECON，不重新估计或生成另一payload。
+- 每一步复用原 B claim/version/lease、E dispatch admission、M reservation/effect唯一约束和原 verified query恢复。响应丢失/重启/UNKNOWN只核实原 phase ID；余额不足WAITING_FUNDS，保留已回退/已退款事实，不额外多return凑款、不垫资/强扣/建债。E只在原最终REFUNDED结果解除approved proposal hold，不根据中间refund SUCCESS伪造完成；独立RECON、AR1保留。
+- contract→implementation→consumer：E quote policy及批准nominal command→ecoservicesbilling原typed port→B durable payment/refund observation/phase planner→M original binding/reservation/effect→GoPay原下单/查询/通知/回退/退款→原B/E回读；Console/BFF仅展示原报价、商户应结、实际现金/券退款及未完成状态，不新增营销入口/endpoint/owner。schema沿原M owner provision，fresh-only，无旧行fallback/migration。
+- TDD与必要检查：cash/CASH/NOCASH/混合/全券付款及原通知durable wake；unknown/缺失/矛盾拒绝；100元两个批准分配例子；多次小额累计取整/原券逐ID现金累计；精确refund SUCCESS明细、full及mixed partial预回退/实际差额；M1/M3成功而B保存丢失原回读、两个RETURN phase原share关联、未知不重派、WAITING_FUNDS；独立拒付/unsplit/fees/原V1保留；真实渠道/新版浏览器/用户验收独立NOT_RUN，不扩验证平台。
+
+本增量 Product Authority：净收入政策已批准；phase顺序例外待用户决定。Independent Architecture：协议候选已具体化，正式实现仍 NOT_READY，须原 Reviewer 有界检查及该顺序决定，无需重审其它已解决增量。

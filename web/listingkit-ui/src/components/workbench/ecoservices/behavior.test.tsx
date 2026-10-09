@@ -16,6 +16,15 @@ afterEach(()=>{cleanup();localStorage.clear();vi.clearAllMocks();context.isSwitc
 const scope={userId:"actor",organizationId:"org"},id="4841d296-ef14-4c16-8d25-a7667e534feb";
 function request():EcoRequest{return {id,listingId:id,listingVersion:"1",title:"原服务",category:"STORE_OPENING",description:"原需求",fileIds:[],state:"AWAITING_ACCEPTANCE",version:"8",quote:{commissionBps:1000,allocationBasis:"CUMULATIVE_NET_FLOOR_V1",policyVersion:ecoPolicy,amountMinor:"10000",scope:"交付店铺",acceptanceCriteria:"可登录",deliveryDays:7,version:"1"},delivery:{content:"原交付",fileIds:[],version:"1",submittedAt:"2026-10-08T00:00:00Z"},acceptedDeliveryVersion:"0",financialHold:false,financialState:"PAID",financialReason:"",createdAt:"2026-10-08T00:00:00Z",updatedAt:"2026-10-08T00:00:00Z",side:"buyer"}}
 function harness(){const client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});const wrapper=({children}:{children:ReactNode})=><QueryClientProvider client={client}>{children}</QueryClientProvider>;return {client,wrapper}}
+it("lets platform reject an unagreed exact refund proposal while approval stays disabled",async()=>{
+ const {client,wrapper}=harness();context.permissions=["platform.ecoservices.review"];
+ const r={...request(),state:"ACCEPTED",financialHold:true,refund:{version:"3",amountMinor:"2000",reason:"单方退款提案",buyerConfirmed:true,providerConfirmed:false,state:"NEGOTIATING"}};
+ vi.mocked(ecoRequest).mockResolvedValue({requests:[r],total:"1"});render(<RequestDetail scope={scope} id={id} admin onClose={()=>undefined}/>,{wrapper});
+ const reject=await screen.findByRole("button",{name:"拒绝此退款申请"});expect(reject).toBeDisabled();expect(screen.getByRole("button",{name:"批准原退款金额"})).toBeDisabled();
+ fireEvent.change(screen.getByLabelText("平台审核理由"),{target:{value:"双方未达成一致，解除此提议暂停"}});expect(reject).toBeEnabled();expect(screen.getByRole("button",{name:"批准原退款金额"})).toBeDisabled();fireEvent.click(reject);
+ await waitFor(()=>expect(vi.mocked(ecoRequest).mock.calls.some(v=>v[3]?.method==="POST")).toBe(true));const sent=vi.mocked(ecoRequest).mock.calls.find(v=>v[3]?.method==="POST")!;
+ expect(sent[1]).toBe("requests/"+id+"/refund-reject");expect(sent[4]).toBe(true);expect(new Headers(sent[3]!.headers).get("If-Match")).toBe('"8"');expect(JSON.parse(sent[3]!.body as string)).toEqual({refundVersion:"3",reason:"双方未达成一致，解除此提议暂停"});client.clear();
+});
 it("limits the reviewed original license upload to channel compatible images",async()=>{
  const {client,wrapper}=harness();context.permissions=["workbench.ecoservices.join"];vi.mocked(ecoRequest).mockResolvedValue({total:"0"});render(<EcoservicesJoin/>,{wrapper});
  const open=screen.getByRole("button",{name:"提交机构入驻申请 →"});await waitFor(()=>expect(open).toBeEnabled());fireEvent.click(open);
