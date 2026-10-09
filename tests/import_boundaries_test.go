@@ -3997,6 +3997,8 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "subjectverification", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #603 admits the feature-local HTTP adapter, never the framework-free domain.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "ecoservices", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	// #613 admits only the reviewed Tool Market HTTP adapter, not its contracts.
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "toolmarket", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "app", "supplychain", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #614 admits only the observations feature-local HTTP adapter.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "app", "storeobservations", "httpapi"))+string(os.PathSeparator)] = struct{}{}
@@ -4019,6 +4021,23 @@ func TestEcoservicesHTTPBoundaryRegistration(t *testing.T) {
 	} {
 		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(tc.path)), allowed); got != tc.want {
 			t.Errorf("HTTP boundary allows %s = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestToolMarketHTTPBoundaryRegistration(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowed := businessHTTPPackages(root)
+	for path, want := range map[string]bool{
+		"toolmarket/httpapi/handler.go":        true,
+		"toolmarket/httpapi/nested/handler.go": true,
+		"toolmarket/contracts.go":              false,
+		"toolmarket/httpapi_extra/handler.go":  false,
+		"toolmarket/httpapi2/handler.go":       false,
+		"toolmarket-extra/httpapi/handler.go":  false,
+	} {
+		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(path)), allowed); got != want {
+			t.Errorf("HTTP boundary allows %s = %v, want %v", path, got, want)
 		}
 	}
 }

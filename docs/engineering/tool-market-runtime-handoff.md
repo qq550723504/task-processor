@@ -1,0 +1,105 @@
+# 工具市场 v1 运行接线交接
+
+执行Issue #613；设计依据 [IMPLEMENTATION_READY](../architecture/tool-market-v1.md)。
+本批唯一Writer交独立模块；协调方指定共享runtime Writer接导航/权限/当前安装组合。
+本文件不表示共享安装已经开放或用户验收通过。
+
+## 唯一注入路径
+
+1. fresh空安装由schema owner显式调用
+   `toolmarketpersistence.InstallSchema(db)`，或按同等owner流程安装内嵌schema.sql。
+   拒绝既有schema，不迁移/覆盖。runtime startup仅调用`VerifySchema(ctx, db)`和`New(db)`。
+2. 复用当前组织resolver、现有`*authz.ListingKitAuthorizer`：
+   `toolmarketauth.New(resolver, authorizer)`；设置`Handler.Bind=a.Bind`和
+   `Handler.ReadAuthorize=a.AuthorizeRead`、`Handler.Authorize=a.Authorize`。
+   不得替换成基于浏览器权限数组或缓存角色的闭包。
+   企业GET、插件下载及按钮权限展示使用当前CachedRead；写请求及事务回调使用当前LiveWrite。
+   缺任一授权依赖拒绝构建；写入不得因实时目录失败回退到缓存。manage额外限制listingkit_admin。
+   平台verified-roles路由仅检查当前未过期平台identity与现有platform_admin策略，
+   不传客户org，不要求客户成员关系。
+3. 现有Casbin初始化纳入`authz.ToolMarketPolicies()`；WorkbenchPermissions纳入
+   tools.read/manage/customize。静态许可只给现有listingkit_admin三项；旧viewer/operator已
+   被当前scoped policy退休，不能配置成platformAdminRoles来恢复权限。
+   共享Writer在已有模块目录将`tools`和`tools-custom`设为Available，分别消费
+   `authz.ToolMarketModulePermissions("tools")`和`authz.ToolMarketModulePermissions("tools-custom")`。
+   当前企业自定义角色通过既有RoleModules获得read或read/customize，不得获得manage/platform_admin。
+   WorkbenchPermissions只负责权限展示，不能代替模块grant；目录须在创建authorizer之前接好。
+   模块目录及当前菜单可用性由共享Writer一次接线，不新建角色体系。
+4. 从当前已注入、实际开放的采集receiver与online模块推导`Handler.Readiness`。
+   enterprise启用不是授权或能力存在的依据。下载仅在local receiver开放且包验证通过时可用。
+   数据结果继续走当前`/workbench/data/mine`，保持现有collections安装门控。
+5. 通过`toolmarkethttp.BuildRoutes(handler)`校验依赖并取得路由；沿用当前生态服务模块
+   的app层kernel Module包装，再纳入当前application路由准入，复用
+   `httpapi.ValidateDescriptor`，不能以任意通用route覆盖策略。缺依赖拒绝构建。
+   模块企业Base `/api/v1/workbench/tool-market`；平台Base `/api/v1/admin/tool-market`。
+   不得用普通CurrentIdentity替代平台CurrentIdentityWithVerifiedRoles。
+
+```go
+// Existing current-application composition performs all dependency validation.
+repo, err := toolmarketpersistence.New(db)
+// check err and VerifySchema(ctx, db)
+admission, err := toolmarketauth.New(resolver, authorizer)
+// check err
+h := &toolmarkethttp.Handler{
+    Repository: repo, Bind: admission.Bind,
+    ReadAuthorize: admission.AuthorizeRead, Authorize: admission.Authorize,
+    Readiness: toolmarket.Readiness{LocalCapture: receiverReady, OnlineCapture: onlineReady},
+}
+// optional package is validated below; failure leaves download unavailable
+routes, err := toolmarkethttp.BuildRoutes(h)
+// check err, register routes through the existing app-owned kernel Module wrapper
+// and current-application descriptor admission; process config stays in app
+```
+
+runtime角色只需schema USAGE、activations SELECT/INSERT/UPDATE、requests SELECT/INSERT/UPDATE、
+events SELECT/INSERT、commands SELECT/INSERT/UPDATE；无schema CREATE/DROP/ALTER或owner成员权。
+所有新事实在同一个PG pool，原有Product/Commercial库和采集计价合同不变。
+
+## 插件包
+
+已有扩展依赖先按extensions/1688-capture文档安装。实际安装须使用自己的已验证HTTPS接收地址：
+
+```powershell
+./scripts/build-tool-market-plugin.ps1 -CaptureAppUrl 'https://你的应用域名/capture/1688' -OutputDirectory './.local/tool-market-release'
+```
+
+脚本只调用已有非fixture build和标准Compress-Archive，不创建第二采集器。
+将zip、release.json及当前安装的完整CAPTURE_APP_URL作为同一次可信发布记录交接；
+runtime读取record的sha256，将**当前安装接收地址**传入`Handler.ConfigurePackage`的PackageConfig。
+不能仅凭manifest的hostname绑定地址，也不能把客户端参数作为地址/路径/sha来源。
+当前安装地址与record.captureAppUrl必须完全相同，否则不得加载包。
+ConfigurePackage失败保持下载不可用并显示当前安装未配置插件包。
+Handler不暴露原始包bytes注入口，ConfigurePackage内部调用LoadPackage校验后保存。
+本批开发检查用测试HTTPS地址编译，没有把测试包交付为用户安装包。
+
+## 消费者和用户操作
+
+- `/workbench/tools/official`：分类浏览；管理员启用商品采集插件；七项开发中工具无法启用。
+- `/workbench/tools/mine`：企业真实清单；插件下载/安装步骤、当前1688在线采集和我的数据入口。
+  停用仅改变清单，不撤销插件或既有采集。
+- `/workbench/tools/custom`：提交需求、查询原需求和专员进度；线下报价付款。
+- `/workbench/tools/custom/review`：硕米专员处理；平台API独立授权，无客户企业选择要求。
+- 专属BFF `/api/tool-market/[...path]`使用既有serverAuth及服务端token，
+  `LISTINGKIT_SERVICE_API_BASE`和可信公共Origin沿用当前安装，不传客户端Bearer。
+
+共享导航激活三个现有菜单；不新增顶层专员菜单。
+`workspace-app-shell.tsx`的`hasIndependentIdentityRoute`须纳入已开放安装的
+`/workbench/tools/custom/review`，复用现有生态服务专员入口规则；否则零企业成员的合法
+平台专员会被前端重定向到no-organization。专员页面仍依赖登录身份，API必须独立授权。
+采集插件启用不授予Product/Sourcing业务权限。
+需求stage推进依次：提交→评估→方案确认→开发联调→专员记录交付；同阶段追加进度或非终态关闭。
+已交付/已关闭是终态，进度不是付款或Tool安装证明。
+需求详情每次显示最新16条进度，`加载更早进度`沿`nextEventsBefore`读取历史；
+企业与专员GET详情均接受单值`eventsBefore`精确revision游标。需求当前revision始终独立返回，
+写请求仍按该revision发送If-Match；历史分页不变更schema、状态或写事务。
+
+未知写响应保存在本浏览器会话的原actor+org隔离存储，刷新/返回原上下文可重试原命令。
+浏览器无法读写恢复记录时暂停新提交；不清理用户浏览器数据来恢复操作。
+
+## 验证界限
+
+开发自检覆盖PG原子性/并发/隔离/撤权、HTTP严格边界、平台授权、BFF与UI原key恢复。
+模块权限测试使用计划接线的受控目录及真实ListingKitAuthorizer，证明原生企业角色可读/
+提交、不能启用或获得平台权限；该证据不替代共享Writer对当前安装的模块目录实际接线。
+这些是本批代码证据。共享runtime接线、当前安装插件、真实1688/provider、用户试用均
+需要独立实际执行；未执行保持NOT_RUN。无合并、关单、共享部署或真实数据授权。
