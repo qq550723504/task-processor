@@ -74,8 +74,13 @@ func Advance(s Sync, count int, sourceTotal *int) (Checkpoint, string, error) {
 	if len(c.Windows) == 0 {
 		return c, "", ErrInvalid
 	}
-	// count may be a per-response count, not the window total. Only pagination
-	// exhaustion ends the window; a saturated window must be split with overlap.
+	// SHEIN's optional count describes this response, not the window total.
+	// Compare raw page rows before US filtering; changing page lengths is normal.
+	if sourceTotal != nil && *sourceTotal != count {
+		c.Note("order_response_count_mismatch")
+	}
+	// Only pagination exhaustion ends the window; a saturated window must be
+	// split with overlap.
 	if count == 30 && c.Page >= 333 {
 		next, status := SplitWindow(c)
 		return next, status, nil

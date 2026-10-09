@@ -114,6 +114,7 @@ export const observationRecordSchema = z
     syncId: observationID,
     id: identity,
     observedAt: date,
+    stale: z.boolean().optional(),
     product: product.optional(),
     order: order.optional(),
   })

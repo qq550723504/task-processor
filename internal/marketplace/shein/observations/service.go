@@ -398,6 +398,10 @@ func (s *Service) Step(ctx context.Context, org, id string) (Sync, error) {
 				if detail.UpdatedAt == "" {
 					detail.UpdatedAt = ref.UpdatedAt.UTC().Format(time.RFC3339)
 				}
+				if detail.Status == nil {
+					status := ref.Status
+					detail.Status = &status
+				}
 				records = append(records, Record{StoreID: sync.StoreID, SyncID: sync.ID, ID: detail.ID, Order: &detail, WindowKey: window})
 			}
 		}
@@ -552,6 +556,13 @@ func (s *Service) Detail(ctx context.Context, scope Scope, store, syncID, id str
 	if kind == Orders {
 		detail, e := merchant.OrderDetails(ctx, []string{id})
 		if e != nil {
+			if errors.Is(e, ErrUnavailable) && record.Order != nil && record.Order.ID == id && record.Order.Site == "shein-us" {
+				if e = merchant.Check(ctx); e != nil {
+					return Record{}, e
+				}
+				record.Stale = true
+				return record, nil
+			}
 			return Record{}, e
 		}
 		if len(detail) != 1 || detail[0].ID != id || detail[0].Site != "shein-us" {
@@ -575,6 +586,9 @@ func (s *Service) Logistics(ctx context.Context, scope Scope, store, sync, order
 	record, e := s.Detail(ctx, scope, store, sync, order, Orders)
 	if e != nil {
 		return nil, e
+	}
+	if record.Stale {
+		return nil, ErrUnavailable
 	}
 	found := false
 	for _, p := range record.Order.Packages {

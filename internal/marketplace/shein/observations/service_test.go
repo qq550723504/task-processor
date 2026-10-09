@@ -2,6 +2,7 @@ package observations
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -15,6 +16,7 @@ type serviceRepo struct {
 	commits       int
 	stops         int
 	heads, latest []Sync
+	rows          []Record
 }
 
 func (r *serviceRepo) Heads(context.Context, string, Kind, []string) ([]Sync, []Sync, error) {
@@ -27,6 +29,7 @@ func (r *serviceRepo) List(context.Context, string, Query) (Result, error) {
 func (r *serviceRepo) ReadSync(context.Context, string, string) (Sync, error) { return r.sync, nil }
 func (r *serviceRepo) CommitPage(_ context.Context, s Sync, c Checkpoint, rows []Record, status string, at time.Time) (Sync, error) {
 	r.commits++
+	r.rows = rows
 	s.Progress = c
 	s.Status = status
 	return s, nil
@@ -62,13 +65,15 @@ func (a *serviceAccess) Open(_ context.Context, s Scope, _ string, _ Kind, _ boo
 
 type serviceMerchant struct {
 	Merchant
-	binding    Binding
-	products   ProductPage
-	orders     OrderPage
-	details    []Order
-	err        error
-	after      func()
-	trackCalls int
+	binding     Binding
+	products    ProductPage
+	orders      OrderPage
+	details     []Order
+	detailErr   error
+	afterDetail func()
+	err         error
+	after       func()
+	trackCalls  int
 }
 
 func (m *serviceMerchant) Binding() Binding            { return m.binding }
@@ -83,7 +88,10 @@ func (m *serviceMerchant) Orders(context.Context, Window, int) (OrderPage, error
 	return m.orders, nil
 }
 func (m *serviceMerchant) OrderDetails(context.Context, []string) ([]Order, error) {
-	return m.details, nil
+	if m.afterDetail != nil {
+		m.afterDetail()
+	}
+	return m.details, m.detailErr
 }
 func (m *serviceMerchant) Track(context.Context, string, string) ([]Track, error) {
 	m.trackCalls++
@@ -171,4 +179,69 @@ func TestListExcludesLatestMetadataFromReplacedConnection(t *testing.T) {
 	result, e = s.List(context.Background(), r.sync.Owner, Query{Kind: Products, Limit: 20})
 	require.NoError(t, e)
 	require.Equal(t, []Sync{current}, result.Latest)
+}
+
+func TestOrderSyncKeepsListStatusOnlyWhenDetailOmitsIt(t *testing.T) {
+	for _, present := range []bool{false, true} {
+		t.Run(map[bool]string{false: "missing-detail-status", true: "current-detail-status"}[present], func(t *testing.T) {
+			s, r, _, m := serviceFixture()
+			r.sync.Kind = Orders
+			r.sync.Progress.Windows = []Window{{r.sync.CreatedAt.Add(-time.Hour), r.sync.CreatedAt}}
+			count := 1
+			m.orders = OrderPage{ReportedCount: &count, Items: []OrderRef{{ID: "order-a", Status: 4, CreatedAt: r.sync.CreatedAt, UpdatedAt: r.sync.CreatedAt}}}
+			m.details = []Order{{ID: "order-a", Site: "shein-us"}}
+			want := 4
+			if present {
+				want = 7
+				m.details[0].Status = &want
+			}
+			_, err := s.Step(context.Background(), "org-a", r.sync.ID)
+			require.NoError(t, err)
+			require.Len(t, r.rows, 1)
+			require.NotNil(t, r.rows[0].Order.Status)
+			require.Equal(t, want, *r.rows[0].Order.Status)
+		})
+	}
+}
+
+func TestOrderDetailProviderOutageReturnsSavedStaleOnlyAfterLiveAccessRecheck(t *testing.T) {
+	for _, tc := range []struct {
+		name                           string
+		providerErr, checkErr, openErr error
+		want                           error
+	}{
+		{"provider-outage", ErrUnavailable, nil, nil, nil},
+		{"late-revocation", ErrUnavailable, ErrForbidden, nil, ErrForbidden},
+		{"late-IAM-outage", ErrUnavailable, ErrUnavailable, nil, ErrUnavailable},
+		{"initial-IAM-outage", ErrUnavailable, nil, ErrUnavailable, ErrUnavailable},
+		{"provider-forbidden", ErrForbidden, nil, nil, ErrForbidden},
+		{"provider-not-found", ErrNotFound, nil, nil, ErrNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, r, a, m := serviceFixture()
+			r.sync.Kind = Orders
+			observed := r.sync.CreatedAt.Add(-time.Hour)
+			r.record = Record{StoreID: r.sync.StoreID, SyncID: r.sync.ID, ID: "order-a", ObservedAt: observed, Order: &Order{ID: "order-a", Site: "shein-us", Items: []OrderItem{{ID: "saved-item"}}, Packages: []Package{{ID: "saved-package"}}}}
+			m.detailErr = tc.providerErr
+			m.afterDetail = func() { m.err = tc.checkErr }
+			a.err = tc.openErr
+			result, err := s.Detail(context.Background(), r.sync.Owner, r.sync.StoreID, r.sync.ID, "order-a", Orders)
+			if tc.want != nil {
+				require.ErrorIs(t, err, tc.want)
+				require.Empty(t, result.ID)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, observed, result.ObservedAt)
+			require.Equal(t, r.record.Order, result.Order)
+			var wire map[string]any
+			raw, err := json.Marshal(result)
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(raw, &wire))
+			require.Equal(t, true, wire["stale"])
+			_, err = s.Logistics(context.Background(), r.sync.Owner, r.sync.StoreID, r.sync.ID, "order-a", "saved-package")
+			require.ErrorIs(t, err, ErrUnavailable, "saved packages cannot authorize a current Track request")
+			require.Zero(t, m.trackCalls)
+		})
+	}
 }

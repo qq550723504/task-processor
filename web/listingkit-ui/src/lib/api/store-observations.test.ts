@@ -63,6 +63,15 @@ it("retains optional package metadata without inventing a package number", () =>
     observationRecordSchema.parse(fixtureOrderRecord).order?.packages,
   ).toEqual(fixtureOrderRecord.order.packages);
 });
+it("retains explicit stale saved observations and their original time", () => {
+  const value = observationRecordSchema.parse({
+    ...fixtureOrderRecord,
+    stale: true,
+  });
+  expect(value.observedAt).toBe(fixtureOrderRecord.observedAt);
+  expect(value.order?.packages).toEqual(fixtureOrderRecord.order.packages);
+  expect(value).toHaveProperty("stale", true);
+});
 it("preserves absent inventory and zero price without fabricating quantities", () => {
   const value = observationRecordSchema.parse(fixtureRecord);
   expect(value.product?.skcs[0].skus[0].inventory).toEqual([]);

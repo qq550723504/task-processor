@@ -67,3 +67,31 @@ func TestSaturatedOrderWindowSplitsWithoutSkippingEqualSecondOrders(t *testing.T
 	require.Equal(t, "partial", status)
 	require.True(t, c.Incomplete)
 }
+
+func TestOrderResponseCountMismatchMakesCoveragePartialAndNormalPageCountsCanChange(t *testing.T) {
+	end := time.Now().UTC().Truncate(time.Second)
+	for _, mismatch := range []bool{false, true} {
+		t.Run(map[bool]string{false: "normal-pagination", true: "inconsistent-response"}[mismatch], func(t *testing.T) {
+			s := Sync{Kind: Orders, Progress: Checkpoint{Page: 1, Windows: []Window{{end.Add(-time.Hour), end}}}}
+			reported := 30
+			c, status, err := Advance(s, 30, &reported)
+			require.NoError(t, err)
+			require.Equal(t, "running", status)
+			require.Nil(t, c.ExpectedTotal, "response count is not the window total")
+			s.Progress = c
+			reported = 20
+			if mismatch {
+				reported = 100
+			}
+			c, status, err = Advance(s, 20, &reported)
+			require.NoError(t, err)
+			if mismatch {
+				require.Equal(t, "partial", status)
+				require.Contains(t, c.Notes, "order_response_count_mismatch")
+			} else {
+				require.Equal(t, "completed", status)
+				require.False(t, c.Incomplete)
+			}
+		})
+	}
+}

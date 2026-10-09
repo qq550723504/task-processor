@@ -241,6 +241,7 @@ type Record struct {
 	SyncID     string    `json:"syncId"`
 	ID         string    `json:"id"`
 	ObservedAt time.Time `json:"observedAt"`
+	Stale      bool      `json:"stale,omitempty"`
 	Product    *Product  `json:"product,omitempty"`
 	Order      *Order    `json:"order,omitempty"`
 	WindowKey  string    `json:"-"`

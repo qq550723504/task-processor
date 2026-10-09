@@ -843,7 +843,11 @@ function Detail({
     : (trackable[0]?.id ?? "");
   const tracks = useQuery({
     queryKey: [...prefix, "tracks", packageID],
-    enabled: kind === "orders" && Boolean(packageID) && !detail.isError,
+    enabled:
+      kind === "orders" &&
+      Boolean(packageID) &&
+      !detail.isError &&
+      !detail.data?.stale,
     queryFn: ({ signal }) =>
       observationRequest(
         `${base}/packages/${encodeURIComponent(packageID)}/track`,
@@ -890,9 +894,21 @@ function Detail({
           <p className={styles.coverage}>
             取得于 {timestamp(detail.data.observedAt)}。
             {kind === "orders"
-              ? "当前详情来自平台只读查询；列表保留原同步观察。"
+              ? detail.data.stale
+                ? "平台详情暂不可用，以下为上次保存的陈旧观察；包裹与物流须待平台详情恢复后重新核对。"
+                : "当前详情来自平台只读查询；列表保留原同步观察。"
               : "库存和价格按平台原维度展示，不推算未提供字段。"}
           </p>
+          {detail.data.stale ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={detail.isFetching}
+              onClick={() => void detail.refetch()}
+            >
+              重试平台详情
+            </Button>
+          ) : null}
           {detail.data.product?.skcs.map((skc) => (
             <section key={skc.id}>
               <h3>{skc.title || skc.id}</h3>
@@ -1048,7 +1064,9 @@ function Detail({
                         ))}
                       </Select>
                     </label>
-                    {tracks.isPending ? (
+                    {detail.data.stale ? (
+                      <p>平台详情恢复后可查询当前包裹物流。</p>
+                    ) : tracks.isPending ? (
                       <p role="status">正在查询物流…</p>
                     ) : tracks.isError ? (
                       <ErrorState

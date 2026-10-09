@@ -262,9 +262,13 @@ it.each([
     expect(screen.getByRole("button", { name: "同步商品" })).toBeEnabled();
   }
 });
-it.each([false, true])(
-  "keeps orders with unknown package numbers visible and tracks only actual packages (valid=%s)",
-  async (valid) => {
+it.each([
+  { valid: false, stale: false },
+  { valid: true, stale: false },
+  { valid: true, stale: true },
+])(
+  "keeps order packages visible and tracks only fresh actual packages (valid=$valid, stale=$stale)",
+  async ({ valid, stale }) => {
     context.permissions = [
       "workbench.store.orders.read",
       "workbench.store.orders.sync",
@@ -300,6 +304,7 @@ it.each([false, true])(
         expectedCollectAt: "",
       },
     };
+    let staleDetail = stale;
     const fetch = vi.fn().mockImplementation((path: string) => {
       const data = path.endsWith("/capabilities")
         ? {
@@ -312,7 +317,7 @@ it.each([false, true])(
         : path.endsWith("/track")
           ? []
           : path.includes("/records/")
-            ? orderRecord
+            ? { ...orderRecord, ...(staleDetail ? { stale: true } : {}) }
             : {
                 items: [orderRecord],
                 next: "",
@@ -342,6 +347,15 @@ it.each([false, true])(
     );
     expect(await screen.findByText(/包裹号尚未提供/)).toBeInTheDocument();
     expect(screen.queryByText("正在查询物流…")).not.toBeInTheDocument();
+    if (stale) {
+      expect(
+        await screen.findByText(/平台详情暂不可用，以下为上次保存的陈旧观察/),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/2026.*10.*09/)).toBeInTheDocument();
+      expect(fetch.mock.calls.some((c) => c[0].includes("/track"))).toBe(false);
+      staleDetail = false;
+      await userEvent.click(screen.getByRole("button", { name: "重试平台详情" }));
+    }
     if (valid) {
       expect(
         await screen.findByText("平台尚未提供物流轨迹。"),
