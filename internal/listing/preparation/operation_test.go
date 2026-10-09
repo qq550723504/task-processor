@@ -114,3 +114,65 @@ func TestOperationInputRejectsDuplicateOrAmbiguousSelections(t *testing.T) {
 	input.TitleTemplateID = "ignored-template"
 	require.ErrorIs(t, input.Validate(), ErrInvalid, "upload cannot smuggle an optimization selection")
 }
+
+type unavailableExecution struct{}
+
+func (unavailableExecution) AuthorizeExecution(context.Context, collection.Scope, string) error {
+	return collection.ErrUnavailable
+}
+func TestOperationWorkerRetainsAuthorizationDependencyFailure(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	proof := OperationAccess{service: &OperationService{execution: unavailableExecution{}}, operation: Operation{Owner: Scope{"org-a", "actor-a", "member-a"}}, worker: true, expiresAt: time.Now().Add(time.Second)}
+	_, err := proof.Read(ctx)
+	require.ErrorIs(t, err, ErrUnavailable, "unavailable IAM must never authorize permanent denied settlement")
+}
+
+type stopExecutionAuth struct{ err error }
+
+func (a *stopExecutionAuth) AuthorizeExecution(context.Context, collection.Scope, string) error {
+	return a.err
+}
+
+type stopOperationRepo struct {
+	OperationRepository
+	op     Operation
+	writes int
+}
+
+func (r *stopOperationRepo) ReadExecutionOperation(context.Context, string, string) (Operation, error) {
+	return r.op, nil
+}
+func (r *stopOperationRepo) StopOperation(ctx context.Context, proof OperationStopAccess, _ string) (OperationItem, error) {
+	op, err := proof.Read(ctx)
+	if err != nil {
+		return OperationItem{}, err
+	}
+	if op.Owner != r.op.Owner || op.ID != r.op.ID {
+		return OperationItem{}, ErrConflict
+	}
+	r.writes++
+	return OperationItem{}, nil
+}
+func TestOperationStopRequiresWorkerAndFreshAuthoritativeDenial(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	repo := &stopOperationRepo{op: Operation{ID: uuid.NewString(), Owner: Scope{"org-a", "actor-a", "member-a"}, Input: OperationInput{PreparationID: uuid.NewString(), ExpectedRevision: 1, StoreID: uuid.NewString(), Action: OperationAdapt}}}
+	auth := &stopExecutionAuth{err: collection.ErrUnavailable}
+	service := &OperationService{repository: repo, execution: auth}
+	_, err := service.StopExecution(ctx, "org-a", repo.op.ID, "")
+	require.ErrorIs(t, err, ErrUnavailable)
+	require.Zero(t, repo.writes)
+	auth.err = nil
+	_, err = service.StopExecution(ctx, "org-a", repo.op.ID, "")
+	require.ErrorIs(t, err, ErrConflict, "a currently allowed worker cannot mint a denial proof")
+	auth.err = collection.ErrForbidden
+	request := authidentity.WithAuthenticatedIdentity(ctx, authidentity.AuthenticatedIdentity{UserID: "actor-a"})
+	_, err = service.StopExecution(request, "org-a", repo.op.ID, "")
+	require.ErrorIs(t, err, ErrForbidden, "HTTP request authority cannot consume the worker stop path")
+	_, err = (OperationStopAccess{}).Read(ctx)
+	require.ErrorIs(t, err, ErrForbidden)
+	_, err = service.StopExecution(ctx, "org-a", repo.op.ID, "")
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.writes)
+}

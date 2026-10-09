@@ -25,8 +25,11 @@ type OrganizationExecutionAuthorizer struct {
 }
 
 func (a OrganizationExecutionAuthorizer) current(ctx context.Context, scope collection.Scope) ([]string, error) {
-	if ctx == nil || ctx.Err() != nil || scope.Validate() != nil || a.Client == nil || a.ServiceToken == nil || a.ProjectID == "" || a.Permissions == nil {
+	if ctx == nil || scope.Validate() != nil {
 		return nil, collection.ErrForbidden
+	}
+	if ctx.Err() != nil || a.Client == nil || a.ServiceToken == nil || a.ProjectID == "" || a.Permissions == nil {
+		return nil, collection.ErrUnavailable
 	}
 	if _, bounded := ctx.Deadline(); !bounded {
 		return nil, collection.ErrForbidden
@@ -38,20 +41,26 @@ func (a OrganizationExecutionAuthorizer) current(ctx context.Context, scope coll
 	defer cancel()
 	token, err := a.ServiceToken(ctx)
 	if err != nil {
-		return nil, collection.ErrForbidden
+		return nil, collection.ErrUnavailable
 	}
 	grant, err := a.Client.ReadExactServiceProjectAuthorization(ctx, token, scope.ActorID, a.ProjectID, scope.OrganizationID)
-	if err != nil || !grant.Found || grant.State != "STATE_ACTIVE" || grant.AuthorizationID != scope.MemberID {
+	if err != nil {
+		return nil, collection.ErrUnavailable
+	}
+	if !grant.Found || grant.State != "STATE_ACTIVE" || grant.AuthorizationID != scope.MemberID {
 		return nil, collection.ErrForbidden
 	}
 	if a.OrganizationStatus != nil {
 		suspended, err := a.OrganizationStatus.IsOrganizationSuspended(ctx, scope.OrganizationID)
-		if err != nil || suspended {
+		if err != nil {
+			return nil, collection.ErrUnavailable
+		}
+		if suspended {
 			return nil, collection.ErrForbidden
 		}
 	}
 	if ctx.Err() != nil {
-		return nil, collection.ErrForbidden
+		return nil, collection.ErrUnavailable
 	}
 	return grant.Roles, nil
 }
@@ -60,7 +69,14 @@ func (a OrganizationExecutionAuthorizer) AuthorizeExecution(ctx context.Context,
 		return collection.ErrForbidden
 	}
 	roles, err := a.current(ctx, scope)
-	if err != nil || !authz.AllowedOrganization(ctx, a.Permissions, scope.ActorID, scope.OrganizationID, roles, permission) {
+	if err != nil {
+		return err
+	}
+	allowed, err := authz.AuthorizeOrganization(ctx, a.Permissions, scope.ActorID, scope.OrganizationID, roles, permission)
+	if err != nil {
+		return collection.ErrUnavailable
+	}
+	if !allowed {
 		return collection.ErrForbidden
 	}
 	return nil
@@ -71,10 +87,14 @@ func (a OrganizationExecutionAuthorizer) AuthorizeExecution(ctx context.Context,
 func (a OrganizationExecutionAuthorizer) ResolveAgentExecution(ctx context.Context, scope collection.Scope) ([]string, error) {
 	roles, err := a.current(ctx, scope)
 	if err != nil {
-		return nil, collection.ErrForbidden
+		return nil, err
 	}
 	for _, permission := range []string{collection.PermissionRead, preparation.PermissionRead, preparation.PermissionManage, authz.PermissionLocalAgentWrite, authz.PermissionWorkbenchAgentUse, authz.PermissionProductSourcingWrite} {
-		if !authz.AllowedOrganization(ctx, a.Permissions, scope.ActorID, scope.OrganizationID, roles, permission) {
+		allowed, err := authz.AuthorizeOrganization(ctx, a.Permissions, scope.ActorID, scope.OrganizationID, roles, permission)
+		if err != nil {
+			return nil, collection.ErrUnavailable
+		}
+		if !allowed {
 			return nil, collection.ErrForbidden
 		}
 	}

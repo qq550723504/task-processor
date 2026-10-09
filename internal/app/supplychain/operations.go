@@ -50,10 +50,18 @@ func (a *OperationActivities) List(ctx context.Context, in OperationExecution) (
 	defer cancel()
 	proof, err := a.Operations.AuthorizeExecution(ctx, in.OrganizationID, in.OperationID)
 	if err != nil {
+		if errors.Is(err, preparation.ErrForbidden) {
+			_, err = a.Operations.StopExecution(ctx, in.OrganizationID, in.OperationID, "")
+			return OperationPage{Items: []preparation.OperationItem{}, Cancelled: err == nil}, err
+		}
 		return OperationPage{}, err
 	}
 	op, err := proof.Read(ctx)
 	if err != nil {
+		if errors.Is(err, preparation.ErrForbidden) {
+			_, err = a.Operations.StopExecution(ctx, in.OrganizationID, in.OperationID, "")
+			return OperationPage{Items: []preparation.OperationItem{}, Cancelled: err == nil}, err
+		}
 		return OperationPage{}, err
 	}
 	if op.Status == preparation.OperationCancelled || op.Status == preparation.OperationCompleted {
@@ -68,6 +76,21 @@ func (a *OperationActivities) Process(ctx context.Context, in OperationExecution
 	}
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Minute)
 	defer cancel()
+	return a.process(ctx, in, sourceID)
+}
+
+func (a *OperationActivities) process(ctx context.Context, in OperationExecution, sourceID string) (result preparation.OperationItem, err error) {
+	// Every failure boundary rechecks current authority. Only an explicit
+	// current denial can stop progress; outages keep the original retry key.
+	defer func() {
+		if err == nil {
+			return
+		}
+		_, current := a.Operations.AuthorizeExecution(ctx, in.OrganizationID, in.OperationID)
+		if errors.Is(current, preparation.ErrForbidden) {
+			result, err = a.Operations.StopExecution(ctx, in.OrganizationID, in.OperationID, sourceID)
+		}
+	}()
 	proof, err := a.Operations.AuthorizeExecution(ctx, in.OrganizationID, in.OperationID)
 	if err != nil {
 		return preparation.OperationItem{}, err
@@ -84,7 +107,7 @@ func (a *OperationActivities) Process(ctx context.Context, in OperationExecution
 		return item, nil
 	}
 	key := preparation.ItemCommandID(op.ID, item.SourceID, op.Input.Action)
-	result := item
+	result = item
 	switch op.Input.Action {
 	case preparation.OperationAdapt:
 		receipt, e := a.adapt(ctx, op, item, key)
@@ -146,7 +169,7 @@ func (a *OperationActivities) Process(ctx context.Context, in OperationExecution
 	}
 	if err != nil {
 		// Transient failures and lost responses retry the same durable command.
-		// Revocation stops progress until the original member regains authority.
+		// Confirmed revocation is durably stopped by the deferred owner path.
 		switch {
 		case errors.Is(err, record.ErrNotReady):
 			result.Status = preparation.ItemMissing

@@ -162,6 +162,7 @@ type OperationRepository interface {
 	BeginOperationItem(context.Context, OperationAccess, string) (OperationItem, error)
 	BindOperationTarget(context.Context, OperationAccess, string, string, int64) (OperationItem, error)
 	FinishOperationItem(context.Context, OperationAccess, OperationItem) error
+	StopOperation(context.Context, OperationStopAccess, string) (OperationItem, error)
 }
 
 type OperationService struct {
@@ -277,6 +278,9 @@ type OperationAccess struct {
 }
 
 func (p OperationAccess) Read(ctx context.Context) (Operation, error) {
+	if p.worker && (ctx != nil && ctx.Err() != nil || !time.Now().Before(p.expiresAt)) {
+		return Operation{}, ErrUnavailable
+	}
 	if ctx == nil || ctx.Err() != nil || p.service == nil || !time.Now().Before(p.expiresAt) {
 		return Operation{}, ErrForbidden
 	}
@@ -284,18 +288,8 @@ func (p OperationAccess) Read(ctx context.Context) (Operation, error) {
 		return Operation{}, ErrForbidden
 	}
 	if p.worker {
-		if p.service.execution == nil {
-			return Operation{}, ErrForbidden
-		}
-		for _, purpose := range []string{collection.PermissionRead, PermissionRead, PermissionManage} {
-			if err := p.service.execution.AuthorizeExecution(ctx, p.operation.Owner, purpose); err != nil {
-				return Operation{}, ErrForbidden
-			}
-		}
-		if p.operation.Input.Action == OperationUpload {
-			if err := p.service.execution.AuthorizeExecution(ctx, p.operation.Owner, PermissionSubmit); err != nil {
-				return Operation{}, ErrForbidden
-			}
+		if err := p.service.executionAuthority(ctx, p.operation); err != nil {
+			return Operation{}, err
 		}
 	} else {
 		scope, err := p.service.authorize(ctx, p.operation.Input.Action)
@@ -306,6 +300,87 @@ func (p OperationAccess) Read(ctx context.Context) (Operation, error) {
 	result := p.operation
 	result.Input.SourceIDs = append([]string(nil), result.Input.SourceIDs...)
 	return result, nil
+}
+
+func (s *OperationService) executionAuthority(ctx context.Context, op Operation) error {
+	if s == nil || s.execution == nil {
+		return ErrUnavailable
+	}
+	purposes := []string{collection.PermissionRead, PermissionRead, PermissionManage}
+	if op.Input.Action == OperationUpload {
+		purposes = append(purposes, PermissionSubmit)
+	}
+	for _, purpose := range purposes {
+		if err := s.execution.AuthorizeExecution(ctx, op.Owner, purpose); err != nil {
+			if errors.Is(err, collection.ErrForbidden) || errors.Is(err, ErrForbidden) {
+				return ErrForbidden
+			}
+			return ErrUnavailable
+		}
+	}
+	return nil
+}
+
+// OperationStopAccess only permits terminalizing fixed execution progress.
+// It grants no source, Agent, Store or provider access. HTTP cannot mint it.
+type OperationStopAccess struct {
+	service   *OperationService
+	operation Operation
+	expiresAt time.Time
+}
+
+func (p OperationStopAccess) Read(ctx context.Context) (Operation, error) {
+	if ctx == nil || p.service == nil {
+		return Operation{}, ErrForbidden
+	}
+	if _, request := authidentity.AuthenticatedIdentityFromContext(ctx); request {
+		return Operation{}, ErrForbidden
+	}
+	if _, bounded := ctx.Deadline(); !bounded {
+		return Operation{}, ErrForbidden
+	}
+	if ctx.Err() != nil || !time.Now().Before(p.expiresAt) {
+		return Operation{}, ErrUnavailable
+	}
+	err := p.service.executionAuthority(ctx, p.operation)
+	if !errors.Is(err, ErrForbidden) {
+		if err == nil {
+			err = ErrConflict
+		}
+		return Operation{}, err
+	}
+	result := p.operation
+	result.Input.SourceIDs = append([]string(nil), result.Input.SourceIDs...)
+	return result, nil
+}
+
+func (s *OperationService) StopExecution(ctx context.Context, org, id, sourceID string) (OperationItem, error) {
+	if ctx == nil || s == nil || s.repository == nil || s.execution == nil || !authidentity.IsBoundedIdentifier(org) || !collection.ValidID(id) || sourceID != "" && !collection.ValidID(sourceID) {
+		return OperationItem{}, ErrForbidden
+	}
+	if _, request := authidentity.AuthenticatedIdentityFromContext(ctx); request {
+		return OperationItem{}, ErrForbidden
+	}
+	deadline, bounded := ctx.Deadline()
+	if !bounded {
+		return OperationItem{}, ErrForbidden
+	}
+	op, err := s.repository.ReadExecutionOperation(ctx, org, id)
+	if err != nil {
+		return OperationItem{}, err
+	}
+	if op.Owner.OrganizationID != org || op.ID != id || op.Owner.Validate() != nil || op.Input.Validate() != nil {
+		return OperationItem{}, ErrUnavailable
+	}
+	expires := time.Now().Add(5 * time.Second)
+	if deadline.Before(expires) {
+		expires = deadline
+	}
+	proof := OperationStopAccess{service: s, operation: op, expiresAt: expires}
+	if _, err := proof.Read(ctx); err != nil {
+		return OperationItem{}, err
+	}
+	return s.repository.StopOperation(ctx, proof, sourceID)
 }
 func (s *OperationService) AuthorizeExecution(ctx context.Context, org, id string) (OperationAccess, error) {
 	if ctx == nil || s.execution == nil || !authidentity.IsBoundedIdentifier(org) || !collection.ValidID(id) {

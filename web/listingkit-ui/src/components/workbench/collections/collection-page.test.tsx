@@ -11,12 +11,21 @@ vi.mock("@/lib/api/product-collection", async original => ({ ...await original<o
 vi.mock("@/lib/api/supply-chain",async original=>({...await original<object>(),supplyCommand:state.supplyWrite,readSupplyCommand:state.supplyRead}));
 beforeEach(() => {
   state.context = { user: { id: "actor-a" }, effectiveOrganization: { id: "org-a" }, permissions: ["workbench.collection.manage"],
-    pendingCollectionIntent: null, setPendingCollectionIntent: (intent: CollectionIntent | null) => { state.context.pendingCollectionIntent = intent; }, registerOrganizationSwitchGuard: () => () => {} };
+    pendingCollectionIntent: null, collectionIntentReady: true, setPendingCollectionIntent: (intent: CollectionIntent | null) => { state.context.pendingCollectionIntent = intent; return true; }, registerOrganizationSwitchGuard: () => () => {} };
   state.list.mockReset().mockResolvedValue({ items: [], total: 0 }); state.mutate.mockReset(); state.read.mockReset();
   state.context.pendingSupplyIntent=null;state.context.supplyIntentReady=true;state.context.setPendingSupplyIntent=(intent:SupplyIntent|null)=>{state.context.pendingSupplyIntent=intent;return true};
   state.supplyWrite.mockReset();state.supplyRead.mockReset();
 });
 afterEach(cleanup);
+
+it("does not dispatch a command when its original recovery intent cannot be retained", async () => {
+  state.context.setPendingCollectionIntent = () => false;
+  render(<CollectionPage />);
+  await userEvent.click(screen.getByRole("button", { name: "管理批次" }));
+  await userEvent.type(screen.getByLabelText("新批次名称"), "运营资料");
+  await userEvent.click(screen.getByRole("button", { name: "新建批次" }));
+  expect(state.mutate).not.toHaveBeenCalled();
+});
 
 it("transfers all 205 batch members and recovers an uncertain original key",async()=>{
  const id="550e8400-e29b-41d4-a716-446655440000";

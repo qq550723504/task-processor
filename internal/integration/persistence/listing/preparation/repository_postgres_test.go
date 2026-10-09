@@ -10,6 +10,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"sync"
 	"task-processor/internal/authidentity"
 	officialstore "task-processor/internal/integration/persistence/listing/official"
 	recordstore "task-processor/internal/integration/persistence/listing/record"
@@ -29,6 +30,15 @@ func (a fixedAuth) Authorize(context.Context, string) (collection.Scope, error) 
 
 type unusedSources struct {
 	sourcing.PublishedAcquisitionReader
+}
+
+type operationExecutionAuth struct{ denied bool }
+
+func (a *operationExecutionAuth) AuthorizeExecution(context.Context, collection.Scope, string) error {
+	if a.denied {
+		return collection.ErrForbidden
+	}
+	return nil
 }
 
 func TestPostgresTransferCapturesAllPagesAndReplaysOriginalMembership(t *testing.T) {
@@ -162,6 +172,69 @@ func TestPostgresTransferCapturesAllPagesAndReplaysOriginalMembership(t *testing
 	afterCancel, err := opService.Read(actor, op.Operation.ID)
 	require.NoError(t, err)
 	require.EqualValues(t, 205, afterCancel.Completed)
+	// Revocation terminalizes only execution progress. Existing UNKNOWN and
+	// successful results, references and provider facts remain untouched.
+	executionAuth := &operationExecutionAuth{}
+	_, err = opService.WithExecution(executionAuth)
+	require.NoError(t, err)
+	workerProof, err := opService.AuthorizeExecution(ctx, scope.OrganizationID, secondOperation.Operation.ID)
+	require.NoError(t, err)
+	priorUnknown, err := operations.BeginOperationItem(ctx, workerProof, opPage.Items[0].SourceID)
+	require.NoError(t, err)
+	priorUnknown.Status, priorUnknown.ResultReference = preparation.ItemUnknown, uuid.NewString()
+	require.NoError(t, operations.FinishOperationItem(ctx, workerProof, priorUnknown))
+	running, err := operations.BeginOperationItem(ctx, workerProof, opPage.Items[1].SourceID)
+	require.NoError(t, err)
+	priorSuccess, err := operations.BeginOperationItem(ctx, workerProof, opPage.Items[3].SourceID)
+	require.NoError(t, err)
+	priorSuccess.Status, priorSuccess.ResultReference = preparation.ItemSucceeded, uuid.NewString()
+	require.NoError(t, operations.FinishOperationItem(ctx, workerProof, priorSuccess))
+	racingClaim, err := opService.RequestAccess(actor, secondOperation.Operation.ID)
+	require.NoError(t, err)
+	executionAuth.denied = true
+	_, err = opService.StopExecution(actor, scope.OrganizationID, secondOperation.Operation.ID, "")
+	require.ErrorIs(t, err, preparation.ErrForbidden)
+	var concurrent sync.WaitGroup
+	concurrentErrors := make(chan error, 2)
+	concurrent.Add(2)
+	go func() {
+		defer concurrent.Done()
+		_, e := operations.BeginOperationItem(actor, racingClaim, opPage.Items[4].SourceID)
+		concurrentErrors <- e
+	}()
+	go func() {
+		defer concurrent.Done()
+		_, e := opService.StopExecution(ctx, scope.OrganizationID, secondOperation.Operation.ID, "")
+		concurrentErrors <- e
+	}()
+	concurrent.Wait()
+	close(concurrentErrors)
+	for e := range concurrentErrors {
+		require.NoError(t, e)
+	}
+	for range 2 {
+		stoppedItem, stopErr := opService.StopExecution(ctx, scope.OrganizationID, secondOperation.Operation.ID, running.SourceID)
+		require.NoError(t, stopErr)
+		require.Equal(t, preparation.ItemUnknown, stoppedItem.Status)
+		require.Empty(t, stoppedItem.ResultReference, "an operation command key is not a provider attempt ID")
+	}
+	deniedOperation, err := operations.ReadExecutionOperation(ctx, scope.OrganizationID, secondOperation.Operation.ID)
+	require.NoError(t, err)
+	require.Equal(t, preparation.OperationCompleted, deniedOperation.Status)
+	require.EqualValues(t, 205, deniedOperation.Completed, "replayed stop never increments progress twice")
+	deniedPage, err := operations.ListOperationItems(ctx, scope, secondOperation.Operation.ID, collection.Query{Limit: 100})
+	require.NoError(t, err)
+	require.Equal(t, priorUnknown, deniedPage.Items[0])
+	require.Equal(t, preparation.ItemUnknown, deniedPage.Items[1].Status)
+	require.Equal(t, preparation.ItemDenied, deniedPage.Items[2].Status)
+	require.Equal(t, priorSuccess, deniedPage.Items[3])
+	require.Contains(t, []string{preparation.ItemDenied, preparation.ItemUnknown}, deniedPage.Items[4].Status, "stop and claim serialize without a surviving runnable item")
+	executionAuth.denied = false
+	workerProof, err = opService.AuthorizeExecution(ctx, scope.OrganizationID, secondOperation.Operation.ID)
+	require.NoError(t, err)
+	lateClaim, err := operations.BeginOperationItem(ctx, workerProof, deniedPage.Items[2].SourceID)
+	require.NoError(t, err)
+	require.Equal(t, preparation.ItemDenied, lateClaim.Status, "restored grants do not restart the stopped batch")
 	page, err := service.ListSources(actor, receipt.Preparation.ID, collection.Query{Limit: 100})
 	require.NoError(t, err)
 	require.Len(t, page.Items, 100)

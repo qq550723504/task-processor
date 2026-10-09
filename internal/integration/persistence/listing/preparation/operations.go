@@ -383,6 +383,55 @@ func (r *OperationRepository) FinishOperationItem(ctx context.Context, proof pre
 	})
 }
 
+// Stop changes batch progress only. A running item might already have sent;
+// its provider/Agent outcome remains the responsibility of the original owner.
+func (r *OperationRepository) StopOperation(ctx context.Context, proof preparation.OperationStopAccess, sourceID string) (preparation.OperationItem, error) {
+	var output preparation.OperationItem
+	if sourceID != "" && !collection.ValidID(sourceID) {
+		return output, preparation.ErrInvalid
+	}
+	op, err := proof.Read(ctx)
+	if err != nil {
+		return output, err
+	}
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		row, err := readOperation(tx.Clauses(clause.Locking{Strength: "UPDATE"}), op.Owner, op.ID)
+		if err != nil {
+			return err
+		}
+		if row.InputHash != collection.Digest(op.Input) {
+			return preparation.ErrConflict
+		}
+		// The same operation lock serializes claim, cancel, finish and stop.
+		base := operationBase(tx.Model(&operationItemRow{}), op.Owner).Where("operation_id=?", op.ID)
+		pending := base.Session(&gorm.Session{}).Where("status=?", preparation.ItemPending).Updates(map[string]any{"status": preparation.ItemDenied, "note": "权限已撤销，未开始项已停止"})
+		if pending.Error != nil {
+			return pending.Error
+		}
+		running := base.Session(&gorm.Session{}).Where("status=?", preparation.ItemRunning).Updates(map[string]any{"status": preparation.ItemUnknown, "note": "权限已撤销，原执行结果待核实，不会自动重发"})
+		if running.Error != nil {
+			return running.Error
+		}
+		row.CompletedCount += pending.RowsAffected + running.RowsAffected
+		if row.CompletedCount == row.ItemCount && row.Status != preparation.OperationCancelled {
+			row.Status = preparation.OperationCompleted
+		}
+		if err = operationBase(tx.Model(&operationRow{}), op.Owner).Where("id=?", op.ID).Updates(map[string]any{"completed_count": row.CompletedCount, "status": row.Status}).Error; err != nil {
+			return err
+		}
+		if sourceID != "" {
+			var item operationItemRow
+			if err = operationBase(tx, op.Owner).Where("operation_id=? AND source_id=?", op.ID, sourceID).Take(&item).Error; err != nil {
+				return err
+			}
+			output = item.value()
+		}
+		_, err = proof.Read(ctx)
+		return err
+	})
+	return output, operationError(err)
+}
+
 func (r *OperationRepository) BindOperationTarget(ctx context.Context, proof preparation.OperationAccess, sourceID, recordID string, revision int64) (preparation.OperationItem, error) {
 	var output preparation.OperationItem
 	if !collection.ValidID(sourceID) || !collection.ValidID(recordID) || revision <= 0 {

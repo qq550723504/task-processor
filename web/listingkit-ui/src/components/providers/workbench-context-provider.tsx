@@ -22,6 +22,7 @@ import {
 } from "@/lib/api/workbench-context";
 import type { AcquisitionOperation } from "@/lib/api/product-acquisition";
 import type { CollectionIntent } from "@/lib/api/product-collection";
+import { loadCollectionIntent, saveCollectionIntent } from "@/lib/api/collection-intent";
 import type { SupplyIntent } from "@/lib/api/supply-chain";
 import { loadSupplyIntent, saveSupplyIntent } from "@/lib/api/supply-intent";
 
@@ -45,7 +46,8 @@ type WorkbenchContextValue = {
   pendingAcquisitionIntent: AcquisitionOperation | null;
   setPendingAcquisitionIntent: (intent: AcquisitionOperation | null) => void;
   pendingCollectionIntent: CollectionIntent | null;
-  setPendingCollectionIntent: (intent: CollectionIntent | null) => void;
+  collectionIntentReady: boolean;
+  setPendingCollectionIntent: (intent: CollectionIntent | null) => boolean;
   pendingSupplyIntent: SupplyIntent | null;
   supplyIntentReady: boolean;
   setPendingSupplyIntent: (intent: SupplyIntent | null) => boolean;
@@ -64,7 +66,13 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
   // changes. It is never a cross-organization authorization grant.
   const [pendingAcquisitionIntent, setPendingAcquisitionIntent] =
     useState<AcquisitionOperation | null>(null);
-  const [pendingCollectionIntent, setPendingCollectionIntent] = useState<CollectionIntent | null>(null);
+  const [pendingCollectionIntent, setCollectionIntent] = useState<CollectionIntent | null>(null);
+  const [collectionIntentReady, setCollectionIntentReady] = useState(false);
+  const setPendingCollectionIntent = useCallback((intent: CollectionIntent | null) => {
+    if (!saveCollectionIntent(intent)) return false;
+    setCollectionIntent(intent);
+    return true;
+  }, []);
   const [pendingSupplyIntent,setSupplyIntent]=useState<SupplyIntent|null>(null);
   const [supplyIntentReady,setSupplyIntentReady]=useState(false);
   useEffect(() => {
@@ -72,6 +80,8 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
     // Hydrate browser storage after the initial server-compatible render.
     void Promise.resolve().then(() => {
       if (active) {
+        setCollectionIntent(loadCollectionIntent());
+        setCollectionIntentReady(true);
         setSupplyIntent(loadSupplyIntent());
         setSupplyIntentReady(true);
       }
@@ -211,6 +221,7 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       pendingAcquisitionIntent,
       setPendingAcquisitionIntent,
       pendingCollectionIntent,
+      collectionIntentReady,
       setPendingCollectionIntent,
       pendingSupplyIntent,
       supplyIntentReady,
@@ -229,6 +240,8 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       switchOrganization,
       pendingAcquisitionIntent,
       pendingCollectionIntent,
+      collectionIntentReady,
+      setPendingCollectionIntent,
       pendingSupplyIntent,
       supplyIntentReady,
       setPendingSupplyIntent,

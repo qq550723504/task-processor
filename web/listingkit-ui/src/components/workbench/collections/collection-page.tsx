@@ -21,7 +21,7 @@ import { SourceImageUploader } from "./source-image-uploader";
 import { ConsolePage, ConsoleState } from "../console/console-page";
 
 const kindLabels = { acquisition: "在线采集", own: "自有商品", manual: "手动分组" };
-const failureText: Record<string, string> = { OUTCOME_UNKNOWN: "结果待核实", REVISION_CONFLICT: "资料已发生变化，请刷新后重试。", PERMISSION_DENIED: "当前权限不足。", NOT_FOUND: "未找到当前身份下的记录。", ORGANIZATION_CONTEXT_CHANGED: "企业上下文已变化。", IDENTITY_CONTEXT_CHANGED: "登录身份已变化。", INVALID_REQUEST: "请检查填写内容。" };
+const failureText: Record<string, string> = { OUTCOME_UNKNOWN: "结果待核实", INTENT_STORAGE_UNAVAILABLE: "无法保存原请求，请恢复浏览器存储后重试。", REVISION_CONFLICT: "资料已发生变化，请刷新后重试。", PERMISSION_DENIED: "当前权限不足。", NOT_FOUND: "未找到当前身份下的记录。", ORGANIZATION_CONTEXT_CHANGED: "企业上下文已变化。", IDENTITY_CONTEXT_CHANGED: "登录身份已变化。", INVALID_REQUEST: "请检查填写内容。" };
 
 export function CollectionPage({supplyAvailable=false}:{supplyAvailable?:boolean}) {
   const context = useWorkbenchContext();
@@ -56,7 +56,7 @@ function ScopedCollectionPage({ scope,supplyAvailable }: { scope: CollectionScop
   const [detail, setDetail] = useState<CollectionDetail | null>(null);
   const [name, setName] = useState("");
   const [targetBatch, setTargetBatch] = useState("");
-  const [pending, setPending] = useState<CollectionIntent | null>(() => context.pendingCollectionIntent);
+  const pending = context.pendingCollectionIntent;
   const alive = useRef(true);
   const inFlight = useRef(false);
   const commandAbort = useRef<AbortController | null>(null);
@@ -66,8 +66,8 @@ function ScopedCollectionPage({ scope,supplyAvailable }: { scope: CollectionScop
     if(intent.route!=="transfer"){setNotice("已核实原供应链操作");return;}
     const receipt=transferReceiptSchema.parse(result);setTransferred(receipt.preparation.id);setDialog(null);setNotice(`已加入我的供应链，共 ${receipt.preparation.count} 件商品。`);
   });
-  const transferBlocked=busy||!!pending||supply.busy||!!supply.pending||!supply.ready||!context.permissions.includes("workbench.supply.manage");
-  const writeBlocked = busy || !!pending || supply.busy || !!supply.pending || !canManage;
+  const transferBlocked=busy||!!pending||!context.collectionIntentReady||supply.busy||!!supply.pending||!supply.ready||!context.permissions.includes("workbench.supply.manage");
+  const writeBlocked = busy || !!pending || !context.collectionIntentReady || supply.busy || !!supply.pending || !canManage;
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; commandAbort.current?.abort(); }; }, []);
   useEffect(() => context.registerOrganizationSwitchGuard(() => !inFlight.current), [context]);
@@ -88,19 +88,21 @@ function ScopedCollectionPage({ scope,supplyAvailable }: { scope: CollectionScop
   function refresh() { setLoading(true); setReload(value => value + 1); }
   function changeView(nextTab: "batches" | "own", selected: string | null = null) { setTab(nextTab); setBatchId(selected); setAfter(undefined); setKeyword(""); setSearch(""); setLoading(true); setItems([]); setError(null); }
   async function command(input: CollectionCommand, original?: CollectionIntent, verify = false) {
-    if (!alive.current || inFlight.current || foreignPending || pending && !original) return;
+    if (!alive.current || inFlight.current || !context.collectionIntentReady || foreignPending || pending && !original) return;
     const intent = original ?? { ...scope, key: crypto.randomUUID(), command: input };
+    if (!context.setPendingCollectionIntent(intent)) { setError("INTENT_STORAGE_UNAVAILABLE"); return; }
     const controller = new AbortController(); commandAbort.current = controller;
-    inFlight.current = true; setBusy(true); setError(null); setPending(intent); context.setPendingCollectionIntent(intent);
+    inFlight.current = true; setBusy(true); setError(null);
     try {
       const receipt = await (verify ? readCollectionOperation(intent, controller.signal) : mutateCollection(intent, controller.signal));
       if (!alive.current) return;
-      setPending(null); context.setPendingCollectionIntent(null); setDialog(null); setNotice(`已保存 · 操作 ${receipt.operationId}`); refresh();
+      if (!context.setPendingCollectionIntent(null)) { setError("INTENT_STORAGE_UNAVAILABLE"); return; }
+      setDialog(null); setNotice(`已保存 · 操作 ${receipt.operationId}`); refresh();
     } catch (failure) {
       if (!alive.current) return;
       const code = codeOf(failure);
       if (!verify && failure instanceof CollectionAPIError && failure.status >= 400 && failure.status < 500 && code !== "OUTCOME_UNKNOWN") {
-        setPending(null); context.setPendingCollectionIntent(null); setError(code);
+        setError(context.setPendingCollectionIntent(null) ? code : "INTENT_STORAGE_UNAVAILABLE");
       } else { setError(verify ? code : "OUTCOME_UNKNOWN"); }
     } finally { inFlight.current = false; if (commandAbort.current === controller) commandAbort.current = null; if (alive.current) setBusy(false); }
   }

@@ -2,6 +2,7 @@ package supplychainapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -24,9 +25,29 @@ func (s *organizationStatus) IsOrganizationSuspended(context.Context, string) (b
 	return s.suspended.Load(), nil
 }
 
-type currentRolePolicy struct{ removed atomic.Bool }
+func TestSupplyExecutionDoesNotClassifyIAMFailureAsRevocation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusServiceUnavailable) }))
+	defer server.Close()
+	permissions, err := authz.NewListingKitAuthorizer(nil, nil)
+	require.NoError(t, err)
+	owner := OrganizationExecutionAuthorizer{Client: zitadel.NewAuthorizationClient(server.URL, server.Client()), ServiceToken: func(context.Context) (string, error) { return "fixture", nil }, ProjectID: "project-a", Permissions: permissions}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	scope := collection.Scope{"org-a", "actor-a", "member-a"}
+	require.ErrorIs(t, owner.AuthorizeExecution(ctx, scope, preparation.PermissionManage), collection.ErrUnavailable)
+	owner.ServiceToken = func(context.Context) (string, error) { return "", errors.New("token temporarily unavailable") }
+	require.ErrorIs(t, owner.AuthorizeExecution(ctx, scope, preparation.PermissionManage), collection.ErrUnavailable)
+}
+
+type currentRolePolicy struct {
+	removed     atomic.Bool
+	unavailable bool
+}
 
 func (p *currentRolePolicy) RoleModules(_ context.Context, org string, keys []string) (map[string][]string, error) {
+	if p.unavailable {
+		return nil, errors.New("policy unavailable")
+	}
 	values := map[string][]string{}
 	if !p.removed.Load() {
 		values[authz.EnterpriseRoleKey(org, 1)] = []string{"data-mine"}
@@ -74,6 +95,9 @@ func TestSupplyExecutionChecksOriginalGrantCurrentRoleAndOrganizationStatus(t *t
 	status.suspended.Store(false)
 	role.Store(authz.EnterpriseRoleKey(scope.OrganizationID, 1))
 	require.NoError(t, owner.AuthorizeExecution(ctx, scope, collection.PermissionRead))
+	policy.unavailable = true
+	require.ErrorIs(t, owner.AuthorizeExecution(ctx, scope, collection.PermissionRead), collection.ErrUnavailable)
+	policy.unavailable = false
 	policy.removed.Store(true)
 	require.ErrorIs(t, owner.AuthorizeExecution(ctx, scope, collection.PermissionRead), collection.ErrForbidden)
 	policy.removed.Store(false)
