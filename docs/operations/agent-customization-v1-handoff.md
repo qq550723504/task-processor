@@ -15,17 +15,47 @@
 
 专员每次可追加当前阶段记录，或前进一个阶段：提交需求 → 需求评估 → 方案确认 → 开发测试 → 交付使用。进入方案确认必须记录方案与报价；开始开发必须明确记录线下确认；每次更新必须有跟进说明。系统保存操作者、时间和版本；记录交付不会自动表示付款或用户验收。
 
-## 共享 runtime Writer 接线
+## 正常 runtime 启用
 
-共享装配、正常启动、导航和 module catalog 由会话 `01a11f74-2565-78e0-9118-4fe1ff53e726` 独占维护。本模块提供以下入口，不能在 HTTP 请求或构造函数中安装 schema：
+智能体定制已经接入 `cmd/current-application` 的可选原生装配、Console 导航及 module catalog。用户将本功能接线交给 #611 串行完成；其他模块的接入仍由原 owner 维护。本功能使用已有正常认证/runtime，不新增独立 serving 程序。
 
-1. 显式安装步骤调用 `agentcustomizationpersistence.InstallSchema(ctx, installerDB)`，再调用 `GrantRuntime(ctx, installerDB, servingRole)`。installer 必须具备创建安全 schema owner/角色的权限；serving role 不得成为 schema owner，也不得继承破坏请求归属或不可变资料的权限。不要向 serving identity 授予 DDL 权限。
-2. 使用已配置的正常 PostgreSQL serving pool：`store, err := agentcustomizationpersistence.New(servingDB)` → `service, err := agentcustomization.NewService(store)` → `handler, err := agentcustomizationhttp.NewHandler(service)`。
-3. 将 `agentcustomizationhttp.Routes(handler)` 交给已有 descriptor registry/正常授权链。企业路径为 `/api/v1/agent-customization/requests`，平台路径为 `/api/v1/admin/agent-customization/requests`。使用其当前身份、LiveWrite、verified roles、超时和 permission 描述，不裸挂 Gin handler。
-4. BFF 使用现有 `LISTINGKIT_SERVICE_API_BASE`（路径 `/api/v1`）、正常 Auth.js/Zitadel 会话、现有同源写配置与企业选择 cookie。专用 Next API 路由已经提供，不需向全局 workbench proxy 重复分发。
-5. 更新 shared navigation 的 custom/new/progress 路径，并在实际模块已接入后更新 `module_catalog` 的 `agent-custom` 权限/可用性投影。专员入口不作为普通企业用户的快捷入口。依赖未接入时保持 unavailable；不能使用视觉 fixture 或假需求补齐可用状态。
+先由获准的环境维护者准备一个空的独立 PostgreSQL 数据库及 `agent_customization_runtime` 登录角色。角色不得是 superuser、数据库/角色创建者、schema owner 或拥有 bypass-RLS 权限，不得继承 schema owner 或不可变资料的修改权限。安装者与运行者凭据必须分离。显式安装使用已有 `InstallSchema` / `GrantRuntime`，只创建本域 schema 和权限，不创建示例需求：
 
-Go import paths：`task-processor/internal/agentcustomization`、`task-processor/internal/agentcustomization/httpapi`、`task-processor/internal/integration/persistence/agentcustomization`（后者 package 名为 `agentcustomizationpersistence`）。本片不新增独立部署程序或第二套认证/runtime。
+```powershell
+# 在私有环境中设置安装者连接，避免写入仓库或终端记录。
+$env:AGENT_CUSTOMIZATION_SCHEMA_DSN = '<private installer DSN>'
+try {
+  go run ./cmd/agent-customization-schema-init --runtime-role agent_customization_runtime
+  if ($LASTEXITCODE -ne 0) { throw 'agent customization initialization failed' }
+} finally {
+  Remove-Item Env:AGENT_CUSTOMIZATION_SCHEMA_DSN
+}
+```
+
+在现有完整的私有 current-application JSON manifest 中增加以下字段；这只是字段示例，不是可独立使用的完整 manifest：
+
+```json
+"agentCustomizationDatabase": {
+  "host": "127.0.0.1",
+  "port": 5432,
+  "user": "agent_customization_runtime",
+  "password": "<private serving password>",
+  "database": "agent_customization",
+  "maxConnections": 4
+}
+```
+
+数据库必须与 source-account 及其他 owner 数据库分离，连接数最多4。正常启动沿用现有完整 identity/source-account 配置：
+
+```powershell
+go run ./cmd/current-application -config '<absolute private manifest path>'
+```
+
+未配置该字段时不挂载定制 API；配置但数据库不可达、缺表、有效权限不足或过大时启动失败。Serving 和 HTTP 请求都不执行 DDL 或自动修复权限。启动检查通过后，SQL adapter → Service → Handler 的批准 Routes 经正常 descriptor registry 挂载；企业路径为 `/api/v1/agent-customization/requests`，平台路径为 `/api/v1/admin/agent-customization/requests`。既有当前身份、LiveWrite、verified platform roles、超时及 permission 检查保持生效。
+
+Console BFF 使用现有 `LISTINGKIT_SERVICE_API_BASE`（路径 `/api/v1`）、正常 Auth.js/Zitadel 会话、同源写配置与企业选择 cookie。`agent-custom` catalog 表示软件模块已实现，并投影既有 read/use 权限；实际权限和依赖可用性仍由正常 middleware/BFF/owner 判断。专员入口不出现在普通企业菜单中。
+
+RUN-1 仍是原有身份/路由隔离环境，不因本功能自动增加 schema、角色或可选模块。共享或生产环境启用须按对应环境授权处理。
 
 ## 保存与失败处理
 
@@ -41,4 +71,4 @@ Go import paths：`task-processor/internal/agentcustomization`、`task-processor
 
 ## 验证交接
 
-模块开发自检与隔离视觉检查不能替代正常 runtime 组合、专员真实处理或用户验收。实际组合须按前述正常入口验证企业提交及读取、平台评估到交付、附件下载和权限隔离；由用户或其指定独立验证者确认使用效果。当前 HEAD、CI、独立复核、组合/用户验收状态维护在主要 PR，不在本文维护滚动状态。
+配置生命周期、正常路由授权及隔离 PostgreSQL 组合检查是开发自检，使用合成身份与需求，不能替代真实登录、专员处理或用户验收。获准启用环境后，按前述正常入口验证企业提交及读取、平台评估到交付、附件下载和权限隔离；由用户或其指定独立验证者确认使用效果。当前 HEAD、CI、独立复核、组合/用户验收状态维护在主要 PR，不在本文维护滚动状态。

@@ -113,3 +113,33 @@ func GrantRuntime(ctx context.Context, db *sql.DB, role string) error {
 	}
 	return tx.Commit()
 }
+
+// VerifySchema checks the pre-installed facts and effective serving privileges;
+// it never repairs schema or grants authority during serving startup.
+func VerifySchema(ctx context.Context, db *sql.DB) error {
+	if db == nil {
+		return d.ErrUnavailable
+	}
+	var unsafe bool
+	err := db.QueryRowContext(ctx, `SELECT rolsuper OR rolcreatedb OR rolcreaterole OR rolbypassrls OR pg_has_role(current_user,'agent_customization_owner','MEMBER') OR has_schema_privilege(current_user,'agent_customization','CREATE') FROM pg_roles WHERE rolname=current_user`).Scan(&unsafe)
+	if err != nil || unsafe {
+		return d.ErrUnavailable
+	}
+	for _, table := range []string{"requests", "events", "attachments", "commands"} {
+		var present, readable, insertable, destructive bool
+		name := "agent_customization." + table
+		err = db.QueryRowContext(ctx, `SELECT to_regclass($1) IS NOT NULL, has_table_privilege(current_user,$1,'SELECT'),has_table_privilege(current_user,$1,'INSERT'),has_table_privilege(current_user,$1,'DELETE,TRUNCATE')`, name).Scan(&present, &readable, &insertable, &destructive)
+		if err != nil || !present || !readable || !insertable || destructive {
+			return d.ErrUnavailable
+		}
+		if table != "requests" {
+			err = db.QueryRowContext(ctx, "SELECT has_any_column_privilege(current_user,$1,'UPDATE')", name).Scan(&unsafe)
+		} else {
+			err = db.QueryRowContext(ctx, `SELECT has_column_privilege(current_user,$1,'id','UPDATE') OR has_column_privilege(current_user,$1,'organization_id','UPDATE') OR NOT has_column_privilege(current_user,$1,'version','UPDATE') OR NOT has_column_privilege(current_user,$1,'payload','UPDATE')`, name).Scan(&unsafe)
+		}
+		if err != nil || unsafe {
+			return d.ErrUnavailable
+		}
+	}
+	return nil
+}

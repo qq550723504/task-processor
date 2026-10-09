@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	confighttp "task-processor/internal/agentconfig/httpapi"
+	customhttp "task-processor/internal/agentcustomization/httpapi"
 	registration "task-processor/internal/app/referralregistration"
 	storeapp "task-processor/internal/app/storecenter"
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
@@ -114,6 +115,8 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
+	agentCustomizations       int
+	agentCustomizationDB      *gorm.DB
 	ecoservicesConfigs        int
 	ecoservices               *EcoservicesDependencies
 	notifications             int
@@ -346,6 +349,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 	}
 	auditSources, auditSourceErr := currentInvocationAuditSources(supplied)
+	if err := validateAgentCustomizationPool(supplied, sourceAccountDB); err != nil {
+		return nil, err
+	}
 	if auditSourceErr != nil {
 		return nil, auditSourceErr
 	}
@@ -668,6 +674,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		modules = append(modules, m)
 	}
+	if supplied.agentCustomizations > 0 {
+		m, err := buildAgentCustomizationModule(ctx, supplied.agentCustomizationDB)
+		if err != nil {
+			return nil, fmt.Errorf("build current agent customization: %w", err)
+		}
+		modules = append(modules, m)
+	}
 	if supplied.aiWorkbench != nil {
 		module, e := buildAIWorkbenchModule(ctx, *supplied.aiWorkbench, productRuntime)
 		if e != nil {
@@ -768,6 +781,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, err
 	}
 	routeFeatures := currentApplicationOptionalRoutes{
+		AgentCustomization:  supplied.agentCustomizations > 0,
 		Ecoservices:         supplied.ecoservices != nil,
 		SupplyChain:         supplied.supplyChains > 0,
 		Collections:         supplied.productCollections > 0,
@@ -870,6 +884,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	AgentCustomization  bool
 	Ecoservices         bool
 	SupplyChain         bool
 	Collections         bool
@@ -890,6 +905,11 @@ type currentApplicationOptionalRoutes struct {
 
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if optional.AgentCustomization {
+		for _, r := range customhttp.Routes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
 	if optional.Ecoservices {
 		for _, r := range ehttp.Routes(nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
@@ -1042,6 +1062,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {
+		if descriptor.Path == customhttp.Base || strings.HasPrefix(descriptor.Path, customhttp.Base+"/") || descriptor.Path == customhttp.AdminBase || strings.HasPrefix(descriptor.Path, customhttp.AdminBase+"/") {
+			if !optional.AgentCustomization {
+				return errors.New("agent customization not admitted")
+			}
+			if err := customhttp.ValidateDescriptor(descriptor); err != nil {
+				return err
+			}
+		}
 		if descriptor.Path == ehttp.NotifyPath || descriptor.Path == ehttp.Base || strings.HasPrefix(descriptor.Path, ehttp.Base+"/") || descriptor.Path == ehttp.AdminBase || strings.HasPrefix(descriptor.Path, ehttp.AdminBase+"/") {
 			if !optional.Ecoservices {
 				return errors.New("ecoservices feature not admitted")

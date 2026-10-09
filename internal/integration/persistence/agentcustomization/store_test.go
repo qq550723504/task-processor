@@ -39,6 +39,37 @@ func fixture(t *testing.T) (*sql.DB, *Store) {
 func submit() d.Command {
 	return d.Command{Scope: d.Scope{OrganizationID: "org-a", ActorID: "member-a"}, Key: uuid.NewString(), Operation: "submit", Input: d.Input{Name: "标题需求", Scenario: "商品维护", Direction: "PRODUCT_SUPPLY", Description: "形成建议", ContactName: "测试", ContactMethod: "test-only", Consent: true, Files: []d.Upload{{Name: "参考.csv", Data: []byte("商品,说明\n标题,资料")}}}}
 }
+func TestVerifySchemaRejectsPrivilegedServingAndMissingTables(t *testing.T) {
+	db, _ := fixture(t)
+	ctx := context.Background()
+	require.Error(t, VerifySchema(ctx, db), "installer cannot serve")
+	role := "verify611_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	_, e := db.Exec("CREATE ROLE " + role + " NOLOGIN")
+	require.NoError(t, e)
+	defer func() { db.Exec("DROP OWNED BY " + role); db.Exec("DROP ROLE " + role) }()
+	require.NoError(t, GrantRuntime(ctx, db, role))
+	db.SetMaxOpenConns(1)
+	_, e = db.Exec("SET ROLE " + role)
+	require.NoError(t, e)
+	defer db.Exec("RESET ROLE")
+	require.NoError(t, VerifySchema(ctx, db))
+	_, e = db.Exec("RESET ROLE")
+	require.NoError(t, e)
+	_, e = db.Exec("GRANT UPDATE ON agent_customization.events TO " + role)
+	require.NoError(t, e)
+	_, e = db.Exec("SET ROLE " + role)
+	require.NoError(t, e)
+	require.Error(t, VerifySchema(ctx, db), "mutating immutable events cannot serve")
+	_, e = db.Exec("RESET ROLE")
+	require.NoError(t, e)
+	_, e = db.Exec("REVOKE UPDATE ON agent_customization.events FROM " + role)
+	require.NoError(t, e)
+	_, e = db.Exec("ALTER TABLE agent_customization.events RENAME TO missing_events")
+	require.NoError(t, e)
+	_, e = db.Exec("SET ROLE " + role)
+	require.NoError(t, e)
+	require.Error(t, VerifySchema(ctx, db), "missing schema cannot serve")
+}
 func service(t *testing.T, s *Store) *d.Service {
 	v, e := d.NewService(s)
 	require.NoError(t, e)

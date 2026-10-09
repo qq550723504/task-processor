@@ -22,6 +22,7 @@ import (
 )
 
 type Dependencies struct {
+	OpenAgentCustomization       func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenEcoservices              func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	NewEcoservices               func(context.Context, *gorm.DB, *EcoservicesConfig, *logrus.Logger) (*EcoservicesRuntime, error)
 	OpenNotificationCenter       func(context.Context, DatabaseConfig) (*gorm.DB, error)
@@ -55,6 +56,7 @@ type Dependencies struct {
 // ApplicationFeatures keeps separately owned, opt-in current modules together
 // only at the serving composition boundary.
 type ApplicationFeatures struct {
+	AgentCustomizationDB                                 *gorm.DB
 	Ecoservices                                          *EcoservicesRuntime
 	SourceMediaStorage                                   productsourcing.SourceMediaStorage
 	NotificationCenterDB                                 *gorm.DB
@@ -133,6 +135,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	if dependencies.IdentityPreflight == nil || dependencies.OpenSourceAccount == nil || dependencies.CloseDatabase == nil {
 		return errors.New("current application database lifecycle unavailable")
+	}
+	if cfg.AgentCustomizationDatabase != nil && (dependencies.OpenAgentCustomization == nil || dependencies.NewApplicationWithFeatures == nil) {
+		return errors.New("agent customization runtime lifecycle unavailable")
 	}
 	if cfg.ProductAcquisitionDatabase != nil && dependencies.OpenProductAcquisition == nil {
 		return errors.New("current product acquisition lifecycle unavailable")
@@ -460,6 +465,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		}
 	}
 	var knowledgeProcessor *knowledge.Processor
+	var knowledgeDB *gorm.DB
 	if cfg.Knowledge != nil && cfg.Knowledge.Enabled {
 		pool, openErr := dependencies.OpenKnowledge(startupContext, cfg.Knowledge.Database)
 		if openErr != nil || pool == nil {
@@ -475,6 +481,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		}
 		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(pool)) }()
 		knowledgeService, knowledgeProcessor, err = dependencies.NewKnowledge(startupContext, pool, cfg.Knowledge, logger)
+		knowledgeDB = pool
 		if err != nil || knowledgeService == nil || knowledgeProcessor == nil {
 			return errors.New("knowledge dependencies unavailable")
 		}
@@ -489,9 +496,29 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			return errors.New("source media storage unavailable")
 		}
 	}
+	var customizationDB *gorm.DB
+	if cfg.AgentCustomizationDatabase != nil {
+		customizationDB, err = dependencies.OpenAgentCustomization(startupContext, *cfg.AgentCustomizationDatabase)
+		if err != nil || customizationDB == nil {
+			return errors.New("agent customization owner database unavailable")
+		}
+		others := []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, trialDB, notificationDB, supplyAssetDB, knowledgeDB}
+		if ecoservicesRuntime != nil {
+			others = append(others, ecoservicesRuntime.DB)
+		}
+		for _, other := range others {
+			if other == customizationDB {
+				return errors.New("agent customization requires an independent owner pool")
+			}
+		}
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(customizationDB)) }()
+		if err := startupContext.Err(); err != nil {
+			return fmt.Errorf("current application startup canceled: %w", err)
+		}
+	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Ecoservices: ecoservicesRuntime, NotificationCenterDB: notificationDB, Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, SourceMediaStorage: sourceMediaStorage, SupplyAssetDB: supplyAssetDB, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{AgentCustomizationDB: customizationDB, Ecoservices: ecoservicesRuntime, NotificationCenterDB: notificationDB, Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, SourceMediaStorage: sourceMediaStorage, SupplyAssetDB: supplyAssetDB, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {

@@ -19,7 +19,7 @@ Out of scope：支付或账本、自动联系/通知、服务商分配、SLA承�
 | 合同 → 实现 → 注入 → 消费 | 职责 |
 | --- | --- |
 | agentcustomization.Repository → integration/persistence/agentcustomization → NewService → feature-local HTTP | 需求、附件、事件、回执的单库事务 |
-| Service → agentcustomization/httpapi Routes → current application（指定runtime Writer） → Console/BFF | 有界传输、当前身份及正常读写 |
+| Service → agentcustomization/httpapi Routes → current application（#611串行接线） → Console/BFF | 有界传输、当前身份及正常读写 |
 | 现有 authidentity/authz/httproute → 既有身份 middleware → Routes | 企业 read/use、verified platform administrator |
 
 复用现有 Go PostgreSQL 驱动、Gin、严格 JSON decoder、请求 deadline、Auth.js、Zod、ConsolePage/ConsoleSection/ConsoleState/Button 和 tokens。不创建通用工单、上传、权限或状态机框架。
