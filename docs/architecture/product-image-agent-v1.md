@@ -1,9 +1,9 @@
 # 商品图片智能体 V1 — 完整图片能力设计
 
-> Status: **IMPLEMENTATION_READY（技术设计）**。2026-10-09 独立 Architecture Review R2 已解除唯一设计 BLOCKER；共享合同单写归属仍待确认，不以技术准入替代该开工依赖。
+> Status: **IMPLEMENTATION_READY**。2026-10-09 独立 Architecture Review R2 已解除唯一设计 BLOCKER；用户随后确认本线程统一完成本批必要共享接口与启动接线，正式开工依赖已满足。
 > Execution: [#612](https://github.com/qq550723504/task-processor/issues/612)；Parent: #137。
 > 当前调查基线：main `d95807f13475d27c0b8691f044cca6320a540d06`，2026-10-09。
-> Design Basis: **Independent Architecture**。评审证据与实施状态记在 #612 / 主要 PR；当前未改生产业务路径或 schema。
+> Design Basis: **Independent Architecture**。评审证据与实施状态记在 #612 / 主要 PR #616；后续范围内实现沿本冻结合同推进。
 
 ## 1. 用户结果与当前决定
 
@@ -11,7 +11,7 @@
 
 2026-10-09 用户明确：“要完整的，不要单图的，单图的只是验证模型能力而已。”本任务不再以 #487 的单白底图页面挂载作为交付终点。#487/#503/#525 已交付的派发、统一点数、恢复和批准能力保留为复用依据，不重写其历史完成或验收状态。
 
-用户随后接受智能体粒度方案：**一个可复用图片智能体；每个商品一个独立 Run/Plan；每次图片生成一个 Slot/effect。** 这是已确认的产品粒度；具体领域合同仍须完成独立架构准入。
+用户随后接受智能体粒度方案：**一个可复用图片智能体；每个商品一个独立 Run/Plan；每次图片生成一个 Slot/effect。** 这是已确认的产品粒度；具体领域合同见已完成独立架构准入的§7。
 
 同日确认两项内容决定：**共用视觉素材仅共用原始素材，主图与详情图两组仍独立生成**；详情任务采用商品全貌、核心卖点、使用场景、结构功能、细节特写、规格尺寸、使用步骤、包装配件。每项可勾选；缺少真实依据时提示补充或取消该项，不编造规格、配件或功效。
 
@@ -219,7 +219,7 @@ Asset已提交但ACK/Run finalization丢失只读原immutable receipt，不能�
 | Store/Marketplace/Listing | 当前授权只读规则 port → 窄图片要求投影，共享发布约束版本与plan检查；无第二规则库，无新平台写/凭据路径。 |
 | 当前 app/worker composition | 注入配置 reader、source/collection reader、规则 port、现资源/Artifact/Asset依赖、typed renderer，前后端均以实际依赖投影可用性。 |
 
-Formal write ownership：本 Writer 独占 ImageAgent/图片 domain/feature-local consumer 与本设计。agentconfig typed schema/public合同、Asset选择公共合同、Marketplace共享图片要求以及Supply消费者的具体路径必须由协调方确定本批 Writer/原 owner的单写归属；公共 runtime、启动与共享导航由会话01a11f74-2565-78e0-9118-4fe1ff53e726接线。owner 未明确时这些共享路径不写；设计评审不替代协调，也不意味着生产部署授权。
+Formal write ownership：2026-10-09 用户确认本线程统一完成本批必要修改。会话01a11f6e-a012-7110-a953-3f7d43dbe6ad为唯一Writer，覆盖ImageAgent/图片domain/feature-local consumer、agentconfig typed合同、Asset选择、Marketplace图片要求、Supply消费者与必要runtime/启动接线；替代原会话01a11f74-2565-78e0-9118-4fe1ff53e726在本批范围内的分配。沿同一分支/主要PR，不覆盖其他工作，不新增部署或真实数据/付费provider权限。
 
 ### 7.9 Must / Threat Model 与验证
 
@@ -237,4 +237,4 @@ Legacy decision: **EXTRACT | RETIRE**。抽取当前合格计划/逐图 effect/�
 
 2026-10-09已按AGENTS完成两轮正常独立架构评审，技术设计收束为IMPLEMENTATION_READY。R1配置准入BLOCKER已由§7.2整套事务准入回执解除；R1的批准ACK/cancel、set digest/持久化、官方位置映射、Asset CAS/replay及多来源proof接缝为IMPLEMENTATION_TEST，正式实现与必要测试内收敛，不重开全局设计。正式实现使用本Delivery Batch一个Writer/分支/主要PR；复用现PG/Temporal/provider fixtures，不建设runner/验收平台。评审候选合同SHA256为417e65c9fdd0f1705d5e0a174fe63efc8647b78f36f532ffcc47035dcdb7179c；本次状态标记和R2提出的非阻塞停用文案清理不新增合同边界。
 
-最终交付检查包括完整用户路径、准确diff/当前运行组合、权限/错误副作用/数据保存。架构独立review已完成；正式实现、最终交付检查、运行用户链、付费provider、真实平台与用户验收均**NOT_RUN**。无合并、关单、共享/生产部署或真实数据授权。
+最终交付检查包括完整用户路径、准确diff/当前运行组合、权限/错误副作用/数据保存。架构独立review已完成；正式实现进度与开发检查证据记录在#612/PR#616，设计准入不代表完整用户链或产品验收。最终交付检查、付费provider、真实平台与用户验收仍**NOT_RUN**。无合并、关单、共享/生产部署或真实数据授权。

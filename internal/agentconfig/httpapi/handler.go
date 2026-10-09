@@ -124,8 +124,12 @@ func body(c *gin.Context, v any) error {
 	if c.GetHeader("Content-Encoding") != "" || mediaErr != nil || media != "application/json" {
 		return agentconfig.ErrInvalid
 	}
-	raw, e := io.ReadAll(io.LimitReader(c.Request.Body, 8193))
-	if e != nil || len(raw) > 8192 {
+	maximum := int64(8192)
+	if c.Param("agent_id") == agentconfig.ImageAgentID {
+		maximum = 128 << 10
+	}
+	raw, e := io.ReadAll(io.LimitReader(c.Request.Body, maximum+1))
+	if e != nil || int64(len(raw)) > maximum {
 		return agentconfig.ErrInvalid
 	}
 	if !strings.HasPrefix(strings.TrimSpace(string(raw)), "{") {

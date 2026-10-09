@@ -32,6 +32,7 @@ var (
 
 const SnapshotKind = "agent-configuration-v1"
 const ParameterSchema = "title-config-v1"
+const ImageParameterSchema = ImageConfigurationSchema
 
 func UUID(s string) bool {
 	id, err := uuid.Parse(s)
@@ -43,14 +44,32 @@ func LimitsAdmissible(f, c agent.Limits) bool {
 }
 
 type TemplateInput struct {
-	Name                   string `json:"name"`
-	TargetPlatform         string `json:"targetPlatform"`
-	DefaultKnowledgeBaseID string `json:"defaultKnowledgeBaseId,omitempty"`
+	Name                   string       `json:"name"`
+	TargetPlatform         string       `json:"targetPlatform"`
+	DefaultKnowledgeBaseID string       `json:"defaultKnowledgeBaseId,omitempty"`
+	Image                  *SetTemplate `json:"image,omitempty"`
 }
 
 func (p TemplateInput) Valid() bool {
 	n := strings.TrimSpace(p.Name)
-	return len(n) <= 512 && utf8.ValidString(n) && utf8.RuneCountInString(n) > 0 && utf8.RuneCountInString(n) <= 120 && strings.IndexFunc(n, unicode.IsControl) < 0 && Platform(p.TargetPlatform) && (p.DefaultKnowledgeBaseID == "" || UUID(p.DefaultKnowledgeBaseID))
+	if len(n) > 512 || !utf8.ValidString(n) || utf8.RuneCountInString(n) == 0 || utf8.RuneCountInString(n) > 120 || strings.IndexFunc(n, unicode.IsControl) >= 0 {
+		return false
+	}
+	if p.Image != nil {
+		return p.DefaultKnowledgeBaseID == "" && (p.TargetPlatform == "product" || Platform(p.TargetPlatform)) && p.Image.Validate() == nil
+	}
+	return Platform(p.TargetPlatform) && (p.DefaultKnowledgeBaseID == "" || UUID(p.DefaultKnowledgeBaseID))
+}
+
+func ParameterSchemaForAgent(id string) string {
+	if id == ImageAgentID {
+		return ImageParameterSchema
+	}
+	return ParameterSchema
+}
+
+func (p TemplateInput) ValidForAgent(id string) bool {
+	return p.Valid() && (id == ImageAgentID) == (p.Image != nil)
 }
 
 type TemplateRef struct {

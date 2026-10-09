@@ -2197,7 +2197,7 @@ func TestManualWorkflowRejectsApprovalWithWrongActorOrDigest(t *testing.T) {
 			published := 0
 			pendingReceiptWrites := 0
 			env.OnActivity(activityPersistPendingCommand, mock.Anything, mock.Anything).
-				Run(func(mock.Arguments) { pendingReceiptWrites++ }).Return(nil).Once()
+				Run(func(mock.Arguments) { pendingReceiptWrites++ }).Return(nil).Twice()
 			freshSent := false
 			env.OnActivity(activityPublishApproved, mock.Anything, mock.Anything).Run(func(mock.Arguments) { published++ }).Return(nil).Once()
 			invalid := validApproval("approve-invalid")
@@ -2219,7 +2219,7 @@ func TestManualWorkflowRejectsApprovalWithWrongActorOrDigest(t *testing.T) {
 			require.NoError(t, env.GetWorkflowError())
 			require.Equal(t, test.expectTombstoned, freshSent, "only an authenticated owner's business rejection may consume the action ID")
 			require.Equal(t, 1, published)
-			require.Equal(t, 1, pendingReceiptWrites, "a rejected command must never be projected as a recoverable pending command")
+			require.Equal(t, 2, pendingReceiptWrites, "only the valid command writes admission and publication-start receipts; rejected commands write neither")
 		})
 	}
 }

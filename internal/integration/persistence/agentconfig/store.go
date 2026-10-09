@@ -72,10 +72,13 @@ func VerifySchema(ctx context.Context, db *gorm.DB) error {
 	if db == nil {
 		return agentconfig.ErrUnavailable
 	}
-	for _, name := range []string{"organization_agents", "templates", "template_revisions", "start_snapshots", "commands"} {
+	for _, name := range []string{"organization_agents", "templates", "template_revisions", "start_snapshots", "commands", "image_run_admissions"} {
 		if err := db.WithContext(ctx).Table("agent_configuration." + name).Select("1").Limit(0).Find(&[]int{}).Error; err != nil {
 			return agentconfig.ErrUnavailable
 		}
+	}
+	if err := db.WithContext(ctx).Table("agent_configuration.template_revisions").Select("image_parameters").Limit(0).Find(&[]revisionRow{}).Error; err != nil {
+		return agentconfig.ErrUnavailable
 	}
 	return nil
 }
@@ -105,6 +108,7 @@ type revisionRow struct {
 	Version                             int64
 	Name, SchemaVersion, TargetPlatform string
 	DefaultKnowledgeBaseID              *string
+	ImageParameters                     []byte
 	CreatedBy                           string
 	CreatedAt                           time.Time
 }
@@ -201,7 +205,23 @@ func templateView(db *gorm.DB, r templateRow, v int64) (agentconfig.Template, er
 	if errors.Is(e, gorm.ErrRecordNotFound) {
 		e = agentconfig.ErrNotFound
 	}
-	return agentconfig.Template{TemplateID: r.TemplateID, AgentID: r.AgentID, Lifecycle: r.Lifecycle, Revision: decimal(r.Revision), Version: decimal(p.Version), SchemaVersion: p.SchemaVersion, TemplateInput: agentconfig.TemplateInput{Name: p.Name, TargetPlatform: p.TargetPlatform, DefaultKnowledgeBaseID: text(p.DefaultKnowledgeBaseID)}, CreatedAt: r.CreatedAt}, e
+	if e != nil {
+		return agentconfig.Template{}, e
+	}
+	input := agentconfig.TemplateInput{Name: p.Name, TargetPlatform: p.TargetPlatform, DefaultKnowledgeBaseID: text(p.DefaultKnowledgeBaseID)}
+	if p.SchemaVersion == agentconfig.ImageParameterSchema {
+		var parameters agentconfig.SetTemplate
+		if len(p.ImageParameters) > agentconfig.MaxSetTemplateBytes || json.Unmarshal(p.ImageParameters, &parameters) != nil {
+			return agentconfig.Template{}, agentconfig.ErrUnavailable
+		}
+		input.Image = &parameters
+	} else if p.SchemaVersion != agentconfig.ParameterSchema || len(p.ImageParameters) != 0 {
+		return agentconfig.Template{}, agentconfig.ErrUnavailable
+	}
+	if !input.ValidForAgent(r.AgentID) {
+		return agentconfig.Template{}, agentconfig.ErrUnavailable
+	}
+	return agentconfig.Template{TemplateID: r.TemplateID, AgentID: r.AgentID, Lifecycle: r.Lifecycle, Revision: decimal(r.Revision), Version: decimal(p.Version), SchemaVersion: p.SchemaVersion, TemplateInput: input, CreatedAt: r.CreatedAt}, nil
 }
 func (s *Store) ReadAgent(ctx context.Context, scope agent.Scope, id string) (agentconfig.OrganizationAgent, error) {
 	if !scopeOK(scope) || !agent.ValidID(id) {
@@ -300,7 +320,7 @@ func (s *Store) Execute(ctx context.Context, c agentconfig.Command, eligibility 
 	if !scopeOK(c.Scope) || !agentconfig.UUID(c.Key) || !agent.ValidID(c.AgentID) || c.Expected >= math.MaxInt64 {
 		return agentconfig.Receipt{}, agentconfig.ErrInvalid
 	}
-	if (c.Operation == "create-template" || c.Operation == "update-template") && !c.Input.Valid() {
+	if (c.Operation == "create-template" || c.Operation == "update-template") && !c.Input.ValidForAgent(c.AgentID) {
 		return agentconfig.Receipt{}, agentconfig.ErrInvalid
 	}
 	if (c.Operation == "update-template" || c.Operation == "archive-template") && !agentconfig.UUID(c.TemplateID) {
@@ -463,7 +483,14 @@ func (s *Store) Execute(ctx context.Context, c agentconfig.Command, eligibility 
 					}
 				}
 				if c.Operation != "archive-template" {
-					r := revisionRow{OrganizationID: t.OrganizationID, AgentID: t.AgentID, TemplateID: t.TemplateID, Version: t.HeadRevision, Name: c.Input.Name, SchemaVersion: agentconfig.ParameterSchema, TargetPlatform: c.Input.TargetPlatform, DefaultKnowledgeBaseID: nullable(c.Input.DefaultKnowledgeBaseID), CreatedBy: c.Scope.ActorID, CreatedAt: now}
+					r := revisionRow{OrganizationID: t.OrganizationID, AgentID: t.AgentID, TemplateID: t.TemplateID, Version: t.HeadRevision, Name: c.Input.Name, SchemaVersion: agentconfig.ParameterSchemaForAgent(c.AgentID), TargetPlatform: c.Input.TargetPlatform, DefaultKnowledgeBaseID: nullable(c.Input.DefaultKnowledgeBaseID), CreatedBy: c.Scope.ActorID, CreatedAt: now}
+					if c.Input.Image != nil {
+						var e error
+						r.ImageParameters, e = json.Marshal(c.Input.Image)
+						if e != nil || len(r.ImageParameters) > agentconfig.MaxSetTemplateBytes {
+							return agentconfig.ErrInvalid
+						}
+					}
 					if e := tx.Create(&r).Error; e != nil {
 						return e
 					}

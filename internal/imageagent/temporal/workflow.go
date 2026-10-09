@@ -687,6 +687,7 @@ const (
 	updatePhaseRetryPersistResult       workflowUpdatePhase = "retry.persist_result"
 	updatePhaseRetryPersistTransition   workflowUpdatePhase = "retry.persist_transition"
 	updatePhaseApprovalPublish          workflowUpdatePhase = "approval.publish"
+	updatePhaseApprovalPublishStarted   workflowUpdatePhase = "approval.publish_started"
 	updatePhaseApprovalPersistComplete  workflowUpdatePhase = "approval.persist_complete"
 	updatePhaseCancelPersist            workflowUpdatePhase = "cancel.persist"
 	updatePhaseCompleted                workflowUpdatePhase = "completed"
@@ -1339,7 +1340,18 @@ func (s *workflowUpdateState) handleApproveResults(ctx workflow.Context, signal 
 }
 
 func (s *workflowUpdateState) applyApproveResults(ctx workflow.Context, signal ApproveResultsSignal, record *workflowUpdateRecord) (CommandAcknowledgement, error) {
-	if record.phase == updatePhaseApprovalPublish {
+	if record.phase == updatePhaseApprovalPublish && s.input.externalEffectFinalization {
+		// Persist the publication boundary before calling Asset. A failed call
+		// can still have committed; only this action's immutable receipt may
+		// resolve it. An empty receipt lookup cannot prove no commit.
+		record.phase = updatePhaseApprovalPublishStarted
+		if err := s.persistActionReceipt(ctx, signal.ActionID, record, fmt.Sprintf("command:%s:attempt:%d:publish_start", signal.ActionID, record.attempt)); err != nil {
+			// No publication call was made by this attempt.
+			record.phase = updatePhaseApprovalPublish
+			return CommandAcknowledgement{}, err
+		}
+	}
+	if record.phase == updatePhaseApprovalPublish || record.phase == updatePhaseApprovalPublishStarted {
 		publishInput := PublishApprovedActivityInput{
 			RunID: s.input.RunID, Identity: s.input.Identity, PlanRevision: s.input.Plan.Revision,
 			CandidateAssetIDs: candidateAssetIDs(s.input.Plan, *s.results),
@@ -1366,6 +1378,10 @@ func approvalPublicationCommitted(record workflowUpdateRecord) bool {
 	return record.kind == signalApproveResults && record.phase == updatePhaseApprovalPersistComplete
 }
 
+func approvalPublicationStarted(record workflowUpdateRecord) bool {
+	return record.kind == signalApproveResults && (record.phase == updatePhaseApprovalPublishStarted || approvalPublicationCommitted(record))
+}
+
 func (s *workflowUpdateState) validateCancel(signal CancelSignal) error {
 	if strings.TrimSpace(signal.RunID) == "" || strings.TrimSpace(signal.ActorID) == "" || strings.TrimSpace(signal.ActionID) == "" || signal.PlanRevision <= 0 {
 		return updateBlockedError("cancel command shape is invalid")
@@ -1384,6 +1400,9 @@ func (s *workflowUpdateState) validateCancelBusiness(signal CancelSignal) error 
 		pending := s.actions[s.pendingActionID]
 		if pending != nil && approvalPublicationCommitted(*pending) {
 			return updateBlockedError("approval publication is already committed")
+		}
+		if pending != nil && approvalPublicationStarted(*pending) {
+			return updateBlockedError("approval publication must reconcile its original acknowledgement before cancellation")
 		}
 	}
 	switch s.projection.Status {
@@ -1633,7 +1652,7 @@ func (s *workflowUpdateState) canAdmitNewAction(kind string) bool {
 func (s *workflowUpdateState) failedPendingActionCanBeSuperseded() bool {
 	pending := s.actions[s.pendingActionID]
 	return pending != nil && pending.kind != signalCancel &&
-		(!s.input.externalEffectFinalization || !approvalPublicationCommitted(*pending)) &&
+		(!s.input.externalEffectFinalization || !approvalPublicationStarted(*pending)) &&
 		!pending.completed && !pending.running && pending.lastFailedAt != nil
 }
 
@@ -1843,6 +1862,8 @@ func safeCommandFailure(phase workflowUpdatePhase) (code, category, message stri
 		return "provider_unavailable", "provider", "图片生成服务暂时不可用"
 	case updatePhaseApprovalPublish:
 		return "publication_failed", "publication", "结果发布暂时失败"
+	case updatePhaseApprovalPublishStarted:
+		return "publication_ack_unknown", "publication", "保存结果待核实，请恢复原保存请求"
 	case updatePhaseReplacePersistPlan, updatePhaseReplacePersistTransition, updatePhaseRetryPersistResult,
 		updatePhaseRetryPersistTransition, updatePhaseApprovalPersistComplete, updatePhaseCancelPersist:
 		return "persistence_failed", "persistence", "运行状态保存暂时失败"

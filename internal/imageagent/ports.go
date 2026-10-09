@@ -220,6 +220,7 @@ type RunProjection struct {
 }
 
 type SlotProjection struct {
+	Closure    *ImageSlotClosure `json:",omitempty"`
 	Slot       Slot
 	Attempt    int
 	Candidates []AssetCandidate

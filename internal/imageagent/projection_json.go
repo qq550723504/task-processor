@@ -13,11 +13,12 @@ func (value SlotProjection) MarshalJSON() ([]byte, error) {
 	}
 	for index, candidate := range value.Candidates {
 		candidates[index] = slotProjectionJSONCandidate{
-			AssetID:       candidate.AssetID,
-			SourceAssetID: candidate.SourceAssetID,
-			Width:         candidate.Width,
-			Height:        candidate.Height,
-			Operations:    append([]string(nil), candidate.Operations...),
+			GenerationProof: candidate.GenerationProof,
+			AssetID:         candidate.AssetID,
+			SourceAssetID:   candidate.SourceAssetID,
+			Width:           candidate.Width,
+			Height:          candidate.Height,
+			Operations:      append([]string(nil), candidate.Operations...),
 		}
 		if candidate.DurableAsset.ObjectKey != "" || candidate.DurableAsset.SHA256 != "" {
 			identity := candidate.DurableAsset
@@ -30,6 +31,7 @@ func (value SlotProjection) MarshalJSON() ([]byte, error) {
 		candidates[index].Metadata = &metadata
 	}
 	return json.Marshal(slotProjectionJSON{
+		Closure:    value.Closure,
 		Slot:       value.Slot,
 		Attempt:    value.Attempt,
 		Candidates: candidates,
@@ -48,11 +50,12 @@ func (value *SlotProjection) UnmarshalJSON(raw []byte) error {
 	}
 	for index, candidate := range decoded.Candidates {
 		candidates[index] = AssetCandidate{
-			AssetID:       candidate.AssetID,
-			SourceAssetID: candidate.SourceAssetID,
-			Width:         candidate.Width,
-			Height:        candidate.Height,
-			Operations:    append([]string(nil), candidate.Operations...),
+			GenerationProof: candidate.GenerationProof,
+			AssetID:         candidate.AssetID,
+			SourceAssetID:   candidate.SourceAssetID,
+			Width:           candidate.Width,
+			Height:          candidate.Height,
+			Operations:      append([]string(nil), candidate.Operations...),
 		}
 		if candidate.URL != nil {
 			candidates[index].URL = *candidate.URL
@@ -64,11 +67,12 @@ func (value *SlotProjection) UnmarshalJSON(raw []byte) error {
 			candidates[index].DurableAsset = *candidate.DurableAsset
 		}
 	}
-	*value = SlotProjection{Slot: decoded.Slot, Attempt: decoded.Attempt, Candidates: candidates, ErrorCode: decoded.ErrorCode}
+	*value = SlotProjection{Closure: decoded.Closure, Slot: decoded.Slot, Attempt: decoded.Attempt, Candidates: candidates, ErrorCode: decoded.ErrorCode}
 	return nil
 }
 
 type slotProjectionJSON struct {
+	Closure    *ImageSlotClosure `json:",omitempty"`
 	Slot       Slot
 	Attempt    int
 	Candidates []slotProjectionJSONCandidate
@@ -76,12 +80,13 @@ type slotProjectionJSON struct {
 }
 
 type slotProjectionJSONCandidate struct {
-	AssetID       string
-	URL           *string `json:"URL,omitempty"`
-	SourceAssetID string
-	Metadata      *map[string]string    `json:"Metadata,omitempty"`
-	DurableAsset  *DurableAssetIdentity `json:"DurableAsset,omitempty"`
-	Width         int                   `json:"Width,omitempty"`
-	Height        int                   `json:"Height,omitempty"`
-	Operations    []string              `json:"Operations,omitempty"`
+	GenerationProof *ImageGenerationProof `json:",omitempty"`
+	AssetID         string
+	URL             *string `json:"URL,omitempty"`
+	SourceAssetID   string
+	Metadata        *map[string]string    `json:"Metadata,omitempty"`
+	DurableAsset    *DurableAssetIdentity `json:"DurableAsset,omitempty"`
+	Width           int                   `json:"Width,omitempty"`
+	Height          int                   `json:"Height,omitempty"`
+	Operations      []string              `json:"Operations,omitempty"`
 }

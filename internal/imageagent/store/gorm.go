@@ -389,6 +389,12 @@ func planToRecords(scope imageagent.RunScope, plan imageagent.Plan) (planRecord,
 		return planRecord{}, nil, err
 	}
 	planRow := planRecord{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, Revision: plan.Revision, ParentRevision: plan.ParentRevision, IdempotencyKey: plan.IdempotencyKey, SourceAssetIDs: sources, StyleReferenceIDs: styles, CreatedBy: plan.CreatedBy}
+	if plan.Set != nil {
+		planRow.SetJSON, err = marshalJSON(plan.Set)
+		if err != nil {
+			return planRecord{}, nil, err
+		}
+	}
 	slots := make([]slotRecord, 0, len(plan.Slots))
 	for _, slot := range plan.Slots {
 		slotSources, err := marshalJSON(slot.SourceAssetIDs)
@@ -399,7 +405,14 @@ func planToRecords(scope imageagent.RunScope, plan imageagent.Plan) (planRecord,
 		if err != nil {
 			return planRecord{}, nil, err
 		}
-		slots = append(slots, slotRecord{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, PlanRevision: plan.Revision, ID: slot.ID, Role: string(slot.Role), SourceAssetIDs: slotSources, StyleReferenceIDs: slotStyles, Brief: slot.Brief, IdempotencyKey: slot.IdempotencyKey, Status: string(slot.Status)})
+		row := slotRecord{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, PlanRevision: plan.Revision, ID: slot.ID, Role: string(slot.Role), SourceAssetIDs: slotSources, StyleReferenceIDs: slotStyles, Brief: slot.Brief, IdempotencyKey: slot.IdempotencyKey, Status: string(slot.Status)}
+		if slot.Recipe != nil {
+			row.RecipeJSON, err = marshalJSON(slot.Recipe)
+			if err != nil {
+				return planRecord{}, nil, err
+			}
+		}
+		slots = append(slots, row)
 	}
 	return planRow, slots, nil
 }
@@ -439,6 +452,9 @@ func findPlanByIdentity(ctx context.Context, db *gorm.DB, scope imageagent.RunSc
 }
 
 func samePlanDefinition(existing existingPlan, wanted planRecord, wantedSlots []slotRecord) bool {
+	if !reflect.DeepEqual(existing.plan.SetJSON, wanted.SetJSON) {
+		return false
+	}
 	if existing.plan.TenantID != wanted.TenantID || existing.plan.OwnerUserID != wanted.OwnerUserID || existing.plan.RunID != wanted.RunID || existing.plan.Revision != wanted.Revision || existing.plan.ParentRevision != wanted.ParentRevision || existing.plan.IdempotencyKey != wanted.IdempotencyKey || existing.plan.CreatedBy != wanted.CreatedBy || !reflect.DeepEqual(existing.plan.SourceAssetIDs, wanted.SourceAssetIDs) || !reflect.DeepEqual(existing.plan.StyleReferenceIDs, wanted.StyleReferenceIDs) || len(existing.slots) != len(wantedSlots) {
 		return false
 	}
@@ -448,6 +464,9 @@ func samePlanDefinition(existing existingPlan, wanted planRecord, wantedSlots []
 	}
 	for _, wantedSlot := range wantedSlots {
 		stored, ok := existingByID[wantedSlot.ID]
+		if !reflect.DeepEqual(stored.RecipeJSON, wantedSlot.RecipeJSON) {
+			return false
+		}
 		if !ok || stored.Role != wantedSlot.Role || stored.IdempotencyKey != wantedSlot.IdempotencyKey || stored.Brief != wantedSlot.Brief || stored.Status != wantedSlot.Status || !reflect.DeepEqual(stored.SourceAssetIDs, wantedSlot.SourceAssetIDs) || !reflect.DeepEqual(stored.StyleReferenceIDs, wantedSlot.StyleReferenceIDs) {
 			return false
 		}

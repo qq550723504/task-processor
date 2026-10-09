@@ -50,6 +50,7 @@ const (
 )
 
 type Slot struct {
+	Recipe            *ImageSlotRecipe `json:",omitempty"`
 	ID                string
 	Role              SlotRole
 	SourceAssetIDs    []string
@@ -60,6 +61,7 @@ type Slot struct {
 }
 
 type Plan struct {
+	Set               *ImageSetPlan `json:",omitempty"`
 	Revision          int64
 	ParentRevision    int64
 	IdempotencyKey    string
@@ -201,14 +203,15 @@ type ProductContextRef struct {
 }
 
 type AssetCandidate struct {
-	AssetID       string
-	URL           string
-	SourceAssetID string
-	Metadata      map[string]string
-	Width         int                  `json:"-"`
-	Height        int                  `json:"-"`
-	Operations    []string             `json:"-"`
-	DurableAsset  DurableAssetIdentity `json:"-"`
+	GenerationProof *ImageGenerationProof `json:"-"`
+	AssetID         string
+	URL             string
+	SourceAssetID   string
+	Metadata        map[string]string
+	Width           int                  `json:"-"`
+	Height          int                  `json:"-"`
+	Operations      []string             `json:"-"`
+	DurableAsset    DurableAssetIdentity `json:"-"`
 }
 
 type Budget struct {
