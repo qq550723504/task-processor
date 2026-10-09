@@ -221,7 +221,6 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		{"platform_admin", PermissionWorkbenchCommercialRead},
 		{"platform_admin", PermissionWorkbenchCommercialPurchase},
 		{"platform_admin", PermissionWorkbenchCommercialWalletTopUp},
-		{"admin", PermissionListingKitPlatformAdm},
 		{"admin", PermissionListingKitAdminRead},
 		{"admin", PermissionListingKitPromptWrite},
 		{"admin", PermissionLocalAgentWrite},
@@ -427,7 +426,7 @@ func (a *ListingKitAuthorizer) IsTenantAdmin(userID string, roles []string) bool
 		return true
 	}
 	for _, role := range normalizeUnique(roles) {
-		if role == "listingkit_admin" {
+		if role == "listingkit_admin" || role == "admin" {
 			return true
 		}
 	}
