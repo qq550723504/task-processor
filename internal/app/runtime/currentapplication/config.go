@@ -33,6 +33,7 @@ var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
 	AgentCustomizationDatabase *DatabaseConfig                           `json:"agentCustomizationDatabase,omitempty"`
+	ToolMarket                 *ToolMarketConfig                         `json:"toolMarket,omitempty"`
 	Ecoservices                *EcoservicesConfig                        `json:"ecoservices,omitempty"`
 	NotificationCenterDatabase *DatabaseConfig                           `json:"notificationCenterDatabase,omitempty"`
 	Knowledge                  *KnowledgeConfig                          `json:"knowledge,omitempty"`
@@ -292,6 +293,9 @@ func (cfg *Config) validate() error {
 		return fmt.Errorf("unsupported current application manifest schema version")
 	}
 	if err := cfg.validateAgentCustomization(); err != nil {
+		return err
+	}
+	if err := cfg.validateToolMarket(); err != nil {
 		return err
 	}
 	if cfg.NotificationCenterDatabase != nil {

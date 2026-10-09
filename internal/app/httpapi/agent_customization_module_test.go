@@ -26,7 +26,7 @@ import (
 )
 
 func TestAgentCustomizationModuleRejectsMissingDuplicateAndAliasedPool(t *testing.T) {
-	source, custom := &gorm.DB{}, &gorm.DB{}
+	source, custom, tool := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
 	for _, candidate := range []struct {
 		name    string
 		options []CurrentApplicationOption
@@ -37,6 +37,8 @@ func TestAgentCustomizationModuleRejectsMissingDuplicateAndAliasedPool(t *testin
 		{"missing", []CurrentApplicationOption{WithAgentCustomization(nil)}, false},
 		{"duplicate", []CurrentApplicationOption{WithAgentCustomization(custom), WithAgentCustomization(custom)}, false},
 		{"source alias", []CurrentApplicationOption{WithAgentCustomization(source)}, false},
+		{"tool market independent", []CurrentApplicationOption{WithAgentCustomization(custom), WithToolMarket(ToolMarketDependencies{DB: tool})}, true},
+		{"tool market alias", []CurrentApplicationOption{WithAgentCustomization(custom), WithToolMarket(ToolMarketDependencies{DB: custom})}, false},
 	} {
 		t.Run(candidate.name, func(t *testing.T) {
 			options := currentApplicationOptions{}

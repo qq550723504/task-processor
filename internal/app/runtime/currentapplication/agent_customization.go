@@ -14,6 +14,9 @@ func (cfg *Config) validateAgentCustomization() error {
 		return errors.New("agent customization requires its restricted role and at most four connections")
 	}
 	others := []*DatabaseConfig{&cfg.SourceAccountDatabase, cfg.CommercialOwnerDatabase, cfg.MoneyOwnerDatabase, cfg.ProductAcquisitionDatabase, cfg.NotificationCenterDatabase}
+	if cfg.ToolMarket != nil {
+		others = append(others, &cfg.ToolMarket.Database)
+	}
 	if cfg.Ecoservices != nil {
 		others = append(others, &cfg.Ecoservices.Database)
 	}

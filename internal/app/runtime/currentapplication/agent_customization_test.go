@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"strings"
 	coreconfig "task-processor/internal/core/config"
 	"testing"
 )
@@ -21,7 +22,7 @@ func customizationRuntimeConfig() *Config {
 }
 
 func TestAgentCustomizationConfigIndependentRestrictedOwner(t *testing.T) {
-	for _, kind := range []string{"valid", "source-alias", "notification-alias", "owner-role", "unbounded"} {
+	for _, kind := range []string{"valid", "source-alias", "notification-alias", "tool-market-alias", "owner-role", "unbounded"} {
 		t.Run(kind, func(t *testing.T) {
 			cfg := customizationRuntimeConfig()
 			switch kind {
@@ -31,6 +32,11 @@ func TestAgentCustomizationConfigIndependentRestrictedOwner(t *testing.T) {
 				db := *cfg.AgentCustomizationDatabase
 				db.User = "notification_center_runtime"
 				cfg.NotificationCenterDatabase = &db
+			case "tool-market-alias":
+				db := *cfg.AgentCustomizationDatabase
+				db.User, db.Database = "tool_market_runtime", "tool_market"
+				cfg.ToolMarket = &ToolMarketConfig{Database: db, CaptureAppURL: "https://localhost:31544/capture/1688"}
+				cfg.AgentCustomizationDatabase.Database = db.Database
 			case "owner-role":
 				cfg.AgentCustomizationDatabase.User = "postgres"
 			case "unbounded":
@@ -38,6 +44,52 @@ func TestAgentCustomizationConfigIndependentRestrictedOwner(t *testing.T) {
 			}
 			if err := cfg.validate(); (err == nil) != (kind == "valid") {
 				t.Fatalf("%s: %v", kind, err)
+			}
+		})
+	}
+}
+
+func TestAgentCustomizationAndToolMarketRuntimeKeepSeparateOwners(t *testing.T) {
+	for _, scenario := range []struct {
+		name   string
+		shared bool
+	}{{"distinct", false}, {"shared", true}} {
+		t.Run(scenario.name, func(t *testing.T) {
+			shared := scenario.shared
+			cfg := customizationRuntimeConfig()
+			db := *cfg.AgentCustomizationDatabase
+			db.User, db.Database = "tool_market_runtime", "tool_market"
+			cfg.ToolMarket = &ToolMarketConfig{Database: db, CaptureAppURL: "https://localhost:31544/capture/1688"}
+			if cfg.Referrals.Enabled {
+				cfg.ToolMarket.CaptureAppURL = cfg.Referrals.PublicAppOrigin + "/capture/1688"
+			}
+			source, custom, tool := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
+			if shared {
+				tool = custom
+			}
+			constructed := false
+			stop := errors.New("bounded composition stop")
+			deps := Dependencies{
+				IdentityPreflight:      func(context.Context, IdentityConfig) error { return nil },
+				OpenSourceAccount:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+				OpenAgentCustomization: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return custom, nil },
+				OpenToolMarket:         func(context.Context, DatabaseConfig) (*gorm.DB, error) { return tool, nil },
+				CloseDatabase:          func(*gorm.DB) error { return nil },
+				NewApplicationWithFeatures: func(_ context.Context, _ *gorm.DB, features ApplicationFeatures, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+					constructed = true
+					if features.AgentCustomizationDB != custom || features.ToolMarketDB != tool || features.ToolMarket != cfg.ToolMarket {
+						t.Fatal("independent feature owner lost during combination")
+					}
+					return nil, stop
+				},
+			}
+			err := Run(context.Background(), cfg, logrus.New(), deps)
+			if shared {
+				if constructed || err == nil || !strings.Contains(err.Error(), "independent owner pool") {
+					t.Fatalf("shared pool reached assembly: constructed=%v err=%v", constructed, err)
+				}
+			} else if !constructed || !errors.Is(err, stop) {
+				t.Fatalf("distinct owners failed combination: constructed=%v err=%v", constructed, err)
 			}
 		})
 	}
