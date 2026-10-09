@@ -3987,6 +3987,8 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "notificationcenter", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #570 / PR #571 admits only Agent Configuration's feature-local HTTP adapter.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "agentconfig", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	// #611 admits only the approved customization HTTP adapter, not its domain.
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "agentcustomization", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "listingsubscription", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "workbenchcontext", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "compatibility", "listingkit", "sourcehandoff", "a1688", "httpapi"))+string(os.PathSeparator)] = struct{}{}
@@ -4070,6 +4072,22 @@ func TestNotificationCenterHTTPBoundaryRegistration(t *testing.T) {
 	root := filepath.Join("..", "internal")
 	allowed := businessHTTPPackages(root)
 	for path, want := range map[string]bool{"notificationcenter/httpapi/handler.go": true, "notificationcenter/service.go": false, "notificationcenter/httpapi_extra/handler.go": false} {
+		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(path)), allowed); got != want {
+			t.Errorf("HTTP boundary allows %s = %v, want %v", path, got, want)
+		}
+	}
+}
+
+func TestAgentCustomizationHTTPBoundaryRegistration(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowed := businessHTTPPackages(root)
+	for path, want := range map[string]bool{
+		"agentcustomization/httpapi/handler.go":       true,
+		"agentcustomization/service.go":               false,
+		"agentcustomization/httpapi_extra/handler.go": false,
+		"agentcustomization/httpapi2/handler.go":      false,
+		"agentcustomization-extra/httpapi/handler.go": false,
+	} {
 		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(path)), allowed); got != want {
 			t.Errorf("HTTP boundary allows %s = %v, want %v", path, got, want)
 		}

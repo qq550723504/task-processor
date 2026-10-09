@@ -166,6 +166,12 @@ source of truth for long-lived rules.
     including Required CI Gate. Production Writer starts only after PR #571 merges
     to main; rollout/provider use remain separately gated.
 
+- [`agent-customization-v1.md`](./agent-customization-v1.md)
+  - APPROVED / IMPLEMENTATION_READY #611: enterprise customization requests,
+    contact consent, private files and verified-platform manual progress.
+    Submission is free; proposals and fees are confirmed offline. Runtime
+    assembly and user acceptance remain separate from the owner implementation.
+
 - [`product-agent-text-provider-neutral-v1.md`](./product-agent-text-provider-neutral-v1.md)
   - IMPLEMENTATION_READY #573 architecture for organization-scoped,
     provider-neutral title text admission over OpenAI-compatible routes. The
