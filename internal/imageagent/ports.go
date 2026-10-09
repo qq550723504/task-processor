@@ -1,6 +1,9 @@
 package imageagent
 
-import "context"
+import (
+	"context"
+	productasset "task-processor/internal/product/asset"
+)
 
 // ExecutionIdentity is the tenant/user identity verified at the command edge
 // and durably captured in workflow input.
@@ -62,6 +65,17 @@ type ApprovedAssetPublisher interface {
 // publication port so Temporal can select its wire contract explicitly.
 type ApprovedAssetPublisherV3 interface {
 	PublishApprovedV3(context.Context, PublishApprovedV3Input) (PublicationAcknowledgement, error)
+}
+
+type ApprovedImageSetPublisher interface {
+	PublishApprovedImageSet(context.Context, PublishImageSetInput) (PublicationAcknowledgement, error)
+}
+
+type PublishImageSetInput struct {
+	RunID, TenantID, UserID string
+	PlanRevision            int64
+	ResultDigest            string
+	Selection               productasset.ImageSetCommand
 }
 
 // DurableAssetPublicURLResolver turns a durable public object key into the
@@ -281,6 +295,7 @@ type RetrySlotCommand struct {
 }
 
 type ApproveResultsCommand struct {
+	Selection    *productasset.ImageSetCommand `json:",omitempty"`
 	RunID        string
 	PlanRevision int64
 	ResultDigest string

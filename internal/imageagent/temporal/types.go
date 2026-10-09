@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/agentconfig"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
+	productasset "task-processor/internal/product/asset"
 )
 
 const (
@@ -52,6 +53,7 @@ const (
 	activityPersistRecoveryBlockedV3    = "imageagent.persist_recovery_blocked.v3"
 	activityReconcileEffectRecoveryV3   = "imageagent.reconcile_effect_recovery.v3"
 	activityPublishApprovedV3           = "imageagent.publish_approved.v3"
+	activityPublishApprovedImageSet     = "imageagent.publish_approved_image_set.v1"
 	workflowNameCompatibilityCanary     = "ImageAgentCompatibilityCanaryWorkflow"
 	signalApproveResults                = "approve_results"
 	signalEffectRecoveryCompleted       = "effect_recovery_completed"
@@ -399,11 +401,20 @@ type PublishApprovedV3ActivityInput struct {
 }
 
 type ApproveResultsSignal struct {
+	Selection    *productasset.ImageSetCommand `json:",omitempty"`
 	RunID        string
 	PlanRevision int64
 	ResultDigest string
 	ActorID      string
 	ActionID     string
+}
+
+type PublishImageSetActivityInput struct {
+	RunID        string
+	Identity     imageagent.ExecutionIdentity
+	PlanRevision int64
+	ResultDigest string
+	Selection    productasset.ImageSetCommand
 }
 
 type RetrySlotSignal struct {
@@ -449,7 +460,7 @@ func WorkflowID(tenantID, ownerUserID, runID string) string {
 }
 
 func slotAttemptKey(planRevision int64, slot imageagent.Slot, attempt int) string {
-	return fmt.Sprintf("%s:plan:%d:attempt:%d", slot.IdempotencyKey, planRevision, attempt)
+	return imageagent.SlotAttemptKey(planRevision, slot, attempt)
 }
 
 func publicationKey(runID string, revision int64) string {

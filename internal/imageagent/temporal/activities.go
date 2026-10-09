@@ -18,6 +18,7 @@ var errPublicationOwnerRequiresActivity = errors.New("publication owner requires
 type RecoveryWorkflowStarter func(context.Context, EffectRecoveryWorkflowInput) error
 
 type ActivityDependencies struct {
+	ImageSetPublisher        imageagent.ApprovedImageSetPublisher
 	GenerationRecovery       imageagent.GenerationRecovery
 	GenerationOutputRecovery imageagent.GenerationOutputRecovery
 	ExecutionAuthorizer      imageagent.ExecutionAuthorizer
@@ -35,6 +36,7 @@ type ActivityDependencies struct {
 }
 
 type Activities struct {
+	imageSetPublisher        imageagent.ApprovedImageSetPublisher
 	generationRecovery       imageagent.GenerationRecovery
 	generationOutputRecovery imageagent.GenerationOutputRecovery
 	executionAuthorizer      imageagent.ExecutionAuthorizer
@@ -100,6 +102,7 @@ func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
 	}
 	return &Activities{
 		generationRecovery:       dependencies.GenerationRecovery,
+		imageSetPublisher:        dependencies.ImageSetPublisher,
 		generationOutputRecovery: dependencies.GenerationOutputRecovery,
 		executionAuthorizer:      dependencies.ExecutionAuthorizer,
 		repository:               dependencies.Repository, slotEffects: dependencies.SlotEffects, slotExecutor: dependencies.SlotExecutor, publisher: dependencies.Publisher, publisherV3: dependencies.PublisherV3,

@@ -177,6 +177,8 @@ type CatalogManifest struct {
 }
 
 type PendingCommandReceipt struct {
+	SelectionDigest string `json:",omitempty"`
+	ResultDigest    string `json:",omitempty"`
 	ActionID        string
 	Kind            string
 	Phase           string

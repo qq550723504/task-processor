@@ -718,7 +718,7 @@ const (
 	updatePhaseRetryPersistResult       workflowUpdatePhase = "retry.persist_result"
 	updatePhaseRetryPersistTransition   workflowUpdatePhase = "retry.persist_transition"
 	updatePhaseApprovalPublish          workflowUpdatePhase = "approval.publish"
-	updatePhaseApprovalPublishStarted   workflowUpdatePhase = "approval.publish_started"
+	updatePhaseApprovalPublishStarted   workflowUpdatePhase = imageagent.ImageSetApprovalPublicationStarted
 	updatePhaseApprovalPersistComplete  workflowUpdatePhase = "approval.persist_complete"
 	updatePhaseCancelPersist            workflowUpdatePhase = "cancel.persist"
 	updatePhaseCompleted                workflowUpdatePhase = "completed"
@@ -1373,6 +1373,13 @@ func (s *workflowUpdateState) validateApproveResultsBusiness(signal ApproveResul
 	if signal.ResultDigest == "" || signal.ResultDigest != strings.TrimSpace(signal.ResultDigest) || signal.ResultDigest != s.projection.ResultDigest {
 		return updateBlockedError("approval result digest does not match the current projection")
 	}
+	if s.input.Plan.Set != nil {
+		if err := imageagent.ValidateImageSetSelectionIntent(s.input.Plan, signal.ActionID, signal.Selection); err != nil {
+			return updateBlockedError("image set selection does not match the original product/target and explicit selected set")
+		}
+	} else if signal.Selection != nil {
+		return updateBlockedError("image set selection requires the explicit set protocol")
+	}
 	return nil
 }
 
@@ -1417,13 +1424,22 @@ func (s *workflowUpdateState) applyApproveResults(ctx workflow.Context, signal A
 		}
 	}
 	if record.phase == updatePhaseApprovalPublish || record.phase == updatePhaseApprovalPublishStarted {
-		publishInput := PublishApprovedActivityInput{
-			RunID: s.input.RunID, Identity: s.input.Identity, PlanRevision: s.input.Plan.Revision,
-			CandidateAssetIDs: candidateAssetIDs(s.input.Plan, *s.results),
-			IdempotencyKey:    approvalPublicationKeyForWire(signal.ActionID, s.input.RunID, s.input.Plan.Revision, s.effects.activities),
-		}
-		if err := s.effects.publishApproved(ctx, publishInput); err != nil {
-			return CommandAcknowledgement{}, err
+		if s.input.Plan.Set != nil {
+			if signal.Selection == nil {
+				return CommandAcknowledgement{}, imageagent.ErrCommandBlocked
+			}
+			if err := s.effects.publishImageSet(ctx, PublishImageSetActivityInput{RunID: s.input.RunID, Identity: s.input.Identity, PlanRevision: s.input.Plan.Revision, ResultDigest: signal.ResultDigest, Selection: *imageagent.CloneImageSetCommand(signal.Selection)}); err != nil {
+				return CommandAcknowledgement{}, err
+			}
+		} else {
+			publishInput := PublishApprovedActivityInput{
+				RunID: s.input.RunID, Identity: s.input.Identity, PlanRevision: s.input.Plan.Revision,
+				CandidateAssetIDs: candidateAssetIDs(s.input.Plan, *s.results),
+				IdempotencyKey:    approvalPublicationKeyForWire(signal.ActionID, s.input.RunID, s.input.Plan.Revision, s.effects.activities),
+			}
+			if err := s.effects.publishApproved(ctx, publishInput); err != nil {
+				return CommandAcknowledgement{}, err
+			}
 		}
 		record.phase = updatePhaseApprovalPersistComplete
 	}
@@ -1903,6 +1919,10 @@ func (s *workflowUpdateState) pendingReceipt(actionID string, record *workflowUp
 		ActionID: actionID, Kind: record.kind, Phase: string(record.phase), Status: "pending", PlanRevision: s.input.Plan.Revision,
 		FailureCode: record.failureCode, FailureCategory: record.failureCategory, FailureMessage: record.failureMessage,
 		LastFailedAt: record.lastFailedAt, Attempt: record.attempt,
+	}
+	if command, ok := record.command.(ApproveResultsSignal); ok && command.Selection != nil {
+		receipt.SelectionDigest = command.Selection.SelectionDigest
+		receipt.ResultDigest = command.ResultDigest
 	}
 	if command, ok := record.command.(RetrySlotSignal); ok {
 		receipt.SlotID = command.SlotID

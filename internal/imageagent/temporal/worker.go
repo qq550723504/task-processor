@@ -193,7 +193,8 @@ func (c *Client) ApproveResults(ctx context.Context, command imageagent.ApproveR
 		return fmt.Errorf("image agent approval result digest is required")
 	}
 	return c.executeCommandUpdate(ctx, command.Identity, command.RunID, signalApproveResults, command.ActionID, ApproveResultsSignal{
-		RunID: command.RunID, PlanRevision: command.PlanRevision, ResultDigest: command.ResultDigest,
+		Selection: imageagent.CloneImageSetCommand(command.Selection),
+		RunID:     command.RunID, PlanRevision: command.PlanRevision, ResultDigest: command.ResultDigest,
 		ActorID: command.ActorID, ActionID: command.ActionID,
 	})
 }
