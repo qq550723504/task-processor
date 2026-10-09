@@ -22,7 +22,8 @@
 4. 从当前已注入、实际开放的采集receiver与online模块推导`Handler.Readiness`。
    enterprise启用不是授权或能力存在的依据。下载仅在local receiver开放且包验证通过时可用。
    数据结果继续走当前`/workbench/data/mine`，保持现有collections安装门控。
-5. 通过`httpapi.NewModule(handler)`注册；必须纳入当前application路由准入，复用
+5. 通过`toolmarkethttp.BuildRoutes(handler)`校验依赖并取得路由；沿用当前生态服务模块
+   的app层kernel Module包装，再纳入当前application路由准入，复用
    `httpapi.ValidateDescriptor`，不能以任意通用route覆盖策略。缺依赖拒绝构建。
    模块企业Base `/api/v1/workbench/tool-market`；平台Base `/api/v1/admin/tool-market`。
    不得用普通CurrentIdentity替代平台CurrentIdentityWithVerifiedRoles。
@@ -38,8 +39,9 @@ h := &toolmarkethttp.Handler{
     Readiness: toolmarket.Readiness{LocalCapture: receiverReady, OnlineCapture: onlineReady},
 }
 // optional package is validated below; failure leaves download unavailable
-m, err := toolmarkethttp.NewModule(h)
-// check err, register m through current application and descriptor admission
+routes, err := toolmarkethttp.BuildRoutes(h)
+// check err, register routes through the existing app-owned kernel Module wrapper
+// and current-application descriptor admission; process config stays in app
 ```
 
 runtime角色只需schema USAGE、activations SELECT/INSERT/UPDATE、requests SELECT/INSERT/UPDATE、

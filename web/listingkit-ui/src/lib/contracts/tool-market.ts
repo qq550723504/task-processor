@@ -3,7 +3,7 @@ export const toolVersion = z
   .string()
   .regex(/^[1-9][0-9]{0,18}$/)
   .refine((v) => BigInt(v) <= BigInt("9223372036854775807"));
-export const toolID = z.string().regex(/^[a-z][a-z-]{0,79}$/);
+const toolID = z.string().regex(/^[a-z][a-z-]{0,79}$/);
 const text = (max: number, multiline = false) =>
   z
     .string()
@@ -21,7 +21,7 @@ export const demandInput = z.strictObject({
   title: text(120).refine((v) => !!v.trim()),
   description: text(4000, true).refine((v) => !!v.trim()),
 });
-export const toolStage = z.enum([
+const toolStage = z.enum([
   "SUBMITTED",
   "EVALUATING",
   "PLAN_CONFIRMED",
@@ -34,13 +34,13 @@ export const progressInput = z.strictObject({
   note: text(2000, true).refine((v) => !!v.trim()),
 });
 const date = z.iso.datetime({ offset: true });
-export const activationSchema = z.strictObject({
+const activationSchema = z.strictObject({
   toolId: toolID,
   enabled: z.boolean(),
   revision: toolVersion,
   updatedAt: date,
 });
-export const toolSchema = z.strictObject({
+const toolSchema = z.strictObject({
   id: toolID,
   version: z.literal("0.1.0"),
   name: text(120),
@@ -58,7 +58,7 @@ export const marketSchema = z.strictObject({
   canManage: z.boolean(),
   canCustomize: z.boolean(),
 });
-export const requestSchema = demandInput.extend({
+const requestSchema = demandInput.extend({
   id: z.uuid(),
   organizationId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/),
   stage: toolStage,
@@ -92,7 +92,6 @@ export const toolReceipt = z.strictObject({
 });
 export type Tool = z.infer<typeof toolSchema>;
 export type ToolRequest = z.infer<typeof requestSchema>;
-export type ToolDetail = z.infer<typeof detailSchema>;
 export function toolEndpoint(url: URL, method: string) {
   if (!url.pathname.startsWith("/api/tool-market/")) return null;
   let p = url.pathname.slice("/api/tool-market/".length).split("/");

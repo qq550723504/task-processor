@@ -49,6 +49,29 @@ func TestRoutesSeparateEnterpriseAndPlatform(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildRoutesRequiresAllInjectedDependencies(t *testing.T) {
+	bound := func(ctx context.Context, _ string) (context.Context, error) { return ctx, nil }
+	authorize := func(context.Context, string, bool) (tm.Scope, error) {
+		return tm.Scope{ActorID: "admin", OrganizationID: "org-a"}, nil
+	}
+	for _, h := range []*Handler{
+		nil,
+		{Bind: bound, Authorize: authorize},
+		{Repository: &repo{}, Authorize: authorize},
+		{Repository: &repo{}, Bind: bound},
+	} {
+		routes, err := BuildRoutes(h)
+		require.ErrorIs(t, err, tm.ErrUnavailable)
+		require.Nil(t, routes)
+	}
+	routes, err := BuildRoutes(&Handler{Repository: &repo{}, Bind: bound, Authorize: authorize})
+	require.NoError(t, err)
+	require.Len(t, routes, 10)
+	for _, route := range routes {
+		require.NoError(t, ValidateDescriptor(route))
+	}
+}
 func TestStrictBodyAndFreshAuthorizationPreventWrite(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := &repo{}

@@ -61,6 +61,10 @@ Commercial和Resource保留事实、执行、授权、计量及恢复owner。
 - internal/integration/persistence/toolmarket：独立tool_market schema的数据库实现。
 - 专属HTTP模块/BFF：请求边界及投影；公共runtime Writer负责当前安装注入。
 
+HTTP适配器显式登记在internal/toolmarket/httpapi，核心合同不依赖Gin或旧core/config。
+BuildRoutes校验本功能依赖；现有kernel Module需要的process config/Enabled包装归app
+装配层，沿用当前生态服务模块做法，不为新领域增加Legacy consumer。
+
 产品目录代码定义稳定ID、版本、名称、分类、说明和支持渠道，不在DB存executor、
 endpoint、权限或任意代码。首个可启用ID为product-acquisition；
 登记能力状态由安装注入的可信readiness/provider绑定推导，不由启用行决定。

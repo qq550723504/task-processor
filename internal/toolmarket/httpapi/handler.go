@@ -12,9 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"task-processor/internal/authz"
-	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
-	kernelmodule "task-processor/internal/kernel/module"
 	tm "task-processor/internal/toolmarket"
 	"time"
 )
@@ -45,19 +43,13 @@ func (h *Handler) ConfigurePackage(c tm.PackageConfig) error {
 	return nil
 }
 
-type routeModule struct{ h *Handler }
-
-func NewModule(h *Handler) (kernelmodule.Module, error) {
+// BuildRoutes checks the feature dependencies. Process configuration and the
+// kernel Module wrapper belong to the existing application assembly layer.
+func BuildRoutes(h *Handler) ([]httproute.Descriptor, error) {
 	if h == nil || h.Repository == nil || h.Authorize == nil || h.Bind == nil {
 		return nil, tm.ErrUnavailable
 	}
-	return routeModule{h}, nil
-}
-func (routeModule) Name() string                  { return ModuleName }
-func (m routeModule) Enabled(*config.Config) bool { return m.h != nil }
-func (m routeModule) Register(r *kernelmodule.Registry) error {
-	r.AddRoutes(Routes(m.h)...)
-	return nil
+	return Routes(h), nil
 }
 
 type spec struct {
