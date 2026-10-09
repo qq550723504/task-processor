@@ -97,6 +97,18 @@ func TestKnowledgePostgresAdmissionPromotionAndRecovery(t *testing.T) {
 	if _, e := repo.GetSource(ctx, "org-b", first.Source.ID); !errors.Is(e, knowledge.ErrNotFound) {
 		t.Fatalf("cross org: %v", e)
 	}
+	notices, next, e := repo.ListNoticeSources(ctx, scope.OrganizationID, "", 2)
+	if e != nil || len(notices) != 2 || next == "" {
+		t.Fatalf("notification source keyset: %d %q %v", len(notices), next, e)
+	}
+	rest, _, e := repo.ListNoticeSources(ctx, scope.OrganizationID, next, 2)
+	if e != nil || len(rest) != 2 || rest[0].ID == notices[0].ID || rest[0].ID == notices[1].ID {
+		t.Fatalf("notification next keyset: %+v %v", rest, e)
+	}
+	foreign, _, e := repo.ListNoticeSources(ctx, "org-b", "", 2)
+	if e != nil || len(foreign) != 0 {
+		t.Fatal("notification sources crossed organization", e)
+	}
 	r, claimed, e := repo.ClaimUpload(ctx, scope.OrganizationID, first.Revision.ID, "upload-a")
 	if e != nil || !claimed {
 		t.Fatalf("claim %v %v", claimed, e)

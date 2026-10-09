@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"task-processor/internal/authidentity"
+	zitadel "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
@@ -73,7 +74,7 @@ func buildMembershipModule(ctx context.Context, cfg *config.Config, deps Members
 	service := membership.NewService(directory, authorizer, cfg.ListingKit.Zitadel.ProjectID, cfg.ListingKit.PlatformAdminRoles...)
 	service.SetRoleStore(store)
 	authorizer.SetRolePolicyReader(store)
-	handler := memberhttp.NewCommandHandler(service, func(request *http.Request) (memberhttp.CommandService, error) {
+	commandFactory := func(request *http.Request) (memberhttp.CommandService, error) {
 		initial, ok := authidentity.AuthenticatedIdentityFromContext(request.Context())
 		if !ok {
 			return nil, membership.ErrAuthentication
@@ -85,12 +86,21 @@ func buildMembershipModule(ctx context.Context, cfg *config.Config, deps Members
 		token := parts[1]
 		refresh := func(ctx context.Context) (context.Context, error) {
 			verified, err := auth.workbenchVerifier.Verify(ctx, token)
-			if err != nil || verified.UserID != initial.UserID {
+			if err != nil {
+				if zitadel.IsVerificationInvalid(err) {
+					return nil, membership.ErrAuthentication
+				}
+				return nil, membership.ErrUnavailable
+			}
+			if verified.UserID != initial.UserID {
 				return nil, membership.ErrAuthentication
 			}
 			resolved, err := auth.organizationResolver.Resolve(ctx, httproute.OrganizationAccessPolicyLiveWrite, workbenchcontext.ResolveInput{Identity: verified, BearerToken: token, RequestedOrganizationID: initial.EffectiveOrganizationID})
 			if err != nil {
-				return nil, membership.ErrPermission
+				if workbenchIdentityRejected(err) {
+					return nil, membership.ErrPermission
+				}
+				return nil, membership.ErrUnavailable
 			}
 			if resolved.EffectiveOrganizationID != initial.EffectiveOrganizationID {
 				return nil, membership.ErrPermission
@@ -98,7 +108,8 @@ func buildMembershipModule(ctx context.Context, cfg *config.Config, deps Members
 			return authidentity.WithAuthenticatedIdentity(ctx, resolved), nil
 		}
 		return membership.NewCommands(service, store, writer, refresh), nil
-	})
+	}
+	handler := memberhttp.NewCommandHandler(service, commandFactory)
 	factory, err := buildInvitationFactory(deps, cfg.ListingKit.Zitadel.ProjectID, auth, service, store, writer, authorizer)
 	if err != nil {
 		return nil, err
@@ -107,5 +118,11 @@ func buildMembershipModule(ctx context.Context, cfg *config.Config, deps Members
 	if ctx.Err() != nil {
 		return nil, membership.ErrUnavailable
 	}
-	return memberhttp.NewModule(handler), nil
+	return currentMembershipModule{Module: memberhttp.NewModule(handler), invitations: factory, commands: commandFactory}, nil
+}
+
+type currentMembershipModule struct {
+	kernelmodule.Module
+	invitations memberhttp.InvitationFactory
+	commands    memberhttp.CommandFactory
 }

@@ -19,6 +19,7 @@ import (
 )
 
 type Dependencies struct {
+	OpenNotificationCenter       func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenKnowledge                func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	NewKnowledge                 func(context.Context, *gorm.DB, *KnowledgeConfig, *logrus.Logger) (*knowledge.Service, *knowledge.Processor, error)
 	OpenStoreCenter              func(context.Context, DatabaseConfig) (*gorm.DB, error)
@@ -47,6 +48,7 @@ type Dependencies struct {
 // ApplicationFeatures keeps separately owned, opt-in current modules together
 // only at the serving composition boundary.
 type ApplicationFeatures struct {
+	NotificationCenterDB                                 *gorm.DB
 	Knowledge                                            *knowledge.Service
 	StoreCenterDB                                        *gorm.DB
 	LocalTrialDB                                         *gorm.DB
@@ -252,6 +254,17 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		}
 	}
 	var workbenchDB *gorm.DB
+	var notificationDB *gorm.DB
+	if cfg.NotificationCenterDatabase != nil {
+		if dependencies.OpenNotificationCenter == nil || dependencies.NewApplicationWithFeatures == nil {
+			return errors.New("notification center dependencies unavailable")
+		}
+		notificationDB, err = dependencies.OpenNotificationCenter(startupContext, *cfg.NotificationCenterDatabase)
+		if err != nil || notificationDB == nil || notificationDB == sourceAccountDB || notificationDB == commercialOwnerDB || notificationDB == productDB || notificationDB == agentDB {
+			return errors.New("notification center requires an independent existing database")
+		}
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(notificationDB)) }()
+	}
 	if cfg.AIWorkbench != nil && cfg.AIWorkbench.Enabled {
 		workbenchDB, err = dependencies.OpenAIWorkbench(startupContext, cfg.AIWorkbench.Database)
 		if err != nil || workbenchDB == nil || workbenchDB == agentDB {
@@ -413,7 +426,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Knowledge: knowledgeService, OfficialStoreProvider: officialProvider, OfficialStoreProtection: officialProtection, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{NotificationCenterDB: notificationDB, Knowledge: knowledgeService, OfficialStoreProvider: officialProvider, OfficialStoreProtection: officialProtection, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {

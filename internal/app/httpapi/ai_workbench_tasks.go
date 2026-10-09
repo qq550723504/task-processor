@@ -13,7 +13,6 @@ import (
 	"task-processor/internal/agent"
 	"task-processor/internal/aiworkbench"
 	"task-processor/internal/authidentity"
-	"task-processor/internal/product/review"
 )
 
 type workbenchTaskView struct {
@@ -78,35 +77,18 @@ func (a *aiWorkbenchApplication) taskView(ctx context.Context, scope aiworkbench
 		view.ProductDetailsAvailable = true
 		view.OperationID, view.ProductKey, view.TargetPlatform = task.OperationID, task.ProductKey, task.TargetPlatform
 	}
-	run, found, err := a.agent.store.Lookup(ctx, agent.Scope{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID}, request.Binding, request.Key)
+	projection, err := a.taskProjectionReader().Read(ctx, scope, task)
 	if err != nil {
 		return view, nil
 	}
-	var runPtr *agent.Record
-	var reviewState string
+	found := projection.Run != nil
+	var run agent.Record
 	if found {
-		runPtr = &run
+		run = *projection.Run
 		view.AgentRunID, view.AgentPhase, view.AgentRevision = run.State.RunID, run.State.Phase, strconv.FormatUint(run.State.Revision, 10)
-		currentReview, reviewFound, reviewErr := a.agent.reviews.FindAgentReview(ctx, run.State.RunID)
-		if errors.Is(reviewErr, review.ErrForbidden) {
-			// Task readers may see the state of their own exact Agent run, but
-			// cannot open the protected Review record or receive its ID.
-			var state string
-			state, reviewFound, reviewErr = a.agent.reviews.FindAgentTaskReviewState(ctx, run.State.RunID)
-			if reviewErr == nil && reviewFound {
-				reviewState = state
-			}
-		} else if reviewErr == nil && reviewFound {
-			reviewState = currentReview.State
-			view.ReviewID, view.ReviewState = currentReview.ID, currentReview.State
-		}
-		if reviewErr != nil {
-			return view, nil
-		}
 	}
-	projection, err := aiworkbench.ProjectTask(task, runPtr, reviewState, time.Now())
-	if err != nil {
-		return view, nil
+	if projection.Review.ID != "" {
+		view.ReviewID, view.ReviewState = projection.Review.ID, projection.Review.State
 	}
 	view.ProjectionAvailable, view.State, view.Reason = true, projection.State, projection.Reason
 	if _, err := a.agent.freshIdentity(ctx); err == nil {
