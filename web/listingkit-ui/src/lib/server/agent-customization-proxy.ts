@@ -6,7 +6,7 @@ import { hasEmptyBody } from "./members-proxy";
 import { WORKBENCH_COOKIE_NAME } from "./workbench-proxy";
 const safe = { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" };
 export const customizationFailure = (status: number, code: string) => Response.json({ code }, { status, headers: safe });
-export function customizationEndpoint(url: URL, method: string) {
+function customizationEndpoint(url: URL, method: string) {
     const admin = url.pathname.startsWith("/api/workbench/admin/agent-customization/requests");
     const prefix = `/api/workbench/${admin ? "admin/" : ""}agent-customization/requests`;
     if (!url.pathname.startsWith(prefix))
