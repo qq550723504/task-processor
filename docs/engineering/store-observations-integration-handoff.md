@@ -54,6 +54,10 @@ go run ./cmd/current-application -config C:\private\current-application.json
 
 订单默认取得最近30天，自运营/半托管应用支持消费者订单；全托管明确不支持，不以采购单替代。订单已发货/待揽收等平台状态保持原值。未知库存、时间、价格或审核中状态显示未提供。发货/售后使用固定 `https://sellerhub.shein.com/` 新窗口并可复制订单号，不自动执行操作。
 
+清除本页回执后，最近同步仍显示当前授权店铺的不支持/不可用原因。实时订单详情省略状态或更新时间时保留同一已保存记录中的平台值；实时详情暂不可用时明确标记陈旧，并等待详情恢复后再查当前包裹物流。
+
+批量列表与父回执的 `progress.windows` 只投影当前待处理窗口；`range` 保留整个请求范围，计数、原因和状态不丢失。完整待处理队列仍在 SQL checkpoint 和单个同步状态接口中，批量响应不回写进度。列表在既有 2 MiB 总响应限制内为元数据预留空间，再按实际可用字节进行记录分页，统计仍基于完整筛选集合。
+
 父操作和全部子同步、页数据/checkpoint、最终完成/head 都保存在 Store 专用 DB 的 observation schema。页面会话存储只保留本企业/用户的操作 key 和无凭据输入，用于丢失响应后的原操作查询/重试；不是业务事实源。重启通过 SQL checkpoint 和同一个 Temporal ID 恢复，只有明确的新同步才分配新操作 key。保留 named volumes 的正常 stop/restart 不删除观察；本文没有 destroy 或清理授权。
 
 ## 验证边界

@@ -120,6 +120,32 @@ func TestBeginProjectsLiveChildrenAfterCommitAndWorkflowStartup(t *testing.T) {
 	require.Len(t, repo.value.Syncs, 2, "the durable command must keep the original selected set")
 }
 
+func TestAllStoreCommandProjectsCurrentWindowWithoutChangingDurableReceipt(t *testing.T) {
+	scope := Scope{"org-a", "actor-a", "original-member"}
+	stored := Command{ID: uuid.NewString(), Owner: scope, Key: uuid.NewString(), Input: BeginInput{Kind: Orders}, CreatedAt: time.Now().UTC()}
+	directory := &commandDirectory{}
+	for i := 0; i < 500; i++ {
+		store := uuid.NewString()
+		directory.stores = append(directory.stores, store)
+		stored.Input.Stores = append(stored.Input.Stores, store)
+		child := Sync{ID: uuid.NewString(), StoreID: store, Owner: scope, Kind: Orders, Binding: Binding{OrganizationID: scope.OrganizationID, StoreID: store, ApplicationID: "current"}, Status: "running", CreatedAt: stored.CreatedAt, Progress: Checkpoint{Page: 1}}
+		for j := 0; j < 512; j++ {
+			child.Progress.Windows = append(child.Progress.Windows, Window{stored.CreatedAt.Add(-time.Hour), stored.CreatedAt})
+		}
+		stored.Syncs = append(stored.Syncs, child)
+	}
+	repo := &commandRepository{value: stored}
+	s := Service{Repository: repo, Directory: directory, Access: commandAccess{}}
+	result, err := s.Command(context.Background(), scope, stored.Key)
+	require.NoError(t, err)
+	raw, err := json.Marshal(result)
+	require.NoError(t, err)
+	require.LessOrEqual(t, len(raw), 2<<20)
+	require.Len(t, result.Syncs, 500)
+	require.Len(t, result.Syncs[0].Progress.Windows, 1)
+	require.Equal(t, stored, repo.value)
+}
+
 func TestBeginTransientStoreOpenNeverCommitsTerminalCommandAndSameKeyCanRetry(t *testing.T) {
 	ctx := context.Background()
 	scope := Scope{"org-a", "actor-a", "original-member"}

@@ -557,9 +557,24 @@ function ScopedPage({
             </div>
           ) : null}
           {data.latest.some((s) => s.errorCode || s.status === "partial") ? (
-            <p className={styles.notice}>
-              最近同步有未完成结果，列表可能保留上次完整观察。可从“本次同步”查看进度和部分结果。
-            </p>
+            <div className={styles.notice}>
+              <p>最近同步有未完成结果，列表可能保留上次完整观察。</p>
+              <ul>
+                {data.latest
+                  .filter((s) => s.errorCode || s.status === "partial")
+                  .map((s) => (
+                    <li key={s.id}>
+                      {names.get(s.storeId) ?? s.storeId} ·{" "}
+                      {statusLabels[s.status]}
+                      {s.errorCode === "unsupported_application"
+                        ? " · 全托管应用不支持消费者订单"
+                        : s.errorCode
+                          ? " · 授权、连接或服务不可用"
+                          : " · 仅取得部分结果"}
+                    </li>
+                  ))}
+              </ul>
+            </div>
           ) : null}
           {data.items.length === 0 ? (
             <ConsoleState
@@ -567,7 +582,9 @@ function ScopedPage({
               title={
                 data.syncs.length
                   ? "没有已取得且符合筛选的记录"
-                  : "尚未同步平台数据"
+                  : data.latest.length
+                    ? "最近同步未取得可显示的记录"
+                    : "尚未同步平台数据"
               }
             >
               使用页面上方同步按钮取得平台数据。只有完整遍历后的空结果才表示此范围内未取得记录。

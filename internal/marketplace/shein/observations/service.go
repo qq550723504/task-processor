@@ -28,6 +28,15 @@ func (s *Service) now() time.Time {
 	return time.Now().UTC()
 }
 func (s *Service) available() bool { return s != nil && s.Repository != nil && s.Access != nil }
+
+// Batch responses need the current pending window, counters and overall range;
+// the full queued checkpoint remains in SQL and on the single-sync status route.
+func batchSync(sync Sync) Sync {
+	if len(sync.Progress.Windows) > 1 {
+		sync.Progress.Windows = append([]Window{}, sync.Progress.Windows[:1]...)
+	}
+	return sync
+}
 func (s *Service) allowedStores(ctx context.Context, scope Scope, kind Kind, sync bool, selected []string) ([]string, error) {
 	if !s.available() || s.Directory == nil {
 		return nil, ErrUnavailable
@@ -203,7 +212,7 @@ func (s *Service) command(ctx context.Context, scope Scope, cmd Command) (Comman
 				return Command{}, e
 			}
 		}
-		visible = append(visible, child)
+		visible = append(visible, batchSync(child))
 		stores = append(stores, child.StoreID)
 	}
 	if len(visible) == 0 {
@@ -486,7 +495,7 @@ func (s *Service) List(ctx context.Context, scope Scope, q Query) (Result, error
 		q.Sources[head.StoreID] = head.ID
 		handles = append(handles, m)
 		validated[head.Binding] = m
-		selected = append(selected, head)
+		selected = append(selected, batchSync(head))
 		if head.Status != "completed" || head.Progress.Incomplete {
 			complete = false
 		}
@@ -497,6 +506,11 @@ func (s *Service) List(ctx context.Context, scope Scope, q Query) (Result, error
 	currentLatest := []Sync{}
 	for _, sync := range latest {
 		if sync.Binding.ApplicationID == "" {
+			// This records a rejected local attempt, not a platform observation.
+			// The current directory is rechecked below before any metadata escapes.
+			if sync.Status == "suspended" && (sync.ErrorCode == "unsupported_application" || sync.ErrorCode == "store_unavailable") {
+				currentLatest = append(currentLatest, batchSync(sync))
+			}
 			continue
 		}
 		if validated[sync.Binding] == nil {
@@ -510,7 +524,17 @@ func (s *Service) List(ctx context.Context, scope Scope, q Query) (Result, error
 			validated[sync.Binding] = m
 			handles = append(handles, m)
 		}
-		currentLatest = append(currentLatest, sync)
+		currentLatest = append(currentLatest, batchSync(sync))
+	}
+	metadata, e := json.Marshal(Result{Items: []Record{}, Syncs: selected, Latest: currentLatest, Complete: complete})
+	if e != nil {
+		return Result{}, ErrUnavailable
+	}
+	// Leave room for the bounded identity envelope, next cursor, and aggregate
+	// numbers. Records use the remaining budget through existing SQL pagination.
+	q.RecordByteLimit = min(1<<20, (2<<20)-len(metadata)-(64<<10))
+	if q.RecordByteLimit <= 0 {
+		return Result{}, ErrUnavailable
 	}
 	zone := time.FixedZone("UTC+8", 8*3600)
 	now := s.now().In(zone)
@@ -570,6 +594,12 @@ func (s *Service) Detail(ctx context.Context, scope Scope, store, syncID, id str
 		}
 		if record.Order != nil {
 			detail[0].IssuedAt = record.Order.IssuedAt
+			if detail[0].Status == nil {
+				detail[0].Status = record.Order.Status
+			}
+			if detail[0].UpdatedAt == "" {
+				detail[0].UpdatedAt = record.Order.UpdatedAt
+			}
 		}
 		record.Order = &detail[0]
 		record.ObservedAt = s.now()

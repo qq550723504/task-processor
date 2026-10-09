@@ -136,6 +136,55 @@ it("shows readonly incomplete observations without invented stock or pending rev
     screen.queryByRole("button", { name: "去发货" }),
   ).not.toBeInTheDocument();
 });
+it("shows an unsupported latest-only store attempt after the local receipt was cleared", async () => {
+  context.permissions = [
+    "workbench.store.orders.read",
+    "workbench.store.orders.sync",
+  ];
+  const fetch = baseFetch();
+  const original = fetch.getMockImplementation()!;
+  fetch.mockImplementation(async (path: string, init?: RequestInit) => {
+    const response = await original(path, init);
+    if (path.includes("/commands/")) return response;
+    const body = await response.json();
+    if (path.endsWith("/capabilities")) {
+      body.data.kind = "orders";
+      return Response.json(body);
+    }
+    body.data.items = [];
+    body.data.latest = [
+      {
+        id,
+        commandId: id,
+        storeId: id,
+        kind: "orders",
+        status: "suspended",
+        progress: {
+          page: 1,
+          windows: [],
+          expectedTotal: null,
+          seen: 0,
+          pages: 0,
+          incomplete: false,
+          notes: [],
+        },
+        range: null,
+        createdAt: record.observedAt,
+        observedAt: null,
+        errorCode: "unsupported_application",
+      },
+    ];
+    return Response.json(body);
+  });
+  vi.stubGlobal("fetch", fetch);
+  renderPage("orders");
+  expect(
+    await screen.findByText(/全托管应用不支持消费者订单/),
+  ).toBeInTheDocument();
+  expect(screen.getByText(new RegExp(id))).toBeInTheDocument();
+  expect(screen.queryByText("尚未同步平台数据")).not.toBeInTheDocument();
+  expect(screen.getByText("最近同步未取得可显示的记录")).toBeInTheDocument();
+});
 it("reuses the captured sync key after a lost response", async () => {
   const fetch = baseFetch();
   vi.stubGlobal("fetch", fetch);

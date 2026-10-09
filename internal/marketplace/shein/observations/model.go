@@ -256,6 +256,9 @@ type Query struct {
 	Limit      int
 	Sources    map[string]string
 	TodayStart time.Time
+	// RecordByteLimit is the server-calculated JSON array budget after reserving
+	// batch metadata and the response envelope. Zero uses the repository default.
+	RecordByteLimit int
 }
 type Summary struct {
 	Total        int `json:"total"`

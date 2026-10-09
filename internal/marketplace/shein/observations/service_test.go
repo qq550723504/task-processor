@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -17,12 +19,22 @@ type serviceRepo struct {
 	stops         int
 	heads, latest []Sync
 	rows          []Record
+	listResult    Result
+	query         Query
+	afterList     func()
 }
 
 func (r *serviceRepo) Heads(context.Context, string, Kind, []string) ([]Sync, []Sync, error) {
 	return r.heads, r.latest, nil
 }
-func (r *serviceRepo) List(context.Context, string, Query) (Result, error) {
+func (r *serviceRepo) List(_ context.Context, _ string, q Query) (Result, error) {
+	r.query = q
+	if r.afterList != nil {
+		r.afterList()
+	}
+	if r.listResult.Items != nil {
+		return r.listResult, nil
+	}
 	return Result{Items: []Record{}}, nil
 }
 
@@ -242,6 +254,114 @@ func TestOrderDetailProviderOutageReturnsSavedStaleOnlyAfterLiveAccessRecheck(t 
 			_, err = s.Logistics(context.Background(), r.sync.Owner, r.sync.StoreID, r.sync.ID, "order-a", "saved-package")
 			require.ErrorIs(t, err, ErrUnavailable, "saved packages cannot authorize a current Track request")
 			require.Zero(t, m.trackCalls)
+		})
+	}
+}
+
+func TestListKeepsAuthorizedNoBindingTerminalAttemptAndRechecksDirectory(t *testing.T) {
+	for _, code := range []string{"unsupported_application", "store_unavailable"} {
+		t.Run(code, func(t *testing.T) {
+			s, r, _, _ := serviceFixture()
+			directory := &commandDirectory{stores: []string{r.sync.StoreID}}
+			s.Directory = directory
+			s.Access = commandAccess{errors: map[string]error{r.sync.StoreID: ErrUnsupported}}
+			r.sync.Kind = Orders
+			r.sync.Status = "suspended"
+			r.sync.Binding = Binding{}
+			r.sync.ErrorCode = code
+			r.latest = []Sync{r.sync}
+			q := Query{Kind: Orders, Limit: 20}
+			result, err := s.List(context.Background(), r.sync.Owner, q)
+			require.NoError(t, err)
+			require.Equal(t, []Sync{r.sync}, result.Latest)
+			require.Empty(t, result.Syncs)
+			require.Empty(t, result.Items)
+			require.False(t, result.Complete)
+			r.afterList = func() { directory.stores = nil }
+			_, err = s.List(context.Background(), r.sync.Owner, q)
+			require.ErrorIs(t, err, ErrNotFound, "even safe attempt metadata needs current directory access")
+		})
+	}
+}
+
+func TestOrderDetailPreservesSavedOptionalFactsOnlyWhenFreshFieldsAreAbsent(t *testing.T) {
+	for _, present := range []bool{false, true} {
+		t.Run(map[bool]string{false: "omitted", true: "fresh"}[present], func(t *testing.T) {
+			s, r, _, m := serviceFixture()
+			r.sync.Kind = Orders
+			status := 4
+			r.record = Record{ID: "order-a", StoreID: r.sync.StoreID, SyncID: r.sync.ID, Order: &Order{ID: "order-a", Site: "shein-us", Status: &status, UpdatedAt: "2026-10-08T01:00:00Z", IssuedAt: "2026-10-07T01:00:00Z", Packages: []Package{{ID: "old-package"}}}}
+			fresh := Order{ID: "order-a", Site: "shein-us", Packages: []Package{{ID: "current-package"}}}
+			wantStatus, wantUpdate := status, r.record.Order.UpdatedAt
+			if present {
+				wantStatus, wantUpdate = 7, "2026-10-09T01:00:00Z"
+				fresh.Status, fresh.UpdatedAt = &wantStatus, wantUpdate
+			}
+			m.details = []Order{fresh}
+			result, err := s.Detail(context.Background(), r.sync.Owner, r.sync.StoreID, r.sync.ID, "order-a", Orders)
+			require.NoError(t, err)
+			require.NotNil(t, result.Order.Status)
+			require.Equal(t, wantStatus, *result.Order.Status)
+			require.Equal(t, wantUpdate, result.Order.UpdatedAt)
+			require.Equal(t, r.record.Order.IssuedAt, result.Order.IssuedAt)
+			require.Equal(t, fresh.Packages, result.Order.Packages, "saved packages never replace fresh package membership")
+			require.Equal(t, s.now(), result.ObservedAt)
+			require.False(t, result.Stale)
+			require.Equal(t, 4, *r.record.Order.Status, "read projection must not rewrite saved facts")
+		})
+	}
+}
+
+func TestAllStoreListBoundsQueuedWindowMetadataWithoutRewritingCheckpoints(t *testing.T) {
+	for _, windowCount := range []int{15, 512} {
+		t.Run(strconv.Itoa(windowCount), func(t *testing.T) {
+			s, r, _, _ := serviceFixture()
+			directory := &commandDirectory{}
+			s.Directory, s.Access = directory, commandAccess{}
+			for i := 0; i < 500; i++ {
+				store := uuid.NewString()
+				directory.stores = append(directory.stores, store)
+				current := r.sync
+				current.ID, current.CommandID, current.StoreID, current.Kind = uuid.NewString(), uuid.NewString(), store, Orders
+				current.Binding = Binding{OrganizationID: current.Owner.OrganizationID, StoreID: store, ApplicationID: "current"}
+				current.Range = &Window{current.CreatedAt.Add(-30 * 24 * time.Hour), current.CreatedAt}
+				for j := 0; j < windowCount; j++ {
+					current.Progress.Windows = append(current.Progress.Windows, Window{current.CreatedAt.Add(-time.Hour), current.CreatedAt})
+				}
+				r.heads, r.latest = append(r.heads, current), append(r.latest, current)
+			}
+			for i := 0; i < 5; i++ {
+				r.listResult.Items = append(r.listResult.Items, Record{ID: "order", Order: &Order{Items: []OrderItem{{Title: strings.Repeat("a", 180000)}}}})
+			}
+			result, err := s.List(context.Background(), r.sync.Owner, Query{Kind: Orders, Limit: 20})
+			require.NoError(t, err)
+			require.Len(t, result.Syncs, 500)
+			require.Len(t, result.Latest, 500)
+			raw, err := json.Marshal(struct {
+				OrganizationID, UserID string
+				Data                   Result
+			}{r.sync.Owner.OrganizationID, r.sync.Owner.ActorID, result})
+			require.NoError(t, err)
+			require.LessOrEqual(t, len(raw), 2<<20)
+			require.Len(t, result.Latest[0].Progress.Windows, 1, "batch projection retains the current pending window")
+			require.Equal(t, r.latest[0].Progress.Windows[:1], result.Latest[0].Progress.Windows)
+			require.Len(t, r.latest[0].Progress.Windows, windowCount, "full durable checkpoint queue stays unchanged")
+			// Even the compact projection must account for bounded coverage notes.
+			// The SQL pagination test separately verifies consumption of this budget.
+			for i := range r.heads {
+				for j := 0; j < 20; j++ {
+					r.heads[i].Progress.Notes = append(r.heads[i].Progress.Notes, strings.Repeat("n", 64))
+					r.latest[i].Progress.Notes = append(r.latest[i].Progress.Notes, strings.Repeat("n", 64))
+				}
+			}
+			r.listResult.Items = []Record{}
+			result, err = s.List(context.Background(), r.sync.Owner, Query{Kind: Orders, Limit: 20})
+			require.NoError(t, err)
+			require.Positive(t, r.query.RecordByteLimit)
+			require.Less(t, r.query.RecordByteLimit, 1<<20, "record budget must shrink when metadata grows")
+			raw, err = json.Marshal(result)
+			require.NoError(t, err)
+			require.Less(t, len(raw)+r.query.RecordByteLimit, 2<<20, "combined metadata and row budget leaves envelope space")
 		})
 	}
 }

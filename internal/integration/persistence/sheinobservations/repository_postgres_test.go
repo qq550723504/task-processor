@@ -184,23 +184,29 @@ func TestObservationPostgresLargeRecordsPaginateWithinResponseBudget(t *testing.
 	}
 	_, e = r.CommitPage(ctx, s, s.Progress, records, "completed", time.Now().UTC())
 	require.NoError(t, e)
-	q := o.Query{Kind: o.Products, Limit: 20, Sources: map[string]string{store: s.ID}}
-	seen := map[string]bool{}
-	for {
-		page, e := r.List(ctx, scope.OrganizationID, q)
-		require.NoError(t, e)
-		payload, e := json.Marshal(page.Items)
-		require.NoError(t, e)
-		require.LessOrEqual(t, len(payload), 1<<20)
-		require.Equal(t, 10, page.Summary.Total)
-		for _, item := range page.Items {
-			require.False(t, seen[item.ID])
-			seen[item.ID] = true
+	for _, budget := range []int{0, 400 << 10} {
+		q := o.Query{Kind: o.Products, Limit: 20, Sources: map[string]string{store: s.ID}, RecordByteLimit: budget}
+		seen := map[string]bool{}
+		for {
+			page, e := r.List(ctx, scope.OrganizationID, q)
+			require.NoError(t, e)
+			payload, e := json.Marshal(page.Items)
+			require.NoError(t, e)
+			limit := 1 << 20
+			if budget > 0 {
+				limit = budget
+			}
+			require.LessOrEqual(t, len(payload), limit)
+			require.Equal(t, 10, page.Summary.Total)
+			for _, item := range page.Items {
+				require.False(t, seen[item.ID])
+				seen[item.ID] = true
+			}
+			if page.Next == "" {
+				break
+			}
+			q.After = page.Next
 		}
-		if page.Next == "" {
-			break
-		}
-		q.After = page.Next
+		require.Len(t, seen, 10)
 	}
-	require.Len(t, seen, 10)
 }

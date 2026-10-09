@@ -26,7 +26,7 @@ type syncRow struct {
 }
 
 func (x syncRow) value() (o.Sync, error) {
-	s := o.Sync{ID: x.ID, CommandID: x.CommandID, StoreID: x.StoreID, Owner: o.Scope{x.OrganizationID, x.ActorID, x.MemberID}, Key: strings.TrimSpace(x.CommandKey), Kind: o.Kind(x.Kind), Status: x.Status, ErrorCode: x.ErrorCode, Generation: x.Generation, Revision: x.Revision, CreatedAt: x.CreatedAt, ObservedAt: x.ObservedAt}
+	s := o.Sync{ID: x.ID, CommandID: x.CommandID, StoreID: x.StoreID, Owner: o.Scope{OrganizationID: x.OrganizationID, ActorID: x.ActorID, MemberID: x.MemberID}, Key: strings.TrimSpace(x.CommandKey), Kind: o.Kind(x.Kind), Status: x.Status, ErrorCode: x.ErrorCode, Generation: x.Generation, Revision: x.Revision, CreatedAt: x.CreatedAt, ObservedAt: x.ObservedAt}
 	if json.Unmarshal(x.Binding, &s.Binding) != nil || json.Unmarshal(x.Progress, &s.Progress) != nil {
 		return s, o.ErrUnavailable
 	}
@@ -355,7 +355,7 @@ func (r *Repository) List(ctx context.Context, org string, q o.Query) (out o.Res
 }
 func (r *Repository) list(ctx context.Context, org string, q o.Query) (o.Result, error) {
 	out := o.Result{Items: []o.Record{}}
-	if !authidentity.IsBoundedIdentifier(org) || !q.Kind.Valid() || q.Limit < 1 || q.Limit > 50 || !o.Text(q.Keyword, 200) || len(q.After) > 4096 || len(q.Sources) > 500 {
+	if !authidentity.IsBoundedIdentifier(org) || !q.Kind.Valid() || q.Limit < 1 || q.Limit > 50 || !o.Text(q.Keyword, 200) || len(q.After) > 4096 || len(q.Sources) > 500 || q.RecordByteLimit < 0 || q.RecordByteLimit > 1<<20 {
 		return out, o.ErrInvalid
 	}
 	fingerprint := queryHash(org, q)
@@ -455,6 +455,10 @@ func (r *Repository) list(ctx context.Context, org string, q o.Query) (o.Result,
 	// Bound encoded observations as well as row count. A legitimate many-SKU
 	// product must remain pageable instead of making every HTTP response too big.
 	encodedBytes, more := 2, false
+	byteLimit := 1 << 20
+	if q.RecordByteLimit > 0 {
+		byteLimit = q.RecordByteLimit
+	}
 	for _, row := range rows {
 		if len(out.Items) == q.Limit {
 			more = true
@@ -472,7 +476,7 @@ func (r *Repository) list(ctx context.Context, org string, q o.Query) (o.Result,
 		if len(out.Items) > 0 {
 			size++
 		}
-		if size > 1<<20 {
+		if size > byteLimit {
 			if len(out.Items) == 0 {
 				return out, o.ErrUnavailable
 			}
