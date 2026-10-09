@@ -34,6 +34,17 @@ it("requires a new explicit selection after known revision rejection without aut
   const fetch=vi.spyOn(globalThis,"fetch").mockImplementation(async(url,init)=>init?.method==="POST"?Response.json({code:"CUSTOMIZATION_REVISION_MISMATCH"},{status:412}):reads(url));
   render(<PrivateAgentPage id={id}/>);await choose();fireEvent.click(screen.getByRole("button",{name:"检查并保存报告"}));await screen.findByText("草稿版本或可用状态已变化，请重新选择当前草稿。");expect(fetch.mock.calls.filter(v=>v[1]?.method==="POST")).toHaveLength(1);expect(screen.getByRole("button",{name:"检查并保存报告"})).toBeDisabled();
 });
+it.each([400,404,412])("keeps the frozen UNKNOWN command after verification returns %i and restores it unchanged",async status=>{
+  const fetch=vi.spyOn(globalThis,"fetch").mockImplementation(async(url,init)=>{if(init?.method==="POST")throw new Error("response lost");return reads(url)});
+  const first=render(<PrivateAgentPage id={id}/>);await choose();fireEvent.click(screen.getByRole("button",{name:"检查并保存报告"}));await screen.findByText("结果尚未确认，请核实同一次检查。");
+  const original=fetch.mock.calls.find(v=>v[1]?.method==="POST")!;first.unmount();
+  fetch.mockImplementation(async(url,init)=>init?.method==="POST"?Response.json({code:"CUSTOMIZATION_NOT_FOUND"},{status}):reads(url));
+  const second=render(<PrivateAgentPage id={id}/>);fireEvent.click(await screen.findByRole("button",{name:"核实同一次检查"}));await waitFor(()=>expect(fetch.mock.calls.filter(v=>v[1]?.method==="POST")).toHaveLength(2));
+  await screen.findByText("暂时无法核实原检查，请保留原草稿引用与请求编号，恢复来源访问后核实。");expect(screen.getByRole("button",{name:"核实同一次检查"})).toBeInTheDocument();expect(screen.getByRole("button",{name:"检查并保存报告"})).toBeDisabled();second.unmount();
+  fetch.mockImplementation(async(url,init)=>init?.method==="POST"?Response.json({...run,key:new Headers(init.headers).get("Idempotency-Key")}):reads(url));
+  render(<PrivateAgentPage id={id}/>);fireEvent.click(await screen.findByRole("button",{name:"核实同一次检查"}));await screen.findByRole("heading",{name:"草稿质检报告 · 盒子"});
+  const calls=fetch.mock.calls.filter(v=>v[1]?.method==="POST");expect(calls).toHaveLength(3);for(const call of calls){expect(call[1]?.body).toBe(original[1]?.body);expect(new Headers(call[1]?.headers).get("Idempotency-Key")).toBe(new Headers(original[1]?.headers).get("Idempotency-Key"))}
+});
 it("reads actor-private summaries and fetches complete details only on selection",async()=>{
   const fetch=vi.spyOn(globalThis,"fetch").mockImplementation(async url=>String(url).endsWith("/reports")?Response.json({items:[summary],nextCursor:""}):reads(url));
   const page=render(<PrivateAgentPage id={id}/>);fireEvent.click(await screen.findByRole("button",{name:"查看报告"}));await screen.findByRole("heading",{name:"草稿质检报告 · 盒子"});expect(fetch.mock.calls.some(([url])=>String(url).endsWith(`/reports/${id}`))).toBe(true);

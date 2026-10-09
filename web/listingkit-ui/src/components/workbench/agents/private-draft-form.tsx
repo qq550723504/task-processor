@@ -46,20 +46,23 @@ export function PrivateDraftForm({scope,id,canUse,saved}:{scope:CustomScope;id:s
       .catch(()=>{if(active)setChoices({key,items:[],error:"无法读取所选草稿，请重新确认店铺、企业和来源访问权限。"})});
     return()=>{active=false;c.abort()};
   },[userId,organizationId,canSelect,prep,store,stage,after,reload,key]);
-  async function execute(command:z.infer<typeof qualityPending>){
+  async function execute(command:z.infer<typeof qualityPending>,verification=false){
     if(flight.current||!pending.ready||!canUse||!canSelect||command.deliveryId!==id)return;
     flight.current=true;setBusy(true);setMessage("");const c=new AbortController();abort.current=c;const timer=setTimeout(()=>c.abort(),45000);
     try{pending.persist(command);const run=await privateAgentRequest(scope,`/${id}/reports`,qualityRun,{method:"POST",headers:{"Content-Type":"application/json","Idempotency-Key":command.key},body:JSON.stringify(command.input),signal:c.signal});
       if(live.current){pending.clear(command);setMessage("草稿质检报告已保存。");saved(run)}}
     catch(e){if(!live.current)return;
-      if(e instanceof CustomizationError&&[400,404,412].includes(e.status)){pending.clear(command);setSelected(undefined);setReload(v=>v+1);setMessage("草稿版本或可用状态已变化，请重新选择当前草稿。");}
+      if(e instanceof CustomizationError&&[400,404,412].includes(e.status)){
+        if(verification)setMessage("暂时无法核实原检查，请保留原草稿引用与请求编号，恢复来源访问后核实。");
+        else{pending.clear(command);setSelected(undefined);setReload(v=>v+1);setMessage("草稿版本或可用状态已变化，请重新选择当前草稿。");}
+      }
       else setMessage(e instanceof CustomizationError&&e.code==="OUTCOME_UNKNOWN"?"结果尚未确认，请核实同一次检查。":"无法确认原检查，请保留原草稿引用与请求编号后核实。");
     }finally{clearTimeout(timer);flight.current=false;if(live.current)setBusy(false)}
   }
   return <Card className={`${styles.panel} ${qualityStyles.form}`}><h2>选择上传前的平台草稿</h2><p>直接检查保存的草稿，无需重填商品资料。当前支持 SHEIN 美国站。</p>
     {!canUse?<p>当前身份没有执行权限。</p>:null}{!canSelect?<p role="alert">需要当前商品资料、供应链和店铺读取权限，才能选择自己的草稿。</p>:null}
     {pending.error?<p role="alert">原检查记录无法读取，请保留浏览器数据并联系平台。</p>:null}{failure?<p role="alert">{failure}</p>:null}{choices.key===key&&choices.error?<p role="alert">{choices.error}</p>:null}{message?<p role="status">{message}</p>:null}
-    {pending.command?<div role="status"><p>有一次检查尚未确认，核实会复用原草稿编号、版本和请求编号。</p><Button disabled={busy||!canUse||!canSelect} variant="outline" onClick={()=>pending.command&&void execute(pending.command)}>核实同一次检查</Button></div>:null}
+    {pending.command?<div role="status"><p>有一次检查尚未确认，核实会复用原草稿编号、版本和请求编号。</p><Button disabled={busy||!canUse||!canSelect} variant="outline" onClick={()=>pending.command&&void execute(pending.command,true)}>核实同一次检查</Button></div>:null}
     <fieldset disabled={locked||!canSelect||!canUse}>
       <label>供应链批次<Select value={prep} onChange={e=>{setPrep(e.target.value);setAfter(undefined)}}><option value="">请选择批次</option>{preparations.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</Select></label>
       <div className={styles.actions}>{prepNext?<Button type="button" variant="outline" onClick={()=>setPrepAfter(prepNext)}>更多批次</Button>:null}{prepAfter?<Button type="button" variant="outline" onClick={()=>setPrepAfter(undefined)}>批次首页</Button>:null}</div>
