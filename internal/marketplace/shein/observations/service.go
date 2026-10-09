@@ -146,7 +146,7 @@ func (s *Service) Begin(ctx context.Context, scope Scope, key string, in BeginIn
 		}
 		m, e := s.Access.Open(ctx, scope, store, in.Kind, true, nil)
 		if e != nil {
-			if !errors.Is(e, ErrUnsupported) && !errors.Is(e, ErrForbidden) && !errors.Is(e, ErrConflict) && !errors.Is(e, ErrUnavailable) {
+			if !errors.Is(e, ErrUnsupported) && !errors.Is(e, ErrForbidden) && !errors.Is(e, ErrConflict) {
 				return Command{}, e
 			}
 			child.Status = "suspended"

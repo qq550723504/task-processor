@@ -119,3 +119,23 @@ func TestBeginProjectsLiveChildrenAfterCommitAndWorkflowStartup(t *testing.T) {
 	require.Equal(t, remaining, result.Syncs[0].StoreID)
 	require.Len(t, repo.value.Syncs, 2, "the durable command must keep the original selected set")
 }
+
+func TestBeginTransientStoreOpenNeverCommitsTerminalCommandAndSameKeyCanRetry(t *testing.T) {
+	ctx := context.Background()
+	scope := Scope{"org-a", "actor-a", "original-member"}
+	store, key := uuid.NewString(), uuid.NewString()
+	repo := &commandRepository{}
+	access := commandAccess{errors: map[string]error{store: ErrUnavailable}}
+	s := Service{Repository: repo, Directory: &commandDirectory{stores: []string{store}}, Access: access}
+	input := BeginInput{Kind: Products, Stores: []string{store}}
+	_, err := s.Begin(ctx, scope, key, input)
+	require.ErrorIs(t, err, ErrUnavailable)
+	require.Empty(t, repo.value.ID, "transient Store/IAM failure must not commit a terminal child or parent")
+	delete(access.errors, store)
+	result, err := s.Begin(ctx, scope, key, input)
+	require.NoError(t, err)
+	require.Equal(t, key, result.Key)
+	require.Len(t, result.Syncs, 1)
+	require.Equal(t, "pending", result.Syncs[0].Status)
+	require.Equal(t, key, repo.value.Key)
+}
