@@ -88,7 +88,7 @@ begin命令和同步事实在一事务提交，再以稳定 `store-observations/
 
 逐页先读取当前checkpoint，重新授权到原binding，再只读provider；验证响应、allowlist/US归一化；返回后重新核对原binding/live权限。在单DB事务锁sync行、比较checkpoint revision，将本页记录与下个checkpoint原子保存；CAS失败丢弃旧页并读当前进度。retry不按旧游标覆盖新数据。每页输入与安全摘要有稳定hash；同页重复成员/内容冲突标coverage不完整，不伪造成功。每个observedAt是实际响应取得时间。
 
-完成发布在同一DB事务锁sync与head，将末页/checkpoint、terminal状态和head原子提交。begin事务在(org,store,kind)内分配单调generation序号；head仅提升到同source较新序号，较旧sync晚到也可保留自己的完整结果，但不能倒退当前head。partial/failed/suspended绝不提升head，任何页的coverage不完整标记sticky持久保存，后续成功页不能清除。
+完成发布在同一DB事务锁sync与head，将末页/checkpoint、terminal状态和head原子提交。begin事务在(org,store,kind)内分配单调generation序号；候选binding必须重新匹配当前live Store，同binding的head只提升较新generation，较旧sync晚到可保留自己的完整结果但不倒退head。旧head binding失效时，允许当前新binding的完整generation替换；旧binding的晚到sync不得提升head。partial/failed/suspended绝不提升head，任何页的coverage不完整标记sticky持久保存，后续成功页不能清除。
 
 没有跨Store/IAM/观察库原子假设：短proof不是永久访问权；即使撤权前页已提交，也不会成为后续读权限。每次读head/partial/详情/同步状态都重新授权当前请求，并核对org/store和source binding。supplier/application/connection变化不读取旧source观察，不自动迁移到新商家；重新同步后形成新head。记录名称变更可造成binding过期，安全拒绝并提示重新同步，不在本批发明宽松binding兼容。
 
@@ -166,4 +166,4 @@ Cutover/deletion condition: 本首版不消费旧同步、数字Tenant/Store、L
 | 官方列表默认仓库范围与物流package | 完整消费者订单/合法未生成运单物流 | IMPLEMENTATION_TEST：queryType1/queryOrderType4/no status；窗口覆盖验证；packageNo即可，不强制waybill |
 | 新schema与已有Store verifier | 运行组合不能被新增权限整体拒绝 | IMPLEMENTATION_TEST：所有Store/Supply/resource preflight一致enabled最小清单，保留未启用时严格拒绝 |
 
-原成员撤权、只读句柄/source binding、私密allowlist和物流成员边界准入成立。实现验证撤销sync权限后worker停止、相同Actor新MemberID不能接管旧命令。评审不替代共享owner协调，也不替代真实平台/运行组合/用户验收；这些均NOT_RUN。
+原成员撤权、只读句柄/source binding、私密allowlist和物流成员边界准入成立。实现验证撤销sync权限后worker停止、相同Actor新MemberID不能接管旧命令。2026-10-09 reviewer对`404e0e831`仅复核上述澄清增量，维持IMPLEMENTATION_READY/FROZEN；父commands回执与child同事务成立，§5另明确新当前binding能够替换失效旧head且旧binding晚到不能提升。评审不替代共享owner协调，也不替代真实平台/运行组合/用户验收；这些均NOT_RUN。
