@@ -165,6 +165,10 @@ GET requests/:id；平台GET admin/requests(/:id)和POST admin/requests/:id/prog
 
 JSON strict decode（含重复字段/unknown字段）、body最大16KiB、title120 Unicode字符、
 description4000字符、stage note2000字符。list最多50、UUID游标、响应最多256KiB。
+详情默认返回最新16条进度，页内按revision升序；`eventsBefore`为精确正十进制revision的
+exclusive游标，`nextEventsBefore`为当前页最早revision或空串。每页始终带当前需求及版本，
+UI可加载更早记录且不以事件游标代替写入版本。16条上限覆盖合法文本在Go JSON编码中
+每字符最多6字节的转义，连同最大需求仍小于256KiB；总历史保留，不因累计数量拒绝详情。
 GET拒绝未读body；请求总deadline10秒，写事务遵守context。
 headers单值Idempotency-Key/If-Match，版本为精确十进制字符串。
 no-store；错误使用INVALID_REQUEST/FORBIDDEN/NOT_FOUND/IDEMPOTENCY_CONFLICT/

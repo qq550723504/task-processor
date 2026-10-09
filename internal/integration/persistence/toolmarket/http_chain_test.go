@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"task-processor/internal/authz"
 	tm "task-processor/internal/toolmarket"
@@ -99,4 +100,88 @@ func TestCommittedActivationReplaysWhenCapabilityGoesOffline(t *testing.T) {
 	require.Equal(t, 200, replay.Code)
 	require.Equal(t, first.Body.String(), replay.Body.String())
 	require.Equal(t, 503, send(uuid.NewString()).Code)
+}
+
+func TestLargeProgressHistoryRemainsReadableAndFullyPageable(t *testing.T) {
+	_, store := fixture(t)
+	ctx := context.Background()
+	cmd := create()
+	cmd.Scope.OrganizationID = strings.Repeat("a", 128)
+	cmd.Demand.Kind = "AUTOMATION"
+	cmd.Demand.Title = strings.Repeat("<", 120)
+	cmd.Demand.Description = strings.Repeat("<", 4000)
+	created, err := store.Execute(ctx, cmd, allow)
+	require.NoError(t, err)
+	for revision := int64(1); revision < 100; revision++ {
+		_, err = store.Execute(ctx, tm.Command{
+			Scope: tm.Scope{ActorID: "specialist"}, Platform: true, Key: uuid.NewString(),
+			Operation: "progress", ID: created.ID, Expected: revision,
+			Progress: tm.Progress{Stage: "SUBMITTED", Note: strings.Repeat("<", 2000)},
+		}, allow)
+		require.NoError(t, err)
+	}
+	gin.SetMode(gin.TestMode)
+	authorize := func(_ context.Context, _ string, platform bool) (tm.Scope, error) {
+		if platform {
+			return tm.Scope{ActorID: "specialist"}, nil
+		}
+		return cmd.Scope, nil
+	}
+	h := &api.Handler{Repository: store, Authorize: authorize, ReadAuthorize: authorize}
+	router := gin.New()
+	for _, r := range api.Routes(h) {
+		router.Handle(r.Method, r.Path, r.Handler)
+	}
+	for _, base := range []string{api.Base, api.AdminBase} {
+		cursor := ""
+		seen := map[string]bool{}
+		for {
+			path := base + "/requests/" + created.ID
+			if cursor != "" {
+				path += "?eventsBefore=" + cursor
+			}
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+			require.Equal(t, 200, w.Code, w.Body.String())
+			require.Less(t, w.Body.Len(), 256<<10)
+			var detail struct {
+				Request          tm.Request `json:"request"`
+				Events           []tm.Event `json:"events"`
+				NextEventsBefore string     `json:"nextEventsBefore"`
+			}
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &detail))
+			require.Equal(t, "100", detail.Request.Revision, "current write revision stays available on every history page")
+			require.NotEmpty(t, detail.Events)
+			require.LessOrEqual(t, len(detail.Events), 16)
+			previous := int64(0)
+			for _, event := range detail.Events {
+				n, err := strconv.ParseInt(event.Revision, 10, 64)
+				require.NoError(t, err)
+				require.Greater(t, n, previous, "each page is chronological")
+				if cursor != "" {
+					before, _ := strconv.ParseInt(cursor, 10, 64)
+					require.Less(t, n, before, "exclusive cursor cannot overlap the last page")
+				}
+				require.False(t, seen[event.Revision], "history must neither skip nor duplicate facts")
+				seen[event.Revision] = true
+				previous = n
+			}
+			if cursor == "" {
+				require.Equal(t, "100", detail.Events[len(detail.Events)-1].Revision, "latest progress is visible first")
+			}
+			if detail.NextEventsBefore == "" {
+				break
+			}
+			require.Equal(t, detail.Events[0].Revision, detail.NextEventsBefore)
+			cursor = detail.NextEventsBefore
+		}
+		require.Len(t, seen, 100)
+		for _, query := range []string{"eventsBefore=0", "eventsBefore=01", "eventsBefore=-1", "eventsBefore=9223372036854775808", "eventsBefore=80&eventsBefore=60", "cursor=" + uuid.NewString(), "eventsBefore=80&organizationId=foreign"} {
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest("GET", base+"/requests/"+created.ID+"?"+query, nil))
+			require.Equal(t, 400, w.Code, query)
+		}
+	}
+	_, err = store.Detail(ctx, tm.Scope{ActorID: "other", OrganizationID: "foreign"}, false, created.ID, "80")
+	require.ErrorIs(t, err, tm.ErrNotFound, "history cursor cannot bypass request tenant scope")
 }

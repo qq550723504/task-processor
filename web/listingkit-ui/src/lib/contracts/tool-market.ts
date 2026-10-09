@@ -81,7 +81,8 @@ export const detailSchema = z.strictObject({
         occurredAt: date,
       }),
     )
-    .max(1000),
+    .max(16),
+  nextEventsBefore: z.union([z.literal(""), toolVersion]),
 });
 export const toolReceipt = z.strictObject({
   commandId: z.uuid(),
@@ -149,11 +150,17 @@ export function toolEndpoint(url: URL, method: string) {
     input = progressInput;
     operation = "progress";
   } else return null;
-  if (url.search.length > 512 || (url.search && output !== requestsSchema))
+  if (
+    url.search.length > 512 ||
+    (url.search && output !== requestsSchema && output !== detailSchema)
+  )
     return null;
   for (const [k, v] of url.searchParams) {
     if (url.searchParams.getAll(k).length !== 1) return null;
-    if (k === "cursor") {
+    if (output === detailSchema) {
+      if (k !== "eventsBefore" || !toolVersion.safeParse(v).success)
+        return null;
+    } else if (k === "cursor") {
       if (!z.uuid().safeParse(v).success) return null;
     } else if (k === "pageSize") {
       if (!/^[1-9][0-9]*$/.test(v) || Number(v) > 50) return null;

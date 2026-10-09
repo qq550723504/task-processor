@@ -141,6 +141,7 @@ it("specialists without enterprise membership record versioned progress", async 
       if (url.endsWith("/" + id))
         return Response.json({
           request: record,
+          nextEventsBefore: "",
           events: [
             {
               revision: record.revision,
@@ -280,6 +281,7 @@ it("customization submission opens its persisted demand and progress", async () 
       if (url.endsWith("/requests/" + id))
         return Response.json({
           request: record,
+          nextEventsBefore: "",
           events: [
             {
               revision: "1",
@@ -312,4 +314,85 @@ it("customization submission opens its persisted demand and progress", async () 
     title: "采购商品资料",
     description: "保存授权来源的商品资料",
   });
+});
+
+it("loads earlier progress without losing current detail or its write revision", async () => {
+  context.effectiveOrganization = null;
+  const id = "aa1043df-c64c-499d-9c99-57598f7bff18";
+  const record = {
+    id,
+    organizationId: "customer-org",
+    kind: "DATA",
+    title: "长历史需求",
+    description: "保存授权来源商品资料",
+    stage: "SUBMITTED",
+    revision: "100",
+    createdAt: "2026-10-09T00:00:00Z",
+    updatedAt: "2026-10-09T00:00:00Z",
+  };
+  let failEarlier = true;
+  let denyEarlier = false;
+  const writes: RequestInit[] = [];
+  const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      writes.push(init);
+      return Response.json({
+        commandId: new Headers(init.headers).get("Idempotency-Key"),
+        operation: "progress",
+        id,
+        revision: "101",
+        committedAt: record.updatedAt,
+      });
+    }
+    if (url.endsWith("/requests"))
+      return Response.json({
+        items: [{ ...record, description: undefined }],
+        nextCursor: "",
+      });
+    const earlier = url.endsWith("?eventsBefore=85");
+    if (url.includes("?eventsBefore=") && denyEarlier)
+      return Response.json({ code: "FORBIDDEN" }, { status: 403 });
+    if (earlier && failEarlier) throw new Error("temporarily unavailable");
+    return Response.json({
+      request: record,
+      nextEventsBefore: earlier ? "69" : "85",
+      events: Array.from({ length: 16 }, (_, i) => {
+        const revision = (earlier ? 69 : 85) + i;
+        return {
+          revision: String(revision),
+          stage: "SUBMITTED",
+          note: "进度记录 " + revision,
+          occurredAt: record.updatedAt,
+        };
+      }),
+    });
+  });
+  vi.stubGlobal("fetch", fetch);
+  mount("admin");
+  fireEvent.click(await screen.findByRole("button", { name: /长历史需求/ }));
+  await screen.findByText("进度记录 100");
+  expect(screen.queryByText("进度记录 84")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "加载更早进度" }));
+  await screen.findByText(/更早进度暂时无法读取/);
+  expect(screen.getByText("进度记录 100")).toBeInTheDocument();
+  failEarlier = false;
+  fireEvent.click(screen.getByRole("button", { name: "加载更早进度" }));
+  await screen.findByText("进度记录 84");
+  const notes = screen.getAllByText(/^进度记录 /).map((element) => element.textContent);
+  expect(notes[0]).toBe("进度记录 69");
+  expect(notes.at(-1)).toBe("进度记录 100");
+  fireEvent.change(screen.getByLabelText("真实处理进度 / 关闭原因"), {
+    target: { value: "新的进度说明" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "记录进度" }));
+  await waitFor(() => expect(writes).toHaveLength(1));
+  expect(new Headers(writes[0].headers).get("If-Match")).toBe('"100"');
+  expect(fetch.mock.calls.some(([url]) => url.endsWith("?eventsBefore=85"))).toBe(true);
+  await waitFor(() =>
+    expect(screen.getByLabelText("真实处理进度 / 关闭原因")).toHaveValue(""),
+  );
+  denyEarlier = true;
+  fireEvent.click(screen.getByRole("button", { name: "加载更早进度" }));
+  await screen.findByText("当前身份没有操作权限。");
+  expect(screen.queryByText("进度记录 100")).not.toBeInTheDocument();
 });

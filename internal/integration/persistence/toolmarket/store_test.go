@@ -67,7 +67,7 @@ func TestAtomicConcurrentReplayAndTenantIsolation(t *testing.T) {
 	var n int64
 	require.NoError(t, db.Table("tool_market.requests").Count(&n).Error)
 	require.EqualValues(t, 1, n)
-	_, e := s.Detail(ctx, tm.Scope{ActorID: "other", OrganizationID: "org-b"}, false, receipts[0].ID)
+	_, e := s.Detail(ctx, tm.Scope{ActorID: "other", OrganizationID: "org-b"}, false, receipts[0].ID, "")
 	require.ErrorIs(t, e, tm.ErrNotFound)
 	c.Demand.Title = "different"
 	_, e = s.Execute(ctx, c, allow)
@@ -114,7 +114,7 @@ func TestConcurrentProgressAndRollback(t *testing.T) {
 		return nil
 	})
 	require.ErrorIs(t, e, tm.ErrForbidden)
-	detail, e := s.Detail(ctx, tm.Scope{ActorID: "member", OrganizationID: "org-a"}, false, r.ID)
+	detail, e := s.Detail(ctx, tm.Scope{ActorID: "member", OrganizationID: "org-a"}, false, r.ID, "")
 	require.NoError(t, e)
 	require.Equal(t, "2", detail.Request.Revision)
 	require.Len(t, detail.Events, 2)
@@ -122,7 +122,7 @@ func TestConcurrentProgressAndRollback(t *testing.T) {
 	require.NoError(t, db.Exec(`CREATE FUNCTION tool_market.reject_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test fault'; END $$; CREATE TRIGGER reject_event BEFORE INSERT ON tool_market.events FOR EACH ROW EXECUTE FUNCTION tool_market.reject_event();`).Error)
 	_, e = s.Execute(ctx, p, allow)
 	require.Error(t, e)
-	detail, e = s.Detail(ctx, p.Scope, true, r.ID)
+	detail, e = s.Detail(ctx, p.Scope, true, r.ID, "")
 	require.NoError(t, e)
 	require.Equal(t, "2", detail.Request.Revision)
 	require.NoError(t, db.Exec("DROP TRIGGER reject_event ON tool_market.events").Error)

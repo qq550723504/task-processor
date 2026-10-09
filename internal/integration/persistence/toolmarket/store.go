@@ -145,13 +145,21 @@ func (s *Store) Requests(ctx context.Context, scope tm.Scope, platform bool, cur
 	}
 	return result, nil
 }
-func (s *Store) Detail(ctx context.Context, scope tm.Scope, platform bool, id string) (tm.Detail, error) {
+func (s *Store) Detail(ctx context.Context, scope tm.Scope, platform bool, id, eventsBefore string) (tm.Detail, error) {
 	result := tm.Detail{Events: []tm.Event{}}
 	if !scope.Valid(platform) {
 		return result, tm.ErrForbidden
 	}
 	if !tm.UUID(id) {
 		return result, tm.ErrInvalid
+	}
+	var before int64
+	if eventsBefore != "" {
+		var err error
+		before, err = strconv.ParseInt(eventsBefore, 10, 64)
+		if err != nil || before <= 0 || strconv.FormatInt(before, 10) != eventsBefore {
+			return result, tm.ErrInvalid
+		}
 	}
 	q := s.db.WithContext(ctx).Where("id=?", id)
 	if !platform {
@@ -166,14 +174,21 @@ func (s *Store) Detail(ctx context.Context, scope tm.Scope, platform bool, id st
 	}
 	result.Request = r.view()
 	rows := []eventRow{}
-	if e := s.db.WithContext(ctx).Where("request_id=? AND revision<=?", id, r.Revision).Order("revision").Limit(1001).Find(&rows).Error; e != nil {
+	events := s.db.WithContext(ctx).Where("request_id=? AND revision<=?", id, r.Revision)
+	if eventsBefore != "" {
+		events = events.Where("revision<?", before)
+	}
+	if e := events.Order("revision DESC").Limit(tm.EventPageSize + 1).Find(&rows).Error; e != nil {
 		return result, e
 	}
-	// Keep response bounded without silently claiming a complete history.
-	if len(rows) > 1000 {
-		return result, tm.ErrUnavailable
+	if len(rows) > tm.EventPageSize {
+		rows = rows[:tm.EventPageSize]
+		result.NextEventsBefore = strconv.FormatInt(rows[len(rows)-1].Revision, 10)
 	}
-	for _, r := range rows {
+	// Each page displays chronologically; the initial page contains latest
+	// progress and an explicit cursor for all earlier immutable events.
+	for i := len(rows) - 1; i >= 0; i-- {
+		r := rows[i]
 		result.Events = append(result.Events, tm.Event{Revision: strconv.FormatInt(r.Revision, 10), Stage: r.Stage, Note: r.Note, OccurredAt: r.OccurredAt})
 	}
 	return result, nil

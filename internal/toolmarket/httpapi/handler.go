@@ -198,8 +198,22 @@ func (h *Handler) serve(c *gin.Context, s spec) {
 	q := c.Request.URL.Query()
 	limit := 20
 	cursor := ""
+	eventsBefore := ""
 	for key, vs := range q {
-		if s.operation != "requests" || len(vs) != 1 {
+		if len(vs) != 1 {
+			failure(c, tm.ErrInvalid)
+			return
+		}
+		if s.operation == "detail" && key == "eventsBefore" {
+			n, err := strconv.ParseInt(vs[0], 10, 64)
+			if err != nil || n <= 0 || strconv.FormatInt(n, 10) != vs[0] {
+				failure(c, tm.ErrInvalid)
+				return
+			}
+			eventsBefore = vs[0]
+			continue
+		}
+		if s.operation != "requests" {
 			failure(c, tm.ErrInvalid)
 			return
 		}
@@ -264,7 +278,7 @@ func (h *Handler) serve(c *gin.Context, s spec) {
 			}
 			reply(c, v)
 		case "detail":
-			v, e := h.Repository.Detail(ctx, scope, s.platform, c.Param("id"))
+			v, e := h.Repository.Detail(ctx, scope, s.platform, c.Param("id"), eventsBefore)
 			if e != nil {
 				failure(c, e)
 				return
