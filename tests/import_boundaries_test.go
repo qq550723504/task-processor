@@ -4001,7 +4001,19 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "toolmarket", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "app", "supplychain", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "product", "collection", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	// #624 admits only Project Center's HTTP adapter; its domain stays framework-free.
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "aiworkbench", "projectcenter", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	return allowedHTTPPackages
+}
+
+func TestProjectCenterHTTPBoundaryRegistration(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowed := businessHTTPPackages(root)
+	for path, want := range map[string]bool{"aiworkbench/projectcenter/httpapi/handler.go": true, "aiworkbench/projectcenter/service.go": false, "aiworkbench/projectcenter/httpapi_extra/handler.go": false} {
+		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(path)), allowed); got != want {
+			t.Errorf("HTTP boundary allows %s = %v, want %v", path, got, want)
+		}
+	}
 }
 
 func TestEcoservicesHTTPBoundaryRegistration(t *testing.T) {
