@@ -150,6 +150,34 @@ func TestServiceExternalChargebackKeepsTruthAndBlocksNewEffects(t *testing.T) {
 	}
 }
 
+func TestServiceAcceptedChargebackEffectKeepsFenceAndBlocksNewEffects(t *testing.T) {
+	for _, amount := range []int64{2, 101} {
+		t.Run(map[int64]string{2: "partial-positive-share", 101: "full-zero-finish"}[amount], func(t *testing.T) {
+			r := newMoneyRepository(t)
+			ctx := context.Background()
+			in := servicePayment()
+			if _, err := r.AcceptServicePayment(ctx, in); err != nil {
+				t.Fatal(err)
+			}
+			applyServiceEffect(t, r, m.ServiceChargeback, "original-chargeback-effect", amount)
+			funds, err := r.ReadServiceFunds(ctx, in.OrderID)
+			if err != nil || funds.ChargedBackMinor != amount || funds.PendingOperationID != "" {
+				t.Fatalf("chargeback fact or duplicate effect changed: %+v %v", funds, err)
+			}
+			if funds.ReconciliationReason != "CHANNEL_CHARGEBACK_REQUIRES_RECONCILIATION" {
+				t.Errorf("accepted chargeback effect omitted canonical fence: %+v", funds)
+			}
+			kind, nextAmount := m.ServiceShare, funds.PlatformMinor
+			if amount == 101 {
+				kind, nextAmount = m.ServiceFinish, 0
+			}
+			if _, err := r.PrepareServiceOperation(ctx, m.ServiceOperation{OrderID: in.OrderID, OperationID: "new-after-chargeback", Kind: kind, AmountMinor: nextAmount, SourceProofID: "acceptance"}); !errors.Is(err, m.ErrConflict) {
+				t.Errorf("new %s after accepted chargeback returned %v", kind, err)
+			}
+		})
+	}
+}
+
 func TestServiceInFlightShareSuccessAfterChargebackRetainsBothFacts(t *testing.T) {
 	r := newMoneyRepository(t)
 	ctx := context.Background()

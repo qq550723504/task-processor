@@ -437,6 +437,7 @@ func (r *Repository) AcceptServiceEffect(ctx context.Context, in m.ServiceEffect
 				return err
 			}
 			row.ChargedBackMinor += amount
+			row.ReconciliationReason = "CHANNEL_CHARGEBACK_REQUIRES_RECONCILIATION"
 		}
 		out = m.ServiceReceipt{ReceiptID: "service-effect:" + in.Operation.OperationID, OrderID: row.OrderID, OperationID: in.Operation.OperationID, Kind: in.Operation.Kind, AmountMinor: amount, RequestFingerprint: m.ServiceFingerprint(in.Operation), ProviderReference: in.ProviderReference, OccurredAt: at}
 		out.ResultFingerprint = out.Fingerprint()
@@ -451,7 +452,7 @@ func (r *Repository) AcceptServiceEffect(ctx context.Context, in m.ServiceEffect
 			return err
 		}
 		row.PendingOperationID = ""
-		return tx.Model(&row).Select("refunded_minor", "charged_back_minor", "shared_minor", "returned_minor", "released_minor", "pending_operation_id").Updates(row).Error
+		return tx.Model(&row).Select("refunded_minor", "charged_back_minor", "shared_minor", "returned_minor", "released_minor", "pending_operation_id", "reconciliation_reason").Updates(row).Error
 	})
 	return out, err
 }

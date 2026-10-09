@@ -406,3 +406,31 @@ Product Authority：同一次用户明确批准，平台按商户实际应结净
 - TDD与必要检查：cash/CASH/NOCASH/混合/全券付款及原通知durable wake；unknown/缺失/矛盾拒绝；100元两个批准分配例子、零应结收入；原bps快照、多次小额累计取整/原券逐ID现金累计；未分账部分退款/CANCEL全退/迟到付款无SHARE原退款；精确refund SUCCESS明细、full及mixed partial预回退/实际差额；M1/M3成功而B保存丢失原回读、两个RETURN phase原share关联、未知不重派、WAITING_FUNDS及退款成功后POST失败/响应丢失不解除hold；NOCASH正常应结余额/unsplit/release/share/finish口径、独立拒付/fees/原V1保留；真实渠道/新版浏览器/用户验收独立NOT_RUN，不扩验证平台。
 
 本增量 Product Authority：净收入政策已批准；phase顺序例外待用户决定。Independent Architecture：协议候选已具体化，正式实现仍 NOT_READY，须原 Reviewer 有界检查及该顺序决定，无需重审其它已解决增量。第一次原 Reviewer 草案预检指出未分账原退款被 SHARE/负POST拦住的设计 BLOCKER，已按上述零回退分支补齐；资金消费口径及POST失败保留hold归入 IMPLEMENTATION_TEST，不扩大产品范围。
+
+### 12.6 拒付与履约准入排序候选（2026-10-09，待产品顺序决定，NOT_READY）
+
+本节仅为 #25 的有界合同候选，不授权生产实现。Product Outcome：原已付款订单的服务商开始/交付、客户验收/拒收不能消费一个已经过期的资金预读。Classification: IMPLEMENTATION_TEST；当前 Must 未收敛，阻止本增量合并/真实开放。实测 `TestChargebackBetweenFundsReadAndFulfillmentCommitCannotAdvance` 在真实 E→B→M 返回后、E.Apply 前提交原 M chargeback，四动作全部仍成功，说明 #15 的最终投影修复未建立跨 owner 的共同排序点。
+
+Product Authority：原 §11.2 的 E request/CAS/权限、M canonical reversal、验收后原分账均保留；§11.5 E5 的准入后在途规则仅明确覆盖金融命令，不能由 Reviewer/Writer 自行扩为履约规则。**本节唯一待用户决定的最小例外：M 对精确原履约命令的持久资金准入作为排序点。拒付先提交，则拒绝准入；准入先提交，则只允许该原命令在 E 当前 CAS、身份/权限、原状态及 E fence 仍合法时提交，即使 M 的拒付在 E 提交前到达。拒付立即保存真实 M 事实并阻断后续新准入、新分账；不撤销已经完成的履约或验收、不放行另一命令。** 现有批准不等于这个顺序例外已获批准。保留严格“任何拒付提交早于 E 最终提交都必须拒绝”的替代决定时，本候选不实施；不能用延迟真实 M 拒付、跨 owner 持锁或隐含三库原子来伪造满足。
+
+Scope：仅四种原命令、原 M payment binding 下的非经济准入证明、原 typed E/B/M port 和消费者。Out of Scope：新资金效果/资金 reservation、新队列/通用协调/事件/恢复平台、第二账本、重派/换号、退款或营销扩展、补差/垫资/债务、DB 合并、部署/真实渠道或数据操作。无新 UI/页面/权限；沿原 Figma 操作和原 pending JSON 手动重试。本节不改变 §12.5 待答退款顺序。
+
+Owner/contract→implementation→injection→consumer：E 仍拥有履约命令、request 状态、操作结果、当前 version/CAS；M 仍拥有付款、拒付及同一 payment lock 下的精确资金准入事实；B/`ecoservicesbilling` 只做原映射/调用，不成为第二资金 owner。原 E Service→TradingPort→B ServicePurchases→M ServiceFundsStore 的窄 admission/read 合同→M 原 persistence 同 owner 事务→原 `buildEcoservices` 独立 pools 注入→E 原 request Apply。普通个人/钱包退款消费者不得消费这个服务准入；M 不持事务跨 owner 调用，不新增 M→E 回调。
+
+有界候选不变量与失败处理：
+
+- M 准入身份由原 organization/actor、kind、key、request/order、原 request version、完整 payload fingerprint、原 payment receipt 精确封存；同键异载荷冲突，payment receipt/order/request/buyer/provider 全部与原 immutable binding 匹配。不接受客户端提供的任意成功 proof、不把 caller 的“资金正常”布尔值作为事实；只有四种合法动作能使用本合同。
+- M 在与 ObserveServiceChargeback/原 service reversal 相同的 payment binding 锁内校验 canonical funds、reconciliation fence、原付款与准入身份，并提交一个不可变非经济 receipt。事务失败零准入；不存在当前 proof 时 canonical chargeback/ChargedBackMinor>0 或独立 RECON 必须拒绝。合法已确认部分退款、原佣金回退本身不禁止继续原服务：原 E 保留的 SERVICING/AWAITING_ACCEPTANCE 与 hold 解除、M 按剩余累计净额结算仍适用；全额退款/取消由原 E state/CAS/fence 拒绝，不能把所有 reversal 混为拒付。该 receipt 不占用、释放或改变原资金 operation reservation，不产生 money effect，不允许 SHARE/FINISH 绕过原 current-funds gate。
+- 原准入重复只回读完全匹配 proof，不能凭相同 key 为另一个 actor/kind/version/payload 建新准入。原 M 拒付始终立即保存；所有真实 service chargeback 接受入口共用同一原 payment 锁，不能只覆盖 RecordChargebackSettlement 而遗漏原 ServiceEffect(CHARGEBACK)。合法已派发资金操作的原 recovery 保留，不将该非经济 proof 当作金融 dispatch authority。
+- E 在调用前精确回读原成功 operation result；已完成命令保持原结果，不重新准入/重复履约。未完成命令经原 typed adapter 获取 M proof，E 锁内校验 proof 对应本次原命令及 payment receipt，随后执行原 tenant/actor、request version、TransitionRequest、文件归属和当前 E fence。旧 proof 不覆盖较新 E version、退款提议、RECON、已完成验收或权限失败，不恢复旧 snapshot，不解除独立资金 hold。
+- M proof 响应丢失、E 保存失败、进程重启均只按同一原 key/payload 回读；不自动执行履约、不从财务 recovery loop 消费它、不轮换 key/version 或生成另一 acceptance。是否允许此前准入的原命令继续以同一 proof 进入 E，属于上述唯一顺序例外的范围；即便 proof 有效，E 当前 CAS/fence 不合法仍拒绝。未知/缺失/矛盾 proof、读取错误、保存错误都不提交新的 E 履约。
+- 无共享事务/UoW：E/B/M 各自独立池和权限保持。E 并发只靠原 request lock/CAS 收敛；M admission 与 canonical chargeback 靠原 payment lock 排序，不能把过程声称为 E/M 同时提交。原已知拒付先于准入时，不获取新 receipt、不创建新的 E financial command/acceptance；拒付后原 B/M 分账守卫继续阻止新资金效果。自动原 CREATE 恢复最终向 E 投影 RECON，不成为 race 的唯一防线。
+- Legacy decision: EXTRACT。复用当前 M payment lock/immutable receipt、E request CAS/immutable operation replay、原 typed adapters；不包装 legacy service、迁移旧行、fallback/双读双写或另建事实源。新安装 schema/权限仅在准入后由原 M installer provision；旧试用不直接升级/重seed。
+
+验证范围：先复用已实际四 RED 的 E→B→M 测试证明“拒付在旧预读后、M 精确准入前”全部拒绝；再以原受限 PG 的独立实例/连接验证 chargeback 与 admission 两种真实锁顺序。仅被批准的“准入先、拒付后”原命令可继续且不得绕过 E 较新 CAS/fence；已完成 replay 保持，异键/载荷/actor/version/receipt 拒绝，M proof 保存/回读失败零 E 提交，原 proof 丢响应精确回读，不重复 acceptance/financial command。覆盖 service chargeback sibling、不产生新 SHARE/FINISH，以及 E 已投影 RECON 的拒绝；合法部分退款/原回退之后正常继续履约和按剩余净额验收分账，全退/取消依旧拒绝。复用既有测试/隔离 PG，未执行场景保持 NOT_RUN，不新建验收平台。真实渠道/新版运行/用户验收独立 NOT_RUN。
+
+开工条件：上述单一顺序例外获用户明确决定，原 Reviewer 仅对本节实际新边界完成有界独立检查并明确 IMPLEMENTATION_READY，Issue #603 对应增量 Ready，然后同一 Writer TDD。本节新准入协议当前只有测试/调查，尚未修改生产或正式 schema；原 ServiceEffect(CHARGEBACK) 漏保存既有 RECON 的 sibling 是独立的 Reuse Existing Architecture 修复，不是本节新准入实现或竞态修复完成。
+
+原 Reviewer 首轮草案预检指出“非零 reversal”会误伤合法部分退款后的正常履约，属于核心 happy path 设计 BLOCKER；本节已限定为 canonical chargeback/独立 RECON，并明确原部分退款/佣金回退的正常继续与剩余净额验收路径。该修正未改变待用户决定的排序例外，不提前写 Ready。
+
+第二轮原 Reviewer 只检查该实际文档修正及候选边界，确认部分退款 BLOCKER 已收敛，无剩余具体设计 BLOCKER；精确证明、同 payment 锁排序、E 当前 CAS/fence/replay 及失败恢复方向可实施。结论仍是“待用户明确排序例外，NOT_READY”，不是 IMPLEMENTATION_READY。原 chargeback effect sibling 按原 §11.4 同事务保存既有 RECON 无新高风险边界，独立在实现测试收敛；不为此重审全局基线。
