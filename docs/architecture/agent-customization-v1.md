@@ -30,7 +30,7 @@ Out of scope：支付或账本、自动联系/通知、服务商分配、SLA承�
 
 一个 PostgreSQL pool/schema `agent_customization`，与既有 owner 无跨库一致性。表 requests 保存 ID、OrganizationID、提交actor、输入、当前阶段、version、创建/更新时间；events 保存需求ID、version、处理actor、阶段、说明及时间；commands 保存准确 scope+actor+UUID key、fingerprint、原回执；attachments 保存需求ID、序号、名称、content-type、SHA256及bytea。
 
-首次提交在一事务写需求、初始 SUBMITTED 事件、全部附件和回执；任何一步失败回滚。命令身份 `(scope-kind, organization-id, actor-id, key)`：同键同意图返回原回执，同键不同payload/操作/资源/expectedVersion冲突。首次需求ID为稳定随机UUID，绑定同一key。不能失败后自动换key。
+首次提交在一事务写需求、初始 SUBMITTED 事件、全部附件和回执；任何一步失败回滚。命令身份 `(scope-kind, organization-id, actor-id, key)`：同键同意图返回原回执，同键不同payload/操作/资源/expectedVersion冲突。首次需求ID为绑定完整命令身份的稳定UUID。不能失败后自动换key。
 
 五阶段仅是人工事实：SUBMITTED 提交需求 → EVALUATING 需求评估 → PROPOSED 方案报价 → DEVELOPING 开发测试 → DELIVERED 交付使用。专员可在当前阶段追加记录，或推进一个阶段；不自动估进度百分比。推进 PROPOSED 需要方案/报价说明；推进 DEVELOPING 需要专员明确记录线下确认说明；推进 DELIVERED 需要交付说明。线下确认是专员陈述及时间/actor的记录，不表示系统验证了付款或用户验收。
 
@@ -51,6 +51,8 @@ Out of scope：支付或账本、自动联系/通知、服务商分配、SLA承�
 名称<=120字符、场景<=240、描述<=10000、联系人<=80、联系方法<=160、事件说明<=5000；严格UTF-8、控制字符限制（长文本允许换行/tab）。列表每页20、最多50，稳定UUID cursor；详情事件按version分页每页50，不能无限返回全部历史。请求最多30s；读取GET拒绝未读body及未知query；write拒绝编码/重复key/未知字段/多JSON值/无consent。
 
 Console key包括user/org/permission，在切换/撤权时abort且卸载，迟到响应丢弃。BFF复用正常身份token/同源写保护/current企业选择cookie；mutation冻结原user/org/payload/key，未知时只重试同一冻结命令。已知CAS/输入拒绝可刷新后新的人工确认。文件下载仍走当前session/BFF，无公开对象URL。
+
+客户端复用现有有界pending命令保存行为。短命令在scope绑定的sessionStorage完整保存；大附件原载荷在有界功能内存保留，小marker保存原key/path/version/digest。导航可恢复；刷新丢失大载荷时保留marker与未确认阻断，不允许生成新意图。正常使用与该限制见[接线交接](../operations/agent-customization-v1-handoff.md)。读回JSON上限4MiB覆盖合法分页与Go文字转义，不改变附件2MiB上限。
 
 ## UI与接线边界
 
