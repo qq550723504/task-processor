@@ -47,7 +47,8 @@ func issue398AcquisitionAPIViolations(sources []listingKitImageBoundarySource) (
 		{"internal/integration/acquisition/a1688", issue398HTTP, map[string][]string{"internal/integration/acquisition/a1688/public.go": {"NewPublicImageHTTPClient"}}},
 		{"cmd/product-acquisition-init", "task-processor/internal/app/productsourcing", map[string][]string{"cmd/product-acquisition-init/main.go": {"InitializeAcquisitionDatabase"}}},
 		// #399/#561 constructor edges; #605 adds only current Collection publication.
-		{"internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", map[string][]string{"internal/app/httpapi/product_acquisition_application.go": {"NewPublicAcquisition", "NewBrowserAcquisition", "NewBrowserPublicAcquisition", "PublishedAcquisition", "NewPublishedAcquisitionReader", "NewAcquisitionChargeOwner", "AcquisitionPublicationOption", "WithCollectionPublication"}}},
+		// #612 frozen full-image design adds only its explicitly authorized read-only receipt constructor.
+		{"internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", map[string][]string{"internal/app/httpapi/product_acquisition_application.go": {"NewPublicAcquisition", "NewBrowserAcquisition", "NewBrowserPublicAcquisition", "PublishedAcquisition", "NewPublishedAcquisitionReader", "NewScopedPublishedAcquisitionReader", "NewAcquisitionChargeOwner", "AcquisitionPublicationOption", "WithCollectionPublication"}}},
 		// #605 frozen CURRENT helpers: exact files/APIs, all source text, ceiling=8.
 		{"internal/app/productsourcing", issue398HTTP, map[string][]string{
 			"internal/app/productsourcing/source_media.go": {"InspectGeneratedArtifact", "ValidatePublicHTTPSURL"},
@@ -197,6 +198,8 @@ func TestIssue398CurrentLeafAndInitializerAPIGuard(t *testing.T) {
 		{"initializer cannot build Browser", "cmd/product-acquisition-init/main.go", "task-processor/internal/app/productsourcing", "NewBrowserAcquisition", false},
 		{"module exact receipt read", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", "PublishedAcquisition", true},
 		{"module exact published reader", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", "NewPublishedAcquisitionReader", true},
+		{"image module exact scoped receipt reader", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", "NewScopedPublishedAcquisitionReader", true},
+		{"Collection cannot consume image scoped constructor", "internal/app/httpapi/product_collection_application.go", "task-processor/internal/app/productsourcing", "NewScopedPublishedAcquisitionReader", false},
 		{"module exact charge proof owner", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", "NewAcquisitionChargeOwner", true},
 		{"module target subpackage", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing/httpapi", "NewPublicAcquisition", false},
 	} {
