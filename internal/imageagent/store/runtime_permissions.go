@@ -15,8 +15,8 @@ var errOrganizationRuntimePermissions = errors.New("organization image agent run
 var organizationRuntimeRoleName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
 
 // API Prepare/Confirm/Cancel uses this role. Only the confirmation/status
-// columns are writable; budgets, provider facts and financial proofs stay
-// with the worker and their existing owners.
+// columns are writable. Candidate verification reads original provider facts
+// and materialization; their writes stay with the worker and existing owners.
 var organizationRuntimeTables = []struct{ name, privileges string }{
 	{"image_agent_v2_runs", "SELECT,INSERT"},
 	{"image_agent_v2_plans", "INSERT"},
@@ -26,6 +26,7 @@ var organizationRuntimeTables = []struct{ name, privileges string }{
 	{"image_agent_v2_asset_catalog_manifests", "INSERT"},
 	{"image_agent_v2_projection_snapshots", "SELECT,INSERT"},
 	{"image_agent_v2_projection_commits", "SELECT,INSERT"},
+	{"image_agent_v3_slot_external_effects", "SELECT"},
 	{"product_approval_receipts", "SELECT"},
 	{"product_approved_assets", "SELECT"},
 }
@@ -44,6 +45,7 @@ const organizationRuntimePermissionQuery = `WITH admitted(table_name,privilege) 
  ('image_agent_v2_asset_catalog_manifests','INSERT'),
  ('image_agent_v2_projection_snapshots','SELECT'),('image_agent_v2_projection_snapshots','INSERT'),
  ('image_agent_v2_projection_commits','SELECT'),('image_agent_v2_projection_commits','INSERT'),
+ ('image_agent_v3_slot_external_effects','SELECT'),
  ('product_approval_receipts','SELECT'),('product_approved_assets','SELECT')),
  admitted_columns(table_name,column_name) AS (VALUES
  ('image_agent_v2_runs','admission_json'),('image_agent_v2_runs','status'),

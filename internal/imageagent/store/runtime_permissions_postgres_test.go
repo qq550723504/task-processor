@@ -98,6 +98,38 @@ func TestOrganizationImageRuntimeRoleHasOnlyCurrentAPIGrants(t *testing.T) {
 	next.Run.Status, next.Run.CurrentNode, next.Run.Version = imageagent.RunStatusExecuting, "execute_slots", current.Run.Version+1
 	_, err = repository.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: "confirm:" + receipt.Command.ConfirmActionID, ExpectedProjectionVersion: current.ProjectionVersion, ExpectedRunVersion: current.Run.Version, Snapshot: next, RunMutation: &imageagent.RunMutation{ImageAdmission: &receipt, Status: next.Run.Status, CurrentNode: next.Run.CurrentNode, ActivePlanRevision: 1}, EventType: "run.confirmed", EventPayload: json.RawMessage(`{}`)})
 	require.NoError(t, err, "current API confirms the set with the original receipt in its existing transaction")
+	ownerRepository := NewOrganizationRepository(owner)
+	identity := imageagent.SlotExternalEffectIdentity{RunScope: scope, PlanRevision: 1, SlotID: plan.Slots[0].ID, Attempt: 1}
+	reservation := imageagent.SlotEffectV3Reservation{Identity: identity, IdempotencyKey: "original-attempt", InputFingerprint: strings.Repeat("b", 64)}
+	originalEffect, won, err := ownerRepository.(imageagent.SlotExternalEffectV3Repository).ReserveSlotProviderV3(ctx, reservation)
+	require.NoError(t, err)
+	require.True(t, won)
+	quote := plan.Slots[0].Recipe.Quote
+	intent := imageagent.GenerationIntent{Identity: identity, MemberID: run.MemberID, CatalogHash: current.AssetCatalog.Manifest.Hash, SourceDigest: imageagent.ImageSourceBundleDigest(plan.Slots[0].Recipe.References), PromptVersion: imageagent.ImageSetSchema, InputProtocol: imageagent.ImageSetSchema, InputDigest: imageagent.ImageGenerationInputDigestFromFingerprint(reservation.InputFingerprint), RouteReference: quote.RouteReference, CredentialReference: quote.CredentialReference, ConfigurationVersion: quote.ConfigurationVersion, Provider: quote.Provider, Model: quote.Model, Protocol: quote.Protocol, Resolution: quote.Resolution, Quality: quote.Quality, PriceVersion: quote.PriceVersion, Points: quote.Points, LimitVersion: 1, MonthStart: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)}
+	ownerFacts := ownerRepository.(imageagent.GenerationFactRepository)
+	originalFact, err := ownerFacts.PrepareGenerationIntent(ctx, intent)
+	require.NoError(t, err)
+	originalFact, err = ownerFacts.BindGenerationReservation(ctx, intent, imageagent.GenerationReservationReceipt{IntentID: originalFact.IntentID, Fingerprint: originalFact.Fingerprint, OrganizationID: scope.TenantID, MemberID: run.MemberID, OperationID: "image-reserve:" + originalFact.IntentID, ReservationID: "reservation", ResourceType: "ai_point", Points: intent.Points, PriceVersion: intent.PriceVersion, LimitVersion: intent.LimitVersion, MonthStart: intent.MonthStart})
+	require.NoError(t, err)
+	_, won, err = ownerFacts.BeginGenerationDispatch(ctx, intent)
+	require.NoError(t, err)
+	require.True(t, won)
+	originalFact, err = ownerFacts.RecordGenerationSuccess(ctx, intent, imageagent.GenerationSuccess{ResponseID: "response", RequestID: "request", ResultDigest: strings.Repeat("d", 64), ResultURL: "https://output.example.org/result.png"})
+	require.NoError(t, err)
+	originalFact, err = ownerFacts.BindGenerationSettlement(ctx, intent, imageagent.GenerationSettlementReceipt{IntentID: originalFact.IntentID, Fingerprint: originalFact.Fingerprint, OperationID: "image-finalize:" + originalFact.IntentID, ReservationID: "reservation", State: "committed", Points: intent.Points, ProofDigest: originalFact.TerminalProofDigest()})
+	require.NoError(t, err)
+	apiFact, err := repository.(imageagent.GenerationFactRepository).ReadGenerationFact(ctx, identity)
+	require.NoError(t, err, "candidate preview must read the original settled generation fact through the admitted API role")
+	require.Equal(t, originalFact, apiFact)
+	apiEffect, err := repository.(imageagent.SlotExternalEffectV3Repository).GetSlotExternalEffectV3(ctx, identity)
+	require.NoError(t, err, "candidate preview must read original materialization through the same admitted API role")
+	require.Equal(t, originalEffect, apiEffect)
+	wrongIdentity := identity
+	wrongIdentity.TenantID = "another-org"
+	_, err = repository.(imageagent.GenerationFactRepository).ReadGenerationFact(ctx, wrongIdentity)
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	_, err = repository.(imageagent.SlotExternalEffectV3Repository).GetSlotExternalEffectV3(ctx, wrongIdentity)
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
 	for _, tc := range []struct{ name, grant, revoke string }{
 		{"delete_run", "GRANT DELETE ON image_agent_v2_runs TO " + role, "REVOKE DELETE ON image_agent_v2_runs FROM " + role},
 		{"write_attempt", "GRANT INSERT ON image_agent_v2_attempts TO " + role, "REVOKE INSERT ON image_agent_v2_attempts FROM " + role},
@@ -107,6 +139,10 @@ func TestOrganizationImageRuntimeRoleHasOnlyCurrentAPIGrants(t *testing.T) {
 		{"approval_write", "GRANT INSERT ON product_approved_assets TO " + role, "REVOKE INSERT ON product_approved_assets FROM " + role},
 		{"whole_run_update", "GRANT UPDATE ON image_agent_v2_runs TO " + role, "REVOKE UPDATE ON image_agent_v2_runs FROM " + role},
 		{"budget_column", "GRANT UPDATE(budget_json) ON image_agent_v2_runs TO " + role, "REVOKE UPDATE(budget_json) ON image_agent_v2_runs FROM " + role},
+		{"missing_candidate_read", "REVOKE SELECT ON image_agent_v3_slot_external_effects FROM " + role, "GRANT SELECT ON image_agent_v3_slot_external_effects TO " + role},
+		{"candidate_insert", "GRANT INSERT ON image_agent_v3_slot_external_effects TO " + role, "REVOKE INSERT ON image_agent_v3_slot_external_effects FROM " + role},
+		{"candidate_update", "GRANT UPDATE ON image_agent_v3_slot_external_effects TO " + role, "REVOKE UPDATE ON image_agent_v3_slot_external_effects FROM " + role},
+		{"candidate_delete", "GRANT DELETE ON image_agent_v3_slot_external_effects TO " + role, "REVOKE DELETE ON image_agent_v3_slot_external_effects FROM " + role},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.NoError(t, owner.Exec(tc.grant).Error)
@@ -125,4 +161,6 @@ func TestOrganizationImageRuntimeRoleHasOnlyCurrentAPIGrants(t *testing.T) {
 	require.Error(t, runtimeDB.Exec("SELECT id FROM image_agent_v2_asset_catalog").Error)
 	require.Error(t, runtimeDB.Exec("UPDATE image_agent_v2_runs SET budget_json='{}'").Error)
 	require.Error(t, runtimeDB.Exec("INSERT INTO product_approval_receipts(tenant_id,action_id,payload_hash,asset_ids_json) VALUES('x','y','z','[]')").Error)
+	require.Error(t, runtimeDB.Exec("UPDATE image_agent_v3_slot_external_effects SET generation_fact_json='{}'").Error)
+	require.Error(t, runtimeDB.Exec("DELETE FROM image_agent_v3_slot_external_effects").Error)
 }

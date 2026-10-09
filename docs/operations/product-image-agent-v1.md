@@ -24,7 +24,7 @@
 | `productAgent.database` | 已安装 `agent_configuration` 的当前配置 owner；仅图片配置可用 `enabled:false`，无需启用标题执行 |
 | `supplyChain` | 实际 Product/Store/Asset ports、当前官方规则及同一 namespace 的 Supply Temporal |
 | `supplyChain.assetDatabase` | 与 `imageAgent.database` 同一物理 Image/Asset 数据库，使用独立 `supply_asset_runtime` pool，最多8连接 |
-| `imageAgent.database` | `image_agent_runtime` 独立 HTTP pool，最多8连接；当前 Organization Image schema |
+| `imageAgent.database` | `image_agent_runtime` 独立 HTTP pool，最多8连接；当前 Organization Image schema。候选核验须只读 `image_agent_v3_slot_external_effects` 的原生成/物化事实，不授予该表写权限 |
 | `imageAgent.workerConfigFile` | 受保护的绝对路径，指向现有 worker YAML，例如 `C:\private\image-set-worker.yaml`；提供相同物理 Image DB 的 `image_agent_worker_runtime` pool，1–8连接 |
 | 两份配置的 generation | 同一个真实 `priceVersion` 与已确认正整数 `pointsPerImage`；无默认价格，不能用美元 costMicros 代替点数 |
 | 两份配置的 admission | enabled、相同企业 allowlist；实际企业仍须显式启用配置，原 actor/member 每次派发重新授权 |
