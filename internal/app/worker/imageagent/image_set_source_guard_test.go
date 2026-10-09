@@ -16,7 +16,7 @@ type dispatchSourceContexts struct {
 func (*dispatchSourceContexts) ResolveImageSet(context.Context, imageagent.ExecutionIdentity, imageagent.PrepareImageSetInput) (imageagent.ImageSetPreparation, error) {
 	panic("dispatch must revalidate its original persisted plan")
 }
-func (c *dispatchSourceContexts) RevalidateImageSet(_ context.Context, id imageagent.ExecutionIdentity, _ imageagent.RunProjection) error {
+func (c *dispatchSourceContexts) AuthorizeImageSetSource(_ context.Context, id imageagent.ExecutionIdentity, _ imageagent.RunProjection) error {
 	c.calls++
 	c.identity = id
 	return c.denied

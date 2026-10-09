@@ -11,6 +11,7 @@ import (
 )
 
 type ImageSetSources struct {
+	Permission             string
 	Sources                record.TargetSourceSelector
 	Authorization          preparation.Authorizer
 	ExecutionSources       record.TargetExecutionSourceSelector
@@ -27,18 +28,25 @@ func (r ImageSetSources) ReadImageSetSource(ctx context.Context, identity imagea
 		return imageagent.ImageSetPreparation{}, imageagent.ErrIdentityRequired
 	}
 	scope := collection.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID, MemberID: identity.MemberID}
+	permission := r.Permission
+	if permission == "" {
+		permission = preparation.PermissionManage
+	}
+	if permission != preparation.PermissionManage && permission != preparation.PermissionRead {
+		return imageagent.ImageSetPreparation{}, imageagent.ErrIdentityRequired
+	}
 	var selected preparation.AuthorizedSource
 	var err error
 	// Browser and durable execution authorities are explicitly assembled.
 	// There is no fallback from a denied browser read to service authority.
 	if r.Sources != nil && r.ExecutionSources == nil && r.Authorization != nil && r.ExecutionAuthorization == nil {
-		current, authErr := r.Authorization.Authorize(ctx, preparation.PermissionManage)
+		current, authErr := r.Authorization.Authorize(ctx, permission)
 		if authErr != nil || current != scope {
 			return imageagent.ImageSetPreparation{}, imageagent.ErrIdentityRequired
 		}
 		selected, err = r.Sources.Select(ctx, input.ContextID)
 	} else if r.Sources == nil && r.ExecutionSources != nil && r.Authorization == nil && r.ExecutionAuthorization != nil {
-		if err = r.ExecutionAuthorization.AuthorizeExecution(ctx, scope, preparation.PermissionManage); err != nil {
+		if err = r.ExecutionAuthorization.AuthorizeExecution(ctx, scope, permission); err != nil {
 			return imageagent.ImageSetPreparation{}, err
 		}
 		selected, err = r.ExecutionSources.SelectForExecution(ctx, scope, input.ContextID)

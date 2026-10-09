@@ -47,6 +47,12 @@ type ImageSetPlan struct {
 	Configuration                                                  agent.ConfigurationSnapshotRef
 	ConfigurationEpoch, ParametersDigest, InputDigest, QuoteDigest string
 	MaxPoints                                                      int64
+	Regeneration                                                   *ImageSetRegeneration `json:",omitempty"`
+}
+
+type ImageSetRegeneration struct {
+	RunID, ClosedEffectsDigest string
+	ResultDigest               string `json:",omitempty"`
 }
 
 type ImagePlacement struct {
@@ -125,6 +131,9 @@ func ValidateImageSetPlan(plan Plan) error {
 	s := plan.Set
 	if s == nil || s.Schema != ImageSetSchema || len(plan.Slots) > MaxPlanSlots || len(plan.StyleReferenceIDs) > 0 {
 		return fmt.Errorf("%w: incomplete image set binding", ErrValidation)
+	}
+	if s.Regeneration != nil && (!agentconfig.UUID(s.Regeneration.RunID) || !agentconfig.ImageDigest(s.Regeneration.ClosedEffectsDigest) || s.Regeneration.ResultDigest != "" && !agentconfig.ImageDigest(s.Regeneration.ResultDigest)) {
+		return ErrValidation
 	}
 	if !s.Source.ContextKind.Valid() || !canonicalImageValue(s.Source.ProductID) || !canonicalImageValue(s.Source.OperationID) || !canonicalImageValue(s.Source.OriginalPublicationID) || s.Source.OriginalVersion == 0 || s.Source.EffectiveVersion == 0 || !validGenerationCatalogHash(s.Source.CatalogHash) {
 		return fmt.Errorf("%w: incomplete image source binding", ErrValidation)
@@ -256,5 +265,9 @@ func CloneImageSetPlan(set *ImageSetPlan) *ImageSetPlan {
 		return nil
 	}
 	clone := *set
+	if set.Regeneration != nil {
+		value := *set.Regeneration
+		clone.Regeneration = &value
+	}
 	return &clone
 }

@@ -24,6 +24,37 @@ type setCandidateReader struct {
 	differentResult bool
 }
 
+type manualSetReader struct {
+	calls  int
+	denied bool
+}
+
+func (r *manualSetReader) ReadManualImage(_ context.Context, ref productasset.ManualImageReference) (productasset.SourceImage, error) {
+	r.calls++
+	if r.denied {
+		return productasset.SourceImage{}, productasset.ErrSourceApprovalForbidden
+	}
+	id := "source-media-" + ref.Hash
+	url := "https://images.example.org/manual.png"
+	return productasset.SourceImage{ID: id, URL: url, ReferenceHash: productasset.ReferenceHash(id, url), Width: 800, Height: 1000}, nil
+}
+func TestImageSetManualReplacementReadsExistingMediaOwnerAndRecordsItsOrigin(t *testing.T) {
+	sources, input := setSelectionFixture()
+	candidates := &setCandidateReader{}
+	service, _ := setSelectionService(t, sources, candidates)
+	manual := &manualSetReader{}
+	service.WithManualImages(manual)
+	input.Choices = []productasset.ImageSetChoice{{Kind: "manual", ManualMedia: &productasset.ManualImageReference{Hash: strings.Repeat("a", 64), Bytes: 100}, Presentation: productasset.ImagePresentation{Group: "carousel", Order: 1}}}
+	preview, err := service.Preview(context.Background(), input)
+	require.NoError(t, err)
+	require.Equal(t, input.Choices[0].ManualMedia, preview.Assets[0].SourceApproval.ManualMedia)
+	require.Zero(t, candidates.calls)
+	require.Equal(t, 1, manual.calls)
+	manual.denied = true
+	_, err = service.Preview(context.Background(), input)
+	require.ErrorIs(t, err, productasset.ErrSourceApprovalForbidden)
+}
+
 func (r *setCandidateReader) ReadImageSetCandidate(_ context.Context, source productasset.SourceSelection, choice productasset.ImageSetChoice) (productasset.ImageSetCandidate, error) {
 	r.calls++
 	if r.deny != nil {
@@ -53,6 +84,41 @@ func setSelectionService(t *testing.T, sources *setSourceReader, candidates *set
 	service, err := productasset.NewImageSetService(sources, repo, repo.(productasset.ImageSetInventoryReader), repo.(productasset.ApprovalCommitReader), candidates, nil)
 	require.NoError(t, err)
 	return service, repo
+}
+
+func TestImageSetExplicitGenericAdoptionRequiresTheExactCurrentGenericHead(t *testing.T) {
+	sources, input := setSelectionFixture()
+	candidates := &setCandidateReader{}
+	service, repo := setSelectionService(t, sources, candidates)
+	preview, err := service.Preview(context.Background(), input)
+	require.NoError(t, err)
+	input.SelectionDigest = preview.Digest
+	receipt, err := service.Select(context.Background(), input)
+	require.NoError(t, err)
+	generic, err := repo.(productasset.ImageSetInventoryReader).ReadImageSetInventory(context.Background(), productasset.InventoryScope{TenantID: "org", ProductKey: "product", TargetPlatform: "product", SourceSnapshotVersion: 1})
+	require.NoError(t, err)
+	sources.selection.TargetPlatform = "shein"
+	service, err = productasset.NewImageSetService(sources, repo, repo.(productasset.ImageSetInventoryReader), repo.(productasset.ApprovalCommitReader), candidates, selectedTargetPositions{t: t})
+	require.NoError(t, err)
+	input.ActionID = "adopt-1"
+	input.Source.TargetPlatform = "shein"
+	input.SelectionDigest = ""
+	input.Target = &productasset.ImageSetTarget{RecordID: "record", StoreID: "store", Site: "shein-us", ApplicationID: "application", ApplicationMode: "self_operated", CategoryID: 1, ProductTypeID: 2, AttributesDigest: strings.Repeat("a", 64), VariantsDigest: strings.Repeat("b", 64)}
+	input.Choices = []productasset.ImageSetChoice{{Kind: "approved", ApprovalActionID: receipt.ActionID, AssetID: receipt.AssetIDs[1], Presentation: productasset.ImagePresentation{Group: "detail", Order: 1}, OfficialPlacement: &productasset.ImageOfficialPlacement{Group: "skc", Type: 5, Sort: 1, Site: "shein-us"}}}
+	_, err = service.Preview(context.Background(), input)
+	require.ErrorIs(t, err, productasset.ErrApprovalConflict)
+	input.Choices[0].GenericHead = &generic.Head
+	before := candidates.calls
+	preview, err = service.Preview(context.Background(), input)
+	require.NoError(t, err)
+	require.Equal(t, before, candidates.calls, "adoption reads immutable approved materials without generating")
+	input.Choices[0].GenericHead = &productasset.ImageInventoryHead{ActionID: "stale", PayloadHash: strings.Repeat("a", 64)}
+	_, err = service.Preview(context.Background(), input)
+	require.ErrorIs(t, err, productasset.ErrApprovalConflict)
+	input.Choices[0].GenericHead = &generic.Head
+	input.SelectionDigest = preview.Digest
+	_, err = service.Select(context.Background(), input)
+	require.NoError(t, err)
 }
 
 type selectedTargetPositions struct {

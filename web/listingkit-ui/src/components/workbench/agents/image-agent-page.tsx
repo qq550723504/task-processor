@@ -13,6 +13,7 @@ import { ResourceDialog } from "../resources/resource-dialog";
 import { configurationError, useConfigurationRead } from "./agent-configuration-hooks";
 import { ImageConfigurationDialog } from "./image-configuration-dialog";
 import styles from "./agents.module.css";
+import {RecentImageSets} from "./recent-image-sets";
 
 const agentId = "product.image.agent";
 const activationNames = { ENABLED: "已启用", DISABLED: "已停用", NOT_ENABLED: "尚未启用" };
@@ -99,6 +100,7 @@ export function ImageAgentPage({ scope, organization }: { scope: ConfigurationSc
         {(after || templates.data?.nextCursor) && <nav className={styles.actions} aria-label="图片模板分页">{after && <Button variant="outline" onClick={() => setAfter("")}>返回第一页</Button>}{templates.data?.nextCursor && <Button variant="outline" onClick={() => setAfter(templates.data!.nextCursor)}>下一页</Button>}</nav>}
       </Card>
     </>}
+    {entry?.canReadRuns&&<RecentImageSets key={`${scope.userId}:${scope.organizationId}`} scope={scope} nonce={nonce}/>}
     {draft && <Card className={styles.panel}><h2>{draft.original ? `编辑模板 · 当前 v${draft.original.version}` : "新建图片模板"}</h2><label>模板名称<Input aria-label="模板名称" value={draft.name} disabled={locked} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label><label>素材平台<Select aria-label="素材平台" value={draft.targetPlatform} disabled={locked} onChange={event => setDraft({ ...draft, targetPlatform: event.target.value as Draft["targetPlatform"] })}><option value="product">通用商品素材</option><option value="shein">SHEIN</option>{["temu", "amazon"].includes(draft.targetPlatform) && <option value={draft.targetPlatform}>{draft.targetPlatform.toUpperCase()} · 当前未开放执行</option>}</Select></label><p>主图 {draft.image.carousel.length} 张 · 详情图 {draft.image.detail.length} 张 · {draft.image.background} · {draft.image.language}</p><div className={styles.actions}><Button variant="outline" disabled={locked} onClick={() => setConfigure(true)}>配置整套图片</Button><Button variant="outline" disabled={locked} onClick={() => setDraft(null)}>取消编辑</Button><Button disabled={locked} onClick={save}>保存图片模板</Button></div>{formError && <p role="alert">{formError}</p>}</Card>}
     {configure && draft && <ImageConfigurationDialog initial={draft.image} locked={locked} onClose={() => setConfigure(false)} onSave={image => { setDraft({ ...draft, image }); setConfigure(false); }} />}
     {disable && entry && <ResourceDialog title="停用商品图片智能体" locked={locked} onClose={() => setDisable(false)}><p>停用后不能确认新的生成计划。已准入的任务仍按原预算完成，图片资产与已有回执保留。</p><div className={styles.actions}><Button variant="outline" disabled={locked} onClick={() => setDisable(false)}>取消</Button><Button disabled={locked} onClick={() => mutate({ path: `${agentId}/disable`, payload: {}, method: "POST", operation: "disable", revision: entry.agent.revision })}>确认停用</Button></div></ResourceDialog>}

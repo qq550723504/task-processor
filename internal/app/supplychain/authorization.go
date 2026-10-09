@@ -118,6 +118,21 @@ func (a OrganizationExecutionAuthorizer) AuthorizeImageExecution(ctx context.Con
 	}
 	return nil
 }
+
+func (a OrganizationExecutionAuthorizer) AuthorizeImageSource(ctx context.Context, scope collection.Scope) error {
+	roles, err := a.current(ctx, scope)
+	if err != nil {
+		return err
+	}
+	allowed, err := authz.AuthorizeOrganization(ctx, a.Permissions, scope.ActorID, scope.OrganizationID, roles, authz.PermissionProductSourcingWrite)
+	if err != nil {
+		return collection.ErrUnavailable
+	}
+	if !allowed {
+		return collection.ErrForbidden
+	}
+	return nil
+}
 func (a OrganizationExecutionAuthorizer) AuthorizeProductExecution(ctx context.Context, subject storecenter.ProductExecutionSubject) (storecenter.ProductExecutionAuthorization, error) {
 	scope := collection.Scope{OrganizationID: subject.OrganizationID, ActorID: subject.ActorID, MemberID: subject.MemberID}
 	permissions := []string{preparation.PermissionRead, authz.PermissionWorkbenchStoreRead}

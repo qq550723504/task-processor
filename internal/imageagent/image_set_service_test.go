@@ -85,6 +85,67 @@ func TestPrepareImageSetRejectsAnotherSourceOwner(t *testing.T) {
 	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
 }
 
+func TestPrepareImageSetQuotesOnlyExplicitlySelectedTasks(t *testing.T) {
+	s, _, workflows, _, _, _, ctx, input := imageSetServiceFixture(t)
+	require.NoError(t, json.Unmarshal([]byte(`{"SelectedTaskIDs":["overview"]}`), &input))
+	prepared, err := s.PrepareImageSet(ctx, input)
+	require.NoError(t, err)
+	require.Equal(t, 1, prepared.Images, "unselected tasks must not acquire a new generation identity or quote")
+	require.Equal(t, "overview", prepared.Projection.Plan.Slots[0].ID)
+	require.EqualValues(t, 12, prepared.Points)
+	require.Zero(t, workflows.starts)
+}
+
+func TestRegenerationRequiresTheOriginalRunToHaveKnownClosedEffects(t *testing.T) {
+	s, _, _, _, _, _, ctx, input := imageSetServiceFixture(t)
+	first, err := s.PrepareImageSet(ctx, input)
+	require.NoError(t, err)
+	input.RequestID = "3b9ef503-8c6c-4a76-8eb8-047213c565cf"
+	raw, err := json.Marshal(map[string]any{"RegenerateFromRunID": first.Projection.Run.ID, "SelectedTaskIDs": []string{"overview"}})
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &input))
+	_, err = s.PrepareImageSet(ctx, input)
+	require.ErrorIs(t, err, imageagent.ErrCommandBlocked, "an unfinished or UNKNOWN original request cannot be replaced by another dispatch")
+}
+
+func TestKnownClosedSubsetRegenerationCreatesANewAwaitingConfirmationRun(t *testing.T) {
+	s, repo, workflows, config, _, _, ctx, input := imageSetServiceFixture(t)
+	prepared, err := s.PrepareImageSet(ctx, input)
+	require.NoError(t, err)
+	parent, err := s.ConfirmImagePlan(ctx, confirmSetInput(prepared))
+	require.NoError(t, err)
+	parent.Run.Status = imageagent.RunStatusBlocked
+	parent.Run.CurrentNode = "approve-results"
+	parent.Run.Version++
+	mutations := []imageagent.SlotProjectionMutation{}
+	for i := range parent.Slots {
+		parent.Slots[i].Slot.Status = imageagent.SlotStatusBlocked
+		parent.Slots[i].ErrorCode = "budget_exceeded"
+		parent.Slots[i].Closure = &imageagent.ImageSlotClosure{Kind: "not_dispatched"}
+		slot := parent.Slots[i]
+		mutations = append(mutations, imageagent.SlotProjectionMutation{PlanRevision: parent.Plan.Revision, Result: imageagent.SlotResult{SlotID: slot.Slot.ID, Status: slot.Slot.Status, ErrorCode: slot.ErrorCode, Closure: slot.Closure}, Projection: slot, Attempt: imageagent.StepAttempt{TenantID: parent.Run.TenantID, OwnerUserID: parent.Run.UserID, RunID: parent.Run.ID, PlanRevision: parent.Plan.Revision, SlotID: slot.Slot.ID, Node: "closed", IdempotencyKey: "closed:" + slot.Slot.ID, Outcome: "blocked", ErrorCategory: slot.ErrorCode}})
+	}
+	closedDigest, err := imageagent.ImageSetClosedEffectsDigest(parent.Plan, parent.Slots, nil)
+	require.NoError(t, err)
+	_, err = repo.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: imageagent.ScopeForRun(parent.Run), CommitID: "controlled-closed-parent", ExpectedProjectionVersion: parent.ProjectionVersion, ExpectedRunVersion: parent.Run.Version - 1, Snapshot: parent, SlotMutations: mutations, RunMutation: &imageagent.RunMutation{Status: parent.Run.Status, CurrentNode: parent.Run.CurrentNode, ActivePlanRevision: parent.Plan.Revision}, EventType: "run.blocked", EventPayload: json.RawMessage(`{}`)})
+	require.NoError(t, err)
+	input.RequestID = "3b9ef503-8c6c-4a76-8eb8-047213c565cf"
+	input.RegenerateFromRunID = parent.Run.ID
+	input.SelectedTaskIDs = []string{"overview"}
+	newRun, err := s.PrepareImageSet(ctx, input)
+	require.NoError(t, err)
+	require.NotEqual(t, parent.Run.ID, newRun.Projection.Run.ID)
+	require.Equal(t, imageagent.RunStatusAwaitingPlanApproval, newRun.Projection.Run.Status)
+	require.Len(t, newRun.Projection.Plan.Slots, 1)
+	require.EqualValues(t, 12, newRun.Points)
+	require.Equal(t, &imageagent.ImageSetRegeneration{RunID: parent.Run.ID, ClosedEffectsDigest: closedDigest}, newRun.Projection.Plan.Set.Regeneration)
+	require.Len(t, workflows.starts, 1, "the new run cannot start before its own point confirmation")
+	require.Equal(t, 1, config.admissions)
+	stored, err := repo.GetProjection(ctx, imageagent.ScopeForRun(parent.Run))
+	require.NoError(t, err)
+	require.Equal(t, parent.ResultDigest, stored.ResultDigest, "original effects and receipts remain untouched")
+}
+
 func imageSetServiceFixture(t *testing.T) (*imageagent.Service, imageagent.Repository, *recordingWorkflowClient, *setConfigurationFixture, *setContextFixture, *setQuoteFixture, context.Context, imageagent.PrepareImageSetInput) {
 	t.Helper()
 	config := &setConfigurationFixture{enabled: true, template: agentconfig.SetTemplate{Schema: agentconfig.ImageConfigurationSchema, Mode: "standard", ShareOriginals: true, Background: "white", Language: "zh", Carousel: []agentconfig.ContentTask{{ID: "identity", Purpose: "product_identity"}}, Detail: []agentconfig.ContentTask{{ID: "overview", Purpose: "product_overview"}}}}

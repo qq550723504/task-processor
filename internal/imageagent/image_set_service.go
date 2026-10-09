@@ -26,6 +26,8 @@ type PrepareImageSetInput struct {
 	OfficialPlacements                                        map[string]OfficialImagePlacement `json:",omitempty"`
 	EffectiveCatalogVersion                                   uint64                            `json:",omitempty"`
 	ApplyReceiptID                                            string                            `json:",omitempty"`
+	SelectedTaskIDs                                           []string                          `json:",omitempty"`
+	RegenerateFromRunID                                       string                            `json:",omitempty"`
 }
 
 type ImageTargetSelection struct {
@@ -46,6 +48,12 @@ type ImageSetPreparation struct {
 type ImageSetContextReader interface {
 	ResolveImageSet(context.Context, ExecutionIdentity, PrepareImageSetInput) (ImageSetPreparation, error)
 	RevalidateImageSet(context.Context, ExecutionIdentity, RunProjection) error
+}
+
+// Dispatch checks current source ownership and references. Exact input bytes
+// are separately copied and verified by the generation effect owner.
+type ImageSetSourceGuard interface {
+	AuthorizeImageSetSource(context.Context, ExecutionIdentity, RunProjection) error
 }
 
 type ImageSetQuoteReader interface {
@@ -89,9 +97,31 @@ func imageSetRunID(identity ExecutionIdentity, input PrepareImageSetInput) strin
 	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(generationHash(struct{ OrganizationID, ActorID, ContextKind, ContextID, RequestID string }{identity.TenantID, identity.UserID, string(input.ContextKind), input.ContextID, input.RequestID}))).String()
 }
 
+func (s *Service) GetPreparedImageSet(ctx context.Context, kind ImageSourceContextKind, contextID, requestID string) (RunProjection, error) {
+	identity, err := s.executionIdentity(ctx)
+	if err != nil {
+		return RunProjection{}, err
+	}
+	if !s.organizationScope || !kind.Valid() || !agentconfig.UUID(contextID) || !agentconfig.UUID(requestID) {
+		return RunProjection{}, ErrValidation
+	}
+	identity.BusinessTaskID = contextID
+	return s.Get(ctx, imageSetRunID(identity, PrepareImageSetInput{ContextKind: kind, ContextID: contextID, RequestID: requestID}))
+}
+
 func validPrepareImageSetInput(input PrepareImageSetInput) bool {
 	if !input.ContextKind.Valid() {
 		return false
+	}
+	if len(input.SelectedTaskIDs) > MaxPlanSlots || input.RegenerateFromRunID != "" && (!agentconfig.UUID(input.RegenerateFromRunID) || len(input.SelectedTaskIDs) == 0) {
+		return false
+	}
+	seenTasks := map[string]bool{}
+	for _, id := range input.SelectedTaskIDs {
+		if !canonicalImageValue(id) || seenTasks[id] {
+			return false
+		}
+		seenTasks[id] = true
 	}
 	if input.EffectiveCatalogVersion > 1<<63-1 || input.ApplyReceiptID != "" && (!agentconfig.UUID(input.ApplyReceiptID) || input.EffectiveCatalogVersion == 0) {
 		return false
@@ -131,7 +161,7 @@ func validPrepareImageSetInput(input PrepareImageSetInput) bool {
 	return len(input.CarouselOriginalIDs)+len(input.DetailOriginalIDs) > 0
 }
 
-func preparedImageSet(projection RunProjection) (PreparedImageSet, error) {
+func PreparedImageSetFromProjection(projection RunProjection) (PreparedImageSet, error) {
 	digest, err := ImageSetPlanDigest(projection.Plan)
 	if err != nil {
 		return PreparedImageSet{}, err
@@ -161,7 +191,7 @@ func (s *Service) PrepareImageSet(ctx context.Context, input PrepareImageSetInpu
 		if err = s.imageSets.Contexts.RevalidateImageSet(ctx, identity, current); err != nil {
 			return PreparedImageSet{}, err
 		}
-		return preparedImageSet(current)
+		return PreparedImageSetFromProjection(current)
 	} else if !errors.Is(readErr, ErrRunNotFound) {
 		return PreparedImageSet{}, readErr
 	}
@@ -185,6 +215,12 @@ func (s *Service) PrepareImageSet(ctx context.Context, input PrepareImageSetInpu
 	selected := selectedImageOriginals(input)
 	if len(resolved.Observations) != len(selected) || len(resolved.Catalog.Assets) != len(selected) {
 		return PreparedImageSet{}, ErrRevisionConflict
+	}
+	var regeneration *ImageSetRegeneration
+	if input.RegenerateFromRunID != "" {
+		if regeneration, err = s.validateImageSetRegeneration(ctx, identity, input, resolved); err != nil {
+			return PreparedImageSet{}, err
+		}
 	}
 	byID := map[string]ImageSourceObservation{}
 	for _, ref := range resolved.Observations {
@@ -217,6 +253,18 @@ func (s *Service) PrepareImageSet(ctx context.Context, input PrepareImageSetInpu
 	if err != nil {
 		return PreparedImageSet{}, err
 	}
+	plan.Set.Regeneration = regeneration
+	plan.Set.QuoteDigest, err = ImageSetQuoteDigest(plan)
+	if err != nil {
+		return PreparedImageSet{}, err
+	}
+	if err = ValidateImageSetPlan(plan); err != nil {
+		return PreparedImageSet{}, err
+	}
+	encodedPlan, encodeErr := json.Marshal(plan)
+	if encodeErr != nil || len(encodedPlan) > 2<<20 {
+		return PreparedImageSet{}, ErrValidation
+	}
 	limits := agentconfig.ImageRunLimits{Images: len(plan.Slots), Points: plan.Set.MaxPoints, ElapsedSeconds: snapshot.HardLimits.ElapsedSeconds}
 	if !limits.Within(snapshot.HardLimits) || !limits.Within(s.imageSets.HardLimits) {
 		return PreparedImageSet{}, ErrCommandBlocked
@@ -226,7 +274,7 @@ func (s *Service) PrepareImageSet(ctx context.Context, input PrepareImageSetInpu
 	if err != nil {
 		return PreparedImageSet{}, err
 	}
-	return preparedImageSet(projection)
+	return PreparedImageSetFromProjection(projection)
 }
 
 func selectedImageOriginals(input PrepareImageSetInput) []string {
@@ -245,10 +293,31 @@ func selectedImageOriginals(input PrepareImageSetInput) []string {
 }
 
 func buildImageSetPlan(input PrepareImageSetInput, resolved ImageSetPreparation, snapshot agentconfig.ImageConfigurationSnapshot, quote ImageGenerationQuote, sources []string, observations map[string]ImageSourceObservation, actor string) (Plan, error) {
-	if resolved.Target.Platform != "product" && (len(input.OfficialPlacements) != len(snapshot.Parameters.Carousel)+len(snapshot.Parameters.Detail) || len(resolved.OfficialPlacements) != len(input.OfficialPlacements)) {
+	template := snapshot.Parameters
+	if len(input.SelectedTaskIDs) > 0 {
+		selected := map[string]bool{}
+		for _, id := range input.SelectedTaskIDs {
+			selected[id] = true
+		}
+		filter := func(tasks []agentconfig.ContentTask) []agentconfig.ContentTask {
+			result := []agentconfig.ContentTask{}
+			for _, task := range tasks {
+				if selected[task.ID] {
+					result = append(result, task)
+					delete(selected, task.ID)
+				}
+			}
+			return result
+		}
+		template.Carousel = filter(template.Carousel)
+		template.Detail = filter(template.Detail)
+		if len(selected) > 0 {
+			return Plan{}, ErrValidation
+		}
+	}
+	if resolved.Target.Platform != "product" && (len(input.OfficialPlacements) != len(template.Carousel)+len(template.Detail) || len(resolved.OfficialPlacements) != len(input.OfficialPlacements)) {
 		return Plan{}, ErrRevisionConflict
 	}
-	template := snapshot.Parameters
 	if template.ShareOriginals != (len(input.SharedOriginalIDs) > 0) {
 		return Plan{}, fmt.Errorf("%w: choose originals matching the template sharing mode", ErrValidation)
 	}
@@ -323,6 +392,46 @@ func buildImageSetPlan(input PrepareImageSetInput, resolved ImageSetPreparation,
 		return Plan{}, fmt.Errorf("%w: image set plan exceeds the byte limit", ErrValidation)
 	}
 	return plan, nil
+}
+
+func (s *Service) validateImageSetRegeneration(ctx context.Context, identity ExecutionIdentity, input PrepareImageSetInput, resolved ImageSetPreparation) (*ImageSetRegeneration, error) {
+	parent, err := s.repository.GetProjection(ctx, RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: input.RegenerateFromRunID})
+	if err != nil {
+		return nil, err
+	}
+	if _, err = s.identityForRun(identity, parent.Run); err != nil {
+		return nil, err
+	}
+	if parent.Plan.Set == nil || parent.PendingCommand != nil || parent.Run.BusinessTaskID != input.ContextID || ValidateImageSetAdmission(parent.Run, parent.Plan) != nil {
+		return nil, ErrCommandBlocked
+	}
+	switch parent.Run.Status {
+	case RunStatusAwaitingFinalApproval, RunStatusCompleted, RunStatusBlocked, RunStatusFailed, RunStatusCancelled:
+	default:
+		return nil, ErrCommandBlocked
+	}
+	digest, err := ImageSetClosedEffectsDigest(parent.Plan, parent.Slots, parent.RecoverableEffects)
+	if err != nil || digest == "" || parent.ResultDigest != "" && digest != parent.ResultDigest {
+		return nil, ErrCommandBlocked
+	}
+	original, current := parent.Plan.Set.Source, resolved.Source
+	original.CatalogHash, current.CatalogHash = "", ""
+	oldTarget, newTarget := parent.Plan.Set.Target, resolved.Target
+	oldTarget.RequirementDigest, newTarget.RequirementDigest = "", ""
+	oldTarget.RequirementVersion, newTarget.RequirementVersion = "", ""
+	if original != current || oldTarget != newTarget {
+		return nil, ErrRevisionConflict
+	}
+	tasks := map[string]bool{}
+	for _, slot := range parent.Plan.Slots {
+		tasks[slot.ID] = true
+	}
+	for _, id := range input.SelectedTaskIDs {
+		if !tasks[id] {
+			return nil, ErrValidation
+		}
+	}
+	return &ImageSetRegeneration{RunID: parent.Run.ID, ClosedEffectsDigest: digest, ResultDigest: parent.ResultDigest}, nil
 }
 
 func authorizedSetOriginal(catalog AssetCatalog, id string) bool {

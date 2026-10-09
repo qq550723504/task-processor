@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { configVersion } from "./agent-configuration";
+import { configVersion,templateInputSchema } from "./agent-configuration";
 import { knowledgeId } from "../api/knowledge";
 
 export const carouselTasks = [
@@ -51,3 +51,5 @@ export const imageTemplateSchema=z.strictObject({
 });
 export const imageTemplatesPageSchema=z.strictObject({items:z.array(imageTemplateSchema).max(100),nextCursor:z.string().max(180)});
 export type ImageAgentTemplate=z.infer<typeof imageTemplateSchema>;
+
+export const imageTemplateInputSchema=z.strictObject({name:templateInputSchema.shape.name,targetPlatform:z.enum(["product","shein","temu","amazon"]),image:imageSetTemplateSchema});

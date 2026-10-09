@@ -42,9 +42,10 @@ func WithSupplyChain(d SupplyChainDependencies) CurrentApplicationOption {
 }
 
 type supplyChainModule struct {
-	app    *supplyapp.Application
-	worker supplyapp.OperationWorker
-	routes []httproute.Descriptor
+	executionAuthorization supplyapp.OrganizationExecutionAuthorizer
+	app                    *supplyapp.Application
+	worker                 supplyapp.OperationWorker
+	routes                 []httproute.Descriptor
 }
 
 func (s supplyChainModule) Name() string                  { return "supply-chain" }
@@ -185,7 +186,7 @@ func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d 
 		return empty, err
 	}
 	binder := productReviewCapabilityBinder{now: time.Now}
-	return supplyChainModule{app: app, worker: currentWorker, routes: supplyhttp.SupplyRoutes(app, binder.Bind)}, nil
+	return supplyChainModule{app: app, worker: currentWorker, routes: supplyhttp.SupplyRoutes(app, binder.Bind), executionAuthorization: executionAuth}, nil
 }
 func validateSupplyDescriptor(route httproute.Descriptor) error {
 	for _, expected := range supplyhttp.SupplyRoutes(nil, nil) {

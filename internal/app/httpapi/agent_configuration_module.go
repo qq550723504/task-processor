@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/commercetool"
 	"task-processor/internal/httproute"
+	"task-processor/internal/imageagent"
 	texteino "task-processor/internal/integration/agent/einomodel"
 	"task-processor/internal/integration/knowledgeauth"
 	configstore "task-processor/internal/integration/persistence/agentconfig"
@@ -50,7 +51,14 @@ func (productAgentCatalog) ReadCatalog(context.Context) ([]agentconfig.CatalogEn
 func WithAgentConfiguration(db *gorm.DB) CurrentApplicationOption {
 	return func(o *currentApplicationOptions) { o.agentConfigurationDB = db }
 }
-func buildAgentConfigurationModule(ctx context.Context, db *gorm.DB, resolver organizationIdentityResolver, auth *authz.ListingKitAuthorizer, k *knowledge.Service, runtime *productAgentApplication) (kernelmodule.Module, error) {
+func buildAgentConfigurationModule(ctx context.Context, db *gorm.DB, resolver organizationIdentityResolver, auth *authz.ListingKitAuthorizer, k *knowledge.Service, runtime *productAgentApplication, images ...*fullImageApplication) (kernelmodule.Module, error) {
+	if len(images) > 1 {
+		return nil, agentconfig.ErrUnavailable
+	}
+	var imageRuntime *fullImageApplication
+	if len(images) == 1 {
+		imageRuntime = images[0]
+	}
 	if runtime != nil && (runtime.config.RunDB != db || runtime.store == nil || !runtime.store.UsesPool(db)) {
 		return nil, agentconfig.ErrUnavailable
 	}
@@ -101,15 +109,45 @@ func buildAgentConfigurationModule(ctx context.Context, db *gorm.DB, resolver or
 	}
 	h.Capabilities = func(ctx context.Context, entry agentconfig.CatalogEntry) []agentconfig.Capability {
 		if entry.Definition.ID == agentconfig.ImageAgentID {
-			return productImageAgentCapabilities(ctx, h.Authorize)
+			capabilities := productImageAgentCapabilities(ctx, h.Authorize)
+			if imageRuntime != nil {
+				capability := &capabilities[0]
+				id, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+				_, authorization := h.Authorize(ctx, authz.PermissionImageAgentWrite)
+				if !ok || authorization != nil {
+					capability.Readiness = "REQUIRES_AUTHORIZATION"
+					capability.Reason = "需要当前企业图片生成权限"
+				} else if !imageRuntime.gate.AllowTenantStart(ctx, id.TenantID) {
+					capability.Reason = "当前企业尚未开放图片生成"
+				} else {
+					_, err := imageRuntime.quotes.ReadImageGenerationQuote(ctx, imageagent.ExecutionIdentity{ScopeProtocol: imageagent.OrganizationScopeProtocol, TenantID: id.TenantID, UserID: id.UserID, MemberID: id.EffectiveMemberID})
+					if err == nil {
+						capability.Readiness = "AVAILABLE"
+						capability.Reason = "可准备整套计划，确认点数后生成"
+					} else {
+						capability.Readiness = "NEEDS_CONFIGURATION"
+						capability.Reason = "需要有效的企业图片模型配置与凭据"
+					}
+				}
+			}
+			return capabilities
 		}
 		return productAgentCapabilities(ctx, resolver, h.Authorize, k, runtime)
 	}
 	h.RunsAvailable = func(_ context.Context, entry agentconfig.CatalogEntry) bool {
-		return entry.Definition.ID != agentconfig.ImageAgentID && runtime != nil
+		if entry.Definition.ID == agentconfig.ImageAgentID {
+			return imageRuntime != nil && imageRuntime.recent != nil
+		}
+		return runtime != nil
 	}
 	h.Recent = func(ctx context.Context, scope agent.Scope, id, cursor string, size int) (any, string, error) {
-		if runtime == nil || id == agentconfig.ImageAgentID {
+		if id == agentconfig.ImageAgentID {
+			if imageRuntime == nil {
+				return nil, "", agentconfig.ErrUnavailable
+			}
+			return imageRuntime.readRecent(ctx, "", cursor, size)
+		}
+		if runtime == nil {
 			return nil, "", agentconfig.ErrUnavailable
 		}
 		ctx, e := knowledgeRequestContext(ctx)

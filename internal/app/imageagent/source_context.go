@@ -195,3 +195,33 @@ func (r *ImageSetContextReader) RevalidateImageSet(ctx context.Context, identity
 	}
 	return nil
 }
+
+func (r *ImageSetContextReader) AuthorizeImageSetSource(ctx context.Context, identity imageagent.ExecutionIdentity, projection imageagent.RunProjection) error {
+	if ctx == nil || r == nil || r.sources == nil || projection.Plan.Set == nil || projection.Run.TenantID != identity.TenantID || projection.Run.UserID != identity.UserID || projection.Run.MemberID != identity.MemberID || projection.Run.BusinessTaskID != identity.BusinessTaskID {
+		return imageagent.ErrIdentityRequired
+	}
+	bound := projection.Plan.Set.Source
+	fresh, err := r.sources.ReadImageSetSource(ctx, identity, imageagent.PrepareImageSetInput{ContextKind: bound.ContextKind, ContextID: bound.OperationID, EffectiveCatalogVersion: bound.EffectiveVersion, ApplyReceiptID: bound.ApplyReceiptID, Target: imageagent.ImageTargetSelection{Platform: projection.Plan.Set.Target.Platform}})
+	if err != nil {
+		return err
+	}
+	current := fresh.Source
+	current.CatalogHash, bound.CatalogHash = "", ""
+	if current != bound || !reflect.DeepEqual(fresh.Catalog.ProductContext, projection.AssetCatalog.ProductContext) {
+		return imageagent.ErrRevisionConflict
+	}
+	available := map[string]imageagent.AuthorizedAsset{}
+	for _, value := range fresh.Catalog.Assets {
+		if _, exists := available[value.ID]; exists {
+			return imageagent.ErrRevisionConflict
+		}
+		available[value.ID] = value
+	}
+	for _, original := range projection.AssetCatalog.Assets {
+		value, exists := available[original.ID]
+		if !exists || value.Type != imageagent.AuthorizedAssetSource || value.URL != original.URL || value.SourceURL != original.SourceURL {
+			return imageagent.ErrRevisionConflict
+		}
+	}
+	return nil
+}

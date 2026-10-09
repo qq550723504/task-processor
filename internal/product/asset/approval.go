@@ -189,6 +189,10 @@ func cloneApprovedAssets(assets []ApprovedAsset) []ApprovedAsset {
 		}
 		if approved.SourceApproval != nil {
 			copy := *approved.SourceApproval
+			if copy.ManualMedia != nil {
+				media := *copy.ManualMedia
+				copy.ManualMedia = &media
+			}
 			out[index].SourceApproval = &copy
 		}
 		if approved.SelectionReceipt != nil {

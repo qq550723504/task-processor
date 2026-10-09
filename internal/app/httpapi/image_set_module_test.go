@@ -1,0 +1,121 @@
+package httpapi
+
+import (
+	"context"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"task-processor/internal/authidentity"
+	"task-processor/internal/httproute"
+	"task-processor/internal/imageagent"
+	"task-processor/internal/product/asset"
+	"testing"
+)
+
+func TestFullImageRunRequiresOriginalMemberAndExplicitSourceOwner(t *testing.T) {
+	identity := authidentity.AuthenticatedIdentity{TenantID: "org", EffectiveOrganizationID: "org", UserID: "actor", EffectiveMemberID: "member"}
+	p := imageagent.RunProjection{Run: imageagent.Run{ScopeProtocol: imageagent.OrganizationScopeProtocol, ID: "run", TenantID: "org", UserID: "actor", MemberID: "member", BusinessTaskID: "context"}, Plan: imageagent.Plan{Set: &imageagent.ImageSetPlan{Source: imageagent.ImageSourceBinding{ContextKind: imageagent.ImageSourceAcquisition, OperationID: "context"}}}}
+	require.NoError(t, validateFullImageRun(identity, imageagent.ImageSourceAcquisition, "context", "run", p))
+	require.Error(t, validateFullImageRun(identity, imageagent.ImageSourceSupply, "context", "run", p))
+	identity.EffectiveMemberID = "replacement"
+	require.Error(t, validateFullImageRun(identity, imageagent.ImageSourceAcquisition, "context", "run", p))
+}
+
+func TestFullImageSelectionBodyRejectsProviderURLsAndDuplicateActions(t *testing.T) {
+	for _, body := range []string{`{"actionId":"a","url":"https://example.com/a.png"}`, `{"actionId":"a","actionId":"b"}`, `{"actionId":"a","choices":[{"kind":"generated","url":"https://example.com/a.png"}]}`} {
+		request := httptest.NewRequest("POST", "/", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		var input fullImageSelectionBody
+		require.ErrorIs(t, readFullImageJSON(request, &input), imageagent.ErrValidation)
+	}
+}
+
+func TestFullImageManualPermissionDenialIsKnownAndNeverAnUnknownMutation(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	writeFullImageError(c, asset.ErrSourceApprovalForbidden, true)
+	require.Equal(t, 403, w.Code)
+	require.JSONEq(t, `{"code":"FORBIDDEN"}`, w.Body.String())
+}
+
+type imageSetHTTPRepository struct {
+	imageagent.Repository
+	projection imageagent.RunProjection
+}
+
+func (r imageSetHTTPRepository) GetProjection(_ context.Context, s imageagent.RunScope) (imageagent.RunProjection, error) {
+	if s != imageagent.ScopeForRun(r.projection.Run) {
+		return imageagent.RunProjection{}, imageagent.ErrRunNotFound
+	}
+	return r.projection, nil
+}
+
+type imageSetHTTPSource struct {
+	binding imageagent.ImageSourceBinding
+	err     error
+}
+
+func (r *imageSetHTTPSource) ReadImageSetSource(_ context.Context, _ imageagent.ExecutionIdentity, input imageagent.PrepareImageSetInput) (imageagent.ImageSetPreparation, error) {
+	if r.err != nil {
+		return imageagent.ImageSetPreparation{}, r.err
+	}
+	return imageagent.ImageSetPreparation{Source: r.binding}, nil
+}
+func TestFullImageHTTPReadsOriginalApprovalWithoutASecondMutation(t *testing.T) {
+	const sourceID = "d1abe8da-b381-4924-8d15-d79bdbfacf70"
+	const runID = "30d26689-30b6-4358-b0f5-c310d7ab2e58"
+	const actionID = "b912e7d4-df80-44a5-8510-3cdf91d5b8dd"
+	binding := imageagent.ImageSourceBinding{ContextKind: imageagent.ImageSourceAcquisition, ProductID: "product", OperationID: sourceID, OriginalPublicationID: "publication", OriginalVersion: 1, EffectiveVersion: 2, ApplyReceiptID: actionID}
+	projection := imageagent.RunProjection{Run: imageagent.Run{ID: runID, TenantID: "org", UserID: "actor", MemberID: "member", BusinessTaskID: sourceID, ScopeProtocol: imageagent.OrganizationScopeProtocol}, Plan: imageagent.Plan{Set: &imageagent.ImageSetPlan{Source: binding, Target: imageagent.ImageTarget{Platform: "product"}}}}
+	service, err := imageagent.NewService(imageSetHTTPRepository{projection: projection}, imageSetHTTPWorkflow{}, closedImageSetCatalog{}, imageagent.WithOrganizationScope())
+	require.NoError(t, err)
+	sources := &imageSetHTTPSource{binding: binding}
+	approvals := &acquisitionImageApprovalReaderSpy{commit: asset.ApprovalCommit{TenantID: "org", ProductKey: "product", TargetPlatform: "product", ActionID: actionID, SourceSnapshotVersion: 2, ImageSet: &asset.ImageSetSelection{Digest: strings.Repeat("a", 64), Source: asset.SourceSelectionRequest{ContextKind: "acquisition", ItemID: sourceID, OriginalPublicationID: "publication", OriginalSnapshotVersion: 1, EffectiveCatalogVersion: 2, ApplyReceiptID: actionID, TargetPlatform: "product"}}, Assets: []asset.ApprovedAsset{{ID: "selected", Role: asset.RoleMain, URL: "https://images.test/1.png"}}}}
+	module := fullImageModule{application: &fullImageApplication{service: service, readSources: sources, approvals: approvals}, bind: func(ctx context.Context, _ string) (context.Context, error) { return ctx, nil }}
+	router := gin.New()
+	for _, route := range module.routes() {
+		router.Handle(route.Method, route.Path, route.Handler)
+	}
+	id := authidentity.AuthenticatedIdentity{TenantID: "org", EffectiveOrganizationID: "org", UserID: "actor", EffectiveMemberID: "member"}
+	call := func(identity authidentity.AuthenticatedIdentity) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, "/api/v1/workbench/sourcing/1688/acquisitions/"+sourceID+"/images/runs/"+runID+"/approvals/"+actionID, nil)
+		r = r.WithContext(authidentity.WithAuthenticatedIdentity(r.Context(), identity))
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, r)
+		return w
+	}
+	w := call(id)
+	require.Equal(t, 200, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), actionID)
+	require.Equal(t, 1, approvals.calls)
+	approvals.commit.ImageSet.Source.ApplyReceiptID = "other"
+	w = call(id)
+	require.Equal(t, 409, w.Code)
+	approvals.commit.ImageSet.Source.ApplyReceiptID = actionID
+	changed := id
+	changed.EffectiveMemberID = "replacement"
+	w = call(changed)
+	require.Equal(t, 403, w.Code)
+	changed = id
+	changed.EffectiveOrganizationID = "other"
+	w = call(changed)
+	require.Equal(t, 403, w.Code)
+}
+func TestFullImageRoutesHaveExactLiveOrganizationAdmission(t *testing.T) {
+	routes := []httproute.Descriptor{}
+	for _, r := range currentWorkbenchApplicationRoutes {
+		routes = append(routes, httproute.Descriptor{Method: r.Method, Path: r.Path})
+	}
+	full := fullImageModule{}.routes()
+	routes = append(routes, full...)
+	require.NoError(t, validateCurrentApplicationRoutesInternal(routes, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{FullImageSet: true}))
+	for i := range full {
+		changed := append([]httproute.Descriptor(nil), routes...)
+		changed[len(currentWorkbenchApplicationRoutes)+i].OrganizationAccessPolicy = httproute.OrganizationAccessPolicyCachedRead
+		require.Error(t, validateCurrentApplicationRoutesInternal(changed, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{FullImageSet: true}))
+	}
+}
+
+type imageSetHTTPWorkflow struct{ imageagent.WorkflowClient }

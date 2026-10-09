@@ -75,10 +75,11 @@ type ReferralsConfig struct {
 	Database DatabaseConfig `json:"referralDatabase"`
 }
 
-// ImageAgentConfig enables only the current acquisition main-image path. Its
-// database is the same owner database used by the Organization ImageAgent
+// ImageAgentConfig selects the full image-set runtime when WorkerConfigFile is
+// supplied. Its database is the same owner used by the Organization ImageAgent
 // worker, opened with a bounded API runtime role, never the SRC role.
 type ImageAgentConfig struct {
+	WorkerConfigFile           string                                `json:"workerConfigFile,omitempty"`
 	Generation                 coreconfig.ImageAgentGenerationConfig `json:"generation,omitempty"`
 	Database                   DatabaseConfig                        `json:"database"`
 	TemporalAddress            string                                `json:"temporalAddress"`
@@ -438,6 +439,9 @@ func (cfg *Config) validate() error {
 		}
 	}
 	if image := cfg.ImageAgent; image != nil {
+		if image.WorkerConfigFile != "" && (!filepath.IsAbs(image.WorkerConfigFile) || !boundedValue(image.WorkerConfigFile, 4096) || cfg.SupplyChain == nil || cfg.ProductAgent == nil || !image.Generation.Configured()) {
+			return errors.New("full image agent requires an absolute private worker config, Supply, enterprise configuration and a points price")
+		}
 		if image.Generation != (coreconfig.ImageAgentGenerationConfig{}) && (!image.Generation.Configured() || cfg.CommercialOwnerDatabase == nil) {
 			return errors.New("image generation requires an explicit versioned points price and commercial owner database")
 		}

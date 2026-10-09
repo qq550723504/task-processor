@@ -10,6 +10,16 @@ import (
 // known terminal failures and unstarted work without declaring them accepted.
 // Financial references must still be resolved by their owners on selection.
 func ImageSetResultDigest(plan Plan, slots []SlotProjection, recoverable []RecoverableEffect) (string, error) {
+	return imageSetEffectsDigest(plan, slots, recoverable, true)
+}
+
+// Regeneration eligibility also covers a wholly failed run whose original
+// effects all closed. This does not make it eligible for result approval.
+func ImageSetClosedEffectsDigest(plan Plan, slots []SlotProjection, recoverable []RecoverableEffect) (string, error) {
+	return imageSetEffectsDigest(plan, slots, recoverable, false)
+}
+
+func imageSetEffectsDigest(plan Plan, slots []SlotProjection, recoverable []RecoverableEffect, requireAccepted bool) (string, error) {
 	if plan.Set == nil || ValidateSubmittedPlan(plan) != nil || len(slots) != len(plan.Slots) || len(recoverable) != 0 {
 		return "", ErrRevisionConflict
 	}
@@ -62,7 +72,7 @@ func ImageSetResultDigest(plan Plan, slots []SlotProjection, recoverable []Recov
 			return "", ErrRevisionConflict
 		}
 	}
-	if accepted == 0 {
+	if requireAccepted && accepted == 0 {
 		return "", ErrCommandBlocked
 	}
 	// SlotProjection's explicit JSON preserves durable objects, observations,

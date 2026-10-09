@@ -87,6 +87,14 @@ func execute() error {
 		OpenImageAgent: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
+		OpenImageSetWorker: openImageSetWorker,
+		DialImageSetWorkflow: func(ctx context.Context, address, namespace string) (client.Client, func() error, error) {
+			current, err := client.DialContext(ctx, client.Options{HostPort: address, Namespace: namespace})
+			if err != nil {
+				return nil, nil, err
+			}
+			return current, func() error { current.Close(); return nil }, nil
+		},
 		OpenSupplyAssets: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
@@ -173,7 +181,11 @@ func execute() error {
 				options = append(options, httpapi.WithSupplyChain(httpapi.SupplyChainDependencies{AssetDB: features.SupplyAssetDB, Starter: supplyruntime.TemporalOperationStarter{Client: features.SupplyWorkflow}, NewWorker: supplyruntime.WorkerFactory(features.SupplyWorkflow), Worker: features.SupplyWorker}))
 			}
 			if features.ImageAgentDB != nil {
-				options = append(options, httpapi.WithAcquisitionImageAgent(features.ImageAgentDB, features.ImageAgentWorkflow))
+				if features.ImageSetWorkerConfig != nil {
+					options = append(options, httpapi.WithFullImageSet(features.ImageAgentDB, features.ImageAgentWorkflow, httpapi.FullImageSetDependencies{WorkerDB: features.ImageSetWorkerDB, WorkerConfig: features.ImageSetWorkerConfig, Client: features.ImageSetTemporal, Worker: features.ImageSetWorker}))
+				} else {
+					options = append(options, httpapi.WithAcquisitionImageAgent(features.ImageAgentDB, features.ImageAgentWorkflow))
+				}
 			}
 			if features.AccountAuditImageDB != nil || features.AccountAuditProductDB != nil {
 				options = append(options, httpapi.WithAccountAuditUsageSources(features.AccountAuditImageDB, features.AccountAuditProductDB))

@@ -42,7 +42,15 @@ func buildOrganizationGeneration(cfg config.ImageAgentGenerationConfig, db, comm
 	if !ok || db == nil || commercial == nil || authorizer == nil {
 		return nil, nil, imageagent.ErrValidation
 	}
-	resources, err := resourceadapter.NewGormImageGenerationRepository(commercial, resourceadapter.TransactionConfig{}, facts, generationResourceAuthorizer{repository, authorizer})
+	executionAuthorizer := imageagent.ExecutionAuthorizer(imageSetGenerationAuthorizer{repository: repository, live: authorizer})
+	if len(sourceContexts) == 1 {
+		guard, ok := sourceContexts[0].(imageagent.ImageSetSourceGuard)
+		if !ok {
+			return nil, nil, imageagent.ErrCommandBlocked
+		}
+		executionAuthorizer = imageSetGenerationAuthorizer{repository: repository, live: authorizer, sources: guard}
+	}
+	resources, err := resourceadapter.NewGormImageGenerationRepository(commercial, resourceadapter.TransactionConfig{}, facts, generationResourceAuthorizer{repository, executionAuthorizer})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -71,7 +79,7 @@ func buildOrganizationGeneration(cfg config.ImageAgentGenerationConfig, db, comm
 		componentLogger = logrus.NewEntry(logger).WithField("component", "image-agent-grsai")
 	}
 	factory := generationProviderFactory{resolver: organizationCredentialAdmission{resolver: openai.NewOrganizationCredentialResolver(db)}, price: cfg, profile: profile, logger: componentLogger}
-	executor, err := imageagent.NewGenerationExecution(imageagent.GenerationExecutionDependencies{Facts: facts, Resources: resources, Authorizer: authorizer, MaxSourceBytes: productimage.MaxInlineArtifactBytes,
+	executor, err := imageagent.NewGenerationExecution(imageagent.GenerationExecutionDependencies{Facts: facts, Resources: resources, Authorizer: executionAuthorizer, MaxSourceBytes: productimage.MaxInlineArtifactBytes,
 		PrepareProvider: factory.prepare, RevalidateProvider: factory.revalidate,
 		ReadMemberLimit: func(ctx context.Context, org, member string) (imageagent.GenerationMemberLimit, error) {
 			read, err := limits.ReadMonthlyLimit(ctx, org, member)
@@ -85,22 +93,13 @@ func buildOrganizationGeneration(cfg config.ImageAgentGenerationConfig, db, comm
 			if !reflect.DeepEqual(catalog, input.AssetCatalog) {
 				return nil, imageagent.ErrRevisionConflict
 			}
-			if input.ImageSet != nil {
-				var contexts imageagent.ImageSetContextReader
-				if len(sourceContexts) == 1 {
-					contexts = sourceContexts[0]
-				}
-				if err = revalidateGenerationImageSet(ctx, repository, contexts, input); err != nil {
-					return nil, err
-				}
-			}
 			return readGenerationSource(ctx, input)
 		},
 	})
 	return executor, recovery, err
 }
 
-func revalidateGenerationImageSet(ctx context.Context, repository imageagent.Repository, contexts imageagent.ImageSetContextReader, input imageagent.SlotExecutionInput) error {
+func revalidateGenerationImageSet(ctx context.Context, repository imageagent.Repository, contexts imageagent.ImageSetSourceGuard, input imageagent.SlotExecutionInput) error {
 	if input.ImageSet == nil {
 		return nil
 	}
@@ -114,7 +113,27 @@ func revalidateGenerationImageSet(ctx context.Context, repository imageagent.Rep
 	if !reflect.DeepEqual(projection.Plan.Set, input.ImageSet) {
 		return imageagent.ErrRevisionConflict
 	}
-	return contexts.RevalidateImageSet(ctx, input.OrganizationIdentity, projection)
+	return contexts.AuthorizeImageSetSource(ctx, input.OrganizationIdentity, projection)
+}
+
+type imageSetGenerationAuthorizer struct {
+	repository imageagent.Repository
+	live       imageagent.ExecutionAuthorizer
+	sources    imageagent.ImageSetSourceGuard
+}
+
+func (a imageSetGenerationAuthorizer) AuthorizeExecution(ctx context.Context, id imageagent.ExecutionIdentity) error {
+	if err := a.live.AuthorizeExecution(ctx, id); err != nil {
+		return err
+	}
+	projection, err := a.repository.GetProjection(ctx, imageagent.RunScope{TenantID: id.TenantID, OwnerUserID: id.UserID, RunID: id.RunID})
+	if err != nil {
+		return err
+	}
+	if projection.Plan.Set == nil {
+		return nil
+	}
+	return revalidateGenerationImageSet(ctx, a.repository, a.sources, imageagent.SlotExecutionInput{RunID: id.RunID, TenantID: id.TenantID, UserID: id.UserID, OrganizationIdentity: id, ImageSet: projection.Plan.Set})
 }
 
 func readGenerationSource(ctx context.Context, input imageagent.SlotExecutionInput) ([]byte, error) {

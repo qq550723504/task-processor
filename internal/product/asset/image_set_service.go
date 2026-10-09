@@ -8,6 +8,8 @@ import (
 )
 
 type ImageSetChoice struct {
+	ManualMedia       *ManualImageReference   `json:"manual_media,omitempty"`
+	GenericHead       *ImageInventoryHead     `json:"generic_head,omitempty"`
 	Kind              string                  `json:"kind"`
 	SourceID          string                  `json:"source_id,omitempty"`
 	ApprovalActionID  string                  `json:"approval_action_id,omitempty"`
@@ -19,6 +21,19 @@ type ImageSetChoice struct {
 	ResultDigest      string                  `json:"result_digest,omitempty"`
 	Presentation      ImagePresentation       `json:"presentation"`
 	OfficialPlacement *ImageOfficialPlacement `json:"official_placement,omitempty"`
+}
+
+type ManualImageReference struct {
+	Hash  string `json:"hash"`
+	Bytes int64  `json:"bytes"`
+}
+
+func (m ManualImageReference) Valid() bool {
+	return imageSetDigest(m.Hash) && m.Bytes > 0 && m.Bytes <= 3<<20
+}
+
+type ManualImageReader interface {
+	ReadManualImage(context.Context, ManualImageReference) (SourceImage, error)
 }
 
 type ImageSetCommand struct {
@@ -54,6 +69,7 @@ type ImageSetPreview struct {
 }
 
 type ImageSetService struct {
+	manual      ManualImageReader
 	sources     SourceSelectionReader
 	repository  Repository
 	inventories ImageSetInventoryReader
@@ -66,7 +82,12 @@ func NewImageSetService(sources SourceSelectionReader, repository Repository, in
 	if sources == nil || repository == nil || inventories == nil || approvals == nil || candidates == nil {
 		return nil, ErrRepositoryUnavailable
 	}
-	return &ImageSetService{sources, repository, inventories, approvals, candidates, targets}, nil
+	return &ImageSetService{sources: sources, repository: repository, inventories: inventories, approvals: approvals, candidates: candidates, targets: targets}, nil
+}
+
+func (s *ImageSetService) WithManualImages(reader ManualImageReader) *ImageSetService {
+	s.manual = reader
+	return s
 }
 
 func (s *ImageSetService) Preview(ctx context.Context, input ImageSetCommand) (ImageSetPreview, error) {
@@ -192,6 +213,29 @@ func (s *ImageSetService) resolveChoice(ctx context.Context, source SourceSelect
 	bad := func() (ApprovedAsset, ImageSetResultBinding, error) {
 		return ApprovedAsset{}, ImageSetResultBinding{}, ErrInvalidApproval
 	}
+	if choice.Kind == "manual" {
+		if choice.ManualMedia == nil || !choice.ManualMedia.Valid() || choice.SourceID != "" || choice.AssetID != "" || choice.RunID != "" || choice.ApprovalActionID != "" || choice.PlanRevision != 0 || choice.Attempt != 0 || choice.SlotID != "" || choice.ResultDigest != "" || choice.GenericHead != nil {
+			return bad()
+		}
+		if s.manual == nil {
+			return ApprovedAsset{}, ImageSetResultBinding{}, ErrApprovedAssetsNotReady
+		}
+		image, err := s.manual.ReadManualImage(ctx, *choice.ManualMedia)
+		if err != nil {
+			return ApprovedAsset{}, ImageSetResultBinding{}, err
+		}
+		if image.ID != "source-media-"+choice.ManualMedia.Hash || image.ReferenceHash != ReferenceHash(image.ID, image.URL) || image.Width < 1 || image.Height < 1 {
+			return bad()
+		}
+		media := *choice.ManualMedia
+		return ApprovedAsset{Role: RoleGallery, URL: image.URL, SourceAssetID: image.ID, Width: image.Width, Height: image.Height, SourceApproval: &SourceApprovalProvenance{ManualMedia: &media, OriginalPublicationID: source.OriginalPublicationID, OriginalSnapshotVersion: source.OriginalSnapshotVersion, ActorID: source.ActorID, MemberID: source.MemberID, ReferenceHash: image.ReferenceHash}}, ImageSetResultBinding{}, nil
+	}
+	if choice.ManualMedia != nil {
+		return bad()
+	}
+	if choice.GenericHead != nil && (choice.Kind != "approved" || !choice.GenericHead.Valid() || *choice.GenericHead == (ImageInventoryHead{})) {
+		return bad()
+	}
 	if choice.Kind == "source" {
 		if !validIdentityPart(choice.SourceID) || choice.AssetID != "" || choice.RunID != "" || choice.ApprovalActionID != "" || choice.PlanRevision != 0 || choice.Attempt != 0 || choice.SlotID != "" || choice.ResultDigest != "" {
 			return bad()
@@ -211,7 +255,22 @@ func (s *ImageSetService) resolveChoice(ctx context.Context, source SourceSelect
 		if err != nil {
 			return ApprovedAsset{}, ImageSetResultBinding{}, err
 		}
-		if approved.ProductKey != source.ProductKey || approved.TargetPlatform != source.TargetPlatform || approved.SourceSnapshotVersion != source.EffectiveCatalogVersion {
+		if approved.TenantID != source.TenantID || approved.ProductKey != source.ProductKey || approved.SourceSnapshotVersion != source.EffectiveCatalogVersion {
+			return ApprovedAsset{}, ImageSetResultBinding{}, ErrApprovalConflict
+		}
+		if choice.GenericHead != nil {
+			if source.TargetPlatform == "product" || approved.TargetPlatform != "product" || approved.ImageSet == nil || approved.ImageSet.Source.OriginalPublicationID != source.OriginalPublicationID || approved.ImageSet.Source.OriginalSnapshotVersion != source.OriginalSnapshotVersion || approved.ImageSet.Source.EffectiveCatalogVersion != source.EffectiveCatalogVersion || approved.ImageSet.Source.ApplyReceiptID != source.ApplyReceiptID {
+				return ApprovedAsset{}, ImageSetResultBinding{}, ErrApprovalConflict
+			}
+			generic, err := s.inventories.ReadImageSetInventory(ctx, InventoryScope{TenantID: source.TenantID, ProductKey: source.ProductKey, TargetPlatform: "product", SourceSnapshotVersion: source.EffectiveCatalogVersion})
+			if err != nil {
+				return ApprovedAsset{}, ImageSetResultBinding{}, err
+			}
+			if generic.Head != *choice.GenericHead {
+				return ApprovedAsset{}, ImageSetResultBinding{}, ErrApprovalConflict
+			}
+			inventory = generic
+		} else if approved.TargetPlatform != source.TargetPlatform {
 			return ApprovedAsset{}, ImageSetResultBinding{}, ErrApprovalConflict
 		}
 		for _, asset := range approved.Assets {

@@ -15,9 +15,11 @@ import (
 	"gorm.io/gorm"
 
 	aistore "task-processor/internal/aicapability/store"
+	appruntime "task-processor/internal/app/runtime"
 	storeapp "task-processor/internal/app/storecenter"
 	coreconfig "task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
+	imagetemporal "task-processor/internal/imageagent/temporal"
 	"task-processor/internal/knowledge"
 )
 
@@ -37,6 +39,8 @@ type Dependencies struct {
 	OpenMoneyOwner               func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenProductAcquisition       func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenImageAgent               func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenImageSetWorker           func(context.Context, string, DatabaseConfig) (*coreconfig.Config, *gorm.DB, error)
+	DialImageSetWorkflow         func(context.Context, string, string) (client.Client, func() error, error)
 	OpenAccountAuditUsage        func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	DialImageAgentWorkflow       func(context.Context, string, string) (imageagent.WorkflowClient, func() error, error)
 	OpenSupplyAssets             func(context.Context, DatabaseConfig) (*gorm.DB, error)
@@ -74,6 +78,10 @@ type ApplicationFeatures struct {
 	SupplyWorkflow                                       client.Client
 	SupplyWorker                                         *supplyapp.OperationWorker
 	ImageAgentDB                                         *gorm.DB
+	ImageSetWorkerDB                                     *gorm.DB
+	ImageSetWorkerConfig                                 *coreconfig.Config
+	ImageSetTemporal                                     client.Client
+	ImageSetWorker                                       *appruntime.ImageAgentWorker
 	AccountAuditImageDB, AccountAuditProductDB           *gorm.DB
 	ImageAgentWorkflow                                   imageagent.WorkflowClient
 	ReferralDB                                           *gorm.DB
@@ -154,6 +162,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	if cfg.ImageAgent != nil && (dependencies.OpenImageAgent == nil || dependencies.DialImageAgentWorkflow == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("current image agent owner and organization workflow lifecycle unavailable")
+	}
+	if cfg.ImageAgent != nil && cfg.ImageAgent.WorkerConfigFile != "" && (dependencies.OpenImageSetWorker == nil || dependencies.DialImageSetWorkflow == nil) {
+		return errors.New("full image set worker lifecycle unavailable")
 	}
 	if cfg.SupplyChain != nil && (dependencies.OpenSupplyAssets == nil || dependencies.DialSupplyWorkflow == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("supply chain runtime dependencies unavailable")
@@ -291,6 +302,10 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var imageDB *gorm.DB
 	var imageWorkflow imageagent.WorkflowClient
+	var imageWorkerDB *gorm.DB
+	var imageWorkerConfig *coreconfig.Config
+	var imageTemporal client.Client
+	var imageWorker appruntime.ImageAgentWorker
 	if cfg.ImageAgent != nil {
 		imageDB, err = dependencies.OpenImageAgent(startupContext, cfg.ImageAgent.Database)
 		if err != nil {
@@ -301,7 +316,19 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		}
 		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(imageDB)) }()
 		var closeWorkflow func() error
-		imageWorkflow, closeWorkflow, err = dependencies.DialImageAgentWorkflow(startupContext, cfg.ImageAgent.TemporalAddress, cfg.ImageAgent.TemporalNamespace)
+		if cfg.ImageAgent.WorkerConfigFile != "" {
+			imageWorkerConfig, imageWorkerDB, err = dependencies.OpenImageSetWorker(startupContext, cfg.ImageAgent.WorkerConfigFile, cfg.ImageAgent.Database)
+			if err != nil || imageWorkerConfig == nil || imageWorkerDB == nil || imageWorkerDB == imageDB {
+				return errors.New("open existing full image worker pool failed")
+			}
+			defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(imageWorkerDB)) }()
+			imageTemporal, closeWorkflow, err = dependencies.DialImageSetWorkflow(startupContext, cfg.ImageAgent.TemporalAddress, cfg.ImageAgent.TemporalNamespace)
+			if imageTemporal != nil {
+				imageWorkflow = imagetemporal.NewOrganizationClient(imageTemporal)
+			}
+		} else {
+			imageWorkflow, closeWorkflow, err = dependencies.DialImageAgentWorkflow(startupContext, cfg.ImageAgent.TemporalAddress, cfg.ImageAgent.TemporalNamespace)
+		}
 		if err != nil {
 			return fmt.Errorf("connect organization image agent workflow: %w", err)
 		}
@@ -491,7 +518,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Ecoservices: ecoservicesRuntime, NotificationCenterDB: notificationDB, Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, SourceMediaStorage: sourceMediaStorage, SupplyAssetDB: supplyAssetDB, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Ecoservices: ecoservicesRuntime, NotificationCenterDB: notificationDB, Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, SourceMediaStorage: sourceMediaStorage, SupplyAssetDB: supplyAssetDB, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, ImageSetWorkerDB: imageWorkerDB, ImageSetWorkerConfig: imageWorkerConfig, ImageSetTemporal: imageTemporal, ImageSetWorker: &imageWorker, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {
@@ -529,6 +556,18 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			return errors.New("start supply worker failed")
 		}
 		defer supplyWorker.Stop()
+	}
+	if imageWorkerConfig != nil {
+		if imageWorker == nil {
+			_ = listener.Close()
+			return errors.New("full image worker was not assembled")
+		}
+		if err = imageWorker.Start(); err != nil {
+			imageWorker.Stop()
+			_ = listener.Close()
+			return errors.New("start full image worker failed")
+		}
+		defer imageWorker.Stop()
 	}
 	serveResult := make(chan error, 1)
 	go func() { serveResult <- server.Serve(listener) }()

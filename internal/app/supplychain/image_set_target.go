@@ -17,6 +17,11 @@ type ImageSetTargetRules struct {
 	Rules   record.TargetRuleReader
 }
 
+func (r ImageSetTargetRules) ReadImageSetRequirements(ctx context.Context, identity imageagent.ExecutionIdentity, input imageagent.ImageTargetSelection, source imageagent.ImageSourceBinding) (imageagent.ImageTarget, goods.OfficialImageRequirements, error) {
+	value, err := r.readTarget(ctx, identity, input, source, nil)
+	return value.target, value.requirements, err
+}
+
 func (r ImageSetTargetRules) ResolveImageSetTarget(ctx context.Context, identity imageagent.ExecutionIdentity, input imageagent.PrepareImageSetInput, source imageagent.ImageSetPreparation) (imageagent.ImageTarget, map[string]imageagent.OfficialImagePlacement, error) {
 	if input.ContextID != identity.BusinessTaskID || source.Source.OperationID != input.ContextID || len(input.OfficialPlacements) == 0 || len(input.OfficialPlacements) > agentconfig.MaxSetTasks {
 		return imageagent.ImageTarget{}, nil, imageagent.ErrValidation
@@ -66,7 +71,7 @@ func (r ImageSetTargetRules) readTarget(ctx context.Context, identity imageagent
 	if target.ID != input.RecordID || target.TargetID != record.TargetIdentity(scope, target.Source.ID, input.StoreID) || target.Source.ID != target.Input.SourceID || target.Input.StoreID != input.StoreID || target.Merchant.OrganizationID != scope.OrganizationID || target.Merchant.StoreID != input.StoreID || target.Merchant.Site != input.Site || target.Source.Source.ProductKey != source.ProductID || target.Source.Source.PublicationID != source.OriginalPublicationID || target.Source.Source.Version != source.OriginalVersion || target.EffectiveVersion != source.EffectiveVersion || target.ApplyReceiptID != source.ApplyReceiptID || target.Input.EffectiveVersion != source.EffectiveVersion || target.Input.ApplyReceiptID != source.ApplyReceiptID || target.Input.Draft.Product.CategoryID != input.CategoryID {
 		return empty, imageagent.ErrRevisionConflict
 	}
-	current, err := r.Sources.ReadSourceSelection(ctx, asset.SourceSelectionRequest{ItemID: target.Source.ID, OriginalPublicationID: source.OriginalPublicationID, OriginalSnapshotVersion: source.OriginalVersion, EffectiveCatalogVersion: source.EffectiveVersion, ApplyReceiptID: source.ApplyReceiptID, TargetPlatform: input.Platform})
+	current, err := r.Sources.ReadSourceSelection(ctx, asset.SourceSelectionRequest{ContextKind: string(imageagent.ImageSourceSupply), ItemID: target.Source.ID, OriginalPublicationID: source.OriginalPublicationID, OriginalSnapshotVersion: source.OriginalVersion, EffectiveCatalogVersion: source.EffectiveVersion, ApplyReceiptID: source.ApplyReceiptID, TargetPlatform: input.Platform})
 	if err != nil {
 		return empty, err
 	}

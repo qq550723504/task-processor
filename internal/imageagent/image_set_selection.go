@@ -38,6 +38,14 @@ func CloneImageSetCommand(command *productasset.ImageSetCommand) *productasset.I
 	copy := *command
 	copy.Choices = append([]productasset.ImageSetChoice(nil), command.Choices...)
 	for index := range copy.Choices {
+		if command.Choices[index].ManualMedia != nil {
+			media := *command.Choices[index].ManualMedia
+			copy.Choices[index].ManualMedia = &media
+		}
+		if command.Choices[index].GenericHead != nil {
+			head := *command.Choices[index].GenericHead
+			copy.Choices[index].GenericHead = &head
+		}
 		if command.Choices[index].OfficialPlacement != nil {
 			position := *command.Choices[index].OfficialPlacement
 			copy.Choices[index].OfficialPlacement = &position

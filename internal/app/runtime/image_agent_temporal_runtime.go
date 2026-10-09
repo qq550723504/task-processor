@@ -49,6 +49,24 @@ type imageAgentWorker interface {
 	Stop()
 }
 
+// ImageAgentWorker has an explicit host lifecycle. Building it cannot dispatch
+// provider work; the host starts it only after every application port is ready.
+type ImageAgentWorker = imageAgentWorker
+
+func NewOrganizationImageSetWorker(client sdkclient.Client, d ImageAgentTemporalDependencies) (ImageAgentWorker, error) {
+	if client == nil || d.ExecutionAuthorizer == nil || d.ImageSetPublisher == nil {
+		return nil, imageagent.ErrCommandBlocked
+	}
+	activities, err := imageagenttemporal.NewActivities(imageagenttemporal.ActivityDependencies{
+		ImageSetPublisher: d.ImageSetPublisher, GenerationRecovery: d.GenerationRecovery, GenerationOutputRecovery: d.GenerationOutputRecovery,
+		ExecutionAuthorizer: d.ExecutionAuthorizer, Repository: d.Repository, SlotExecutor: d.SlotExecutor, StagedSlotExecutor: d.StagedSlotExecutor, ArtifactStore: d.ArtifactStore, PublicationLeaseDuration: d.PublicationLeaseDuration,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return imageagenttemporal.NewWorker(imageagenttemporal.WorkerConfig{Client: client, Activities: activities, WireMode: imageagenttemporal.WorkerWireModeOrganization, TaskQueue: imageagenttemporal.OrganizationTaskQueue})
+}
+
 type imageAgentTemporalRuntimeDependencies struct {
 	Dial      func(context.Context, string, string) (sdkclient.Client, func() error, error)
 	NewWorker func(imageagenttemporal.WorkerConfig) (imageAgentWorker, error)

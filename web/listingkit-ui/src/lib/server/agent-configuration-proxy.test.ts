@@ -77,3 +77,22 @@ it("does not forward arbitrary settings or a cross-origin configuration write", 
   );
   expect(fetch).not.toHaveBeenCalled();
 });
+
+it("routes full image configuration, typed templates and recent runs through the real agent BFF",async()=>{
+ const templateId="45a227bb-b572-4138-8e2a-5f1a0be98617";
+ const fetch=vi.fn().mockResolvedValueOnce(Response.json({commandId:key,operation:"create-template",agentId:"product.image.agent",templateId,revision:"1",version:"1",noop:false,committedAt:"2026-10-09T00:00:00Z"}));
+ vi.stubGlobal("fetch",fetch);
+ const image={schema:"image-config-v1",mode:"standard",shareOriginals:true,background:"white",language:"en",carousel:[{id:"main",purpose:"product_identity"}],detail:[{id:"detail",purpose:"detail_closeup"}]};
+ const r=request("product.image.agent/templates","POST",{name:"Full product images",targetPlatform:"product",image});r.headers.delete("If-Match");
+ expect((await proxyAgentConfiguration(r,"token","actor")).status).toBe(200);
+ expect(JSON.parse(fetch.mock.calls[0][1].body).image).toEqual(image);
+ fetch.mockResolvedValueOnce(Response.json({items:[{runId:key,contextId:templateId,contextKind:"acquisition",status:"awaiting_final_approval",targetPlatform:"product",createdAt:"2026-10-09T00:00:00Z"}],nextCursor:""}));
+ expect((await proxyAgentConfiguration(request("product.image.agent/recent-runs?pageSize=20"),"token","actor")).status).toBe(200);
+});
+it("rejects title parameters in image templates and another agent's mutation receipt",async()=>{
+ const fetch=vi.fn().mockResolvedValue(Response.json({commandId:key,operation:"disable",agentId:"product.title.agent",revision:"2",noop:false,committedAt:"2026-10-09T00:00:00Z"}));vi.stubGlobal("fetch",fetch);
+ const r=request("product.image.agent/templates","POST",{name:"bad",targetPlatform:"product",title:{}});r.headers.delete("If-Match");
+ expect((await proxyAgentConfiguration(r,"token","actor")).status).toBe(400);expect(fetch).not.toHaveBeenCalled();
+ const result=await proxyAgentConfiguration(request("product.image.agent/disable","POST",{}),"token","actor");
+ expect(result.status).toBeGreaterThanOrEqual(500);expect((await result.json()).code).toBe("OUTCOME_UNKNOWN");
+});

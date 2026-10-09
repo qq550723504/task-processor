@@ -65,6 +65,10 @@ func TestSetPlanRejectsAnUnknownSourceOwner(t *testing.T) {
 	require.Error(t, ValidateImageSetPlan(plan), "execution must select its explicit source owner, never guess from an ID")
 }
 
+func TestMissingSetBindingIsRejectedWithoutPanic(t *testing.T) {
+	require.NotPanics(t, func() { require.Error(t, ValidateImageSetPlan(Plan{})) })
+}
+
 func setResultFixture(t *testing.T) (Plan, []SlotProjection) {
 	plan := setPlanFixture(t)
 	failed := plan.Slots[0]
@@ -113,6 +117,25 @@ func TestSetResultDigestAllowsKnownPartialFailureButRejectsUnknownOrUnsettled(t 
 	var restored []SlotProjection
 	require.NoError(t, json.Unmarshal(raw, &restored))
 	require.Equal(t, slots, restored, "restart must preserve closure/provenance references")
+}
+
+func TestAllKnownFailedEffectsCanRegenerateButCannotApproveResults(t *testing.T) {
+	plan, slots := setResultFixture(t)
+	slots[0].Slot.Status = SlotStatusBlocked
+	slots[0].Candidates = nil
+	slots[0].Attempt = 0
+	slots[0].ErrorCode = "budget_exceeded"
+	slots[0].Closure = &ImageSlotClosure{Kind: "not_dispatched"}
+	closed, err := ImageSetClosedEffectsDigest(plan, slots, nil)
+	require.NoError(t, err)
+	require.NotEmpty(t, closed)
+	_, err = ImageSetResultDigest(plan, slots, nil)
+	require.ErrorIs(t, err, ErrCommandBlocked)
+	_, err = ImageSetClosedEffectsDigest(plan, slots, []RecoverableEffect{{SlotID: "details", Attempt: 1, Code: "provider_outcome_unknown"}})
+	require.Error(t, err, "UNKNOWN must stay on the original request")
+	slots[1].Closure = nil
+	_, err = ImageSetClosedEffectsDigest(plan, slots, nil)
+	require.Error(t, err, "a status label does not prove that original effects closed")
 }
 
 func TestSetPlanChecksSourceBoundsQuoteChangesAndPointSumOverflow(t *testing.T) {
