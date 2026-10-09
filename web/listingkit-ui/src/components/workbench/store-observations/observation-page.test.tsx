@@ -1,0 +1,258 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+const context = vi.hoisted(() => ({
+  user: { id: "actor-a" },
+  effectiveOrganization: { id: "org-a", name: "企业 A" },
+  permissions: [
+    "workbench.store.products.read",
+    "workbench.store.products.sync",
+  ],
+  isSwitching: false,
+  retry: vi.fn(),
+}));
+vi.mock("@/components/providers/workbench-context-provider", () => ({
+  useWorkbenchContext: () => context,
+}));
+vi.mock("@/lib/api/workbench-stores", () => ({
+  listWorkbenchStores: vi
+    .fn()
+    .mockResolvedValue({ items: [], pagination: { total: 0 } }),
+}));
+import { ObservationPage } from "./observation-page";
+const id = "d6f6ca0a-27e2-4c4a-b1aa-4505110ae635";
+const record = {
+  storeId: id,
+  syncId: id,
+  id: "spu-a",
+  observedAt: "2026-10-09T01:00:00Z",
+  product: {
+    id: "spu-a",
+    skcs: [
+      {
+        id: "skc-a",
+        sellerCode: "",
+        title: "Sample Shoe",
+        imageUrl: "",
+        site: "shein-us",
+        siteStatus: null,
+        skus: [
+          { id: "sku-a", sellerSku: "", prices: [], costs: [], inventory: [] },
+        ],
+      },
+    ],
+  },
+};
+afterEach(() => {
+  vi.unstubAllGlobals();
+  sessionStorage.clear();
+});
+beforeEach(() => {
+  context.permissions = [
+    "workbench.store.products.read",
+    "workbench.store.products.sync",
+  ];
+  Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.open = true;
+    },
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.open = false;
+    },
+  });
+});
+function renderPage(kind: "products" | "orders" = "products") {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <ObservationPage kind={kind} />
+    </QueryClientProvider>,
+  );
+  return { ...view, client };
+}
+function baseFetch() {
+  return vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+    if (path.endsWith("/capabilities"))
+      return Promise.resolve(
+        Response.json({
+          organizationId: "org-a",
+          userId: "actor-a",
+          data: {
+            available: true,
+            canSync: true,
+            kind: "products",
+            site: "shein-us",
+            platformUrl: "https://sellerhub.shein.com/",
+          },
+        }),
+      );
+    if (init?.method === "POST")
+      return Promise.reject(new Error("lost response"));
+    if (path.includes("/commands/"))
+      return Promise.resolve(
+        Response.json({ code: "NOT_FOUND" }, { status: 404 }),
+      );
+    return Promise.resolve(
+      Response.json({
+        organizationId: "org-a",
+        userId: "actor-a",
+        data: {
+          items: [record],
+          next: "",
+          summary: {
+            total: 1,
+            active: 0,
+            offShelf: 0,
+            today: 0,
+            todayUnknown: 0,
+            pending: 0,
+            transit: 0,
+            exceptional: 0,
+            unknown: 1,
+          },
+          syncs: [],
+          latest: [],
+          complete: false,
+        },
+      }),
+    );
+  });
+}
+it("shows readonly incomplete observations without invented stock or pending review counts", async () => {
+  vi.stubGlobal("fetch", baseFetch());
+  renderPage();
+  expect(await screen.findByText("Sample Shoe")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "店铺商品" })).toBeInTheDocument();
+  expect(screen.getAllByText("平台未提供").length).toBeGreaterThan(0);
+  expect(screen.getByText(/覆盖不完整/)).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "去发货" }),
+  ).not.toBeInTheDocument();
+});
+it("reuses the captured sync key after a lost response", async () => {
+  const fetch = baseFetch();
+  vi.stubGlobal("fetch", fetch);
+  renderPage();
+  await userEvent.click(
+    await screen.findByRole("button", { name: "同步商品" }),
+  );
+  await screen.findByRole("button", { name: "重试原同步" });
+  await userEvent.click(screen.getByRole("button", { name: "重试原同步" }));
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.filter((c) => c[1]?.method === "POST"),
+    ).toHaveLength(2),
+  );
+  const posts = fetch.mock.calls.filter((c) => c[1]?.method === "POST");
+  expect(new Headers(posts[0][1].headers).get("Idempotency-Key")).toBe(
+    new Headers(posts[1][1].headers).get("Idempotency-Key"),
+  );
+  expect(posts[0][1].body).toEqual(posts[1][1].body);
+});
+it.each([false, true])(
+  "keeps orders with unknown package numbers visible and tracks only actual packages (valid=%s)",
+  async (valid) => {
+    context.permissions = [
+      "workbench.store.orders.read",
+      "workbench.store.orders.sync",
+    ];
+    const packages = [
+      { id: "", waybill: "", carrier: "Carrier", label: "label-a" },
+      ...(valid
+        ? [{ id: "package-a", waybill: "", carrier: "Carrier", label: "" }]
+        : []),
+    ];
+    const orderRecord = {
+      storeId: id,
+      syncId: id,
+      id: "order-a",
+      observedAt: "2026-10-09T01:00:00Z",
+      order: {
+        id: "order-a",
+        site: "shein-us",
+        status: 2,
+        stockMode: null,
+        type: null,
+        tag: 1,
+        reasons: [4],
+        items: [],
+        packages,
+        amount: null,
+        supplyCost: null,
+        createdAt: "",
+        updatedAt: "",
+        issuedAt: "",
+        needDeliveryAt: "",
+        handoverAt: "",
+        expectedCollectAt: "",
+      },
+    };
+    const fetch = vi.fn().mockImplementation((path: string) => {
+      const data = path.endsWith("/capabilities")
+        ? {
+            available: true,
+            canSync: true,
+            kind: "orders",
+            site: "shein-us",
+            platformUrl: "https://sellerhub.shein.com/",
+          }
+        : path.endsWith("/track")
+          ? []
+          : path.includes("/records/")
+            ? orderRecord
+            : {
+                items: [orderRecord],
+                next: "",
+                summary: {
+                  total: 1,
+                  active: 0,
+                  offShelf: 0,
+                  today: 0,
+                  todayUnknown: 1,
+                  pending: 1,
+                  transit: 0,
+                  exceptional: 1,
+                  unknown: 0,
+                },
+                syncs: [],
+                latest: [],
+                complete: false,
+              };
+      return Promise.resolve(
+        Response.json({ organizationId: "org-a", userId: "actor-a", data }),
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+    renderPage("orders");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "详情 / 物流" }),
+    );
+    expect(await screen.findByText(/包裹号尚未提供/)).toBeInTheDocument();
+    expect(screen.queryByText("正在查询物流…")).not.toBeInTheDocument();
+    if (valid) {
+      expect(
+        await screen.findByText("平台尚未提供物流轨迹。"),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("combobox", { name: "选择包裹" })).toHaveValue(
+        "package-a",
+      );
+      expect(
+        fetch.mock.calls.some((c) =>
+          c[0].includes("/packages/package-a/track"),
+        ),
+      ).toBe(true);
+    } else {
+      expect(
+        screen.queryByRole("combobox", { name: "选择包裹" }),
+      ).not.toBeInTheDocument();
+      expect(fetch.mock.calls.some((c) => c[0].includes("/track"))).toBe(false);
+    }
+  },
+);
