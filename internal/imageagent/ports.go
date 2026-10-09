@@ -92,10 +92,12 @@ type SlotExecutionInput struct {
 	IdempotencyKey     string
 	AssetCatalog       AssetCatalog
 	ProductContext     ProductContextRef
+	ImageSet           *ImageSetPlan `json:",omitempty"`
 	// Populated only in-process after the organization generation intent binds
 	// these exact bytes. Never transport source bytes in workflow history.
 	SourceBytes          []byte            `json:"-"`
 	SourceDigest         string            `json:"-"`
+	SourceReferences     [][]byte          `json:"-"`
 	OrganizationIdentity ExecutionIdentity `json:"-"`
 }
 

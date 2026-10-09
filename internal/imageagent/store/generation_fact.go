@@ -122,6 +122,9 @@ func (r *gormRepository) mutateGenerationFact(ctx context.Context, intent imagea
 		} else if row.Phase != string(imageagent.SlotEffectV3ProviderClaimed) {
 			return imageagent.ErrRevisionConflict
 		} else {
+			if intent.InputProtocol == imageagent.ImageSetSchema && intent.InputDigest != imageagent.ImageGenerationInputDigestFromFingerprint(row.InputFingerprint) {
+				return imageagent.ErrRevisionConflict
+			}
 			var catalog assetCatalogManifestRecord
 			if err := tx.Where("tenant_id = ? AND owner_user_id = ? AND run_id = ?", intent.Identity.TenantID, intent.Identity.OwnerUserID, intent.Identity.RunID).Take(&catalog).Error; err != nil {
 				return err

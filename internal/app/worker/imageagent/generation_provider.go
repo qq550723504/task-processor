@@ -58,7 +58,15 @@ func (f generationProviderFactory) prepare(ctx context.Context, observe func(con
 	if err != nil {
 		return imageagent.PreparedGenerationProvider{}, err
 	}
-	executor := tools.NewProductImageSlotExecutor(tools.Dependencies{WhiteBackgroundRenderer: white, UsageQuoter: provider, ProfileResolver: f.profile})
+	editProvider, ok := provider.(productimage.SourceEditor)
+	if !ok {
+		return imageagent.PreparedGenerationProvider{}, imageagent.ErrBudgetQuoteUnavailable
+	}
+	editor, err := productimage.NewSourceEditCapability(editProvider)
+	if err != nil {
+		return imageagent.PreparedGenerationProvider{}, err
+	}
+	executor := tools.NewProductImageSlotExecutor(tools.Dependencies{SourceEditor: editor, WhiteBackgroundRenderer: white, UsageQuoter: provider, ProfileResolver: f.profile})
 	return imageagent.PreparedGenerationProvider{Metadata: metadata, Executor: executor}, nil
 }
 

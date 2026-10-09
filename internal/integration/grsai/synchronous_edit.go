@@ -3,6 +3,7 @@ package grsai
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -67,7 +68,21 @@ func (c *Client) EditImageOnce(ctx context.Context, req *ai.ImageEditRequest, ob
 	}
 	// Reuse bounded exact-byte materialization; remote URL inputs were rejected
 	// above, so this path never re-fetches a mutable source reference.
-	releaseBudget, err := c.referenceMaterialization.acquire(ctx, int64(base64EncodedSize(len(req.Image))))
+	if len(req.ReferenceImages) > 7 {
+		return nil, errors.New("synchronous image reference limit exceeded")
+	}
+	total, encodedSize := len(req.Image), base64EncodedSize(len(req.Image))
+	for _, reference := range req.ReferenceImages {
+		if len(reference.Bytes) == 0 || len(reference.Bytes) > 16<<20 || !supportedExactImageType(reference.MediaType) {
+			return nil, errors.New("synchronous image reference unavailable")
+		}
+		total += len(reference.Bytes)
+		encodedSize += base64EncodedSize(len(reference.Bytes))
+	}
+	if total > 16<<20 {
+		return nil, errors.New("synchronous image reference limit exceeded")
+	}
+	releaseBudget, err := c.referenceMaterialization.acquire(ctx, int64(encodedSize))
 	if err != nil {
 		return nil, errors.New("synchronous image reference budget unavailable")
 	}
@@ -77,6 +92,9 @@ func (c *Client) EditImageOnce(ctx context.Context, req *ai.ImageEditRequest, ob
 		return nil, errors.New("synchronous image reference unavailable")
 	}
 	defer release()
+	for _, reference := range req.ReferenceImages {
+		images = append(images, "data:"+reference.MediaType+";base64,"+base64.StdEncoding.EncodeToString(reference.Bytes))
+	}
 	submitURL, err := buildSubmitURL(c.cfg.SubmitURL, req.Model)
 	if err != nil {
 		return nil, errors.New("synchronous image route unavailable")
@@ -123,3 +141,7 @@ func (c *Client) EditImageOnce(ctx context.Context, req *ai.ImageEditRequest, ob
 }
 
 func base64EncodedSize(size int) int { return (size + 2) / 3 * 4 }
+
+func supportedExactImageType(mediaType string) bool {
+	return mediaType == "image/png" || mediaType == "image/jpeg" || mediaType == "image/webp"
+}

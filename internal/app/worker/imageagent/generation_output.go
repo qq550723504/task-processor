@@ -20,7 +20,17 @@ func generationOutputRecovery(fetch func(context.Context, string) ([]byte, error
 			return imageagent.SlotGeneratedOutput{}, imageagent.ErrValidation
 		}
 		id := imageagent.SlotExternalEffectIdentity{RunScope: imageagent.RunScope{TenantID: input.TenantID, OwnerUserID: input.UserID, RunID: input.RunID}, PlanRevision: input.PlanRevision, SlotID: input.Slot.ID, Attempt: input.Attempt}
-		if fact.Validate() != nil || fact.State != imageagent.GenerationSucceeded || fact.Intent.Identity != id || fact.Intent.MemberID != input.OrganizationIdentity.MemberID || fact.Intent.CatalogHash != input.AssetCatalog.Manifest.Hash || fact.Success.ResultURL == "" || input.Slot.Role != imageagent.SlotRoleMain || len(input.Slot.SourceAssetIDs) != 1 {
+		if fact.Validate() != nil || fact.State != imageagent.GenerationSucceeded || fact.Intent.Identity != id || fact.Intent.MemberID != input.OrganizationIdentity.MemberID || fact.Intent.CatalogHash != input.AssetCatalog.Manifest.Hash || fact.Success.ResultURL == "" || len(input.Slot.SourceAssetIDs) < 1 {
+			return bad()
+		}
+		operation := productimage.SourceWhiteBackgroundOperation
+		if input.ImageSet != nil || input.Slot.Recipe != nil || fact.Intent.InputProtocol != "" {
+			digest, err := imageagent.ImageSlotGenerationInputDigest(input)
+			if err != nil || fact.Intent.InputProtocol != imageagent.ImageSetSchema || fact.Intent.InputDigest != digest || fact.Intent.SourceDigest != imageagent.ImageSourceBundleDigest(input.Slot.Recipe.References) || fact.Intent.PromptVersion != input.Slot.Recipe.PromptVersion {
+				return bad()
+			}
+			operation = productimage.SourceEditOperation
+		} else if input.Slot.Role != imageagent.SlotRoleMain || len(input.Slot.SourceAssetIDs) != 1 {
 			return bad()
 		}
 		var sourceURL string
@@ -46,6 +56,9 @@ func generationOutputRecovery(fetch func(context.Context, string) ([]byte, error
 		if err != nil {
 			return bad()
 		}
-		return imageagent.SlotGeneratedOutput{SlotID: input.Slot.ID, Attempt: input.Attempt, SourceAssetID: input.Slot.SourceAssetIDs[0], Assets: []imageagent.GeneratedAsset{{Bytes: append([]byte(nil), data...), ContentType: contentType, Width: width, Height: height, SourceURL: sourceURL, Operations: []string{productimage.SourceWhiteBackgroundOperation}, ProviderReceiptID: fact.Success.RequestID}}}, nil
+		if input.ImageSet != nil && (width != 1024 || height != 1024) {
+			return bad()
+		}
+		return imageagent.SlotGeneratedOutput{SlotID: input.Slot.ID, Attempt: input.Attempt, SourceAssetID: input.Slot.SourceAssetIDs[0], Assets: []imageagent.GeneratedAsset{{Bytes: append([]byte(nil), data...), ContentType: contentType, Width: width, Height: height, SourceURL: sourceURL, Operations: []string{operation}, ProviderReceiptID: fact.Success.RequestID}}}, nil
 	}
 }

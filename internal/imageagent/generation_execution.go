@@ -89,21 +89,54 @@ func (e *GenerationExecution) GenerateQuotedSlot(ctx context.Context, input Slot
 	if !reflect.DeepEqual(quote, expected) {
 		return reject(ErrRevisionConflict)
 	}
-	data, err := e.dependencies.ReadSourceBytes(ctx, input)
-	if err != nil {
-		return reject(err)
+	var data []byte
+	var references [][]byte
+	var sourceDigest string
+	if input.ImageSet != nil {
+		for _, id := range input.Slot.SourceAssetIDs {
+			sourceInput := input
+			sourceInput.Slot = input.Slot
+			sourceInput.Slot.SourceAssetIDs = []string{id}
+			bytes, readErr := e.dependencies.ReadSourceBytes(ctx, sourceInput)
+			if readErr != nil {
+				return reject(readErr)
+			}
+			if len(bytes) == 0 || len(bytes) > e.dependencies.MaxSourceBytes {
+				return reject(ErrValidation)
+			}
+			references = append(references, append([]byte(nil), bytes...))
+		}
+		if err := ValidateImageSourceBytes(input.Slot.Recipe, references, e.dependencies.MaxSourceBytes); err != nil {
+			return reject(err)
+		}
+		data = references[0]
+		sourceDigest = ImageSourceBundleDigest(input.Slot.Recipe.References)
+	} else {
+		data, err = e.dependencies.ReadSourceBytes(ctx, input)
+		if err != nil {
+			return reject(err)
+		}
+		if len(data) == 0 || len(data) > e.dependencies.MaxSourceBytes {
+			return reject(ErrValidation)
+		}
+		data = append([]byte(nil), data...)
+		sum := sha256.Sum256(data)
+		sourceDigest = hex.EncodeToString(sum[:])
 	}
-	if len(data) == 0 || len(data) > e.dependencies.MaxSourceBytes {
-		return reject(ErrValidation)
-	}
-	data = append([]byte(nil), data...)
-	sum := sha256.Sum256(data)
 	limit, err := e.dependencies.ReadMemberLimit(ctx, input.TenantID, input.OrganizationIdentity.MemberID)
 	if err != nil {
 		return reject(err)
 	}
 	m := provider.Metadata
-	intent = GenerationIntent{Identity: id, MemberID: input.OrganizationIdentity.MemberID, CatalogHash: input.AssetCatalog.Manifest.Hash, SourceDigest: hex.EncodeToString(sum[:]), PromptVersion: m.PromptVersion, RouteReference: m.RouteReference, CredentialReference: m.CredentialReference, ConfigurationVersion: m.ConfigurationVersion, Provider: "grsai", Model: "gpt-image-2.5", Protocol: "grsai-json-sync-v1", Resolution: "1024x1024", Quality: "auto", PriceVersion: m.PriceVersion, Points: m.Points, LimitVersion: limit.Version, MonthStart: limit.MonthStart}
+	intent = GenerationIntent{Identity: id, MemberID: input.OrganizationIdentity.MemberID, CatalogHash: input.AssetCatalog.Manifest.Hash, SourceDigest: sourceDigest, PromptVersion: m.PromptVersion, RouteReference: m.RouteReference, CredentialReference: m.CredentialReference, ConfigurationVersion: m.ConfigurationVersion, Provider: "grsai", Model: "gpt-image-2.5", Protocol: "grsai-json-sync-v1", Resolution: "1024x1024", Quality: "auto", PriceVersion: m.PriceVersion, Points: m.Points, LimitVersion: limit.Version, MonthStart: limit.MonthStart}
+	if input.ImageSet != nil {
+		intent.InputDigest, err = ImageSlotGenerationInputDigest(input)
+		if err != nil {
+			return reject(err)
+		}
+		intent.InputProtocol = ImageSetSchema
+		intent.PromptVersion = input.Slot.Recipe.PromptVersion
+	}
 	if _, err = NewGenerationFact(intent); err != nil {
 		return reject(err)
 	}
@@ -148,6 +181,7 @@ func (e *GenerationExecution) GenerateQuotedSlot(ctx context.Context, input Slot
 	}
 	input.SourceBytes = data
 	input.SourceDigest = intent.SourceDigest
+	input.SourceReferences = references
 	output, dispatchErr := provider.Executor.GenerateQuotedSlot(ctx, input, base)
 	finalCtx, cancel := generationFinalizationContext(ctx)
 	defer cancel()
@@ -180,7 +214,14 @@ func (e *GenerationExecution) authorize(ctx context.Context, input SlotExecution
 	if ValidateOrganizationExecution(identity, input.RunID) != nil || identity.MemberID == "" || identity.TenantID != input.TenantID || identity.UserID != input.UserID {
 		return ErrIdentityRequired
 	}
-	if input.PlanRevision <= 0 || input.Attempt <= 0 || input.Slot.ID == "" || input.Slot.Role != SlotRoleMain || len(input.Slot.SourceAssetIDs) != 1 || len(input.Slot.StyleReferenceIDs) != 0 || input.TargetPlatform != "product" || input.ImagePolicyContext == nil || *input.ImagePolicyContext != (ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}) {
+	if input.PlanRevision <= 0 || input.Attempt <= 0 || input.Slot.ID == "" {
+		return ErrValidation
+	}
+	if input.ImageSet != nil || input.Slot.Recipe != nil {
+		if err := ValidateImageSetExecution(input); err != nil {
+			return err
+		}
+	} else if input.Slot.Role != SlotRoleMain || len(input.Slot.SourceAssetIDs) != 1 || len(input.Slot.StyleReferenceIDs) != 0 || input.TargetPlatform != "product" || input.ImagePolicyContext == nil || *input.ImagePolicyContext != (ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}) {
 		return ErrValidation
 	}
 	return e.dependencies.Authorizer.AuthorizeExecution(ctx, identity)
@@ -198,7 +239,15 @@ func quoteGenerationProvider(ctx context.Context, p PreparedGenerationProvider, 
 		return SlotUsageQuote{}, SlotUsageQuote{}, ErrBudgetQuoteUnavailable
 	}
 	op := base.Operations[0]
-	if op.Name != "render_source_white_background" || op.Provider != "grsai" || op.Model != "gpt-image-2.5" || op.MaximumOutputs != 1 {
+	operation := "render_source_white_background"
+	if input.ImageSet != nil {
+		operation = "render_source_edit"
+		q := input.Slot.Recipe.Quote
+		if q.PriceVersion != m.PriceVersion || q.Points != m.Points || q.RouteReference != m.RouteReference || q.CredentialReference != m.CredentialReference || q.ConfigurationVersion != m.ConfigurationVersion {
+			return SlotUsageQuote{}, SlotUsageQuote{}, ErrRevisionConflict
+		}
+	}
+	if op.Name != operation || op.Provider != "grsai" || op.Model != "gpt-image-2.5" || op.MaximumOutputs != 1 {
 		return SlotUsageQuote{}, SlotUsageQuote{}, ErrBudgetQuoteUnavailable
 	}
 	quote := base

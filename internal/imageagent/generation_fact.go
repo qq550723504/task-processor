@@ -30,6 +30,8 @@ type GenerationIntent struct {
 	Points               int64
 	LimitVersion         int64
 	MonthStart           time.Time
+	InputProtocol        string `json:",omitempty"`
+	InputDigest          string `json:",omitempty"`
 }
 
 type GenerationReservationReceipt struct {
@@ -113,7 +115,14 @@ func NewGenerationFact(intent GenerationIntent) (GenerationFact, error) {
 		intent.MonthStart.IsZero() || intent.MonthStart != time.Date(intent.MonthStart.UTC().Year(), intent.MonthStart.UTC().Month(), 1, 0, 0, 0, 0, time.UTC) {
 		return GenerationFact{}, ErrValidation
 	}
-	return GenerationFact{Version: 1, Intent: intent, IntentID: generationHash(intent.Identity), Fingerprint: generationHash(intent), State: GenerationPrepared}, nil
+	version := 1
+	if intent.InputProtocol != "" || intent.InputDigest != "" {
+		if intent.InputProtocol != ImageSetSchema || !generationDigest(intent.InputDigest) {
+			return GenerationFact{}, ErrValidation
+		}
+		version = 2
+	}
+	return GenerationFact{Version: version, Intent: intent, IntentID: generationHash(intent.Identity), Fingerprint: generationHash(intent), State: GenerationPrepared}, nil
 }
 func (f GenerationFact) BindReservation(receipt GenerationReservationReceipt) (GenerationFact, error) {
 	if err := f.Validate(); err != nil {
@@ -193,7 +202,7 @@ func (f GenerationFact) RecordSuccess(success GenerationSuccess) (GenerationFact
 
 func (f GenerationFact) Validate() error {
 	base, err := NewGenerationFact(f.Intent)
-	if err != nil || f.Version != 1 || f.IntentID != base.IntentID || f.Fingerprint != base.Fingerprint {
+	if err != nil || f.Version != base.Version || f.IntentID != base.IntentID || f.Fingerprint != base.Fingerprint {
 		return ErrValidation
 	}
 	if f.Reservation != (GenerationReservationReceipt{}) && !f.matchesReceipt(f.Reservation) {
