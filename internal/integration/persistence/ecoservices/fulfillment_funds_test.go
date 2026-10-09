@@ -33,6 +33,20 @@ type fulfillmentProtection struct {
 	billing.ServicePayloadProtection
 }
 
+type chargebackAfterFundsRead struct {
+	e.TradingPort
+	chargeback func() error
+}
+
+func (p chargebackAfterFundsRead) AdmitServiceFulfillment(ctx context.Context, in e.FulfillmentAdmission) (e.FulfillmentProof, error) {
+	// The diagnostic formerly inserted CB after the stale B funds read.
+	// With the approved contract this is just before M's exact admission.
+	if err := p.chargeback(); err != nil {
+		return e.FulfillmentProof{}, err
+	}
+	return p.TradingPort.(e.FulfillmentTradingPort).AdmitServiceFulfillment(ctx, in)
+}
+
 func fulfillmentFundsFixture(t *testing.T) (*Repository, *e.Service, *mstore.Repository, *billing.ServicePurchases, *bstore.Repository, e.Request, e.FinancialCommand) {
 	t.Helper()
 	r, _ := fixture(t)
@@ -155,5 +169,50 @@ func TestPaidOriginalRecoveryProjectsChargebackBeforeExpiry(t *testing.T) {
 	page, err := r.Read(ctx, e.Query{Scope: e.Scope{OrganizationID: "buyer"}, Kind: "requests", ID: req.ID, Page: 1, PageSize: 1})
 	if err != nil || !page.Requests[0].FinancialFence || page.Requests[0].FinancialReason != "CHANNEL_CHARGEBACK_REQUIRES_RECONCILIATION" {
 		t.Fatalf("pre-expiry recovery hid chargeback: %+v %v", page, err)
+	}
+}
+
+func TestChargebackBetweenFundsReadAndFulfillmentCommitCannotAdvance(t *testing.T) {
+	for _, kind := range []string{"start", "deliver", "accept", "reject"} {
+		t.Run(kind, func(t *testing.T) {
+			r, s, m, purchases, b, req, _ := fulfillmentFundsFixture(t)
+			ctx := context.Background()
+			if kind != "start" {
+				result, err := s.Mutate(ctx, e.Command{Scope: e.Scope{OrganizationID: "provider", ActorID: "provider"}, Key: uuid.NewString(), Kind: "start", ID: req.ID, Version: req.Version})
+				if err != nil {
+					t.Fatal(err)
+				}
+				req = *result.Request
+			}
+			if kind == "accept" || kind == "reject" {
+				result, err := s.Mutate(ctx, e.Command{Scope: e.Scope{OrganizationID: "provider", ActorID: "provider"}, Key: uuid.NewString(), Kind: "deliver", ID: req.ID, Version: req.Version, Delivery: &e.Delivery{Content: "complete"}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				req = *result.Request
+			}
+			order, err := b.ReadServicePurchase(ctx, req.OrderID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			port := chargebackAfterFundsRead{TradingPort: ecoservicesbilling.Trading{Purchases: purchases}, chargeback: func() error {
+				return m.RecordChargebackSettlement(ctx, money.ChargebackSettlement{ChargebackID: "between-read-and-commit", PaymentID: order.MoneyInput().Payment.PaymentID, AmountMinor: 101, OccurredAt: time.Now().UTC(), ProviderReference: "verified-original-chargeback"})
+			}}
+			s, err = e.NewService(r, port, 180)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := e.Command{Scope: e.Scope{OrganizationID: "provider", ActorID: "provider"}, Key: uuid.NewString(), Kind: kind, ID: req.ID, Version: req.Version, Delivery: &e.Delivery{Content: "complete"}, DeliveryVersion: 1, Reason: "missing document"}
+			if kind == "accept" || kind == "reject" {
+				c.Scope.OrganizationID = "buyer"
+			}
+			if _, err := s.Mutate(ctx, c); !errors.Is(err, e.ErrConflict) {
+				t.Fatalf("chargeback committed between funds read and %s, but fulfillment returned %v", kind, err)
+			}
+			page, err := r.Read(ctx, e.Query{Scope: c.Scope, Kind: "requests", ID: req.ID, Page: 1, PageSize: 1})
+			if err != nil || page.Requests[0].State != req.State || page.Requests[0].AcceptanceID != "" {
+				t.Fatalf("stale fulfillment changed state: %+v %v", page, err)
+			}
+		})
 	}
 }

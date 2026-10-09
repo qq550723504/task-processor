@@ -144,6 +144,7 @@ type Request struct {
 	Side                    string           `json:"side" gorm:"-"`
 }
 type Command struct {
+	FulfillmentProof  *FulfillmentProof  `json:"-"`
 	RefundReviewProof *RefundReviewProof `json:"-"`
 	RefundableAmount  *int64             `json:"-"`
 	Scope             Scope

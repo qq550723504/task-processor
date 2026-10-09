@@ -2,12 +2,25 @@ package ecoservices
 
 import (
 	"errors"
+	"github.com/google/uuid"
 	"testing"
 	"time"
 )
 
 func serviceRequest() Request {
 	return Request{ID: "request", BuyerOrganizationID: "buyer", ProviderOrganizationID: "provider", State: "PAID_READY", Version: 1, OrderID: "order", PaymentReceiptID: "verified-payment", Quote: &Quote{CommissionBPS: 1000, AllocationBasis: "CUMULATIVE_NET_FLOOR_V1", PolicyVersion: PolicyVersion, AmountMinor: 101, Version: 1, Scope: "service scope", AcceptanceCriteria: "deliver registered company", DeliveryDays: 3}}
+}
+func admittedFulfillment(r Request, c Command) Command {
+	c.ID = r.ID
+	c.Key = uuid.NewString()
+	c.Fingerprint = Fingerprint(c)
+	in, err := BuildFulfillmentAdmission(c, r)
+	if err == nil {
+		p := FulfillmentProof{ReceiptID: "original-fulfillment-proof", InputFingerprint: Fingerprint(in), PaymentReceiptID: r.PaymentReceiptID}
+		p.ResultFingerprint = p.Fingerprint()
+		c.FulfillmentProof = &p
+	}
+	return c
 }
 func TestStartCancelAndExactCustomerAcceptance(t *testing.T) {
 	r := serviceRequest()
@@ -21,22 +34,22 @@ func TestStartCancelAndExactCustomerAcceptance(t *testing.T) {
 		t.Fatalf("cancelled request started: %v", err)
 	}
 	r = serviceRequest()
-	if _, err := TransitionRequest(&r, Command{Scope: provider, Kind: "start", Version: 1}, time.Now()); err != nil {
+	if _, err := TransitionRequest(&r, admittedFulfillment(r, Command{Scope: provider, Kind: "start", Version: 1}), time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := TransitionRequest(&r, cancel, time.Now()); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale cancellation succeeded: %v", err)
 	}
-	if _, err := TransitionRequest(&r, Command{Scope: provider, Kind: "deliver", Version: r.Version, Delivery: &Delivery{Content: "registration complete"}}, time.Now()); err != nil {
+	if _, err := TransitionRequest(&r, admittedFulfillment(r, Command{Scope: provider, Kind: "deliver", Version: r.Version, Delivery: &Delivery{Content: "registration complete"}}), time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := TransitionRequest(&r, Command{Scope: provider, Kind: "accept", Version: r.Version, DeliveryVersion: r.Delivery.Version}, time.Now()); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("provider accepted own delivery: %v", err)
 	}
-	if _, err := TransitionRequest(&r, Command{Scope: buyer, Kind: "accept", Key: "accept", Version: r.Version, DeliveryVersion: r.Delivery.Version - 1}, time.Now()); !errors.Is(err, ErrConflict) {
+	if _, err := TransitionRequest(&r, admittedFulfillment(r, Command{Scope: buyer, Kind: "accept", Version: r.Version, DeliveryVersion: r.Delivery.Version - 1}), time.Now()); !errors.Is(err, ErrConflict) {
 		t.Fatalf("wrong delivery accepted: %v", err)
 	}
-	fc, err := TransitionRequest(&r, Command{Scope: buyer, Kind: "accept", Key: "accept", Version: r.Version, DeliveryVersion: r.Delivery.Version}, time.Now())
+	fc, err := TransitionRequest(&r, admittedFulfillment(r, Command{Scope: buyer, Kind: "accept", Version: r.Version, DeliveryVersion: r.Delivery.Version}), time.Now())
 	if err != nil || fc == nil || fc.Kind != "SETTLE" || r.AcceptanceID == "" {
 		t.Fatalf("customer acceptance missing durable source command: %+v %v", fc, err)
 	}

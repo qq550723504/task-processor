@@ -32,6 +32,15 @@ func TransitionRequest(r *Request, c Command, now time.Time) (*FinancialCommand,
 		return nil, ErrInvalid
 	}
 	var financial *FinancialCommand
+	if IsFulfillment(c.Kind) {
+		in, err := BuildFulfillmentAdmission(c, *r)
+		if err != nil {
+			return nil, err
+		}
+		if c.FulfillmentProof == nil || !c.FulfillmentProof.Matches(in) {
+			return nil, ErrConflict
+		}
+	}
 	makeCommand := func(kind string, amount int64) *FinancialCommand {
 		id := uuid.NewSHA1(uuid.NameSpaceOID, []byte("ecoservices:"+r.ID+":"+kind+":"+c.Key)).String()
 		quote := Quote{}

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -19,6 +20,7 @@ func Fingerprint(v any) string {
 func (s *Service) Mutate(ctx context.Context, c Command) (Result, error) {
 	// Internal owner evidence is never accepted from a caller.
 	c.RefundReviewProof = nil
+	c.FulfillmentProof = nil
 	c.RefundableAmount = nil
 	if !ValidID(c.Key) || !validText(c.Scope.ActorID, 256) || !c.Scope.Platform && !validText(c.Scope.OrganizationID, 128) {
 		return Result{}, ErrInvalid
@@ -92,8 +94,8 @@ func (s *Service) Mutate(ctx context.Context, c Command) (Result, error) {
 	c.Fingerprint = ""
 	c.Fingerprint = Fingerprint(c)
 	if c.Kind == "start" || c.Kind == "deliver" || c.Kind == "accept" || c.Kind == "reject" {
-		// Replays keep their immutable result. New fulfillment must read the
-		// current funds through the original purchase, outside the E lock.
+		// Original replay precedes admission. M orders each exact admission
+		// against chargeback; E still checks its current state under its lock.
 		if result, found, err := s.repo.ReadMutationResult(ctx, c); err != nil || found {
 			return result, err
 		}
@@ -108,22 +110,43 @@ func (s *Service) Mutate(ctx context.Context, c Command) (Result, error) {
 			return Result{}, ErrUnavailable
 		}
 		request := page.Requests[0]
-		original, err := s.repo.OriginalFinancialCommand(ctx, request.OrderID)
+		in, err := BuildFulfillmentAdmission(c, request)
 		if err != nil {
 			return Result{}, err
 		}
-		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		result, err := s.trading.ExecuteServiceCommand(callCtx, original)
-		cancel()
-		if err != nil || result.OrderID != request.OrderID || result.PaymentReceiptID == "" || result.PaymentReceiptID != request.PaymentReceiptID {
+		trading, ok := s.trading.(FulfillmentTradingPort)
+		if !ok {
 			return Result{}, ErrUnavailable
 		}
-		if result.State == "RECONCILIATION_REQUIRED" {
-			if err := s.repo.CompleteFinancialCommand(ctx, original, result); err != nil {
-				return Result{}, err
+		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		proof, err := trading.AdmitServiceFulfillment(callCtx, in)
+		cancel()
+		if err != nil {
+			if errors.Is(err, ErrConflict) {
+				// Preserve the existing canonical-fence projection on rejection.
+				// It is not a second check granting admission.
+				original, readErr := s.repo.OriginalFinancialCommand(ctx, request.OrderID)
+				if readErr != nil {
+					return Result{}, readErr
+				}
+				callCtx, cancel = context.WithTimeout(ctx, 30*time.Second)
+				result, readErr := s.trading.ExecuteServiceCommand(callCtx, original)
+				cancel()
+				if readErr != nil {
+					return Result{}, readErr
+				}
+				if result.State == "RECONCILIATION_REQUIRED" && result.OrderID == request.OrderID && result.PaymentReceiptID == request.PaymentReceiptID {
+					if readErr = s.repo.CompleteFinancialCommand(ctx, original, result); readErr != nil {
+						return Result{}, readErr
+					}
+				}
 			}
+			return Result{}, err
+		}
+		if !proof.Matches(in) {
 			return Result{}, ErrConflict
 		}
+		c.FulfillmentProof = &proof
 	}
 	if c.Kind == "refund_propose" || c.Kind == "refund_review" {
 		// A replay returns the immutable original result before querying money.

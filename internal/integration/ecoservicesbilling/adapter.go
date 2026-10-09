@@ -3,6 +3,7 @@ package ecoservicesbilling
 
 import (
 	"context"
+	"errors"
 	"task-processor/internal/commercial/billing"
 	e "task-processor/internal/ecoservices"
 	"task-processor/internal/ledger/money"
@@ -99,6 +100,22 @@ func (s Source) AuthorizeServiceCheckout(ctx context.Context, org, actor, order 
 }
 
 type Trading struct{ Purchases *billing.ServicePurchases }
+
+func (t Trading) AdmitServiceFulfillment(ctx context.Context, in e.FulfillmentAdmission) (e.FulfillmentProof, error) {
+	if in.Scope.Platform || !e.IsFulfillment(in.Kind) {
+		return e.FulfillmentProof{}, e.ErrForbidden
+	}
+	proof, err := t.Purchases.AdmitServiceFulfillment(ctx, billing.ServiceFulfillmentCommand{OrderID: in.OrderID, RequestID: in.RequestID, PaymentReceiptID: in.PaymentReceiptID, BuyerOrganizationID: in.BuyerOrganizationID, ProviderOrganizationID: in.ProviderOrganizationID, OrganizationID: in.Scope.OrganizationID, ActorID: in.Scope.ActorID, Kind: in.Kind, Key: in.Key, CommandFingerprint: in.CommandFingerprint, RequestVersion: in.RequestVersion, QuoteVersion: in.QuoteVersion})
+	if err != nil {
+		if errors.Is(err, money.ErrConflict) || errors.Is(err, billing.ErrConflict) {
+			return e.FulfillmentProof{}, e.ErrConflict
+		}
+		return e.FulfillmentProof{}, err
+	}
+	out := e.FulfillmentProof{ReceiptID: proof.ReceiptID, InputFingerprint: e.Fingerprint(in), PaymentReceiptID: proof.PaymentReceiptID}
+	out.ResultFingerprint = out.Fingerprint()
+	return out, nil
+}
 
 func (t Trading) AdmitServiceRefundReview(ctx context.Context, in e.RefundReviewAdmission) (e.RefundReviewProof, error) {
 	if !in.Scope.Platform || in.Kind != "refund_review" {

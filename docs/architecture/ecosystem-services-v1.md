@@ -384,13 +384,13 @@ Product Authority：用户在原会话明确“按两项推荐方案修复”，
 
 Design Basis：Independent Architecture 的有界平台拒绝 authority 增量；用户决定已确认，原 Reviewer ecoservices_architecture_review 独立核实原 E admission/B SOURCE_DENIED/M ABANDONED 恢复协议，明确 IMPLEMENTATION_READY，无本增量设计 BLOCKER，先于正式生产修改。只复核该实际增量；批准仍双确认、版本/理由/actor/time 及独立 RECON 在实施测试收敛。Legacy：无兼容或迁移；真实渠道/新版运行/用户验收仍 NOT_RUN。
 
-### 12.5 渠道券与实际应结净收入（2026-10-09，设计调查中，NOT_READY）
+### 12.5 渠道券与实际应结净收入（2026-10-09，IMPLEMENTATION_READY）
 
 Product Authority：同一次用户明确批准，平台按商户实际应结净收入抽 10%，CASH 充值券资金计入，NOCASH 免充值减价扣除；现金/券退款按原渠道规则及实际回执，手续费仍平台承担。100 元成交/20 元 CASH→10/90；20 元 NOCASH→8/72。原 finding #23 为 BLOCKER：合法付款被共享通知/查单拒绝，单一 quoted gross 无法表示券结算与现金退款。仅原 E/B/M/GoPay 边界增量；不增加发券、营销、补差、垫资、债务或第二账本。
 
 原报价/amount.total、交易/profile/merchant/幂等身份和封存政策不改。新成交使用显式新政策 basis/version，不静默重定义 CUMULATIVE_NET_FLOOR_V1。B durable verified observation 保存现金与原 voucher ID/type/amount；M 原付款封存同一资金明细和应结额。退款保存原 payer_refund、discount_refund 及逐券 ID/type/refund_amount，与原付款券精确关联；不由 discount_refund 合计猜 NOCASH，不本地估算现金退款。缺失、未知或矛盾明细保持原单待核实，不伪造成功或改号。
 
-当前只读渠道调查已确认：[电商退款查询](https://pay.wechatpay.cn/doc/v3/partner/4012476911)只在受理后提供实际逐券退款，无已核实 preview；[现金退款规则](https://pay.wechatpay.cn/doc/v3/partner/4013080622)不构成混合券/多次逐券尾差分配证明。[原分账回退](https://pay.wechatpay.cn/doc/v3/partner/4012477737)及[分账FAQ](https://pay.wechatpay.cn/doc/v3/partner/4012525463)允许回退先于或后于退款、同原分账多次回退。原冻结的“全部对应佣金先回退再退款”与混合券不确定部分退款有冲突。2026-10-09 已向用户提出一次最小顺序例外，尚未批准；下列 phase 候选不是已批准的正式协议，未经该决定与独立 Ready 不修改生产。
+当前只读渠道调查已确认：[电商退款查询](https://pay.wechatpay.cn/doc/v3/partner/4012476911)只在受理后提供实际逐券退款，无已核实 preview；[现金退款规则](https://pay.wechatpay.cn/doc/v3/partner/4013080622)不构成混合券/多次逐券尾差分配证明。[原分账回退](https://pay.wechatpay.cn/doc/v3/partner/4012477737)及[分账FAQ](https://pay.wechatpay.cn/doc/v3/partner/4012525463)允许回退先于或后于退款、同原分账多次回退。原冻结的“全部对应佣金先回退再退款”与混合券不确定部分退款有冲突。2026-10-09 用户在原会话明确回答“确认两项推荐顺序，继续实施”，批准本节 RETURN_PRE→原 REFUND→RETURN_POST 最小顺序例外。产品决定已满足，正式生产仍须原 Reviewer 对该实际准入明确 IMPLEMENTATION_READY；不重问已批准决定。
 
 有界合同候选（只原 E/B/M/GoPay）：
 
@@ -398,22 +398,22 @@ Product Authority：同一次用户明确批准，平台按商户实际应结净
 - B 的 verified native query/notify/close后迟到付款共用同一 amounts 校验；签名/原 profile/mch/app/交易/total/date 不放松。receipt 明细在原 durable inbox 中保存，再原 wake、M payment acceptance，不能在 wake 前因为合法券而拒绝。未知/缺失/矛盾仍原单待核实，无成功或新身份。SDK 的原始 verified response/decrypted notify 数据须核实 required 金额字段存在，不能把缺字段零值当成全券支付或零现金退款。
 - 原 M binding 固定 nominal gross，保存应结额、实际 cash refund 累计与逐券 refund 累计；M 原 ServiceEffect/receipt 带 actual refund amounts，仍同一事务/不可变effect/receipt fingerprint与原 reservation，重复 receipt 完全匹配后回读，不重复累计。原 `RefundedMinor` 表示已确认名义退款，`SettlementRefundedMinor` 表示 payer_refund+原 CASH 券 refund_amount；merchant remaining S=S0−累计实际应结减少，platform=floor(S×原bps/10000)、provider=S−platform，先整除/余数计算避免溢出。取整按累计 S，不按每次退款单独取整。
 - 原 refund observation 保存 payer_refund、discount_refund 及逐券 promotion_id/type/amount/refund_amount，按精确原付款 coupon ID 关联 funding type；refund response 的 COUPON/DISCOUNT 标记不是 CASH/NOCASH 的推断来源。unknown/重复/越累计券面额/现金累计超原 payer/nominal金额不平/外部advance资金或原身份不匹配均不接受成功。退款执行金额 R 始终原批准 nominal 数额，不改报价或把申请额偷换为现金数额。原 payment/cash/voucher事实不能被后到通知替换。
-- **待批准最小顺序例外**：同原 REFUND command 串行 `RETURN_PRE → REFUND → RETURN_POST`，不新 SHARE、不轮换原 REFUND 身份。未发生正额 SHARE 时 PRE/POST 均为零，只保存本地无经济效果 receipt，不要求或伪造 SHARE proof；原批准退款直接执行，后续合法验收只按剩余实际应结收入分账。这同样覆盖服务开始前 CANCEL、验收分账前部分退款及迟到付款原退款。已发生正额 SHARE 的分支，计划起点须核实原 SHARE proof/request 和已确认净分账 Q=floor(S×原bps/10000)；不匹配保持 RECON，不倒推另一回退目标。不同 RETURN phase 使用确定的原 command+phase operation ID/out_return_no，都绑定该同一原 SHARE。设当前 merchant应结 S、剩余 NOCASH 面额 N、名义退款 R，实际应结减少下界 L=max(0,R−N)，preReturn=max(0,Q−floor((S−L)×原bps/10000))；0额仅本地 receipt。实际 REFUND SUCCESS 后从原明细核实 X=R−ΣNOCASH refund_amount；postReturn=Q−preReturn−floor((S−X)×原bps/10000)，必须非负且不超原share剩余额。所有 floor 使用原封存 bps 的整除/余数计算；S=0 时分账和回退均为零，不派发零额渠道操作。无NOCASH/剩余全退/上下界floor同值保持确定的先回退后退款；其它情况不估算X。
+- **已批准最小顺序例外**：同原 REFUND command 串行 `RETURN_PRE → REFUND → RETURN_POST`，不新 SHARE、不轮换原 REFUND 身份。未发生正额 SHARE 时 PRE/POST 均为零，只保存本地无经济效果 receipt，不要求或伪造 SHARE proof；原批准退款直接执行，后续合法验收只按剩余实际应结收入分账。这同样覆盖服务开始前 CANCEL、验收分账前部分退款及迟到付款原退款。已发生正额 SHARE 的分支，计划起点须核实原 SHARE proof/request 和已确认净分账 Q=floor(S×原bps/10000)；不匹配保持 RECON，不倒推另一回退目标。不同 RETURN phase 使用确定的原 command+phase operation ID/out_return_no，都绑定该同一原 SHARE。设当前 merchant应结 S、剩余 NOCASH 面额 N、名义退款 R，实际应结减少下界 L=max(0,R−N)，preReturn=max(0,Q−floor((S−L)×原bps/10000))；0额仅本地 receipt。实际 REFUND SUCCESS 后从原明细核实 X=R−ΣNOCASH refund_amount；postReturn=Q−preReturn−floor((S−X)×原bps/10000)，必须非负且不超原share剩余额。所有 floor 使用原封存 bps 的整除/余数计算；S=0 时分账和回退均为零，不派发零额渠道操作。无NOCASH/剩余全退/上下界floor同值保持确定的先回退后退款；其它情况不估算X。
 - M 原退款 reservation 只允许封存的原 nominal R/SourceProofID、该 V2 phase plan，正额已分账分支须关联 original SHARE；未分账分支核实无正额 SHARE、PRE/POST为零，不要求 SHARE。校验可证明下界/pre-return及当前 canonical余额，不能全局删除旧 refund guard。已分账的实际 refund effect提交后可暂时 Q大于新platform目标；只有该原 pending refund补差 phase可继续 RETURN，禁止新 SETTLE/finish/share及其它资金command直到净分账匹配。未分账计划以原退款真实SUCCESS及零PRE/POST完成，不把尚未合法分配的Q=0当作须补回退的异常，完成后才允许原合法验收SETTLE分配剩余应结资金。B 保存refund真实SUCCESS，不把渠道已退款记UNKNOWN；已分账command/E hold直到postReturn确认才完成，未分账直到原退款与零phase均确认才完成。phase目标因并发/新事实不匹配保持RECON，不重新估计或生成另一payload。
 - 每一步复用原 B claim/version/lease、E dispatch admission、M reservation/effect唯一约束和原 verified query恢复。响应丢失/重启/UNKNOWN只核实原 phase ID；余额不足WAITING_FUNDS，保留已回退/已退款事实，不额外多return凑款、不垫资/强扣/建债。E只在原最终REFUNDED结果解除approved proposal hold，不根据中间refund SUCCESS伪造完成；独立RECON、AR1保留。
 - 原 `ExpectedUnsplitMinor`、REFUND_RELEASE、SHARE/FINISH 与渠道资金核对均以实际应结资金及已确认资金效果计算，不能拿 nominal gross 对比渠道应结余额；nominal 只用于原付款 total 身份和原批准退款额度。实际 REFUND 已 SUCCESS 而 RETURN_POST 失败/响应丢失时，原 refund fact 不回退为未知，原 command/E hold 不沿旧失败终态提前解除，只核实原补差 phase；非经济失败不能绕开净分账匹配的完成守卫。
 - contract→implementation→consumer：E quote policy及批准nominal command→ecoservicesbilling原typed port→B durable payment/refund observation/phase planner→M original binding/reservation/effect→GoPay原下单/查询/通知/回退/退款→原B/E回读；Console/BFF仅展示原报价、商户应结、实际现金/券退款及未完成状态，不新增营销入口/endpoint/owner。schema沿原M owner provision，fresh-only，无旧行fallback/migration。
 - TDD与必要检查：cash/CASH/NOCASH/混合/全券付款及原通知durable wake；unknown/缺失/矛盾拒绝；100元两个批准分配例子、零应结收入；原bps快照、多次小额累计取整/原券逐ID现金累计；未分账部分退款/CANCEL全退/迟到付款无SHARE原退款；精确refund SUCCESS明细、full及mixed partial预回退/实际差额；M1/M3成功而B保存丢失原回读、两个RETURN phase原share关联、未知不重派、WAITING_FUNDS及退款成功后POST失败/响应丢失不解除hold；NOCASH正常应结余额/unsplit/release/share/finish口径、独立拒付/fees/原V1保留；真实渠道/新版浏览器/用户验收独立NOT_RUN，不扩验证平台。
 
-本增量 Product Authority：净收入政策已批准；phase顺序例外待用户决定。Independent Architecture：协议候选已具体化，正式实现仍 NOT_READY，须原 Reviewer 有界检查及该顺序决定，无需重审其它已解决增量。第一次原 Reviewer 草案预检指出未分账原退款被 SHARE/负POST拦住的设计 BLOCKER，已按上述零回退分支补齐；资金消费口径及POST失败保留hold归入 IMPLEMENTATION_TEST，不扩大产品范围。
+本增量 Product Authority：净收入政策及 phase 顺序例外均已批准。Independent Architecture：原 Reviewer 于 2026-10-09 绑定 b735e0a3 / staged tree 84f68bab3317a58a74bba3f578dc47676b5ff644，只核实本次 authority 增量及既有两轮候选合同，无新增设计 BLOCKER，明确 IMPLEMENTATION_READY，先于生产/schema 修改；Issue #603 本增量 Ready。无需重审其它已解决增量。第一次原 Reviewer 草案预检指出未分账原退款被 SHARE/负POST拦住的设计 BLOCKER，已按上述零回退分支补齐；资金消费口径及POST失败保留hold归入 IMPLEMENTATION_TEST，不扩大产品范围。
 
-### 12.6 拒付与履约准入排序候选（2026-10-09，待产品顺序决定，NOT_READY）
+### 12.6 拒付与履约准入排序（2026-10-09，IMPLEMENTATION_READY）
 
-本节仅为 #25 的有界合同候选，不授权生产实现。Product Outcome：原已付款订单的服务商开始/交付、客户验收/拒收不能消费一个已经过期的资金预读。Classification: IMPLEMENTATION_TEST；当前 Must 未收敛，阻止本增量合并/真实开放。实测 `TestChargebackBetweenFundsReadAndFulfillmentCommitCannotAdvance` 在真实 E→B→M 返回后、E.Apply 前提交原 M chargeback，四动作全部仍成功，说明 #15 的最终投影修复未建立跨 owner 的共同排序点。
+本节为 #25 的已获产品顺序批准的有界合同。原 Reviewer 于 2026-10-09 绑定 b735e0a3 / staged tree 84f68bab3317a58a74bba3f578dc47676b5ff644，仅检查本次 authority 增量并复用两轮候选合同核实，无新增设计 BLOCKER，明确 IMPLEMENTATION_READY，先于生产/schema 修改；Issue #603 本增量 Ready。Product Outcome：原已付款订单的服务商开始/交付、客户验收/拒收不能消费一个已经过期的资金预读。Classification: IMPLEMENTATION_TEST；当前 Must 未收敛，阻止本增量合并/真实开放。实测 `TestChargebackBetweenFundsReadAndFulfillmentCommitCannotAdvance` 在真实 E→B→M 返回后、E.Apply 前提交原 M chargeback，四动作全部仍成功，说明 #15 的最终投影修复未建立跨 owner 的共同排序点。
 
-Product Authority：原 §11.2 的 E request/CAS/权限、M canonical reversal、验收后原分账均保留；§11.5 E5 的准入后在途规则仅明确覆盖金融命令，不能由 Reviewer/Writer 自行扩为履约规则。**本节唯一待用户决定的最小例外：M 对精确原履约命令的持久资金准入作为排序点。拒付先提交，则拒绝准入；准入先提交，则只允许该原命令在 E 当前 CAS、身份/权限、原状态及 E fence 仍合法时提交，即使 M 的拒付在 E 提交前到达。拒付立即保存真实 M 事实并阻断后续新准入、新分账；不撤销已经完成的履约或验收、不放行另一命令。** 现有批准不等于这个顺序例外已获批准。保留严格“任何拒付提交早于 E 最终提交都必须拒绝”的替代决定时，本候选不实施；不能用延迟真实 M 拒付、跨 owner 持锁或隐含三库原子来伪造满足。
+Product Authority：原 §11.2 的 E request/CAS/权限、M canonical reversal、验收后原分账均保留；§11.5 E5 的准入后在途规则仅明确覆盖金融命令，不能由 Reviewer/Writer 自行扩为履约规则。**本节用户已批准的最小例外：M 对精确原履约命令的持久资金准入作为排序点。拒付先提交，则拒绝准入；准入先提交，则只允许该原命令在 E 当前 CAS、身份/权限、原状态及 E fence 仍合法时提交，即使 M 的拒付在 E 提交前到达。拒付立即保存真实 M 事实并阻断后续新准入、新分账；不撤销已经完成的履约或验收、不放行另一命令。** 2026-10-09 用户在原会话明确回答“确认两项推荐顺序，继续实施”，本例外已获批准。不能用延迟真实 M 拒付、跨 owner 持锁或隐含三库原子来伪造满足。
 
-Scope：仅四种原命令、原 M payment binding 下的非经济准入证明、原 typed E/B/M port 和消费者。Out of Scope：新资金效果/资金 reservation、新队列/通用协调/事件/恢复平台、第二账本、重派/换号、退款或营销扩展、补差/垫资/债务、DB 合并、部署/真实渠道或数据操作。无新 UI/页面/权限；沿原 Figma 操作和原 pending JSON 手动重试。本节不改变 §12.5 待答退款顺序。
+Scope：仅四种原命令、原 M payment binding 下的非经济准入证明、原 typed E/B/M port 和消费者。Out of Scope：新资金效果/资金 reservation、新队列/通用协调/事件/恢复平台、第二账本、重派/换号、退款或营销扩展、补差/垫资/债务、DB 合并、部署/真实渠道或数据操作。无新 UI/页面/权限；沿原 Figma 操作和原 pending JSON 手动重试。本节不扩展 §12.5 已批准退款顺序。
 
 Owner/contract→implementation→injection→consumer：E 仍拥有履约命令、request 状态、操作结果、当前 version/CAS；M 仍拥有付款、拒付及同一 payment lock 下的精确资金准入事实；B/`ecoservicesbilling` 只做原映射/调用，不成为第二资金 owner。原 E Service→TradingPort→B ServicePurchases→M ServiceFundsStore 的窄 admission/read 合同→M 原 persistence 同 owner 事务→原 `buildEcoservices` 独立 pools 注入→E 原 request Apply。普通个人/钱包退款消费者不得消费这个服务准入；M 不持事务跨 owner 调用，不新增 M→E 回调。
 
@@ -423,23 +423,23 @@ Owner/contract→implementation→injection→consumer：E 仍拥有履约命令
 - M 在与 ObserveServiceChargeback/原 service reversal 相同的 payment binding 锁内校验 canonical funds、reconciliation fence、原付款与准入身份，并提交一个不可变非经济 receipt。事务失败零准入；不存在当前 proof 时 canonical chargeback/ChargedBackMinor>0 或独立 RECON 必须拒绝。合法已确认部分退款、原佣金回退本身不禁止继续原服务：原 E 保留的 SERVICING/AWAITING_ACCEPTANCE 与 hold 解除、M 按剩余累计净额结算仍适用；全额退款/取消由原 E state/CAS/fence 拒绝，不能把所有 reversal 混为拒付。该 receipt 不占用、释放或改变原资金 operation reservation，不产生 money effect，不允许 SHARE/FINISH 绕过原 current-funds gate。
 - 原准入重复只回读完全匹配 proof，不能凭相同 key 为另一个 actor/kind/version/payload 建新准入。原 M 拒付始终立即保存；所有真实 service chargeback 接受入口共用同一原 payment 锁，不能只覆盖 RecordChargebackSettlement 而遗漏原 ServiceEffect(CHARGEBACK)。合法已派发资金操作的原 recovery 保留，不将该非经济 proof 当作金融 dispatch authority。
 - E 在调用前精确回读原成功 operation result；已完成命令保持原结果，不重新准入/重复履约。未完成命令经原 typed adapter 获取 M proof，E 锁内校验 proof 对应本次原命令及 payment receipt，随后执行原 tenant/actor、request version、TransitionRequest、文件归属和当前 E fence。旧 proof 不覆盖较新 E version、退款提议、RECON、已完成验收或权限失败，不恢复旧 snapshot，不解除独立资金 hold。
-- M proof 响应丢失、E 保存失败、进程重启均只按同一原 key/payload 回读；不自动执行履约、不从财务 recovery loop 消费它、不轮换 key/version 或生成另一 acceptance。是否允许此前准入的原命令继续以同一 proof 进入 E，属于上述唯一顺序例外的范围；即便 proof 有效，E 当前 CAS/fence 不合法仍拒绝。未知/缺失/矛盾 proof、读取错误、保存错误都不提交新的 E 履约。
+- M proof 响应丢失、E 保存失败、进程重启均只按同一原 key/payload 回读；不自动执行履约、不从财务 recovery loop 消费它、不轮换 key/version 或生成另一 acceptance。此前准入的原命令仅以同一 proof 进入 E，属于上述已批准顺序例外的范围；即便 proof 有效，E 当前 CAS/fence 不合法仍拒绝。未知/缺失/矛盾 proof、读取错误、保存错误都不提交新的 E 履约。
 - 无共享事务/UoW：E/B/M 各自独立池和权限保持。E 并发只靠原 request lock/CAS 收敛；M admission 与 canonical chargeback 靠原 payment lock 排序，不能把过程声称为 E/M 同时提交。原已知拒付先于准入时，不获取新 receipt、不创建新的 E financial command/acceptance；拒付后原 B/M 分账守卫继续阻止新资金效果。自动原 CREATE 恢复最终向 E 投影 RECON，不成为 race 的唯一防线。
 - Legacy decision: EXTRACT。复用当前 M payment lock/immutable receipt、E request CAS/immutable operation replay、原 typed adapters；不包装 legacy service、迁移旧行、fallback/双读双写或另建事实源。新安装 schema/权限仅在准入后由原 M installer provision；旧试用不直接升级/重seed。
 
 验证范围：先复用已实际四 RED 的 E→B→M 测试证明“拒付在旧预读后、M 精确准入前”全部拒绝；再以原受限 PG 的独立实例/连接验证 chargeback 与 admission 两种真实锁顺序。仅被批准的“准入先、拒付后”原命令可继续且不得绕过 E 较新 CAS/fence；已完成 replay 保持，异键/载荷/actor/version/receipt 拒绝，M proof 保存/回读失败零 E 提交，原 proof 丢响应精确回读，不重复 acceptance/financial command。覆盖 service chargeback sibling、不产生新 SHARE/FINISH，以及 E 已投影 RECON 的拒绝；合法部分退款/原回退之后正常继续履约和按剩余净额验收分账，全退/取消依旧拒绝。复用既有测试/隔离 PG，未执行场景保持 NOT_RUN，不新建验收平台。真实渠道/新版运行/用户验收独立 NOT_RUN。
 
-开工条件：上述单一顺序例外获用户明确决定，原 Reviewer 仅对本节实际新边界完成有界独立检查并明确 IMPLEMENTATION_READY，Issue #603 对应增量 Ready，然后同一 Writer TDD。本节新准入协议当前只有测试/调查，尚未修改生产或正式 schema；原 ServiceEffect(CHARGEBACK) 漏保存既有 RECON 的 sibling 是独立的 Reuse Existing Architecture 修复，不是本节新准入实现或竞态修复完成。
+开工条件：上述单一顺序例外已获用户明确决定；原 Reviewer 仅对本节实际新边界完成有界独立检查并明确 IMPLEMENTATION_READY，Issue #603 对应增量 Ready，然后同一 Writer TDD。本节新准入协议当前只有测试/调查，尚未修改生产或正式 schema；原 ServiceEffect(CHARGEBACK) 漏保存既有 RECON 的 sibling 是独立的 Reuse Existing Architecture 修复，不是本节新准入实现或竞态修复完成。
 
 原 Reviewer 首轮草案预检指出“非零 reversal”会误伤合法部分退款后的正常履约，属于核心 happy path 设计 BLOCKER；本节已限定为 canonical chargeback/独立 RECON，并明确原部分退款/佣金回退的正常继续与剩余净额验收路径。该修正未改变待用户决定的排序例外，不提前写 Ready。
 
-第二轮原 Reviewer 只检查该实际文档修正及候选边界，确认部分退款 BLOCKER 已收敛，无剩余具体设计 BLOCKER；精确证明、同 payment 锁排序、E 当前 CAS/fence/replay 及失败恢复方向可实施。结论仍是“待用户明确排序例外，NOT_READY”，不是 IMPLEMENTATION_READY。原 chargeback effect sibling 按原 §11.4 同事务保存既有 RECON 无新高风险边界，独立在实现测试收敛；不为此重审全局基线。
+第二轮原 Reviewer 只检查该实际文档修正及候选边界，确认部分退款 BLOCKER 已收敛，无剩余具体设计 BLOCKER；精确证明、同 payment 锁排序、E 当前 CAS/fence/replay 及失败恢复方向可实施。该轮历史结论是“待用户明确排序例外，NOT_READY”，不是 IMPLEMENTATION_READY。本次用户已批准，原 Reviewer 只确认实际 authority 增量及准入结论，不重审未变设计/已实现增量。原 chargeback effect sibling 按原 §11.4 同事务保存既有 RECON 无新高风险边界，独立在实现测试收敛；不为此重审全局基线。
 
 ### 12.7 原退款审核金额准入（2026-10-09，IMPLEMENTATION_READY）
 
 Product Outcome：平台审核双方已经一致的原退款提议时，批准金额必须经原付款 owner 的精确、持久校验，不消费 E→B→M 预读后已经失效的剩余额度。#27 Classification: IMPLEMENTATION_TEST，当前 Must 为原退款审批事实和金额正确性，阻塞该增量合并/真实开放。实际 E→B→M 诊断复现了 101 分预读后 60 分拒付仍保存 101 分 APPROVED；原 M RECON 会阻止后续新资金效果，不能把该复现夸称为已派发超额退款或无限资金重试。
 
-Product Authority：复用已批准 §11.9 的双方确认后平台审核、原 actor/理由/提议版本/CAS，以及 §11.4/11.5 原付款、拒付和金融派发准入。此处只使原审核金额校验可追溯，不增加平台退款 authority、履约 authority 或券退款顺序；§12.5/12.6 的两个待答例外仍 NOT_READY。无新 UI、页面、权限或 Figma 操作变化。
+Product Authority：复用已批准 §11.9 的双方确认后平台审核、原 actor/理由/提议版本/CAS，以及 §11.4/11.5 原付款、拒付和金融派发准入。此处只使原审核金额校验可追溯，不增加平台退款 authority、履约 authority 或券退款顺序；§12.5/12.6 的两个顺序例外后来已获用户明确批准并达到 IMPLEMENTATION_READY，见各节当前结论。无新 UI、页面、权限或 Figma 操作变化。
 
 Design Basis：Independent Architecture 的有界原 M 金额准入合同。Scope：仅原 refund_review、原 E/B/M typed port、M 原 payment binding 锁下的非经济证明及新安装 owner provision。Out of Scope：资金 reservation/新资金效果、占用 PendingOperationID、自动退款/取消、通用协调/事件/恢复平台、第二账本、换号/UNKNOWN 重派、跨 owner 持锁、数据迁移/部署/真实渠道。
 
@@ -456,4 +456,4 @@ Legacy decision: EXTRACT。复用当前 M payment lock/immutable proof、E reque
 
 验证：将现有实际 RED 诊断改为“拒付在旧预读后、精确 M 准入前”并证明拒绝；真实 M 锁两顺序及精确原 proof 回读、同键异载荷/actor/version/付款身份、E 较新 CAS/撤权/提议变化、proof/save/read失败均不派发。准入先后到拒付只可能保存原合法审批意图，原后续退款由 canonical RECON 拦住。正常未分账/已分账部分退款和原回退路径继续可用，证明不占 reservation、不生成新的资金身份。复用现有 Go/受限 PG，不新建验证平台；未执行的真实渠道/新版运行/用户验收独立 NOT_RUN。
 
-2026-10-09 原独立 Reviewer ecoservices_architecture_review 第1轮绑定设计 tree f4f37681d542ca6653ed1d036d33c500d8feed92 检查本节实际新增边界，无设计 BLOCKER，明确 IMPLEMENTATION_READY，先于本增量正式生产/schema修改。Issue #603 对应增量 Ready 后，同一 Writer 按 TDD 实施。M 精确 proof/E CAS/失败恢复和实际两锁顺序在实施验证收敛；其它未变增量不重审。§12.5/12.6 仍 NOT_READY，真实渠道/新版运行/用户验收仍 NOT_RUN。
+2026-10-09 原独立 Reviewer ecoservices_architecture_review 第1轮绑定设计 tree f4f37681d542ca6653ed1d036d33c500d8feed92 检查本节实际新增边界，无设计 BLOCKER，明确 IMPLEMENTATION_READY，先于本增量正式生产/schema修改。Issue #603 对应增量 Ready 后，同一 Writer 按 TDD 实施。M 精确 proof/E CAS/失败恢复和实际两锁顺序在实施验证收敛；其它未变增量不重审。§12.5/12.6 后来已获用户明确批准并达到 IMPLEMENTATION_READY，见各节当前结论；真实渠道/新版运行/用户验收仍 NOT_RUN。
