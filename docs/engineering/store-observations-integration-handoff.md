@@ -58,6 +58,8 @@ go run ./cmd/current-application -config C:\private\current-application.json
 
 批量列表与父回执的 `progress.windows` 只投影当前待处理窗口；`range` 保留整个请求范围，计数、原因和状态不丢失。完整待处理队列仍在 SQL checkpoint 和单个同步状态接口中，批量响应不回写进度。列表在既有 2 MiB 总响应限制内为元数据预留空间，再按实际可用字节进行记录分页，统计仍基于完整筛选集合。
 
+逐店授权/来源检查与稳定 ID 的工作流启动最多并发16项，保持原操作 scope、回执顺序和每店独立检查；依赖故障仍可能使请求失败，提交后使用原 key 查询/恢复。实际平台页读取仍由既有单 activity 观察 worker 执行，此调整不并行获取平台订单页。
+
 父操作和全部子同步、页数据/checkpoint、最终完成/head 都保存在 Store 专用 DB 的 observation schema。页面会话存储只保留本企业/用户的操作 key 和无凭据输入，用于丢失响应后的原操作查询/重试；不是业务事实源。重启通过 SQL checkpoint 和同一个 Temporal ID 恢复，只有明确的新同步才分配新操作 key。保留 named volumes 的正常 stop/restart 不删除观察；本文没有 destroy 或清理授权。
 
 ## 验证边界

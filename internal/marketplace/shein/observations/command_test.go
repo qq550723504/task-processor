@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -111,7 +112,8 @@ func TestBeginProjectsLiveChildrenAfterCommitAndWorkflowStartup(t *testing.T) {
 	directory := &commandDirectory{stores: []string{uuid.NewString(), uuid.NewString()}}
 	remaining := directory.stores[1]
 	repo := &commandRepository{}
-	s := Service{Repository: repo, Directory: directory, Access: commandAccess{}, Starter: commandStarter(func() { directory.stores = []string{remaining} })}
+	var revoke sync.Once
+	s := Service{Repository: repo, Directory: directory, Access: commandAccess{}, Starter: commandStarter(func() { revoke.Do(func() { directory.stores = []string{remaining} }) })}
 	result, err := s.Begin(context.Background(), Scope{"org-a", "actor-a", "original-member"}, uuid.NewString(), BeginInput{Kind: Products})
 	require.NoError(t, err)
 	require.Equal(t, []string{remaining}, result.Input.Stores)

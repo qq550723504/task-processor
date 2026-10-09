@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 	"sort"
 	"strconv"
 	"task-processor/internal/authidentity"
@@ -36,6 +37,28 @@ func batchSync(sync Sync) Sync {
 		sync.Progress.Windows = append([]Window{}, sync.Progress.Windows[:1]...)
 	}
 	return sync
+}
+
+// Independent per-store access reads and idempotent starts share a fixed cap.
+// Platform page/detail calls remain in the worker's existing execution path.
+func forStores(ctx context.Context, count int, visit func(context.Context, int) error) error {
+	group, reads := errgroup.WithContext(ctx)
+	group.SetLimit(16)
+	for i := 0; i < count; i++ {
+		if reads.Err() != nil {
+			break
+		}
+		group.Go(func() error {
+			if e := reads.Err(); e != nil {
+				return e
+			}
+			return visit(reads, i)
+		})
+	}
+	if e := group.Wait(); e != nil {
+		return e
+	}
+	return ctx.Err()
 }
 func (s *Service) allowedStores(ctx context.Context, scope Scope, kind Kind, sync bool, selected []string) ([]string, error) {
 	if !s.available() || s.Directory == nil {
@@ -147,8 +170,9 @@ func (s *Service) Begin(ctx context.Context, scope Scope, key string, in BeginIn
 		fixed.Start = &start
 		fixed.End = &end
 	}
-	children := []Sync{}
-	for _, store := range stores {
+	children := make([]Sync, len(stores))
+	e = forStores(ctx, len(stores), func(ctx context.Context, i int) error {
+		store := stores[i]
 		child := Sync{ID: uuid.NewString(), StoreID: store, Owner: scope, Kind: in.Kind, Key: ChildKey(key, store, in.Kind), Revision: 1, Status: "pending", CreatedAt: now, Progress: Checkpoint{Page: 1, Windows: append([]Window{}, windows...), Notes: []string{}}}
 		if in.Kind == Orders {
 			child.Range = &Window{*fixed.Start, *fixed.End}
@@ -156,7 +180,7 @@ func (s *Service) Begin(ctx context.Context, scope Scope, key string, in BeginIn
 		m, e := s.Access.Open(ctx, scope, store, in.Kind, true, nil)
 		if e != nil {
 			if !errors.Is(e, ErrUnsupported) && !errors.Is(e, ErrForbidden) && !errors.Is(e, ErrConflict) {
-				return Command{}, e
+				return e
 			}
 			child.Status = "suspended"
 			child.ErrorCode = "store_unavailable"
@@ -166,7 +190,11 @@ func (s *Service) Begin(ctx context.Context, scope Scope, key string, in BeginIn
 		} else {
 			child.Binding = m.Binding()
 		}
-		children = append(children, child)
+		children[i] = child
+		return nil
+	})
+	if e != nil {
+		return Command{}, e
 	}
 	cmd, e := s.Repository.Begin(ctx, scope, key, fingerprint, fixed, children)
 	if e != nil {
@@ -175,11 +203,13 @@ func (s *Service) Begin(ctx context.Context, scope Scope, key string, in BeginIn
 	// A committed pending command stays discoverable even when Temporal startup is
 	// unavailable or its response is lost. No second identity is generated.
 	if s.Starter != nil {
-		for _, child := range cmd.Syncs {
+		_ = forStores(ctx, len(cmd.Syncs), func(ctx context.Context, i int) error {
+			child := cmd.Syncs[i]
 			if !child.Terminal() {
 				_ = s.Starter.Ensure(ctx, scope.OrganizationID, child.ID)
 			}
-		}
+			return nil
+		})
 	}
 	return s.command(ctx, scope, cmd)
 }
@@ -200,17 +230,29 @@ func (s *Service) command(ctx context.Context, scope Scope, cmd Command) (Comman
 	}
 	visible := make([]Sync, 0, len(cmd.Syncs))
 	stores := make([]string, 0, len(cmd.Syncs))
-	for _, child := range cmd.Syncs {
+	include := make([]bool, len(cmd.Syncs))
+	e = forStores(ctx, len(cmd.Syncs), func(ctx context.Context, i int) error {
+		child := cmd.Syncs[i]
 		if !set[child.StoreID] {
-			continue
+			return nil
 		}
 		if child.Binding.ApplicationID != "" {
 			if _, e := s.Access.Open(ctx, scope, child.StoreID, child.Kind, false, &child.Binding); e != nil {
 				if errors.Is(e, ErrNotFound) || errors.Is(e, ErrForbidden) || errors.Is(e, ErrConflict) || errors.Is(e, ErrUnsupported) {
-					continue
+					return nil
 				}
-				return Command{}, e
+				return e
 			}
+		}
+		include[i] = true
+		return nil
+	})
+	if e != nil {
+		return Command{}, e
+	}
+	for i, child := range cmd.Syncs {
+		if !include[i] {
+			continue
 		}
 		visible = append(visible, batchSync(child))
 		stores = append(stores, child.StoreID)
@@ -479,16 +521,28 @@ func (s *Service) List(ctx context.Context, scope Scope, q Query) (Result, error
 	validated := map[Binding]Merchant{}
 	selected := []Sync{}
 	complete := len(stores) > 0
-	for _, head := range heads {
+	headHandles := make([]Merchant, len(heads))
+	e = forStores(ctx, len(heads), func(ctx context.Context, i int) error {
+		head := heads[i]
 		if head.Binding.ApplicationID == "" {
-			complete = false
-			continue
+			return nil
 		}
 		m, e := s.Access.Open(ctx, scope, head.StoreID, q.Kind, false, &head.Binding)
 		if e != nil {
 			if errors.Is(e, ErrUnavailable) {
-				return Result{}, e
+				return e
 			}
+			return nil
+		}
+		headHandles[i] = m
+		return nil
+	})
+	if e != nil {
+		return Result{}, e
+	}
+	for i, head := range heads {
+		m := headHandles[i]
+		if m == nil {
 			complete = false
 			continue
 		}
@@ -504,7 +558,26 @@ func (s *Service) List(ctx context.Context, scope Scope, q Query) (Result, error
 		complete = false
 	}
 	currentLatest := []Sync{}
-	for _, sync := range latest {
+	latestHandles := make([]Merchant, len(latest))
+	e = forStores(ctx, len(latest), func(ctx context.Context, i int) error {
+		sync := latest[i]
+		if sync.Binding.ApplicationID == "" || validated[sync.Binding] != nil {
+			return nil
+		}
+		m, e := s.Access.Open(ctx, scope, sync.StoreID, q.Kind, false, &sync.Binding)
+		if e != nil {
+			if errors.Is(e, ErrUnavailable) {
+				return e
+			}
+			return nil
+		}
+		latestHandles[i] = m
+		return nil
+	})
+	if e != nil {
+		return Result{}, e
+	}
+	for i, sync := range latest {
 		if sync.Binding.ApplicationID == "" {
 			// This records a rejected local attempt, not a platform observation.
 			// The current directory is rechecked below before any metadata escapes.
@@ -514,11 +587,8 @@ func (s *Service) List(ctx context.Context, scope Scope, q Query) (Result, error
 			continue
 		}
 		if validated[sync.Binding] == nil {
-			m, e := s.Access.Open(ctx, scope, sync.StoreID, q.Kind, false, &sync.Binding)
-			if e != nil {
-				if errors.Is(e, ErrUnavailable) {
-					return Result{}, e
-				}
+			m := latestHandles[i]
+			if m == nil {
 				continue
 			}
 			validated[sync.Binding] = m
@@ -543,10 +613,8 @@ func (s *Service) List(ctx context.Context, scope Scope, q Query) (Result, error
 	if e != nil {
 		return Result{}, e
 	}
-	for _, m := range handles {
-		if e = m.Check(ctx); e != nil {
-			return Result{}, e
-		}
+	if e = forStores(ctx, len(handles), func(ctx context.Context, i int) error { return handles[i].Check(ctx) }); e != nil {
+		return Result{}, e
 	}
 	// Recheck the currently authorized directory too; aggregates must never retain
 	// records from a store revoked while the DB query was running.
