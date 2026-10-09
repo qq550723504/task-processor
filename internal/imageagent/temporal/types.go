@@ -37,6 +37,7 @@ const (
 	activityExecuteSlot                 = "imageagent.execute_slot.v2"
 	activityPersistSlotResult           = "imageagent.persist_slot_result.v2"
 	activityPersistSlotResultV3         = "imageagent.persist_slot_result.v3"
+	activityPersistImageSetSlotResult   = "imageagent.persist_image_set_slot_result.v1"
 	activityPersistRunState             = "imageagent.persist_run_state.v2"
 	activityPersistWorkflowFailure      = "imageagent.persist_workflow_failure.v1"
 	activityPersistWorkflowFailureV2    = "imageagent.persist_workflow_failure.v2"
@@ -137,6 +138,7 @@ type SlotWorkflowInput struct {
 }
 
 type SlotWorkflowResult struct {
+	Closure   *imageagent.ImageSlotClosure `json:",omitempty"`
 	Execution imageagent.SlotExecutionResult
 	Status    imageagent.SlotStatus
 	ErrorCode string
@@ -203,10 +205,12 @@ const (
 )
 
 type EffectRecoveryResult struct {
-	Outcome     EffectRecoveryOutcome
-	Published   imageagent.SlotEffectV3PublishedResult
-	EffectPhase imageagent.SlotEffectV3Phase
-	BlockedCode string
+	Closure         *imageagent.ImageSlotClosure     `json:",omitempty"`
+	GenerationProof *imageagent.ImageGenerationProof `json:",omitempty"`
+	Outcome         EffectRecoveryOutcome
+	Published       imageagent.SlotEffectV3PublishedResult
+	EffectPhase     imageagent.SlotEffectV3Phase
+	BlockedCode     string
 }
 
 // EffectRecoveryCompletedSignal is emitted after the recovery workflow has

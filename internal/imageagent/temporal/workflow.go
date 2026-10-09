@@ -504,6 +504,25 @@ func (o *workflowEffectOwner) persistSlotResultV3(ctx workflow.Context, input Wo
 	})
 }
 
+func (o *workflowEffectOwner) persistImageSetCompletion(ctx workflow.Context, input WorkflowInput, completion *childCompletion) error {
+	return o.execute(ctx, "", func(ownerCtx workflow.Context) error {
+		if completion == nil || completion.V3Result == nil || input.Plan.Set == nil {
+			return imageagent.ErrRevisionConflict
+		}
+		result := *completion.V3Result
+		activityInput := PersistSlotResultV3ActivityInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision, Result: result, AttemptKey: slotAttemptKey(input.Plan.Revision, findSlot(input.Plan, result.Published.SlotID), result.Published.Attempt)}
+		var projection imageagent.SlotProjection
+		if err := workflow.ExecuteActivity(ownerCtx, activityPersistImageSetSlotResult, activityInput).Get(ownerCtx, &projection); err != nil {
+			return err
+		}
+		if projection.Slot.ID != result.Published.SlotID || projection.Slot.Status != result.Status {
+			return imageagent.ErrRevisionConflict
+		}
+		completion.Result = SlotWorkflowResult{Execution: imageagent.SlotExecutionResult{SlotID: projection.Slot.ID, Attempt: projection.Attempt, Candidates: projection.Candidates}, Status: projection.Slot.Status, ErrorCode: projection.ErrorCode, EffectPhase: result.EffectPhase, Closure: projection.Closure}
+		return nil
+	})
+}
+
 func (o *workflowEffectOwner) reviewStagedSlotV3(ctx workflow.Context, input WorkflowInput, index, attempt int, actionID string) (SlotWorkflowV3Result, error) {
 	if !o.activities.useV3Slot || strings.TrimSpace(o.activities.reviewStagedSlot) == "" {
 		return SlotWorkflowV3Result{}, fmt.Errorf("staged review activity is not configured")
@@ -844,7 +863,17 @@ func (s *workflowUpdateState) applyEffectRecoveryCompleted(signal EffectRecovery
 	}
 	ownerIndex := recoverableEffectIndex(s.projection.RecoverableEffects, signal.SlotID, signal.Attempt)
 	clearOwner := false
+	if s.input.Plan.Set != nil && signal.Result.Closure != nil && !signal.Result.Closure.Valid(signal.Attempt) {
+		return false
+	}
 	if signal.Result.EffectPhase == imageagent.SlotEffectV3PublicationComplete && signal.Result.Outcome == EffectRecoveryOutcomePublished {
+		if s.input.Plan.Set != nil {
+			closure, proof := signal.Result.Closure, signal.Result.GenerationProof
+			recipe := s.input.Plan.Slots[index].Recipe
+			if closure == nil || closure.Kind != "settled" || !closure.Valid(signal.Attempt) || proof == nil || recipe == nil || closure.Points != recipe.Quote.Points || *proof != (imageagent.ImageGenerationProof{IntentID: closure.IntentID, Fingerprint: closure.Fingerprint, SettlementProofDigest: closure.SettlementProofDigest, Points: closure.Points}) {
+				return false
+			}
+		}
 		published, err := imageagent.NormalizeSlotEffectV3PublishedResult(signal.Result.Published)
 		if err != nil {
 			return false
@@ -859,14 +888,22 @@ func (s *workflowUpdateState) applyEffectRecoveryCompleted(signal EffectRecovery
 				Width: candidate.Width, Height: candidate.Height, Operations: append([]string(nil), candidate.Operations...),
 			})
 		}
+		if s.input.Plan.Set != nil {
+			if len(candidates) != 1 {
+				return false
+			}
+			proof := *signal.Result.GenerationProof
+			candidates[0].GenerationProof = &proof
+		}
 		(*s.results)[index] = SlotWorkflowResult{
 			Execution: imageagent.SlotExecutionResult{SlotID: published.SlotID, Attempt: published.Attempt, Candidates: candidates},
-			Status:    imageagent.SlotStatusAccepted, EffectPhase: imageagent.SlotEffectV3PublicationComplete,
+			Status:    imageagent.SlotStatusAccepted, EffectPhase: imageagent.SlotEffectV3PublicationComplete, Closure: signal.Result.Closure,
 		}
 		s.projection.Slots[index].Attempt = published.Attempt
 		s.projection.Slots[index].Candidates = append([]imageagent.AssetCandidate(nil), candidates...)
 		s.projection.Slots[index].ErrorCode = ""
 		s.projection.Slots[index].Slot.Status = imageagent.SlotStatusAccepted
+		s.projection.Slots[index].Closure = signal.Result.Closure
 		clearOwner = true
 	} else {
 		code := strings.TrimSpace(signal.Result.BlockedCode)
@@ -879,6 +916,11 @@ func (s *workflowUpdateState) applyEffectRecoveryCompleted(signal EffectRecovery
 		(*s.results)[index].Status = imageagent.SlotStatusBlocked
 		(*s.results)[index].ErrorCode = code
 		(*s.results)[index].EffectPhase = signal.Result.EffectPhase
+		if s.input.Plan.Set != nil {
+			(*s.results)[index].Closure = signal.Result.Closure
+			s.projection.Slots[index].Closure = signal.Result.Closure
+			clearOwner = signal.Result.Closure != nil
+		}
 		s.projection.Slots[index].Slot.Status = imageagent.SlotStatusBlocked
 		s.projection.Slots[index].ErrorCode = code
 		if ownerIndex >= 0 {
@@ -902,7 +944,12 @@ func (s *workflowUpdateState) applyEffectRecoveryCompleted(signal EffectRecovery
 			s.cancelBlocked = false
 			s.cancelActionFingerprint = s.lastBlockedCancelFingerprint
 		} else if s.projection.Status == imageagent.RunStatusBlocked {
-			s.projection.Status = imageagent.RunStatusAwaitingFinalApproval
+			if s.input.Plan.Set != nil {
+				updated := summarizeResultsForWire(s.input.Plan, *s.results, workflowActivityWire{useV3Slot: true, useV3Approval: true})
+				s.projection.Status, s.projection.Block = updated.Status, updated.Block
+			} else {
+				s.projection.Status = imageagent.RunStatusAwaitingFinalApproval
+			}
 		}
 	}
 	return true
@@ -1960,7 +2007,11 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 	markNotDispatchedAtLifecycleDeadline := func() error {
 		for next < len(input.Plan.Slots) {
 			completion := blockedSlotCompletion(input, next, 1, imageagent.WorkflowLifecycleElapsedCode, updates.effects.activities.useV3Slot)
-			if updates.effects.activities.useV3Slot && completion.V3Result != nil {
+			if input.Plan.Set != nil {
+				if err := updates.effects.persistImageSetCompletion(ctx, input, &completion); err != nil {
+					return err
+				}
+			} else if updates.effects.activities.useV3Slot && completion.V3Result != nil {
 				if err := updates.effects.persistSlotResultV3(ctx, input, *completion.V3Result); err != nil {
 					return err
 				}
@@ -2036,7 +2087,11 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 			if completion.Failed {
 				completion = blockedSlotCompletion(input, completion.Index, 1, "slot_workflow_failed", updates.effects.activities.useV3Slot)
 			}
-			if updates.effects.activities.useV3Slot && completion.V3Result != nil {
+			if input.Plan.Set != nil {
+				if err := updates.effects.persistImageSetCompletion(ctx, input, &completion); err != nil {
+					return results, false, err
+				}
+			} else if updates.effects.activities.useV3Slot && completion.V3Result != nil {
 				if err := updates.effects.persistSlotResultV3(ctx, input, *completion.V3Result); err != nil {
 					return results, false, err
 				}
@@ -2300,6 +2355,12 @@ func cancellationResultsTerminalized(results []SlotWorkflowResult) bool {
 }
 
 func cancellationResultTerminalized(result SlotWorkflowResult) bool {
+	if closure := result.Closure; closure != nil {
+		if closure.Valid(result.Execution.Attempt) {
+			return result.Status == imageagent.SlotStatusAccepted || result.Status == imageagent.SlotStatusBlocked
+		}
+		return false
+	}
 	switch result.EffectPhase {
 	case imageagent.SlotEffectV3PublicationComplete:
 		return result.Status == imageagent.SlotStatusAccepted || result.Status == imageagent.SlotStatusBlocked
@@ -2377,6 +2438,28 @@ func summarizeResults(plan imageagent.Plan, results []SlotWorkflowResult) Workfl
 
 func summarizeResultsForWire(plan imageagent.Plan, results []SlotWorkflowResult, activityWire workflowActivityWire) WorkflowResult {
 	result := summarizeResults(plan, results)
+	if plan.Set != nil && activityWire.useV3Slot && activityWire.useV3Approval {
+		result.RecoverableEffects = recoverableEffectsForCancellation(results, activityWire)
+		if _, err := imageagent.ImageSetResultDigest(plan, result.Slots, result.RecoverableEffects); err == nil {
+			result.Status, result.Block = imageagent.RunStatusAwaitingFinalApproval, nil
+		} else if len(result.RecoverableEffects) > 0 {
+			owner := result.RecoverableEffects[0]
+			result.Status = imageagent.RunStatusBlocked
+			result.Block = &imageagent.Block{Code: owner.Code, Message: owner.Code, SlotID: owner.SlotID}
+		} else {
+			result.Status = imageagent.RunStatusBlocked
+			if result.Block == nil {
+				result.Block = &imageagent.Block{Code: "image_set_not_closed", Message: "image_set_not_closed"}
+			}
+			for _, slot := range result.Slots {
+				if slot.Slot.Status == imageagent.SlotStatusBlocked || slot.Slot.Status == imageagent.SlotStatusRejected {
+					result.Block = &imageagent.Block{Code: slot.ErrorCode, Message: slot.ErrorCode, SlotID: slot.Slot.ID}
+					break
+				}
+			}
+		}
+		return result
+	}
 	if !activityWire.useV3Slot || result.Block == nil {
 		return result
 	}
@@ -2444,6 +2527,7 @@ func slotProjections(plan imageagent.Plan, results []SlotWorkflowResult) []image
 			projection.Candidates = append([]imageagent.AssetCandidate(nil), result.Execution.Candidates...)
 			projection.ErrorCode = result.ErrorCode
 			projection.Slot.Status = result.Status
+			projection.Closure = result.Closure
 		}
 		projections = append(projections, projection)
 	}
@@ -2476,6 +2560,12 @@ func resultDigest(plan imageagent.Plan, results []SlotWorkflowResult) (string, e
 
 func resultDigestForWire(plan imageagent.Plan, results []SlotWorkflowResult, activityWire workflowActivityWire) (string, error) {
 	slots := slotProjections(plan, results)
+	if plan.Set != nil {
+		if !activityWire.useV3Slot || !activityWire.useV3Approval {
+			return "", imageagent.ErrRevisionConflict
+		}
+		return imageagent.ImageSetResultDigest(plan, slots, nil)
+	}
 	if activityWire.useV3Approval {
 		return imageagent.ResultDigestV3(plan, slots)
 	}

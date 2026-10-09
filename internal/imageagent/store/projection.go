@@ -588,6 +588,26 @@ func orderedSlotProjectionMutations(input imageagent.ProjectionCommit) ([]imagea
 }
 
 func validateSlotProjectionMutationIdentity(input imageagent.ProjectionCommit, currentSlot imageagent.SlotProjection, mutation imageagent.SlotProjectionMutation) error {
+	if input.Snapshot.Plan.Set != nil {
+		closure := mutation.Projection.Closure
+		if closure != nil && !closure.Valid(mutation.Result.Attempt) || currentSlot.Closure != nil && !reflect.DeepEqual(currentSlot.Closure, closure) {
+			return imageagent.ErrRevisionConflict
+		}
+		if mutation.Result.Status == imageagent.SlotStatusAccepted {
+			recipe := mutation.Projection.Slot.Recipe
+			if closure == nil || closure.Kind != "settled" || recipe == nil || closure.Points != recipe.Quote.Points || len(mutation.Projection.Candidates) != 1 {
+				return imageagent.ErrRevisionConflict
+			}
+			candidate := mutation.Projection.Candidates[0]
+			proof := candidate.GenerationProof
+			if proof == nil || *proof != (imageagent.ImageGenerationProof{IntentID: closure.IntentID, Fingerprint: closure.Fingerprint, SettlementProofDigest: closure.SettlementProofDigest, Points: closure.Points}) {
+				return imageagent.ErrRevisionConflict
+			}
+			if _, err := imageagent.NormalizeDurableAssetIdentity(candidate.DurableAsset); err != nil {
+				return imageagent.ErrRevisionConflict
+			}
+		}
+	}
 	unstarted := input.Snapshot.Plan.Set != nil && currentSlot.Attempt == 0 && (currentSlot.Slot.Status == imageagent.SlotStatusPending || currentSlot.Slot.Status == "") && mutation.Result.Attempt == 0 && mutation.Result.Status == imageagent.SlotStatusBlocked && len(mutation.Projection.Candidates) == 0 && mutation.Projection.Closure != nil && *mutation.Projection.Closure == (imageagent.ImageSlotClosure{Kind: "not_dispatched"}) && mutation.Projection.ErrorCode != ""
 	if !reflect.DeepEqual(mutation.Result.Closure, mutation.Projection.Closure) || input.Snapshot.Plan.Set == nil && mutation.Result.Closure != nil {
 		return imageagent.ErrRevisionConflict
@@ -625,8 +645,9 @@ func validateSlotProjectionMutationIdentity(input imageagent.ProjectionCommit, c
 		return fmt.Errorf("%w: recovery slot mutation metadata does not match the projection commit", imageagent.ErrRevisionConflict)
 	}
 	if mutation.Result.Status == imageagent.SlotStatusBlocked {
+		knownSetClosure := input.Snapshot.Plan.Set != nil && mutation.Result.Closure != nil && mutation.Result.Closure.Valid(mutation.Result.Attempt) && (mutation.Result.ErrorCode == imageagent.InvalidGeneratedOutputCode || mutation.Result.ErrorCode == imageagent.SlotProviderNotDispatchedCode)
 		if !reflect.DeepEqual(mutation.Projection.Slot, currentSlot.Slot) || !reflect.DeepEqual(mutation.Projection.Candidates, currentSlot.Candidates) ||
-			!imageagent.IsRecoverableEffectBlockCode(mutation.Result.ErrorCode) || mutation.Projection.ErrorCode != mutation.Result.ErrorCode ||
+			(!imageagent.IsRecoverableEffectBlockCode(mutation.Result.ErrorCode) && !knownSetClosure) || mutation.Projection.ErrorCode != mutation.Result.ErrorCode ||
 			mutation.Attempt.Outcome != "blocked" || mutation.Attempt.ErrorCategory != mutation.Result.ErrorCode {
 			return fmt.Errorf("%w: recovery slot mutation may only refresh the existing blocked attempt code", imageagent.ErrRevisionConflict)
 		}

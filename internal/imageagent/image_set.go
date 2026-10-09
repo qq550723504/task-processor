@@ -10,6 +10,7 @@ import (
 )
 
 const ImageSetSchema = "product-image-set-v1"
+const InvalidGeneratedOutputCode = "invalid_generated_output"
 
 type ImageSourceBinding struct {
 	ProductID, OperationID, OriginalPublicationID string

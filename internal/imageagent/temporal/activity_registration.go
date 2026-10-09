@@ -119,6 +119,9 @@ func RegisterActivitiesForMode(registrar activityRegistrar, activities *Activiti
 		registrar.RegisterActivityWithOptions(activities.PersistRecoveryBlockedEffectV3, sdkactivity.RegisterOptions{Name: activityPersistRecoveryBlockedV3})
 		registrar.RegisterActivityWithOptions(activities.ReconcileEffectRecoveryV3, sdkactivity.RegisterOptions{Name: activityReconcileEffectRecoveryV3})
 		registrar.RegisterActivityWithOptions(activities.PersistSlotResultV3, sdkactivity.RegisterOptions{Name: activityPersistSlotResultV3})
+		if mode == WorkerWireModeOrganization {
+			registrar.RegisterActivityWithOptions(activities.PersistImageSetSlotResult, sdkactivity.RegisterOptions{Name: activityPersistImageSetSlotResult})
+		}
 		registrar.RegisterActivityWithOptions(activities.PublishApprovedV3, sdkactivity.RegisterOptions{Name: activityPublishApprovedV3})
 	}
 	return nil
