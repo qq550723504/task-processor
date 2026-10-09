@@ -67,25 +67,29 @@ type ProductAgentInvocationLedger interface {
 }
 
 type productAgentApplication struct {
-	configuration      *configstore.Store
-	model              *texteino.AgentTextModel
-	selectTitleProfile func(context.Context, string) (aicapability.ModelProfile, error)
-	titleRoutes        *governed.OrganizationRouteResolver
-	definition         commercetool.AgentDefinition
-	context            *knowledge.ContextService
-	runtime            *einoruntime.Runtime
-	store              *agentstore.Store
-	reviews            *review.Service
-	receipts           sourcing.PublishedAcquisitionReader
-	resolver           organizationIdentityResolver
-	authorizer         *authz.ListingKitAuthorizer
-	config             ProductAgentDependencies
-	canonical          *canonicalinspect.Invoker
-	sources            *sourceevidenceinspect.Invoker
-	assets             *assetinspect.Invoker
-	readiness          *readinessinspect.Invoker
-	points             *orgresourceadapter.GormModelInvocationRepository
-	textAdmission      *governed.BoundedAdmission
+	configuration         *configstore.Store
+	model                 *texteino.AgentTextModel
+	selectTitleProfile    func(context.Context, string) (aicapability.ModelProfile, error)
+	titleRoutes           *governed.OrganizationRouteResolver
+	definition            commercetool.AgentDefinition
+	context               *knowledge.ContextService
+	runtime               *einoruntime.Runtime
+	store                 *agentstore.Store
+	reviews               *review.Service
+	receipts              sourcing.PublishedAcquisitionReader
+	resolver              organizationIdentityResolver
+	authorizer            *authz.ListingKitAuthorizer
+	config                ProductAgentDependencies
+	canonical             *canonicalinspect.Invoker
+	sources               *sourceevidenceinspect.Invoker
+	assets                *assetinspect.Invoker
+	readiness             *readinessinspect.Invoker
+	points                *orgresourceadapter.GormModelInvocationRepository
+	textAdmission         *governed.BoundedAdmission
+	supplyExecution       *supplyProductAgent
+	executionSource       *sourcing.ExecutionPublicationGateway
+	executionReviews      *review.ExecutionCandidateService
+	executionReviewLookup review.AppliedPublicationLookup
 }
 
 func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, receipts sourcing.PublishedAcquisitionReader, resolver organizationIdentityResolver, auth *authz.ListingKitAuthorizer, cfg ProductAgentDependencies) (*productAgentApplication, error) {
@@ -188,20 +192,21 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 	if err != nil {
 		return nil, err
 	}
-	deps := commercetool.InvocationDependencies{PrincipalResolver: fresh, Authorizer: permissions, Recorder: a.store, Tracer: otel.Tracer("product-agent"), Now: time.Now, AuditTimeout: 2 * time.Second}
+	principal := productAgentPrincipal{application: a, request: fresh}
+	deps := commercetool.InvocationDependencies{PrincipalResolver: principal, Authorizer: permissions, Recorder: a.store, Tracer: otel.Tracer("product-agent"), Now: time.Now, AuditTimeout: 2 * time.Second}
 	a.canonical, err = canonicalinspect.NewInvoker(reader, definition, deps)
 	if err != nil {
 		return nil, err
 	}
-	a.sources, err = sourceevidenceinspect.NewInvoker(reader, sources, definition, deps)
+	a.sources, err = sourceevidenceinspect.NewInvoker(reader, productAgentSourceGateway{application: a, request: sources}, definition, deps)
 	if err != nil {
 		return nil, err
 	}
-	a.assets, err = assetinspect.NewInvoker(reader, assets, fresh, definition, deps)
+	a.assets, err = assetinspect.NewInvoker(reader, assets, principal, definition, deps)
 	if err != nil {
 		return nil, err
 	}
-	a.readiness, err = readinessinspect.NewInvoker(reader, assets, fresh, definition, deps)
+	a.readiness, err = readinessinspect.NewInvoker(reader, assets, principal, definition, deps)
 	if err != nil {
 		return nil, err
 	}
@@ -220,6 +225,9 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 	}
 	a.textAdmission = governed.NewBoundedAdmission()
 	executor := &governed.Executor{Ledger: cfg.Ledger, Admission: a.textAdmission, Resolve: routeResolver.Resolve, BaseTransport: cfg.TextTransport, Authorize: func(ctx context.Context, in aicapability.TextInputIdentity) error {
+		if supplyAgentContext(ctx) {
+			return a.authorizeSupplyModel(ctx, in.OrganizationID, in.ActorID, in.MemberID)
+		}
 		i, e := a.freshIdentity(ctx)
 		if e != nil || i.TenantID != in.OrganizationID || i.UserID != in.ActorID || i.EffectiveMemberID != in.MemberID {
 			return review.ErrForbidden
@@ -231,6 +239,10 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 			return texteino.TextRouteReadiness(routeResolver.Readiness(ctx, aicapability.TextInputIdentity{
 				OrganizationID: org, Operation: aicapability.OperationProductAgentDecision}))
 		}, definition.AllowedTools, a.freshIdentity, contexts...)
+	if err != nil {
+		return nil, err
+	}
+	model, err = model.WithExecutionResolver(a.resolveExecutionIdentity)
 	if err != nil {
 		return nil, err
 	}
@@ -252,6 +264,9 @@ func buildProductAgentApplication(ctx context.Context, productDB *gorm.DB, recei
 }
 
 func (a *productAgentApplication) AuthorizeModelInvocation(ctx context.Context, fact aicapability.InvocationRecord) error {
+	if supplyAgentContext(ctx) {
+		return a.authorizeSupplyModel(ctx, fact.TenantID, fact.UserID, fact.MemberID)
+	}
 	var i authidentity.AuthenticatedIdentity
 	var err error
 	if fact.Operation == aicapability.OperationAIWorkbenchChatPlan {
@@ -370,6 +385,12 @@ func (a *productAgentApplication) bindingForIdentity(ctx context.Context, i auth
 }
 
 func (a *productAgentApplication) Authorize(ctx context.Context, binding agent.Binding) (agent.Scope, error) {
+	if binding.ContextKind == "collection" {
+		return a.authorizeSupplyBinding(ctx, binding)
+	}
+	if binding.ContextKind != "acquisition" {
+		return agent.Scope{}, agent.ErrInvalid
+	}
 	exact, err := a.binding(ctx, binding.ContextID, binding.TargetPlatform)
 	if err != nil {
 		return agent.Scope{}, err
@@ -385,13 +406,15 @@ func (a *productAgentApplication) Invoke(ctx context.Context, ref commercetool.T
 	if _, err := a.Authorize(ctx, b); err != nil {
 		return commercetool.Result{}, err
 	}
-	i, err := a.freshIdentity(ctx)
-	if err != nil {
-		return commercetool.Result{}, err
+	if !supplyAgentContext(ctx) {
+		i, err := a.freshIdentity(ctx)
+		if err != nil {
+			return commercetool.Result{}, err
+		}
+		ctx = authidentity.WithAuthenticatedIdentity(ctx, i)
+		capability := ctx.Value(productReviewCapabilityContextKey{}).(productReviewRequestCapability)
+		ctx = commercetoolauth.WithOrganizationRequest(ctx, commercetoolauth.OrganizationRequest{Identity: i, BearerToken: capability.bearerToken, RequestedOrganizationID: i.TenantID})
 	}
-	ctx = authidentity.WithAuthenticatedIdentity(ctx, i)
-	capability := ctx.Value(productReviewCapabilityContextKey{}).(productReviewRequestCapability)
-	ctx = commercetoolauth.WithOrganizationRequest(ctx, commercetoolauth.OrganizationRequest{Identity: i, BearerToken: capability.bearerToken, RequestedOrganizationID: i.TenantID})
 	switch ref {
 	case canonicalinspect.Definition().Ref:
 		return a.canonical.Invoke(ctx, meta, canonicalinspect.Input{ProductKey: b.ProductKey, CatalogVersion: b.CatalogVersion})
@@ -414,6 +437,9 @@ func agentReviewInput(b agent.Binding, policy string, candidate enrichment.Candi
 func (a *productAgentApplication) Validate(ctx context.Context, b agent.Binding, policy string, candidate enrichment.Candidate, history []agent.Observation) (agent.Validation, error) {
 	if _, err := a.Authorize(ctx, b); err != nil {
 		return agent.Validation{}, err
+	}
+	if supplyAgentContext(ctx) {
+		return a.validateSupplyCandidate(ctx, b, policy, candidate, history)
 	}
 	i, err := a.freshIdentity(ctx)
 	if err != nil {

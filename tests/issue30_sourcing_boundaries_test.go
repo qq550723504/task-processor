@@ -27,9 +27,14 @@ func TestIssue30PreparedSlicesHaveNoLegacyOwnershipDependencies(t *testing.T) {
 // under product-agent-runtime-contract §8.5; this is one explicit consumer.
 func TestIssue30InternalProducerIsOnlyWiredByAdmittedProductReview(t *testing.T) {
 	allowed := map[string]struct{}{
-		filepath.Join("..", "internal", "app", "httpapi", "product_agent_application.go"):       {},
-		filepath.Join("..", "internal", "app", "httpapi", "product_review_application.go"):      {},
-		filepath.Join("..", "internal", "app", "httpapi", "product_acquisition_application.go"): {},
+		filepath.Join("..", "internal", "app", "httpapi", "collection_source_media.go"):                    {},
+		filepath.Join("..", "internal", "app", "httpapi", "product_collection_application.go"):             {},
+		filepath.Join("..", "internal", "app", "httpapi", "supply_chain_agents.go"):                        {},
+		filepath.Join("..", "internal", "app", "runtime", "currentapplication", "source_media_storage.go"): {},
+		filepath.Join("..", "internal", "app", "runtime", "currentapplication", "runtime.go"):              {},
+		filepath.Join("..", "internal", "app", "httpapi", "product_agent_application.go"):                  {},
+		filepath.Join("..", "internal", "app", "httpapi", "product_review_application.go"):                 {},
+		filepath.Join("..", "internal", "app", "httpapi", "product_acquisition_application.go"):            {},
 	}
 	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal"), []string{"task-processor/internal/app/productsourcing"}, allowed)
 	commands := map[string]struct{}{filepath.Join("..", "cmd", "product-acquisition-init", "main.go"): {}}

@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	storeapp "task-processor/internal/app/storecenter"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
@@ -16,7 +17,6 @@ import (
 	"task-processor/internal/ledger/orgresource"
 	"task-processor/internal/listing/record"
 	"task-processor/internal/product/review"
-	"task-processor/internal/storecenter"
 )
 
 func trialRouteDescriptors() []httproute.Descriptor {
@@ -78,7 +78,7 @@ func TestIssue36TrialOptionalAssembly(t *testing.T) {
 				buildResourceCharges: func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (*orgresource.ConsumerChargeService, error) {
 					return orgresource.NewConsumerChargeService(currentStoreChargeFixture{}, map[orgresource.ResourceConsumer]orgresource.ConsumerChargeOwner{orgresource.ConsumerStoreService: currentStoreChargeFixture{}})
 				},
-				buildStoreCenter: func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, storecenter.OfficialConnectionProvider, storecenter.OfficialCredentialProtection) (kernelmodule.Module, error) {
+				buildStoreCenter: func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, *storeapp.OfficialApplicationRegistry) (kernelmodule.Module, error) {
 					return currentStoreRouteFixture{routes: currentStoreTestRoutes(t)}, nil
 				},
 				buildLocalTrial: func(_ context.Context, got *gorm.DB, _ *authz.ListingKitAuthorizer, _ routeAuthDependencies) (kernelmodule.Module, error) {

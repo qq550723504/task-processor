@@ -10,7 +10,7 @@ export const consoleNavigation: readonly ConsoleNavNode[] = [
   ]),
   pending("供应市场", "supply", [
     { label: "1688采集", href: "/workbench/supply/acquisition", availability: "connected" },
-    pending("硕米自营", "supply/official"), pending("硕米优选", "supply/selected"), pending("货盘集成", "supply/catalogs"), pending("我的供应链", "supply/mine"), pending("优选申请", "supply/applications"),
+    pending("硕米自营", "supply/official"), pending("硕米优选", "supply/selected"), pending("货盘集成", "supply/catalogs"), pending("我的供应链", "supply/mine", [pending("待适配", "supply/mine/waiting"), pending("待补全", "supply/mine/missing"), pending("已适配", "supply/mine/ready"), pending("待审核", "supply/mine/review"), pending("已上传", "supply/mine/uploaded")]), pending("优选申请", "supply/applications"),
   ]),
   pending("智能市场", "agents", [{label:"智能体市场",href:"/workbench/agents/market",availability:"connected"},{label:"我的智能体",href:"/workbench/agents/mine",availability:"connected"},pending("智能体定制", "agents/custom")]),
   pending("工具市场", "tools", [pending("官方工具", "tools/official"), pending("我的工具", "tools/mine"), pending("工具定制", "tools/custom")]),

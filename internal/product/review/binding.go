@@ -3,33 +3,35 @@ package review
 import (
 	"context"
 	"errors"
-	"reflect"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/sourcing"
 )
 
-func (s *Service) source(ctx context.Context, reader catalog.VersionedSnapshotReader, sourceReader SourcePublicationReader, org string, in CreateInput) (catalog.PublishedSnapshot, sourcing.SourceEnvelope, error) {
-	p, err := reader.GetSnapshot(ctx, catalog.SnapshotIdentity{TenantID: org, ProductKey: in.ProductKey}, in.BaseVersion)
+func appliedLookup(tx Tx) AppliedPublicationLookup {
+	lookup, _ := tx.(AppliedPublicationLookup)
+	return lookup
+}
+
+func (s *Service) source(ctx context.Context, reader catalog.VersionedSnapshotReader, sourceReader SourcePublicationReader, scope Scope, in CreateInput, transactionLookup ...AppliedPublicationLookup) (catalog.PublishedSnapshot, sourcing.SourceEnvelope, error) {
+	p, err := reader.GetSnapshot(ctx, catalog.SnapshotIdentity{TenantID: scope.Org, ProductKey: in.ProductKey}, in.BaseVersion)
 	if err != nil {
 		return p, sourcing.SourceEnvelope{}, err
 	}
-	if p.Identity.TenantID != org || p.Identity.ProductKey != in.ProductKey || p.Version != in.BaseVersion || !ValidKey(p.PublicationID) {
+	if p.Identity.TenantID != scope.Org || p.Identity.ProductKey != in.ProductKey || p.Version != in.BaseVersion || !ValidKey(p.PublicationID) {
 		return p, sourcing.SourceEnvelope{}, ErrConflict
 	}
 	if sourceReader == nil {
 		return p, sourcing.SourceEnvelope{}, ErrUnavailable
 	}
-	persisted, err := sourceReader.Read(ctx, p.PublicationID)
+	lookup, _ := s.store.(AppliedPublicationLookup)
+	if len(transactionLookup) > 0 {
+		lookup = transactionLookup[0]
+	}
+	lineage, err := ResolveAppliedSource(ctx, scope, p, reader, sourceReader, lookup)
 	if err != nil {
-		return p, sourcing.SourceEnvelope{}, mapSourceReadError(err)
+		return p, sourcing.SourceEnvelope{}, err
 	}
-	receipt := persisted.Receipt
-	if receipt.OrganizationID != p.Identity.TenantID || receipt.ProductKey != p.Identity.ProductKey ||
-		receipt.PublicationID != p.PublicationID || receipt.CatalogPublicationID != p.PublicationID ||
-		receipt.CatalogVersion != p.Version || !reflect.DeepEqual(persisted.Snapshot, p.Snapshot) {
-		return p, sourcing.SourceEnvelope{}, ErrConflict
-	}
-	return p, persisted.Envelope, nil
+	return p, lineage.Source.Envelope, nil
 }
 
 func mapSourceReadError(err error) error {

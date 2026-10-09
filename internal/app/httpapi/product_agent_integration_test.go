@@ -84,14 +84,18 @@ func TestProductAgentAcquisitionToReviewUsesRealOwners(t *testing.T) {
 
 func testProductAgentOwners(t *testing.T, mode string) {
 	f := newAcquisitionHTTPFixture(t)
+	fixtureActor := "operator"
+	if strings.HasPrefix(mode, "supply ") {
+		fixtureActor = "admin"
+	}
 	googleTitle := mode == "google knowledge"
-	canonicalMode := mode == "observed canonical" || mode == "configuration" || mode == "knowledge" || googleTitle
+	canonicalMode := mode == "observed canonical" || mode == "configuration" || mode == "knowledge" || googleTitle || strings.HasPrefix(mode, "supply ")
 	var kf *consumerKnowledgeFixture
 	if mode == "knowledge" || googleTitle {
 		kf = newConsumerKnowledgeFixture(t, f.owner)
 	}
 	acquisitionServer := f.server(t)
-	op := acquisitionHTTPCall(t, acquisitionServer, "POST", productAcquisitionBase, "operator", "B", uuid.NewString(), `{"source":"https://detail.1688.com/offer/981645030344.html"}`, 200)
+	op := acquisitionHTTPCall(t, acquisitionServer, "POST", productAcquisitionBase, fixtureActor, "B", uuid.NewString(), `{"source":"https://detail.1688.com/offer/981645030344.html"}`, 200)
 	require.NoError(t, reviewstore.InstallSchema(f.owner))
 	require.NoError(t, agentstore.InstallSchema(f.owner))
 	require.NoError(t, configstore.InstallSchema(f.owner))
@@ -112,7 +116,7 @@ func testProductAgentOwners(t *testing.T, mode string) {
 	now := time.Now().UTC()
 	limit, err := resourceadapter.NewGormMemberLimitRepository(f.owner, resourceadapter.TransactionConfig{})
 	require.NoError(t, err)
-	_, err = limit.SetMonthlyLimit(context.Background(), orgresource.SetMemberLimitExecution{OrganizationID: "B", MemberID: "member-B-operator", ActorID: "admin", OperationID: "point-limit", Target: 10000000})
+	_, err = limit.SetMonthlyLimit(context.Background(), orgresource.SetMemberLimitExecution{OrganizationID: "B", MemberID: "member-B-" + fixtureActor, ActorID: "admin", OperationID: "point-limit", Target: 10000000})
 	require.NoError(t, err)
 	require.NoError(t, f.owner.Exec("INSERT INTO saas_organization_resource_buckets (organization_id,resource_type,available,allocated,reserved,consumed,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)", "B", "ai_point", 10000000, 0, 0, 0, now, now).Error)
 	if mode == "no quota" {
@@ -121,6 +125,10 @@ func testProductAgentOwners(t *testing.T, mode string) {
 	var calls atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		step := calls.Add(1)
+		cycle := step
+		if strings.HasPrefix(mode, "supply ") {
+			cycle = (step-1)%4 + 1
+		}
 		var citationID string
 		if kf != nil {
 			var request struct {
@@ -149,21 +157,34 @@ func testProductAgentOwners(t *testing.T, mode string) {
 		}
 		var content string
 		switch {
+		case strings.HasPrefix(mode, "supply ") && step > 4 && cycle == 1:
+			content = `{"Kind":"tool","Tool":{"ID":"product.canonical.inspect","Version":"v2.0.0"}}`
+		case strings.HasPrefix(mode, "supply ") && step > 4 && cycle == 2:
+			content = `{"Kind":"tool","Tool":{"ID":"product.source-evidence.inspect","Version":"v2.0.0"}}`
 		case mode == "guessed without tool":
 			content = `{"Kind":"propose","Candidate":{"Changes":[{"Field":"title","Value":"Guessed title","EvidenceIDs":["981645030344"]}]}}`
-		case step == 1:
+		case cycle == 1:
 			content = `{"Kind":"tool","Tool":{"ID":"product.asset.inspect","Version":"v1.0.0"}}`
-		case step == 2 && canonicalMode:
-			if kf == nil {
+		case cycle == 2 && canonicalMode:
+			if kf == nil && step <= 4 {
 				wire, readErr := io.ReadAll(r.Body)
 				require.NoError(t, readErr)
 				require.Contains(t, string(wire), "approved-shein-main", "model must see the selected platform's real inventory")
 			}
 			content = `{"Kind":"tool","Tool":{"ID":"product.canonical.inspect","Version":"v2.0.0"}}`
-		case step == 3 && canonicalMode:
+		case cycle == 3 && strings.HasPrefix(mode, "supply "):
+			if step > 4 {
+				content = `{"Kind":"propose","Candidate":{"Changes":[{"Field":"title","Value":"Reconstructed bottle title","EvidenceIDs":["invented"]}]}}`
+			} else {
+				content = `{"Kind":"tool","Tool":{"ID":"product.source-evidence.inspect","Version":"v2.0.0"}}`
+			}
+		case cycle == 3 && canonicalMode:
 			content = `{"Kind":"propose","Candidate":{"Changes":[{"Field":"title","Value":"Reviewed bottle title","EvidenceIDs":["invented"]}]}}`
 		default:
 			content = `{"Kind":"propose","Candidate":{"Changes":[{"Field":"title","Value":"Reviewed bottle title","EvidenceIDs":["981645030344"]}]},"Confidence":[{"Field":"title","Value":0.8,"Known":true}]}`
+		}
+		if strings.HasPrefix(mode, "supply ") && step > 4 {
+			content = strings.ReplaceAll(content, "Reviewed bottle title", "Reconstructed bottle title")
 		}
 		if kf != nil && step >= 3 {
 			content = strings.TrimSuffix(content, "}") + `,"ContextCitationIDs":["` + citationID + `"]}`
@@ -215,6 +236,10 @@ func testProductAgentOwners(t *testing.T, mode string) {
 	}
 	module, err := buildProductAgentModule(context.Background(), f.db, deps, auth, settings, nil)
 	require.NoError(t, err)
+	if strings.HasPrefix(mode, "supply ") {
+		testSupplyAgentOwners(t, mode, f, op, module.(productAgentModule).application, deps, auth, &calls)
+		return
+	}
 	app := buildIsolatedApplicationHTTPServer(module.(productAgentModule).routes, deps, 2*time.Minute)
 	server := httptest.NewServer(app.Handler)
 	defer server.Close()

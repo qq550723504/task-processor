@@ -99,6 +99,7 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
     - `listingkit-schema-migrate`
     - `playwright-installer`
     - `product-listing-api-schema-migrate`
+    - `supply-asset-init`
     - `product-acquisition-init`
     - `shein-import-platform-recovery`
     - `shein-login-worker`
@@ -113,6 +114,7 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
   - `1688-batch-import` 的维护入口为 `scripts/1688-batch-import.ps1`；属 #398 路线 B 的执行器本地队列切片 S1，只驱动本地队列中的单条商品并回读终态。已确认的 actor/组织必须由调用方显式提供，不从浏览器会话推断；退出码 3 表示结果未知，只允许人工核实，不允许重跑。列入清单不授权对真实 1688 账号执行批量采集。
   - 每个运维入口必须由 `.github/`、`deployments/` 或 `scripts/` 中的构建、部署或脚本引用明确其维护所有者；未归类或同时归类为两类的入口不允许保留在 `cmd/`。
   - `shein-import-platform-recovery` 由 `scripts/shein-import-platform-recovery.ps1` 运行；脚本默认 dry-run，只有同时提供 `-Execute` 和 dry-run 返回的 `-ConfirmFingerprint` 才会请求写入。
+  - `supply-asset-init` 由 `deployments/docker/account-compose/SUPPLY.md` 维护，仅通过私密 Asset owner DSN 和精确数据库确认初始化全新空库并授予既有 `supply_asset_runtime` 窄权限；运行进程不执行 DDL、不迁移历史数据。
   - `store-center-schema-init` 由 `deployments/docker/account-compose` 维护，通过显式私密 owner 配置创建当前 Store 空库 schema，并向既有 canonical commercial quota 表授予窄运行权限；不读取、迁移或兼容历史 Store 数据。
   - `knowledge-schema-init` 由 `deployments/docker/account-compose` 的可选 Knowledge overlay 维护，使用私密 `knowledge_owner` 配置通过 Goose 初始化新空 `knowledge` 数据库，并授予 `knowledge_runtime` 所需列权限；运行进程不执行 DDL，不迁移历史数据。依据 #557 / [Knowledge V1 架构](../architecture/agent-knowledge-context-v1.md)。
   - `agent-configuration-schema-init` 的构建归属为 `deployments/docker/Dockerfile.account-compose` 的 `schema-init` target；安装人员通过私密 `AGENT_CONFIGURATION_SCHEMA_DSN` 与显式 `--runtime-role` 单独运行，只初始化同 ProductAgentDB 的新配置 schema 并授予最小权限。Compose 不自动调用，不自动启用企业，不迁移旧数据。依据 #570 / [企业智能体配置 V1](../architecture/organization-agent-configuration-v1.md)。

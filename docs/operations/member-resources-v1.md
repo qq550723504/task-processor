@@ -50,17 +50,19 @@ The BFF binds operations to the signed-in user, selected enterprise cookie and
 captured user/enterprise headers. Writes also require the configured public
 same origin. Do not use old API composition to bypass unavailable current owners.
 
-## Optional official SHEIN application
+## Optional official SHEIN applications
 
 The user confirmed no approved developer application exists yet. Omit
-`storeCenter.officialConnection` until it exists. Store CRUD, resource reads,
+`storeCenter.officialApplications` until it exists. Store CRUD, resource reads,
 allocation and grants remain available; real authorization and first service
 activation remain blocked. No mock provider is mounted.
 
-Once approved, the optional object inside the private manifest is:
+Once approved, add each application to the `storeCenter.officialApplications`
+array inside the private manifest. Each entry is:
 
 ```json
 {
+	"type": "self_operated",
   "appId": "approved-application-id",
   "version": "configuration-version-1",
   "apiOrigin": "https://openapi.sheincorp.com",
@@ -72,6 +74,14 @@ Once approved, the optional object inside the private manifest is:
 ```
 
 The approved regional host may instead be `https://openapi.sheincorp.cn`.
+The type must match the official developer application's actual type:
+`self_operated`, `semi_managed`, or `fully_managed`. Site `store_type` does not
+identify it. Up to 16 entries may be configured; AppID, encryption-key identity
+and private files must be unique across entries. The browser selects an admitted
+application when connecting; callbacks and execution resolve the saved original
+AppID and revision. The persisted revision includes the type. Removing or changing
+the configuration makes that connection unavailable; it never falls back to
+another application. Types without configuration are visibly unavailable.
 Use the exact callback registered with SHEIN. The two files must be distinct
 absolute private regular files: application secret and a Base64-encoded random
 32-byte credential encryption key. Protect them with current-user/private

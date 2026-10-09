@@ -75,6 +75,7 @@ func (r *repository) CommitApproval(ctx context.Context, commit productasset.App
 		}
 		assetIDs[index] = approved.ID
 		assetRecords[index] = ApprovedAssetRecord{
+			OriginKind: string(approved.OriginKind()), OriginIdentity: approved.ApprovalIdentity(),
 			TenantID: commit.TenantID, RunID: approved.RunID, PlanRevision: approved.PlanRevision,
 			SlotID: approved.SlotID, Attempt: approved.Attempt, ActionID: commit.ActionID,
 			AssetID: approved.ID, ProductKey: commit.ProductKey, TargetPlatform: commit.TargetPlatform,
@@ -371,21 +372,25 @@ type canonicalApprovalPayload struct {
 }
 
 type canonicalApprovedAsset struct {
-	ID            string            `json:"id"`
-	RunID         string            `json:"run_id"`
-	PlanRevision  int64             `json:"plan_revision"`
-	SlotID        string            `json:"slot_id"`
-	Attempt       int               `json:"attempt"`
-	Role          productasset.Role `json:"role"`
-	URL           string            `json:"url"`
-	SourceAssetID string            `json:"source_asset_id"`
-	Width         int               `json:"width"`
-	Height        int               `json:"height"`
-	Operations    []string          `json:"operations"`
+	OriginKind       productasset.Origin                    `json:"origin_kind"`
+	SourceApproval   *productasset.SourceApprovalProvenance `json:"source_approval,omitempty"`
+	SelectionReceipt *productasset.SelectionReceipt         `json:"selection_receipt,omitempty"`
+	ID               string                                 `json:"id"`
+	RunID            string                                 `json:"run_id"`
+	PlanRevision     int64                                  `json:"plan_revision"`
+	SlotID           string                                 `json:"slot_id"`
+	Attempt          int                                    `json:"attempt"`
+	Role             productasset.Role                      `json:"role"`
+	URL              string                                 `json:"url"`
+	SourceAssetID    string                                 `json:"source_asset_id"`
+	Width            int                                    `json:"width"`
+	Height           int                                    `json:"height"`
+	Operations       []string                               `json:"operations"`
 }
 
 func canonicalApprovedAssetFromDomain(approved productasset.ApprovedAsset) canonicalApprovedAsset {
 	return canonicalApprovedAsset{
+		OriginKind: approved.OriginKind(), SourceApproval: approved.SourceApproval, SelectionReceipt: approved.SelectionReceipt,
 		ID: approved.ID, RunID: approved.RunID, PlanRevision: approved.PlanRevision,
 		SlotID: approved.SlotID, Attempt: approved.Attempt, Role: approved.Role,
 		URL: approved.URL, SourceAssetID: approved.SourceAssetID,
@@ -395,6 +400,7 @@ func canonicalApprovedAssetFromDomain(approved productasset.ApprovedAsset) canon
 
 func (approved canonicalApprovedAsset) domainAsset() productasset.ApprovedAsset {
 	return productasset.ApprovedAsset{
+		SourceApproval: approved.SourceApproval, SelectionReceipt: approved.SelectionReceipt,
 		ID: approved.ID, RunID: approved.RunID, PlanRevision: approved.PlanRevision,
 		SlotID: approved.SlotID, Attempt: approved.Attempt, Role: approved.Role,
 		URL: approved.URL, SourceAssetID: approved.SourceAssetID,
@@ -454,7 +460,7 @@ func repositoryStateInvalid(operation string, cause error) error {
 }
 
 func validatePersistedAsset(record ApprovedAssetRecord, approved productasset.ApprovedAsset) error {
-	if approved.ID != record.AssetID ||
+	if string(approved.OriginKind()) != record.OriginKind || approved.ApprovalIdentity() != record.OriginIdentity || approved.ID != record.AssetID ||
 		approved.RunID != record.RunID ||
 		approved.PlanRevision != record.PlanRevision ||
 		approved.SlotID != record.SlotID ||

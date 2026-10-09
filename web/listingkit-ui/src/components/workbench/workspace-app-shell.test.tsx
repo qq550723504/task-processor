@@ -12,6 +12,7 @@ const injectedWorkbenchContext = vi.hoisted(() => ({ value: null as unknown }));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => navigation.pathname,
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ replace: navigation.replace }),
 }));
 

@@ -82,7 +82,7 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	records, quota := open("store_center", "store_center_runtime"), open("commercial", "store_quota_runtime")
 	charges, err := orgresource.NewConsumerChargeService(currentStoreChargeFixture{}, map[orgresource.ResourceConsumer]orgresource.ConsumerChargeOwner{orgresource.ConsumerStoreService: currentStoreChargeFixture{}})
 	require.NoError(t, err)
-	module, err := buildCurrentStoreCenterModule(ctx, records, authz.DefaultListingKitAuthorizer(), charges, nil, nil)
+	module, err := buildCurrentStoreCenterModule(ctx, records, authz.DefaultListingKitAuthorizer(), charges, nil)
 	require.NoError(t, err)
 	f := newAccountFixture(t)
 	cfg := &config.Config{Workbench: config.WorkbenchConfig{Enabled: true}, ListingKit: config.ListingKitConfig{Zitadel: config.ListingKitZitadelConfig{IssuerURL: f.provider.URL, ClientID: "fixture-client", ClientSecret: "fixture-secret", ProjectID: "project", AuthorizationAPIURL: f.provider.URL}}}
@@ -159,7 +159,7 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	require.Equal(t, 404, status, out)
 	require.Greater(t, f.grantReads.Load(), int32(5))
 	// A fresh module/pool reads the durable results after reconstructing runtime.
-	fresh, err := buildCurrentStoreCenterModule(ctx, open("store_center", "store_center_runtime"), authz.DefaultListingKitAuthorizer(), charges, nil, nil)
+	fresh, err := buildCurrentStoreCenterModule(ctx, open("store_center", "store_center_runtime"), authz.DefaultListingKitAuthorizer(), charges, nil)
 	require.NoError(t, err)
 	reg = kernelmodule.NewRegistry()
 	require.NoError(t, fresh.Register(reg))
@@ -257,9 +257,11 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 		require.NoError(t, repo.Save(ctx, "official-fixture", candidate, 1))
 		protection, err := shein.NewCredentialProtection("synthetic-key", make([]byte, 32))
 		require.NoError(t, err)
-		app, err := storeapp.NewOfficialConnections(repo, postgresConnectionProvider{}, protection)
+		registry, err := storeapp.NewOfficialApplicationRegistry([]storeapp.OfficialApplicationRegistration{{Provider: postgresConnectionProvider{}, Protection: protection, Type: storecenter.ApplicationSelfOperated}})
 		require.NoError(t, err)
-		begin, err := app.Begin(ctx, storecenter.OfficialConnectionCommand{OrganizationID: "official-fixture", StoreID: candidate.ID(), AttemptID: uuid.NewString(), ExpectedStoreVersion: candidate.Version()})
+		app, err := storeapp.NewOfficialConnections(repo, registry)
+		require.NoError(t, err)
+		begin, err := app.Begin(ctx, storecenter.OfficialConnectionCommand{OrganizationID: "official-fixture", StoreID: candidate.ID(), AttemptID: uuid.NewString(), ExpectedStoreVersion: candidate.Version(), ApplicationID: "synthetic-app"})
 		require.NoError(t, err)
 		authorized, err := url.Parse(begin.AuthorizationURL)
 		require.NoError(t, err)
@@ -299,7 +301,7 @@ func (postgresConnectionAccess) AuthorizeStoreMember(_ context.Context, org stri
 type postgresConnectionProvider struct{}
 
 func (postgresConnectionProvider) Application() storecenter.OfficialApplication {
-	return storecenter.OfficialApplication{AppID: "synthetic-app", Version: "config-v1", CallbackURL: "https://localhost/callback"}
+	return storecenter.OfficialApplication{AppID: "synthetic-app", Version: storeapp.BoundOfficialRevision("config-v1", storecenter.ApplicationSelfOperated), CallbackURL: "https://localhost/callback"}
 }
 func (postgresConnectionProvider) AuthorizationURL(state string) (string, error) {
 	return "https://openapi-sem.sheincorp.com/#/empower?state=" + state, nil

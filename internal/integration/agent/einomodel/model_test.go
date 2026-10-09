@@ -90,6 +90,26 @@ func TestTitleAdapterUsesFrozenProfileAndSharedEinoExecutor(t *testing.T) {
 	require.NoError(t, err)
 	input := agent.ModelInput{ConfigurationSnapshotRef: ref, Binding: binding, PolicyVersion: "title-review-v1",
 		PromptVersion: "product-title-agent-v1", AgentRunID: uuid.NewString(), AgentID: "product.title.agent", AgentVersion: "v1.0.0"}
+	t.Run("live execution identity without manufacturing a JWT identity", func(t *testing.T) {
+		bounded, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		calls := 0
+		execution, err := model.WithExecutionResolver(func(ctx context.Context) (agent.ExecutionIdentity, error) {
+			_, authenticated := authidentity.AuthenticatedIdentityFromContext(ctx)
+			require.False(t, authenticated)
+			calls++
+			return agent.ExecutionIdentity{OrganizationID: "org-1", ActorID: "actor-1", MemberID: "member-1"}, nil
+		})
+		require.NoError(t, err)
+		quote, err := execution.Quote(bounded, input)
+		require.NoError(t, err)
+		require.True(t, quote.Known)
+		require.Equal(t, 1, calls)
+		_, err = model.Quote(bounded, input)
+		require.Error(t, err, "request-only assembly must stay closed to workers")
+		_, err = execution.Quote(context.Background(), input)
+		require.Error(t, err, "execution needs a real activity deadline")
+	})
 	quote, err := model.Quote(ctx, input)
 	require.NoError(t, err)
 	require.True(t, quote.Known)

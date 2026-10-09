@@ -59,18 +59,20 @@ type Disclosure struct {
 	CaptureFieldsOmitted  []string `json:"capture_fields_omitted"`
 }
 type Output struct {
-	ProductKey           string         `json:"product_key"`
-	CatalogVersion       string         `json:"catalog_version"`
-	PublicationID        string         `json:"publication_id"`
-	CatalogPublicationID string         `json:"catalog_publication_id"`
-	Producer             Producer       `json:"producer"`
-	PublishedAt          time.Time      `json:"published_at"`
-	SourceIdentity       PublicIdentity `json:"source_identity"`
-	Lineage              Lineage        `json:"lineage"`
-	Capture              Capture        `json:"capture"`
-	Warnings             []Warning      `json:"warnings"`
-	MissingFacts         []MissingFact  `json:"missing_facts"`
-	Disclosure           Disclosure     `json:"disclosure"`
+	Requested            CatalogReference        `json:"requested_reference"`
+	Applied              []AppliedTitleReference `json:"applied_title_lineage"`
+	ProductKey           string                  `json:"product_key"`
+	CatalogVersion       string                  `json:"catalog_version"`
+	PublicationID        string                  `json:"publication_id"`
+	CatalogPublicationID string                  `json:"catalog_publication_id"`
+	Producer             Producer                `json:"producer"`
+	PublishedAt          time.Time               `json:"published_at"`
+	SourceIdentity       PublicIdentity          `json:"source_identity"`
+	Lineage              Lineage                 `json:"lineage"`
+	Capture              Capture                 `json:"capture"`
+	Warnings             []Warning               `json:"warnings"`
+	MissingFacts         []MissingFact           `json:"missing_facts"`
+	Disclosure           Disclosure              `json:"disclosure"`
 }
 
 // Project copies only the approved structured publication references and
@@ -93,6 +95,8 @@ func Project(p sourcing.PersistedPublication) (json.RawMessage, error) {
 	o := Output{ProductKey: r.ProductKey, CatalogVersion: strconv.FormatUint(r.CatalogVersion, 10), PublicationID: r.PublicationID, CatalogPublicationID: r.CatalogPublicationID,
 		Producer: Producer{r.Producer.Kind, r.Producer.Version}, PublishedAt: r.PublishedAt.UTC(), Lineage: Lineage{r.InputHash, r.EnvelopeHash, r.SnapshotHash},
 		Warnings: []Warning{}, MissingFacts: []MissingFact{}, Disclosure: Disclosure{IdentityFieldsOmitted: []string{}, CaptureFieldsOmitted: []string{}}}
+	o.Requested = CatalogReference{r.ProductKey, strconv.FormatUint(r.CatalogVersion, 10), r.CatalogPublicationID}
+	o.Applied = []AppliedTitleReference{}
 	id := p.Envelope.Identity
 	// Only the explicitly disclosed controlled 1688 product identifier category
 	// is returned. Other neutral sources remain readable through their exact

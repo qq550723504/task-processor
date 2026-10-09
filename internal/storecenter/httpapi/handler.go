@@ -55,6 +55,7 @@ type Handler struct {
 }
 
 type OfficialConnectionService interface {
+	Applications(context.Context, string, string) ([]storecenter.OfficialApplicationChoice, error)
 	Begin(context.Context, storecenter.OfficialConnectionCommand) (storecenter.OfficialConnectionBegin, error)
 	Complete(context.Context, storecenter.CompleteOfficialConnection) (storecenter.OfficialConnectionView, error)
 	ResumeQuery(context.Context, string, string, string) (storecenter.OfficialConnectionView, error)

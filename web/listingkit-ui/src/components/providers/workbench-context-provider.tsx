@@ -21,6 +21,10 @@ import {
   type WorkbenchOrganization,
 } from "@/lib/api/workbench-context";
 import type { AcquisitionOperation } from "@/lib/api/product-acquisition";
+import type { CollectionIntent } from "@/lib/api/product-collection";
+import { loadCollectionIntent, saveCollectionIntent } from "@/lib/api/collection-intent";
+import type { SupplyIntent } from "@/lib/api/supply-chain";
+import { loadSupplyIntent, saveSupplyIntent } from "@/lib/api/supply-intent";
 
 type WorkbenchContextValue = {
   user: WorkbenchContext["user"] | null;
@@ -41,6 +45,12 @@ type WorkbenchContextValue = {
   switchOrganization: (organizationId: string) => void;
   pendingAcquisitionIntent: AcquisitionOperation | null;
   setPendingAcquisitionIntent: (intent: AcquisitionOperation | null) => void;
+  pendingCollectionIntent: CollectionIntent | null;
+  collectionIntentReady: boolean;
+  setPendingCollectionIntent: (intent: CollectionIntent | null) => boolean;
+  pendingSupplyIntent: SupplyIntent | null;
+  supplyIntentReady: boolean;
+  setPendingSupplyIntent: (intent: SupplyIntent | null) => boolean;
   registerOrganizationSwitchGuard: (
     guard: (target: WorkbenchOrganization) => boolean | Promise<boolean>,
   ) => () => void;
@@ -56,6 +66,33 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
   // changes. It is never a cross-organization authorization grant.
   const [pendingAcquisitionIntent, setPendingAcquisitionIntent] =
     useState<AcquisitionOperation | null>(null);
+  const [pendingCollectionIntent, setCollectionIntent] = useState<CollectionIntent | null>(null);
+  const collectionIntentRef = useRef<CollectionIntent | null>(null);
+  const [collectionIntentReady, setCollectionIntentReady] = useState(false);
+  const setPendingCollectionIntent = useCallback((intent: CollectionIntent | null) => {
+    if (!saveCollectionIntent(intent, collectionIntentRef.current)) return false;
+    collectionIntentRef.current = intent;
+    setCollectionIntent(intent);
+    return true;
+  }, []);
+  const [pendingSupplyIntent,setSupplyIntent]=useState<SupplyIntent|null>(null);
+  const [supplyIntentReady,setSupplyIntentReady]=useState(false);
+  useEffect(() => {
+    let active = true;
+    // Hydrate browser storage after the initial server-compatible render.
+    void Promise.resolve().then(() => {
+      if (active) {
+        const collectionIntent = loadCollectionIntent();
+        collectionIntentRef.current = collectionIntent;
+        setCollectionIntent(collectionIntent);
+        setCollectionIntentReady(true);
+        setSupplyIntent(loadSupplyIntent());
+        setSupplyIntentReady(true);
+      }
+    });
+    return () => { active = false; };
+  }, []);
+  const setPendingSupplyIntent=useCallback((intent:SupplyIntent|null)=>{if(!saveSupplyIntent(intent))return false;setSupplyIntent(intent);return true},[]);
   const guardsRef = useRef(new Set<(target: WorkbenchOrganization) => boolean | Promise<boolean>>());
   const currentContextRef = useRef<WorkbenchContext | null>(null);
   const switchRequestPendingRef = useRef(false);
@@ -187,6 +224,12 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       switchOrganization,
       pendingAcquisitionIntent,
       setPendingAcquisitionIntent,
+      pendingCollectionIntent,
+      collectionIntentReady,
+      setPendingCollectionIntent,
+      pendingSupplyIntent,
+      supplyIntentReady,
+      setPendingSupplyIntent,
       registerOrganizationSwitchGuard,
     }),
     [
@@ -200,6 +243,12 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       switchPreparing,
       switchOrganization,
       pendingAcquisitionIntent,
+      pendingCollectionIntent,
+      collectionIntentReady,
+      setPendingCollectionIntent,
+      pendingSupplyIntent,
+      supplyIntentReady,
+      setPendingSupplyIntent,
       registerOrganizationSwitchGuard,
     ],
   );

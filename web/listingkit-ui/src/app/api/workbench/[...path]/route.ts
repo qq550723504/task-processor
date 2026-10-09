@@ -1,6 +1,7 @@
 import { isBrowserCapturePath, isBrowserCaptureRequestURL } from "@/lib/contracts/browser-capture";
 import {agentPath} from "@/lib/contracts/product-agent";
 import { aiWorkbenchPath } from "@/lib/contracts/ai-workbench";
+import { collectionPath } from "@/lib/contracts/product-collection";
 import { NextRequest } from "next/server";
 
 import { serverAuth } from "@/auth";
@@ -172,6 +173,7 @@ export const PATCH = handleWorkbenchRequest;
 export const DELETE = handleWorkbenchRequest;
 
 function isSourceMutation(method: string, path: string[]) {
+  if (collectionPath(method.toUpperCase(), path) === "command") return true;
   const workbench = aiWorkbenchPath(method, path);
   if (workbench && !["conversation-list", "conversation-read", "task-list", "task-read"].includes(workbench)) return true;
   if(method.toUpperCase()==="POST" && agentPath(path)!==null)return true;
@@ -208,6 +210,7 @@ function isSourceRequestURL(rawURL: string) {
   if (isBrowserCaptureRequestURL("POST", rawURL) || isBrowserCaptureRequestURL("GET", rawURL)) return true;
 
   const path = new URL(rawURL).pathname.split("/").filter(Boolean);
+  if (path[0] === "api" && path[1] === "workbench" && (collectionPath("GET", path.slice(2)) || collectionPath("POST", path.slice(2)))) return true;
   if (path[0] === "api" && path[1] === "workbench" && aiWorkbenchPath("GET", path.slice(2))) return true;
   return (
     path[0] === "api" &&
@@ -245,7 +248,7 @@ function unknownMutationFailure(requestId: string, acquisition = false) {
   return workbenchProtocolError(
     503,
     "OUTCOME_UNKNOWN",
-    acquisition ? "Acquisition or main-image action outcome is unknown" : "Source Account mutation outcome is unknown",
+    acquisition ? "Acquisition or main-image action outcome is unknown" : "Workbench mutation outcome is unknown",
     requestId,
   );
 }

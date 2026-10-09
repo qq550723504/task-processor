@@ -8,7 +8,6 @@ import (
 	"task-processor/internal/authz"
 	acquisitionpersistence "task-processor/internal/integration/persistence/product/acquisition"
 	catalogpersistence "task-processor/internal/integration/persistence/product/catalog"
-	sourcingpersistence "task-processor/internal/integration/persistence/product/sourcing"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/sourcing"
 )
@@ -27,7 +26,7 @@ func NewBrowserCaptureService(store sourcing.AcquisitionOperationStore, publishe
 
 // NewBrowserAcquisition admits the approved Browser descriptor through existing
 // SRC-1/Catalog constructors. It performs no schema installation or provider IO.
-func NewBrowserAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer) (*BrowserCaptureService, error) {
+func NewBrowserAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer, options ...AcquisitionPublicationOption) (*BrowserCaptureService, error) {
 	if ctx == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
@@ -35,7 +34,7 @@ func NewBrowserAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveO
 	if err != nil {
 		return nil, err
 	}
-	store, err := sourcingpersistence.NewRepositoryWithAcquisitionGuard(db, newCatalogBridge, newPublicationChargeGuard)
+	store, err := acquisitionPublicationStore(db, options)
 	if err != nil {
 		return nil, err
 	}

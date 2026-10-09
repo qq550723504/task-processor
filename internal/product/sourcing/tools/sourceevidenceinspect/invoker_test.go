@@ -80,7 +80,7 @@ func TestInvokerTraversesRegistryAndAudit(t *testing.T) {
 		t.Fatalf("invocation: %s %v audit=%#v", result.Output, err, audit.records)
 	}
 	r := audit.records[0]
-	if r.ToolID != Definition().Ref.ID || r.ToolVersion != "v1.0.0" || r.TenantID != "org" || r.UserID != "actor" || r.Permission != authz.PermissionProductSourcingWrite || r.Outcome != commercetool.AuditOutcomeSucceeded || r.InputHash == "" || r.OutputHash == "" || r.AIInvocationID != "" {
+	if r.ToolID != Definition().Ref.ID || r.ToolVersion != "v2.0.0" || r.TenantID != "org" || r.UserID != "actor" || r.Permission != authz.PermissionProductSourcingWrite || r.Outcome != commercetool.AuditOutcomeSucceeded || r.InputHash == "" || r.OutputHash == "" || r.AIInvocationID != "" {
 		t.Fatalf("audit=%#v", r)
 	}
 	audit.fail = true

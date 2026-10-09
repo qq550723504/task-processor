@@ -20,10 +20,16 @@ func (h *Handler) ReadOfficialConnection(c *gin.Context) {
 	c.JSON(http.StatusOK, view)
 }
 func (h *Handler) BeginOfficialConnection(c *gin.Context) {
-	command, ok := h.connectionCommand(c)
+	command, ok := h.connectionCommand(c, false)
 	if !ok {
 		return
 	}
+	values, field, err := parseStringObject(c.Request.Body, map[string]bool{"appId": true})
+	if err != nil || len(values["appId"]) < 1 || len(values["appId"]) > 128 {
+		writeInvalid(c, field, "invalid")
+		return
+	}
+	command.ApplicationID = values["appId"]
 	result, err := h.officialConnections.Begin(c.Request.Context(), command)
 	if err != nil {
 		writeStoreError(c, err)
@@ -34,7 +40,7 @@ func (h *Handler) BeginOfficialConnection(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 func (h *Handler) DisconnectOfficialConnection(c *gin.Context) {
-	command, ok := h.connectionCommand(c)
+	command, ok := h.connectionCommand(c, true)
 	if !ok {
 		return
 	}
@@ -46,7 +52,7 @@ func (h *Handler) DisconnectOfficialConnection(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, result)
 }
-func (h *Handler) connectionCommand(c *gin.Context) (storecenter.OfficialConnectionCommand, bool) {
+func (h *Handler) connectionCommand(c *gin.Context, noBody bool) (storecenter.OfficialConnectionCommand, bool) {
 	identity, id, ok := h.itemIdentity(c)
 	if !ok {
 		return storecenter.OfficialConnectionCommand{}, false
@@ -61,11 +67,26 @@ func (h *Handler) connectionCommand(c *gin.Context) (storecenter.OfficialConnect
 		writeInvalid(c, "Idempotency-Key", "invalid")
 		return storecenter.OfficialConnectionCommand{}, false
 	}
-	if err := requireNoBody(c.Request.Body); err != nil {
-		writeInvalid(c, "body", "not_allowed")
-		return storecenter.OfficialConnectionCommand{}, false
+	if noBody {
+		if err := requireNoBody(c.Request.Body); err != nil {
+			writeInvalid(c, "body", "not_allowed")
+			return storecenter.OfficialConnectionCommand{}, false
+		}
 	}
 	return storecenter.OfficialConnectionCommand{OrganizationID: identity.EffectiveOrganizationID, StoreID: id, AttemptID: key, ExpectedStoreVersion: version}, true
+}
+func (h *Handler) OfficialApplications(c *gin.Context) {
+	identity, id, ok := h.itemIdentity(c)
+	if !ok {
+		return
+	}
+	choices, err := h.officialConnections.Applications(c.Request.Context(), identity.EffectiveOrganizationID, id)
+	if err != nil {
+		writeStoreError(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, gin.H{"applications":choices})
 }
 func (h *Handler) CompleteOfficialConnection(c *gin.Context) {
 	identity, id, ok := h.itemIdentity(c)

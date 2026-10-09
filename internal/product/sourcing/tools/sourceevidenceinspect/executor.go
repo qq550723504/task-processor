@@ -9,6 +9,7 @@ import (
 	"math"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"task-processor/internal/authidentity"
@@ -27,6 +28,29 @@ type Input struct {
 type SourceReader interface {
 	Read(context.Context, string) (sourcing.PersistedPublication, error)
 }
+type executionSourceReader interface {
+	AuthorizePublicationExecution(context.Context, string, string) error
+}
+type CatalogReference struct {
+	ProductKey    string `json:"product_key"`
+	Version       string `json:"catalog_version"`
+	PublicationID string `json:"publication_id"`
+}
+type AppliedTitleReference struct {
+	ProposalID        string `json:"proposal_id"`
+	BaseVersion       string `json:"base_version"`
+	BasePublicationID string `json:"base_publication_id"`
+	Version           string `json:"catalog_version"`
+	PublicationID     string `json:"publication_id"`
+}
+type EffectiveSourceObservation struct {
+	Requested CatalogReference
+	Original  sourcing.PersistedPublication
+	Applied   []AppliedTitleReference
+}
+type EffectiveSourceReader interface {
+	ReadEffectiveSource(context.Context, commercetool.Principal, catalog.PublishedSnapshot) (EffectiveSourceObservation, error)
+}
 
 type Executor struct {
 	snapshots catalog.VersionedSnapshotReader
@@ -40,13 +64,19 @@ func NewExecutor(snapshots catalog.VersionedSnapshotReader, sources SourceReader
 	return &Executor{snapshots: snapshots, sources: sources}, nil
 }
 
-func (e *Executor) readExact(ctx context.Context, principal commercetool.Principal, input Input) (sourcing.PersistedPublication, error) {
-	var empty sourcing.PersistedPublication
+func (e *Executor) readPublished(ctx context.Context, principal commercetool.Principal, input Input) (catalog.PublishedSnapshot, error) {
+	var empty catalog.PublishedSnapshot
 	if err := ctx.Err(); err != nil {
 		return empty, err
 	}
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
-	if !ok || !authidentity.IsBoundedIdentifier(identity.UserID) || !authidentity.IsBoundedIdentifier(identity.EffectiveOrganizationID) ||
+	if !ok {
+		deadline, bounded := ctx.Deadline()
+		execution, configured := e.sources.(executionSourceReader)
+		if !configured || !bounded || !time.Now().Before(deadline) || execution.AuthorizePublicationExecution(ctx, principal.TenantID, principal.UserID) != nil {
+			return empty, sourcing.ErrPublicationForbidden
+		}
+	} else if !authidentity.IsBoundedIdentifier(identity.UserID) || !authidentity.IsBoundedIdentifier(identity.EffectiveOrganizationID) ||
 		identity.UserID != principal.UserID || identity.TenantID != principal.TenantID || identity.EffectiveOrganizationID != principal.TenantID ||
 		identity.TokenExpiresAt.IsZero() || !time.Now().Before(identity.TokenExpiresAt) {
 		return empty, sourcing.ErrPublicationForbidden
@@ -67,6 +97,10 @@ func (e *Executor) readExact(ctx context.Context, principal commercetool.Princip
 	if published.Identity != expected || published.Version != version || !authidentity.IsBoundedIdentifier(published.PublicationID) {
 		return empty, sourcing.ErrSourcePublicationStateInvalid
 	}
+	return published, nil
+}
+func (e *Executor) readOriginal(ctx context.Context, published catalog.PublishedSnapshot) (sourcing.PersistedPublication, error) {
+	var empty sourcing.PersistedPublication
 	persisted, err := e.sources.Read(ctx, published.PublicationID)
 	if err != nil {
 		return empty, err
@@ -75,11 +109,18 @@ func (e *Executor) readExact(ctx context.Context, principal commercetool.Princip
 		return empty, err
 	}
 	r := persisted.Receipt
-	if r.OrganizationID != expected.TenantID || r.ProductKey != expected.ProductKey || r.CatalogVersion != version ||
+	if r.OrganizationID != published.Identity.TenantID || r.ProductKey != published.Identity.ProductKey || r.CatalogVersion != published.Version ||
 		r.PublicationID != published.PublicationID || r.CatalogPublicationID != published.PublicationID || !reflect.DeepEqual(persisted.Snapshot, published.Snapshot) {
 		return empty, sourcing.ErrSourcePublicationStateInvalid
 	}
 	return persisted, nil
+}
+func (e *Executor) readExact(ctx context.Context, principal commercetool.Principal, input Input) (sourcing.PersistedPublication, error) {
+	p, err := e.readPublished(ctx, principal, input)
+	if err != nil {
+		return sourcing.PersistedPublication{}, err
+	}
+	return e.readOriginal(ctx, p)
 }
 
 func (e *Executor) Execute(ctx context.Context, envelope commercetool.ExecutionEnvelope, raw json.RawMessage) (commercetool.ExecutionResult, error) {
@@ -87,11 +128,7 @@ func (e *Executor) Execute(ctx context.Context, envelope commercetool.ExecutionE
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return commercetool.ExecutionResult{}, toolError(sourcing.ErrInvalidSourcePublication)
 	}
-	persisted, err := e.readExact(ctx, envelope.Principal(), input)
-	if err != nil {
-		return commercetool.ExecutionResult{}, toolError(err)
-	}
-	output, err := Project(persisted)
+	output, err := e.projectEffective(ctx, envelope.Principal(), input)
 	if err != nil {
 		return commercetool.ExecutionResult{}, toolError(err)
 	}
@@ -99,6 +136,48 @@ func (e *Executor) Execute(ctx context.Context, envelope commercetool.ExecutionE
 		return commercetool.ExecutionResult{}, toolError(err)
 	}
 	return commercetool.ExecutionResult{Output: output}, nil
+}
+
+func (e *Executor) projectEffective(ctx context.Context, principal commercetool.Principal, input Input) (json.RawMessage, error) {
+	p, err := e.readPublished(ctx, principal, input)
+	if err != nil {
+		return nil, err
+	}
+	identity := p.Identity
+	version := p.Version
+	if !strings.HasPrefix(p.PublicationID, "review:") {
+		original, err := e.readOriginal(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		return Project(original)
+	}
+	reader, ok := e.sources.(EffectiveSourceReader)
+	if !ok {
+		return nil, sourcing.ErrPublicationForbidden
+	}
+	observed, err := reader.ReadEffectiveSource(ctx, principal, p)
+	if err != nil {
+		return nil, err
+	}
+	if observed.Requested != (CatalogReference{input.ProductKey, input.CatalogVersion, p.PublicationID}) || observed.Original.Receipt.OrganizationID != identity.TenantID || observed.Original.Receipt.ProductKey != identity.ProductKey || observed.Original.Receipt.CatalogVersion >= version || len(observed.Applied) == 0 || len(observed.Applied) > 64 {
+		return nil, sourcing.ErrSourcePublicationStateInvalid
+	}
+	raw, err := Project(observed.Original)
+	if err != nil {
+		return nil, err
+	}
+	var output Output
+	if json.Unmarshal(raw, &output) != nil {
+		return nil, sourcing.ErrSourcePublicationStateInvalid
+	}
+	output.Requested = observed.Requested
+	output.Applied = observed.Applied
+	raw, err = json.Marshal(output)
+	if err != nil || len(raw) > MaxOutputBytes {
+		return nil, ErrProjectionTooLarge
+	}
+	return raw, ctx.Err()
 }
 
 func toolError(cause error) error {

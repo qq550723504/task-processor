@@ -1,17 +1,24 @@
 "use client";
 
 import Link from "next/link";
+import {useSearchParams} from "next/navigation";
+import {collectionID} from "@/lib/contracts/product-collection";
 import { useId, useState } from "react";
 import { consoleNavigation, findConsoleRoute, type ConsoleNavNode } from "@/lib/workbench/console-navigation";
 
-export function ConsoleNavigation({ pathname, ariaLabel, onNavigate, productAcquisitionAvailable = false, knowledgeAvailable = false, aiWorkbenchAvailable = false, productReviewAvailable = false, sheinRecordsAvailable = false }: { pathname: string; ariaLabel: string; onNavigate?: () => void; productAcquisitionAvailable?: boolean; knowledgeAvailable?: boolean; aiWorkbenchAvailable?: boolean; productReviewAvailable?: boolean; sheinRecordsAvailable?: boolean }) {
+export function ConsoleNavigation({ pathname, ariaLabel, onNavigate, productAcquisitionAvailable = false, productCollectionsAvailable = false, supplyChainAvailable = false, knowledgeAvailable = false, aiWorkbenchAvailable = false, productReviewAvailable = false, sheinRecordsAvailable = false }: { pathname: string; ariaLabel: string; onNavigate?: () => void; productAcquisitionAvailable?: boolean; productCollectionsAvailable?: boolean; supplyChainAvailable?: boolean; knowledgeAvailable?: boolean; aiWorkbenchAvailable?: boolean; productReviewAvailable?: boolean; sheinRecordsAvailable?: boolean }) {
   const trail = findConsoleRoute(pathname)?.trail ?? [];
+  const query=useSearchParams(), selection=new URLSearchParams();
+  if(pathname.startsWith("/workbench/supply/mine"))for(const key of ["preparation","store"]){const value=query?.get(key);if(value&&collectionID.safeParse(value).success)selection.set(key,value);}
+  const supplyQuery=selection.size?`?${selection}`:"";
   const navigation = productAcquisitionAvailable ? consoleNavigation : consoleNavigation.map(node => node.href === "/workbench/supply" ? { ...node, children: node.children?.filter(child => child.href !== "/workbench/supply/acquisition") } : node);
   const independentAIEntries: ConsoleNavNode[] = [];
   if (productReviewAvailable) independentAIEntries.push({ label: "标题审核", href: "/workbench/ai/tasks/pending/other", availability: "connected" });
   if (sheinRecordsAvailable) independentAIEntries.push({ label: "历史工作记录", href: "/workbench/ai/tasks/completed/history", availability: "connected" });
   const independentTaskAvailable = productReviewAvailable || sheinRecordsAvailable;
   const nodes = navigation.map(node => {
+    if (node.href === "/workbench/supply") return { ...node, children: node.children?.map(child => child.href === "/workbench/supply/mine" ? { ...child, availability: supplyChainAvailable ? "connected" as const : "unavailable" as const, children: supplyChainAvailable ? child.children?.map(stage=>({...stage,availability:"connected" as const})) : undefined } : child) };
+    if (node.href === "/workbench/data" && productCollectionsAvailable) return { ...node, children: node.children?.map(child => child.href === "/workbench/data/mine" ? { ...child, availability: "connected" as const } : child) };
     if (node.href !== "/workbench/ai") return node;
     const children = (node.children ?? [])
       .filter(child => aiWorkbenchAvailable || child.href !== "/workbench/ai/chat" && (child.href !== "/workbench/ai/tasks" || independentTaskAvailable))
@@ -21,21 +28,21 @@ export function ConsoleNavigation({ pathname, ariaLabel, onNavigate, productAcqu
       } : child.href === "/workbench/ai/knowledge" && knowledgeAvailable ? { ...child, availability: "connected" as const } : child);
     return { ...node, children: [...children, ...independentAIEntries] };
   });
-  return <nav aria-label={ariaLabel} className="console-nav"><ul>{nodes.map(node => <NavBranch key={`${pathname}:${node.href}`} node={node} pathname={pathname} trail={trail.map((item) => item.href)} depth={1} onNavigate={onNavigate} />)}</ul></nav>;
+  return <nav aria-label={ariaLabel} className="console-nav"><ul>{nodes.map(node => <NavBranch key={`${pathname}:${node.href}`} node={node} pathname={pathname} trail={trail.map((item) => item.href)} depth={1} onNavigate={onNavigate} supplyQuery={supplyQuery} />)}</ul></nav>;
 }
 
-function NavBranch({ node, pathname, trail, depth, onNavigate }: { node: ConsoleNavNode; pathname: string; trail: readonly string[]; depth: number; onNavigate?: () => void }) {
+function NavBranch({ node, pathname, trail, depth, onNavigate, supplyQuery }: { node: ConsoleNavNode; pathname: string; trail: readonly string[]; depth: number; onNavigate?: () => void; supplyQuery:string }) {
   const active = trail.includes(node.href) || pathname === node.href;
   // The route-keyed subtree resets disclosure even when navigating back to an earlier route.
   const [expanded, setExpanded] = useState(active);
   const id = useId();
   return <li className={`console-nav-level-${depth}`}>
     <div className="console-nav-row" data-active={active || undefined}>
-      <Link href={node.href} prefetch={false} aria-current={pathname === node.href || (!node.children && active) ? "page" : undefined} onClick={onNavigate} title={node.availability === "unavailable" ? `${node.label}：业务暂未启用` : node.label}>
+      <Link href={node.href.startsWith("/workbench/supply/mine")?node.href+supplyQuery:node.href} prefetch={false} aria-current={pathname === node.href || (!node.children && active) ? "page" : undefined} onClick={onNavigate} title={node.availability === "unavailable" ? `${node.label}：业务暂未启用` : node.label}>
         <span className="console-nav-dot" aria-hidden="true" /><span>{node.label}</span>
       </Link>
       {node.children ? <button type="button" aria-label={`${expanded ? "收起" : "展开"}${node.label}`} aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(value => !value)}>{expanded ? "⌃" : "⌄"}</button> : null}
     </div>
-    {node.children && expanded ? <ul id={id}>{node.children.map((child) => <NavBranch key={child.href} node={child} pathname={pathname} trail={trail} depth={depth + 1} onNavigate={onNavigate} />)}</ul> : null}
+    {node.children && expanded ? <ul id={id}>{node.children.map((child) => <NavBranch key={child.href} node={child} pathname={pathname} trail={trail} depth={depth + 1} onNavigate={onNavigate} supplyQuery={supplyQuery} />)}</ul> : null}
   </li>;
 }

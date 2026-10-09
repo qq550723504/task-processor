@@ -122,6 +122,7 @@ source of truth for long-lived rules.
 
 ## Supporting Context
 
+- [`my-supply-chain-shein-v1.md`](./my-supply-chain-shein-v1.md): #605 的已评审冻结 Design Basis，Collection → Preparation → Target → Submission 完整交付及三种官方应用类型；运行说明见 [operations](../operations/my-supply-chain-shein-v1.md)。
 - [`notification-center-v1.md`](./notification-center-v1.md)
   - #608 notification-center design and current-business source mapping. Admission
     is stated in that document and the execution Issue; a draft is not permission

@@ -1,10 +1,12 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { ConsoleNavigation } from "./console-navigation";
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 
-afterEach(cleanup);
+const query=vi.hoisted(()=>({value:""}));
+vi.mock("next/navigation",()=>({useSearchParams:()=>new URLSearchParams(query.value)}));
+afterEach(()=>{cleanup();query.value="";});
 
 it("only advertises Chat and BusinessTask when the current application mounts AI Workbench", () => {
   const view = render(<ConsoleNavigation pathname="/workbench/ai/chat" ariaLabel="主导航" aiWorkbenchAvailable={false} />);
@@ -101,4 +103,21 @@ it("retains three-level route trails outside the plans module", () => {
     "账户资料",
     "账户设置",
   ]);
+});
+
+it("only opens supply stage navigation when the serving runtime enables it",async()=>{
+ const view=render(<ConsoleNavigation pathname="/workbench/supply/mine/ready" ariaLabel="主导航" supplyChainAvailable={false}/>);
+ expect(screen.queryByRole("link",{name:"已适配"})).not.toBeInTheDocument();
+ view.rerender(<ConsoleNavigation pathname="/workbench/supply/mine/ready" ariaLabel="主导航" supplyChainAvailable/>);
+ expect(screen.getByRole("link",{name:"已适配"})).toHaveAttribute("href","/workbench/supply/mine/ready");expect(screen.getByRole("link",{name:"已适配"})).toHaveAttribute("aria-current","page");
+ expect(screen.getByRole("link",{name:"待补全"})).toHaveAttribute("href","/workbench/supply/mine/missing");
+});
+
+it("retains only valid batch and store selection across supply stage links",()=>{
+ query.value="preparation=11111111-1111-4111-8111-111111111111&store=22222222-2222-4222-8222-222222222222&operation=discard";
+ const view=render(<ConsoleNavigation pathname="/workbench/supply/mine/waiting" ariaLabel="主导航" supplyChainAvailable/>);
+ expect(screen.getByRole("link",{name:"待审核"})).toHaveAttribute("href","/workbench/supply/mine/review?preparation=11111111-1111-4111-8111-111111111111&store=22222222-2222-4222-8222-222222222222");
+ expect(screen.getByRole("link",{name:"待审核"})).toHaveAttribute("title","待审核");
+ query.value="preparation=bad&store=bad";view.rerender(<ConsoleNavigation pathname="/workbench/supply/mine/waiting" ariaLabel="主导航" supplyChainAvailable/>);
+ expect(screen.getByRole("link",{name:"待审核"})).toHaveAttribute("href","/workbench/supply/mine/review");
 });

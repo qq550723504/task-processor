@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -135,7 +134,7 @@ func authorizedAssetsFromCatalogImagesWithResolver(ctx context.Context, images [
 
 func buildAuthorizedAssetsFromCatalogImages(images []catalog.Image) []imageagent.AuthorizedAsset {
 	assets := make([]imageagent.AuthorizedAsset, 0, len(images))
-	for index, item := range images {
+	for _, item := range catalog.IdentifyImages(images) {
 		url, err := imageagent.ValidateSafeImageURL(item.URL)
 		if err != nil {
 			continue
@@ -145,7 +144,7 @@ func buildAuthorizedAssetsFromCatalogImages(images []catalog.Image) []imageagent
 			assetType = imageagent.AuthorizedAssetStyle
 		}
 		assets = append(assets, imageagent.AuthorizedAsset{
-			ID: "catalog-image-" + strconv.Itoa(index+1), Type: assetType,
+			ID: item.ID, Type: assetType,
 			URL: url, SourceURL: url, DisplayURL: url, Label: "Product image",
 			Width: item.Width, Height: item.Height,
 		})

@@ -14,6 +14,23 @@ var (
 )
 
 type OfficialApplication struct{ AppID, Version, CallbackURL string }
+type OfficialApplicationType string
+type OfficialApplicationChoice struct {
+	AppID    string                  `json:"appId"`
+	Revision string                  `json:"revision"`
+	Type     OfficialApplicationType `json:"type"`
+}
+
+const (
+	ApplicationSelfOperated OfficialApplicationType = "self_operated"
+	ApplicationSemiManaged  OfficialApplicationType = "semi_managed"
+	ApplicationFullyManaged OfficialApplicationType = "fully_managed"
+)
+
+func (t OfficialApplicationType) Valid() bool {
+	return t == ApplicationSelfOperated || t == ApplicationSemiManaged || t == ApplicationFullyManaged
+}
+
 type OfficialMerchantCredential struct {
 	AppID      string
 	OpenKeyID  string
@@ -48,6 +65,7 @@ type OfficialConnectionAttempt struct {
 type OfficialConnectionCommand struct {
 	OrganizationID, StoreID, AttemptID string
 	ExpectedStoreVersion               int64
+	ApplicationID                      string
 }
 type OfficialConnectionBegin struct {
 	AttemptID        string    `json:"attemptId"`
@@ -56,13 +74,16 @@ type OfficialConnectionBegin struct {
 }
 type CompleteOfficialConnection struct{ OrganizationID, StoreID, AttemptID, AppID, State, TempToken string }
 type OfficialConnectionView struct {
-	AttemptID  string           `json:"attemptId"`
-	State      string           `json:"state"`
-	Status     ConnectionStatus `json:"connectionStatus"`
-	Version    int64            `json:"version"`
-	ObservedAt *time.Time       `json:"observedAt"`
+	AppID       string           `json:"appId,omitempty"`
+	AppRevision string           `json:"appRevision,omitempty"`
+	AttemptID   string           `json:"attemptId"`
+	State       string           `json:"state"`
+	Status      ConnectionStatus `json:"connectionStatus"`
+	Version     int64            `json:"version"`
+	ObservedAt  *time.Time       `json:"observedAt"`
 }
 type OfficialConnectionStore interface {
+	ReadOfficialAttemptBinding(context.Context, string, string, string) (OfficialAttemptBinding, error)
 	BeginOfficialConnection(context.Context, OfficialConnectionCommand, OfficialApplication, string, time.Time) (OfficialConnectionAttempt, error)
 	ClaimOfficialExchange(context.Context, string, string, string, string, string, string, time.Time) (OfficialConnectionAttempt, bool, error)
 	ReadOfficialQueryAttempt(context.Context, string, string, string) (OfficialConnectionAttempt, error)
@@ -73,3 +94,6 @@ type OfficialConnectionStore interface {
 	ObserveOfficialConnection(context.Context, OfficialConnectionAttempt, ConnectionStatus, time.Time) error
 	DisconnectOfficialConnection(context.Context, OfficialConnectionCommand, time.Time) (OfficialConnectionView, error)
 }
+
+// The member-authorized binding contains no credential and permits no dispatch.
+type OfficialAttemptBinding struct{ AppID, AppVersion string }

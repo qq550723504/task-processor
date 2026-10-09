@@ -81,9 +81,9 @@ func (a *productAgentApplication) startRequestWithProfile(ctx context.Context, b
 		return agent.Request{}, agent.ErrInvalid
 	}
 	request := agent.Request{Key: key, Binding: binding, GoalSummary: goalSummary, PolicyVersion: "title-review-v1", PromptVersion: "product-title-agent-v1", Limits: a.config.Limits}
-	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
-	if !ok {
-		return agent.Request{}, knowledge.ErrForbidden
+	scope, err := a.requestOrExecutionScope(ctx)
+	if err != nil {
+		return agent.Request{}, err
 	}
 	if a.configuration == nil || a.store == nil {
 		return agent.Request{}, agentconfig.ErrUnavailable
@@ -91,7 +91,7 @@ func (a *productAgentApplication) startRequestWithProfile(ctx context.Context, b
 	if baseID != "" {
 		request.PromptVersion = "product-title-agent-knowledge-v1"
 	}
-	input := agentconfig.StartCommand{Scope: agent.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, AgentID: a.definition.ID, AgentVersion: a.definition.Version, KnowledgeBaseID: baseID, Template: template, Request: request}
+	input := agentconfig.StartCommand{Scope: scope, AgentID: a.definition.ID, AgentVersion: a.definition.Version, KnowledgeBaseID: baseID, Template: template, Request: request}
 	existing, found, readErr := a.store.Lookup(ctx, input.Scope, binding, key)
 	if readErr != nil {
 		return agent.Request{}, readErr
@@ -109,7 +109,7 @@ func (a *productAgentApplication) startRequestWithProfile(ctx context.Context, b
 				return agent.Request{}, knowledge.ErrUnavailable
 			}
 			ref := existing.State.Request.ContextSnapshotRef
-			command := knowledge.ContextRequest{Scope: knowledge.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, Binding: binding, Key: key, Selection: "knowledge-base:" + baseID, PolicyVersion: knowledge.ContextPolicyVersion, ExpectedRevisionSetDigest: expectedRevisionSet}
+			command := knowledge.ContextRequest{Scope: knowledge.Scope{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID}, Binding: binding, Key: key, Selection: "knowledge-base:" + baseID, PolicyVersion: knowledge.ContextPolicyVersion, ExpectedRevisionSetDigest: expectedRevisionSet}
 			if err := a.context.ValidateMaterializedRequest(ctx, command, knowledge.ContextSnapshotRef{Kind: ref.Kind, ID: ref.ID, Digest: ref.Digest}); err != nil {
 				return agent.Request{}, err
 			}
@@ -119,7 +119,7 @@ func (a *productAgentApplication) startRequestWithProfile(ctx context.Context, b
 	if a.selectTitleProfile == nil {
 		return agent.Request{}, agent.ErrUnavailable
 	}
-	profile, err := a.selectTitleProfile(ctx, identity.TenantID)
+	profile, err := a.selectTitleProfile(ctx, scope.OrganizationID)
 	if err != nil || profile.Validate() != nil || (expectedProfile.Validate() == nil && profile != expectedProfile) {
 		return agent.Request{}, agent.ErrUnavailable
 	}
@@ -135,7 +135,7 @@ func (a *productAgentApplication) startRequestWithProfile(ctx context.Context, b
 			return agent.Request{}, knowledge.ErrUnavailable
 		}
 		command := knowledge.ContextRequest{
-			Scope: knowledge.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, Binding: binding, Key: key,
+			Scope: knowledge.Scope{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID}, Binding: binding, Key: key,
 			Selection: "knowledge-base:" + baseID, PolicyVersion: knowledge.ContextPolicyVersion, ExpectedRevisionSetDigest: expectedRevisionSet,
 		}
 		ref, err := a.context.Materialize(ctx, command)

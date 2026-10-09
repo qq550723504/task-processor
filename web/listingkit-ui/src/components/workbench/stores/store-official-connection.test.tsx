@@ -7,13 +7,15 @@ import type { WorkbenchStore } from "@/lib/api/workbench-stores";
 const state = vi.hoisted(() => ({
   read: vi.fn(),
   begin: vi.fn(),
-  remember: vi.fn(),
+	remember: vi.fn(),
+	applications:vi.fn(),
 }));
 vi.mock("@/lib/api/store-connection", async (original) => ({
   ...(await original<typeof import("@/lib/api/store-connection")>()),
   getStoreConnection: state.read,
   beginStoreConnection: state.begin,
-  rememberStoreAuthorization: state.remember,
+	rememberStoreAuthorization: state.remember,
+	getStoreApplications:state.applications,
 }));
 vi.mock("./store-service-actions", () => ({ StoreServiceActions: () => null }));
 const store = {
@@ -40,7 +42,8 @@ function tree(org = "org-1") {
 beforeEach(() => {
   client.clear();
   state.remember.mockReset();
-  state.begin.mockReset();
+	state.begin.mockReset();
+	state.applications.mockResolvedValue([{appId:"self-app",revision:"v1~self_operated",type:"self_operated"}]);
   state.read.mockResolvedValue({
     connectionStatus: "disconnected",
     attemptId: null,
@@ -72,3 +75,18 @@ it.each(["switch", "unmount"])(
     expect(state.remember).not.toHaveBeenCalled();
   },
 );
+it("requires a configured application choice and sends the chosen managed application",async()=>{
+	state.applications.mockResolvedValue([
+		{appId:"self-app",revision:"v1~self_operated",type:"self_operated"},
+		{appId:"semi-app",revision:"v1~semi_managed",type:"semi_managed"},
+		{appId:"full-app",revision:"v1~fully_managed",type:"fully_managed"},
+	]);
+	state.begin.mockRejectedValue(new Error("controlled fixture"));
+	render(tree());
+	const choices=await screen.findByRole("combobox",{name:"官方应用类型"});
+	await screen.findByRole("option",{name:"全托管 · full-app"});
+	expect(screen.getByRole("button",{name:"前往官方授权"})).toBeDisabled();
+	await userEvent.selectOptions(choices,"full-app");
+	await userEvent.click(screen.getByRole("button",{name:"前往官方授权"}));
+	expect(state.begin).toHaveBeenCalledWith({expectedUserId:"actor",expectedOrganizationId:"org-1"},store.id,store.version,expect.any(String),"full-app");
+});

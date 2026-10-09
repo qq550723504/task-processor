@@ -28,14 +28,13 @@ func WithStoreCenter(records *gorm.DB) CurrentApplicationOption {
 	}
 }
 
-func WithStoreOfficialConnection(provider storecenter.OfficialConnectionProvider, protection storecenter.OfficialCredentialProtection) CurrentApplicationOption {
+func WithStoreOfficialApplications(applications *storeapp.OfficialApplicationRegistry) CurrentApplicationOption {
 	return func(o *currentApplicationOptions) {
 		o.officialStoreConfigs++
-		o.officialStoreProvider = provider
-		o.officialStoreProtection = protection
+		o.officialStoreApplications = applications
 	}
 }
-func buildCurrentStoreCenterModule(ctx context.Context, records *gorm.DB, authorizer *authz.ListingKitAuthorizer, charges orgresource.ConsumerChargePort, provider storecenter.OfficialConnectionProvider, protection storecenter.OfficialCredentialProtection) (kernelmodule.Module, error) {
+func buildCurrentStoreCenterModule(ctx context.Context, records *gorm.DB, authorizer *authz.ListingKitAuthorizer, charges orgresource.ConsumerChargePort, applications *storeapp.OfficialApplicationRegistry) (kernelmodule.Module, error) {
 	if records == nil {
 		return nil, errors.New("store center requires its native record pool")
 	}
@@ -57,10 +56,10 @@ func buildCurrentStoreCenterModule(ctx context.Context, records *gorm.DB, author
 		return nil, err
 	}
 	var connections *storeapp.OfficialConnections
-	if provider == nil && protection == nil {
+	if applications == nil {
 		connections, err = storeapp.NewUnconfiguredOfficialConnections(repo)
 	} else {
-		connections, err = storeapp.NewOfficialConnections(repo, provider, protection)
+		connections, err = storeapp.NewOfficialConnections(repo, applications)
 	}
 	if err != nil {
 		return nil, err
@@ -127,6 +126,7 @@ var currentStoreCenterRoutes = []struct{ method, path, permission string }{
 	{http.MethodPost, "/api/v1/workbench/stores/:store_id/renew", authz.PermissionWorkbenchStoreLifecycle},
 	{http.MethodPost, "/api/v1/workbench/stores/:store_id/reactivate", authz.PermissionWorkbenchStoreLifecycle},
 	{http.MethodGet, "/api/v1/workbench/stores/:store_id/connection", authz.PermissionWorkbenchStoreRead},
+	{http.MethodGet, "/api/v1/workbench/stores/:store_id/connection/applications", authz.PermissionWorkbenchStoreRead},
 	{http.MethodPost, "/api/v1/workbench/stores/:store_id/connection/begin", authz.PermissionWorkbenchStoreUpdate},
 	{http.MethodPost, "/api/v1/workbench/stores/:store_id/connection/complete", authz.PermissionWorkbenchStoreUpdate},
 	{http.MethodPost, "/api/v1/workbench/stores/:store_id/connection/query", authz.PermissionWorkbenchStoreUpdate},
