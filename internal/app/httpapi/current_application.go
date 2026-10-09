@@ -30,6 +30,7 @@ import (
 	"task-processor/internal/knowledge"
 	knowledgehttp "task-processor/internal/knowledge/httpapi"
 	"task-processor/internal/ledger/orgresource"
+	notificationhttp "task-processor/internal/notificationcenter/httpapi"
 	collectionhttp "task-processor/internal/product/collection/httpapi"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
 	"task-processor/internal/workbenchcontext"
@@ -112,6 +113,8 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
+	notifications             int
+	notificationDB            *gorm.DB
 	agentConfigurationDB      *gorm.DB
 	knowledgeServices         int
 	knowledge                 *knowledge.Service
@@ -728,6 +731,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		modules = append(modules, resources)
 	}
+	if supplied.notifications > 0 {
+		notifications, err := buildNotificationModule(ctx, supplied.notificationDB, cfg, authorizer, modules, supplied)
+		if err != nil {
+			return nil, err
+		}
+		modules = append(modules, notifications)
+	}
 	bundle, err := buildRuntimeBundleFromModules(cfg, modules)
 	if err != nil {
 		return nil, err
@@ -735,6 +745,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	routeFeatures := currentApplicationOptionalRoutes{
 		SupplyChain:         supplied.supplyChains > 0,
 		Collections:         supplied.productCollections > 0,
+		NotificationCenter:  supplied.notifications > 0,
 		ZitadelSMS:          true,
 		StoreCenter:         supplied.storeCenters > 0,
 		LocalTrial:          supplied.localTrials > 0,
@@ -828,6 +839,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 type currentApplicationOptionalRoutes struct {
 	SupplyChain         bool
 	Collections         bool
+	NotificationCenter  bool
 	AgentConfiguration  bool
 	Knowledge           bool
 	StoreCenter         bool
@@ -859,6 +871,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 					return err
 				}
 			}
+		}
+	}
+	if optional.NotificationCenter {
+		for _, r := range notificationhttp.Routes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
 		}
 	}
 	if optional.AgentConfiguration {
@@ -994,6 +1011,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 				return e
 			}
 		}
+		if strings.HasPrefix(descriptor.Path, "/api/v1/notifications/") || strings.HasPrefix(descriptor.Path, "/api/v1/workbench/notifications") || strings.HasPrefix(descriptor.Path, "/api/v1/platform/notifications/") {
+			if !optional.NotificationCenter {
+				return errors.New("notification center not admitted")
+			}
+			if err := notificationhttp.ValidateDescriptor(descriptor); err != nil {
+				return err
+			}
+		}
 		if optional.LocalTrial && isIssue36TrialRoute(descriptor.Method, descriptor.Path) {
 			if !validIssue36TrialDescriptor(descriptor) {
 				return errors.New("#36 local trial route loses admitted permission or deadline")
@@ -1023,9 +1048,6 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 				includeCommercialBilling = true
 				break
 			}
-		}
-		if includeCommercialBilling {
-			break
 		}
 	}
 	if includeCommercialBilling {

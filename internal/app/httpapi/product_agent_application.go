@@ -294,13 +294,28 @@ func (a *productAgentApplication) freshWorkbenchIdentity(ctx context.Context, pe
 		original.TenantID != original.EffectiveOrganizationID || !capability.tokenExpiresAt.After(time.Now()) {
 		return authidentity.AuthenticatedIdentity{}, review.ErrForbidden
 	}
+	if a.resolver == nil {
+		return authidentity.AuthenticatedIdentity{}, review.ErrUnavailable
+	}
 	identity, err := a.resolver.Resolve(ctx, httproute.OrganizationAccessPolicyLiveWrite,
 		workbenchcontext.ResolveInput{Identity: authidentity.AuthenticatedIdentity{UserID: capability.actorID,
 			HomeOrganizationID: capability.homeOrganizationID, TokenExpiresAt: capability.tokenExpiresAt},
 			BearerToken: capability.bearerToken, RequestedOrganizationID: capability.effectiveOrganizationID})
-	if err != nil || identity.UserID != original.UserID || identity.TenantID != original.TenantID ||
-		identity.EffectiveOrganizationID != original.TenantID || !agent.ValidID(identity.EffectiveMemberID) ||
-		!authz.AllowedOrganization(ctx, a.authorizer, identity.UserID, identity.EffectiveOrganizationID, identity.Roles, permission) {
+	if err != nil {
+		if workbenchIdentityRejected(err) {
+			return authidentity.AuthenticatedIdentity{}, review.ErrForbidden
+		}
+		return authidentity.AuthenticatedIdentity{}, review.ErrUnavailable
+	}
+	if identity.UserID != original.UserID || identity.TenantID != original.TenantID ||
+		identity.EffectiveOrganizationID != original.TenantID || !agent.ValidID(identity.EffectiveMemberID) {
+		return authidentity.AuthenticatedIdentity{}, review.ErrForbidden
+	}
+	permissionAllowed, err := authz.AuthorizeOrganization(ctx, a.authorizer, identity.UserID, identity.EffectiveOrganizationID, identity.Roles, permission)
+	if err != nil {
+		return authidentity.AuthenticatedIdentity{}, review.ErrUnavailable
+	}
+	if !permissionAllowed {
 		return authidentity.AuthenticatedIdentity{}, review.ErrForbidden
 	}
 	allowed := false

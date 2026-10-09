@@ -371,7 +371,10 @@ func writeAcquisitionError(c *gin.Context, err error) {
 	c.AbortWithStatusJSON(status, gin.H{"schemaVersion": 1, "error": gin.H{"code": code}})
 }
 
-type productAcquisitionModule struct{ routes []httproute.Descriptor }
+type productAcquisitionModule struct {
+	routes       []httproute.Descriptor
+	noticeReader acquisitionNoticeFacts
+}
 
 func (productAcquisitionModule) Name() string { return "product-acquisition" }
 func (productAcquisitionModule) Enabled(cfg *config.Config) bool {
@@ -413,7 +416,8 @@ func buildProductAcquisitionModule(ctx context.Context, db *gorm.DB, dependencie
 		return nil, serviceErr
 	}
 	binder := productReviewCapabilityBinder{now: time.Now}
-	return productAcquisitionModule{routes: productAcquisitionRoutes(service, binder.Bind)}, nil
+	reader, _ := service.(acquisitionNoticeFacts)
+	return productAcquisitionModule{routes: productAcquisitionRoutes(service, binder.Bind), noticeReader: reader}, nil
 }
 func collectionAcquisitionOptions(enabled []bool) (acquisitionstore.RuntimeCapabilities, []productsourcing.AcquisitionPublicationOption, error) {
 	if len(enabled) > 2 {

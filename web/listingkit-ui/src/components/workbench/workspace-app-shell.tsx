@@ -11,13 +11,14 @@ import { OrganizationSwitcher, workbenchErrorMessage } from "@/components/workbe
 import { Button } from "@/components/ui/button";
 import { ConsoleNavigation } from "@/components/workbench/console/console-navigation";
 import { parseCaptureEntry } from "@/app/capture/1688/capture-handoff";
+import { NotificationPopover } from "@/components/workbench/notifications/notification-center";
 
 const NO_ORGANIZATION_ROUTE = "/workbench/no-organization";
 const MOBILE_NAVIGATION_ID = "workbench-mobile-navigation";
 const subscribeToHydration = () => () => {};
 const getClientHydrationSnapshot = () => true;
 const getServerHydrationSnapshot = () => false;
-export function WorkspaceAppShell({ children, productAcquisitionAvailable = false, productCollectionsAvailable = false, supplyChainAvailable = false, knowledgeAvailable = false, productReviewAvailable = false, sheinRecordsAvailable = false }: { children: ReactNode; productAcquisitionAvailable?: boolean; productCollectionsAvailable?: boolean; supplyChainAvailable?: boolean; knowledgeAvailable?: boolean; productReviewAvailable?: boolean; sheinRecordsAvailable?: boolean }) {
+export function WorkspaceAppShell({ children, productAcquisitionAvailable = false, productCollectionsAvailable = false, supplyChainAvailable = false, knowledgeAvailable = false, productReviewAvailable = false, sheinRecordsAvailable = false, notificationCenterAvailable = false }: { children: ReactNode; productAcquisitionAvailable?: boolean; productCollectionsAvailable?: boolean; supplyChainAvailable?: boolean; knowledgeAvailable?: boolean; productReviewAvailable?: boolean; sheinRecordsAvailable?: boolean; notificationCenterAvailable?: boolean }) {
   const pathname = usePathname() ?? "/workbench";
   const router = useRouter();
   const context = useWorkbenchContext();
@@ -27,7 +28,11 @@ export function WorkspaceAppShell({ children, productAcquisitionAvailable = fals
     "/workbench/account/profile",
     "/workbench/account/referrals",
     "/workbench/account/referrals/complete",
-  ].includes(pathname);
+    "/workbench/account/referrals/earnings",
+    "/workbench/account/referrals/withdrawals",
+    "/workbench/account/profile/verification",
+    "/workbench/notifications",
+  ].includes(pathname) || /^\/workbench\/notifications\/(official|business)\/[A-Za-z0-9_-]{1,2048}$/.test(pathname);
   const isBrowserCaptureRoute = pathname === "/capture/1688";
   const authenticationError = [context.blockingError, context.error].find(error => error?.code === "AUTHENTICATION_REQUIRED");
 
@@ -113,7 +118,7 @@ export function WorkspaceAppShell({ children, productAcquisitionAvailable = fals
   }
 
   return (
-    <WorkbenchFrame key={pathname} pathname={pathname} productCollectionsAvailable={productCollectionsAvailable} supplyChainAvailable={supplyChainAvailable} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable} productReviewAvailable={productReviewAvailable} sheinRecordsAvailable={sheinRecordsAvailable}>
+    <WorkbenchFrame key={pathname} pathname={pathname} productCollectionsAvailable={productCollectionsAvailable} supplyChainAvailable={supplyChainAvailable} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable} productReviewAvailable={productReviewAvailable} sheinRecordsAvailable={sheinRecordsAvailable} notificationCenterAvailable={notificationCenterAvailable}>
       {context.selectionRequired && !isPersonalAccountRoute && !isBrowserCaptureRoute ? (
         <section
           className="flex min-h-[40vh] items-center justify-center px-6 text-center"
@@ -133,7 +138,7 @@ export function WorkspaceAppShell({ children, productAcquisitionAvailable = fals
   );
 }
 
-function WorkbenchFrame({ children, pathname, productAcquisitionAvailable, productCollectionsAvailable, supplyChainAvailable, knowledgeAvailable, productReviewAvailable, sheinRecordsAvailable }: { children: ReactNode; pathname: string; productAcquisitionAvailable: boolean; productCollectionsAvailable: boolean; supplyChainAvailable: boolean; knowledgeAvailable: boolean; productReviewAvailable: boolean; sheinRecordsAvailable: boolean }) {
+function WorkbenchFrame({ children, pathname, productAcquisitionAvailable, productCollectionsAvailable, supplyChainAvailable, knowledgeAvailable, productReviewAvailable, sheinRecordsAvailable, notificationCenterAvailable }: { children: ReactNode; pathname: string; productAcquisitionAvailable: boolean; productCollectionsAvailable: boolean; supplyChainAvailable: boolean; knowledgeAvailable: boolean; productReviewAvailable: boolean; sheinRecordsAvailable: boolean; notificationCenterAvailable: boolean }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const context = useWorkbenchContext();
@@ -156,7 +161,7 @@ function WorkbenchFrame({ children, pathname, productAcquisitionAvailable, produ
           <div className="console-top-context"><p className="console-tagline">打造属于自己的AI电商团队</p><div className="console-organization">{contextConfirmed ? <OrganizationSwitcher /> : <span className="text-xs text-muted-foreground">企业上下文尚未确认</span>}</div></div>
           <div className="console-global-actions">
             <Button disabled title="客服服务暂未接入" variant="outline">联系客服</Button>
-            <Button disabled title="通知服务暂未接入" variant="outline">通知</Button>
+            {notificationCenterAvailable ? <NotificationPopover /> : <Button disabled title="通知中心尚未启用" variant="outline">通知</Button>}
             <button className="console-theme-toggle" type="button" role="switch" aria-label="浅色模式" aria-checked={light} onClick={() => setTheme(light ? "dark" : "light")}>{light ? "浅色" : "深色"}<span aria-hidden="true" /></button>
             <details className="console-user"><summary>我的账户 ⌄</summary><div><p className="break-words text-xs text-muted-foreground">已登录账号</p><p className="mt-1 break-all text-sm">{contextConfirmed ? context.user?.id : null}</p><Link href="/workbench/account/profile" prefetch={false}>账户资料</Link><a href="/api/zitadel-auth/logout">退出登录</a></div></details>
           </div>
