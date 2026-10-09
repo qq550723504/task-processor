@@ -2,6 +2,7 @@ package storecenter
 
 import (
 	"context"
+	"errors"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"strings"
@@ -62,7 +63,10 @@ type ProductExecutionReader interface {
 }
 
 func (r *MemberScopedStoreRepository) ReadProductExecution(ctx context.Context, subject ProductExecutionSubject, storeID string, authorization ProductExecutionAuthorizer, now time.Time) (ProductExecutionMaterial, error) {
-	if ctx == nil || ctx.Err() != nil || r == nil || r.db == nil || isNilDependency(authorization) || now.IsZero() {
+	if ctx != nil && ctx.Err() != nil {
+		return ProductExecutionMaterial{}, ErrDependencyUnavailable
+	}
+	if ctx == nil || r == nil || r.db == nil || isNilDependency(authorization) || now.IsZero() {
 		return ProductExecutionMaterial{}, ErrNotFound
 	}
 	if _, ok := ctx.Deadline(); !ok {
@@ -80,7 +84,13 @@ func (r *MemberScopedStoreRepository) ReadProductExecution(ctx context.Context, 
 		return ProductExecutionMaterial{}, ErrNotFound
 	}
 	approved, err := authorization.AuthorizeProductExecution(ctx, subject)
-	if err != nil || !approved.Allowed || approved.Access.OrganizationID != subject.OrganizationID || approved.Access.ActorID != subject.ActorID || approved.Access.MemberID != subject.MemberID || ctx.Err() != nil {
+	if err != nil {
+		return ProductExecutionMaterial{}, productExecutionReadError(err)
+	}
+	if ctx.Err() != nil {
+		return ProductExecutionMaterial{}, ErrDependencyUnavailable
+	}
+	if !approved.Allowed || approved.Access.OrganizationID != subject.OrganizationID || approved.Access.ActorID != subject.ActorID || approved.Access.MemberID != subject.MemberID {
 		return ProductExecutionMaterial{}, ErrNotFound
 	}
 	var material ProductExecutionMaterial
@@ -93,21 +103,21 @@ func (r *MemberScopedStoreRepository) ReadProductExecution(ctx context.Context, 
 		}
 		var stored workbenchStoreRecord
 		if err := tx.Where("organization_id = ? AND id = ? AND deleted_at IS NULL", subject.OrganizationID, storeID).Take(&stored).Error; err != nil {
-			return ErrNotFound
+			return err
 		}
 		if stored.Platform != "shein" || stored.RecordStatus != "active" || stored.ServiceStatus == nil || *stored.ServiceStatus != "active" || stored.ServiceStartedAt == nil || stored.ServiceExpiresAt == nil || now.Before(*stored.ServiceStartedAt) || !now.Before(*stored.ServiceExpiresAt) || stored.ConnectionRef == "" {
 			return ErrNotFound
 		}
 		var connection officialConnectionRow
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND store_id = ? AND attempt_id = ?", subject.OrganizationID, storeID, stored.ConnectionRef).Take(&connection).Error; err != nil {
-			return ErrNotFound
+			return err
 		}
 		if connection.Status != "connected" {
 			return ErrNotFound
 		}
 		var attempt officialAttemptRow
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND store_id = ? AND attempt_id = ? AND connection_version = ?", subject.OrganizationID, storeID, connection.AttemptID, connection.Version).Take(&attempt).Error; err != nil {
-			return ErrNotFound
+			return err
 		}
 		if attempt.State != "verified" || attempt.KeyID == "" || attempt.Ciphertext == "" {
 			return ErrNotFound
@@ -116,7 +126,14 @@ func (r *MemberScopedStoreRepository) ReadProductExecution(ctx context.Context, 
 		return ctx.Err()
 	})
 	if err != nil {
-		return ProductExecutionMaterial{}, err
+		return ProductExecutionMaterial{}, productExecutionReadError(err)
 	}
 	return material, nil
+}
+
+func productExecutionReadError(err error) error {
+	if errors.Is(err, ErrNotFound) || errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrNotFound
+	}
+	return ErrDependencyUnavailable
 }

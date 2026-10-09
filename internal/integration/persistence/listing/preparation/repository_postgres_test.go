@@ -34,6 +34,10 @@ type unusedSources struct {
 
 type operationExecutionAuth struct{ denied bool }
 
+func (a *operationExecutionAuth) AuthorizeOperationExecution(ctx context.Context, op preparation.Operation) error {
+	return a.AuthorizeExecution(ctx, op.Owner, preparation.PermissionManage)
+}
+
 func (a *operationExecutionAuth) AuthorizeExecution(context.Context, collection.Scope, string) error {
 	if a.denied {
 		return collection.ErrForbidden

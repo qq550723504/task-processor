@@ -2,6 +2,7 @@ package supplychainapp
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"task-processor/internal/authidentity"
@@ -112,15 +113,67 @@ func (a OrganizationExecutionAuthorizer) AuthorizeProductExecution(ctx context.C
 	}
 	roles, err := a.current(ctx, scope)
 	if err != nil {
-		return storecenter.ProductExecutionAuthorization{}, storecenter.ErrNotFound
+		if errors.Is(err, collection.ErrForbidden) {
+			return storecenter.ProductExecutionAuthorization{}, storecenter.ErrNotFound
+		}
+		return storecenter.ProductExecutionAuthorization{}, storecenter.ErrDependencyUnavailable
 	}
 	for _, permission := range permissions {
-		if !authz.AllowedOrganization(ctx, a.Permissions, scope.ActorID, scope.OrganizationID, roles, permission) {
+		allowed, err := authz.AuthorizeOrganization(ctx, a.Permissions, scope.ActorID, scope.OrganizationID, roles, permission)
+		if err != nil {
+			return storecenter.ProductExecutionAuthorization{}, storecenter.ErrDependencyUnavailable
+		}
+		if !allowed {
 			return storecenter.ProductExecutionAuthorization{}, storecenter.ErrNotFound
 		}
 	}
 	return storecenter.ProductExecutionAuthorization{Allowed: true, Access: storecenter.StoreMemberAccess{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID, MemberID: scope.MemberID, Administrator: a.Permissions.IsTenantAdmin("", roles), CanWrite: subject.Purpose != storecenter.ProductPurposeRules}}, nil
 }
+
+type OperationExecutionAuthorization struct {
+	OrganizationExecutionAuthorizer
+	Stores storecenter.ProductExecutionReader
+}
+
+func (a OperationExecutionAuthorization) AuthorizeOperationExecution(ctx context.Context, op preparation.Operation) error {
+	roles, err := a.current(ctx, op.Owner)
+	if err != nil {
+		return err
+	}
+	purposes := []string{collection.PermissionRead, preparation.PermissionRead, preparation.PermissionManage}
+	if op.Input.Action == preparation.OperationUpload {
+		purposes = append(purposes, preparation.PermissionSubmit)
+	}
+	if op.Input.Action == preparation.OperationOptimize {
+		purposes = append(purposes, authz.PermissionLocalAgentWrite, authz.PermissionWorkbenchAgentUse, authz.PermissionProductSourcingWrite)
+	}
+	for _, purpose := range purposes {
+		allowed, err := authz.AuthorizeOrganization(ctx, a.Permissions, op.Owner.ActorID, op.Owner.OrganizationID, roles, purpose)
+		if err != nil {
+			return collection.ErrUnavailable
+		}
+		if !allowed {
+			return collection.ErrForbidden
+		}
+	}
+	if a.Stores == nil {
+		return collection.ErrUnavailable
+	}
+	purpose := storecenter.ProductPurposeRules
+	if op.Input.Action == preparation.OperationUpload {
+		purpose = storecenter.ProductPurposePublish
+	}
+	_, err = a.Stores.ReadProductExecution(ctx, storecenter.ProductExecutionSubject{OrganizationID: op.Owner.OrganizationID, ActorID: op.Owner.ActorID, MemberID: op.Owner.MemberID, Purpose: purpose}, op.Input.StoreID, a.OrganizationExecutionAuthorizer, time.Now())
+	if errors.Is(err, storecenter.ErrNotFound) {
+		return collection.ErrForbidden
+	}
+	if err != nil {
+		return collection.ErrUnavailable
+	}
+	return nil
+}
+
+var _ preparation.OperationExecutionAuthorizer = OperationExecutionAuthorization{}
 
 var _ collection.ExecutionAuthorizer = OrganizationExecutionAuthorizer{}
 var _ storecenter.ProductExecutionAuthorizer = OrganizationExecutionAuthorizer{}

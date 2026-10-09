@@ -63,6 +63,9 @@ func (s *supplyProductAgent) current(ctx context.Context) (supplyAgentPrincipal,
 	}
 	roles, err := s.authorization.ResolveAgentExecution(ctx, command.owner)
 	if err != nil {
+		if errors.Is(err, collection.ErrUnavailable) {
+			return result, review.ErrUnavailable
+		}
 		return result, review.ErrForbidden
 	}
 	allowed := false
@@ -114,7 +117,10 @@ func (a *productAgentApplication) resolveExecutionIdentity(ctx context.Context) 
 }
 func (a *productAgentApplication) authorizeSupplyModel(ctx context.Context, org, actor, member string) error {
 	identity, err := a.resolveExecutionIdentity(ctx)
-	if err != nil || identity.OrganizationID != org || identity.ActorID != actor || identity.MemberID != member {
+	if err != nil {
+		return err
+	}
+	if identity.OrganizationID != org || identity.ActorID != actor || identity.MemberID != member {
 		return review.ErrForbidden
 	}
 	return nil
@@ -201,7 +207,10 @@ func (r productAgentSourceGateway) ReadEffectiveSource(ctx context.Context, prin
 		return out, sourcing.ErrPublicationForbidden
 	}
 	current, err := r.application.supplyExecution.current(ctx)
-	if err != nil || current.identity.OrganizationID != principal.TenantID || current.identity.ActorID != principal.UserID || current.binding.ProductKey != published.Identity.ProductKey || current.binding.PublicationID != published.PublicationID || current.binding.CatalogVersion != strconv.FormatUint(published.Version, 10) {
+	if err != nil {
+		return out, err
+	}
+	if current.identity.OrganizationID != principal.TenantID || current.identity.ActorID != principal.UserID || current.binding.ProductKey != published.Identity.ProductKey || current.binding.PublicationID != published.PublicationID || current.binding.CatalogVersion != strconv.FormatUint(published.Version, 10) {
 		return out, sourcing.ErrPublicationForbidden
 	}
 	reader, err := catalogstore.NewBoundedSnapshotReader(r.application.config.ReviewDB, 1<<20)

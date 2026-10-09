@@ -11,10 +11,13 @@ import (
 	"time"
 )
 
-type productExecutionAccess struct{ value ProductExecutionAuthorization }
+type productExecutionAccess struct {
+	value ProductExecutionAuthorization
+	err   error
+}
 
 func (a *productExecutionAccess) AuthorizeProductExecution(context.Context, ProductExecutionSubject) (ProductExecutionAuthorization, error) {
-	return a.value, nil
+	return a.value, a.err
 }
 func TestProductExecutionRequiresCurrentOriginalMemberGrantServiceAndConnection(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+uuid.NewString()+"?mode=memory&cache=shared"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
@@ -33,7 +36,7 @@ func TestProductExecutionRequiresCurrentOriginalMemberGrantServiceAndConnection(
 	require.NoError(t, db.Create(&officialConnectionRow{OrganizationID: "org-a", StoreID: id, AttemptID: attemptID, Version: 2, Status: "connected"}).Error)
 	require.NoError(t, db.Create(&officialAttemptRow{OrganizationID: "org-a", StoreID: id, AttemptID: attemptID, ActorID: "actor-a", MemberID: "member-a", AppID: "app-a", AppVersion: "v1", ConnectionVersion: 2, State: "verified", KeyID: "key-a", Ciphertext: "sealed"}).Error)
 	repo := &MemberScopedStoreRepository{db: db}
-	authorization := &productExecutionAccess{ProductExecutionAuthorization{Access: StoreMemberAccess{OrganizationID: "org-a", ActorID: "actor-a", MemberID: "member-a"}, Allowed: true}}
+	authorization := &productExecutionAccess{value: ProductExecutionAuthorization{Access: StoreMemberAccess{OrganizationID: "org-a", ActorID: "actor-a", MemberID: "member-a"}, Allowed: true}}
 	subject := ProductExecutionSubject{OrganizationID: "org-a", ActorID: "actor-a", MemberID: "member-a", Purpose: ProductPurposePublish}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
@@ -41,6 +44,10 @@ func TestProductExecutionRequiresCurrentOriginalMemberGrantServiceAndConnection(
 	require.NoError(t, err)
 	require.EqualValues(t, 3, material.StoreVersion)
 	require.Equal(t, "sealed", material.Attempt.Ciphertext)
+	authorization.err = ErrDependencyUnavailable
+	_, err = repo.ReadProductExecution(ctx, subject, id, authorization, now)
+	require.ErrorIs(t, err, ErrDependencyUnavailable)
+	authorization.err = nil
 	authorization.value.Allowed = false
 	_, err = repo.ReadProductExecution(ctx, subject, id, authorization, now)
 	require.ErrorIs(t, err, ErrNotFound)
@@ -60,4 +67,7 @@ func TestProductExecutionRequiresCurrentOriginalMemberGrantServiceAndConnection(
 	require.NoError(t, db.Model(&officialConnectionRow{}).Where("organization_id = ?", "org-a").Update("status", "expired").Error)
 	_, err = repo.ReadProductExecution(ctx, subject, id, authorization, now)
 	require.ErrorIs(t, err, ErrNotFound)
+	require.NoError(t, db.Migrator().DropTable(&officialConnectionRow{}))
+	_, err = repo.ReadProductExecution(ctx, subject, id, authorization, now)
+	require.ErrorIs(t, err, ErrDependencyUnavailable, "database failure is not authoritative Store revocation")
 }

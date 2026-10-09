@@ -107,16 +107,16 @@ func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d 
 	if err != nil {
 		return empty, err
 	}
-	operations, err = operations.WithExecution(executionAuth)
-	if err != nil {
-		return empty, err
-	}
 	reviews, err := buildProductReviewCore(productDB, resolver, permissions)
 	if err != nil {
 		return empty, err
 	}
 	effective := supplyapp.EffectiveProductReader{Reviews: reviews.store, Snapshots: snapshots}
 	storeRepo, err := storecenter.NewMemberScopedStoreRepository(storeDB, currentStoreMemberAuthorizer{authorizer: permissions})
+	if err != nil {
+		return empty, err
+	}
+	operations, err = operations.WithExecution(supplyapp.OperationExecutionAuthorization{OrganizationExecutionAuthorizer: executionAuth, Stores: storeRepo})
 	if err != nil {
 		return empty, err
 	}

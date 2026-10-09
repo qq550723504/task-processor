@@ -55,6 +55,21 @@ func TestSupplyProductAgentDurableExecutionUsesRealOwners(t *testing.T) {
 type supplyAgentFixtureRules struct {
 	merchant storecenter.ProductMerchantBinding
 }
+
+// This controlled owner fixture supplies fixed Store rules above; production
+// OperationExecutionAuthorization checks the actual Store repository.
+type supplyFixtureOperationAuthority struct {
+	supplyapp.OrganizationExecutionAuthorizer
+}
+
+func (a supplyFixtureOperationAuthority) AuthorizeOperationExecution(ctx context.Context, op preparation.Operation) error {
+	if op.Input.Action == preparation.OperationOptimize {
+		_, err := a.ResolveAgentExecution(ctx, op.Owner)
+		return err
+	}
+	return nil
+}
+
 type supplyStageMerchant struct {
 	supplyapp.RulesMerchant
 	binding storecenter.ProductMerchantBinding
@@ -132,7 +147,7 @@ func testSupplyAgentOwners(t *testing.T, mode string, f *acquisitionHTTPFixture,
 	require.NoError(t, err)
 	operations, err := preparation.NewOperationService(preparations, collections, operationsRepo)
 	require.NoError(t, err)
-	operations, err = operations.WithExecution(authority)
+	operations, err = operations.WithExecution(supplyFixtureOperationAuthority{authority})
 	require.NoError(t, err)
 	records, err := recordstore.NewRepository(ctx, f.owner)
 	require.NoError(t, err)

@@ -169,7 +169,13 @@ type OperationService struct {
 	base       *Service
 	owners     CollectionOwnerAuthority
 	repository OperationRepository
-	execution  collection.ExecutionAuthorizer
+	execution  OperationExecutionAuthorizer
+}
+
+// The fixed action also needs its actual Agent and individual Store grants.
+// This check performs no provider request or mutation.
+type OperationExecutionAuthorizer interface {
+	AuthorizeOperationExecution(context.Context, Operation) error
 }
 
 func NewOperationService(base *Service, owners CollectionOwnerAuthority, repo OperationRepository) (*OperationService, error) {
@@ -178,7 +184,7 @@ func NewOperationService(base *Service, owners CollectionOwnerAuthority, repo Op
 	}
 	return &OperationService{base: base, owners: owners, repository: repo}, nil
 }
-func (s *OperationService) WithExecution(auth collection.ExecutionAuthorizer) (*OperationService, error) {
+func (s *OperationService) WithExecution(auth OperationExecutionAuthorizer) (*OperationService, error) {
 	if s == nil || auth == nil {
 		return nil, ErrUnavailable
 	}
@@ -306,17 +312,11 @@ func (s *OperationService) executionAuthority(ctx context.Context, op Operation)
 	if s == nil || s.execution == nil {
 		return ErrUnavailable
 	}
-	purposes := []string{collection.PermissionRead, PermissionRead, PermissionManage}
-	if op.Input.Action == OperationUpload {
-		purposes = append(purposes, PermissionSubmit)
-	}
-	for _, purpose := range purposes {
-		if err := s.execution.AuthorizeExecution(ctx, op.Owner, purpose); err != nil {
-			if errors.Is(err, collection.ErrForbidden) || errors.Is(err, ErrForbidden) {
-				return ErrForbidden
-			}
-			return ErrUnavailable
+	if err := s.execution.AuthorizeOperationExecution(ctx, op); err != nil {
+		if errors.Is(err, collection.ErrForbidden) || errors.Is(err, ErrForbidden) {
+			return ErrForbidden
 		}
+		return ErrUnavailable
 	}
 	return nil
 }

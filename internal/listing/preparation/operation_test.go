@@ -117,8 +117,34 @@ func TestOperationInputRejectsDuplicateOrAmbiguousSelections(t *testing.T) {
 
 type unavailableExecution struct{}
 
+func (unavailableExecution) AuthorizeOperationExecution(context.Context, Operation) error {
+	return collection.ErrUnavailable
+}
+
 func (unavailableExecution) AuthorizeExecution(context.Context, collection.Scope, string) error {
 	return collection.ErrUnavailable
+}
+
+type agentGrantRevoked struct{}
+
+func (a agentGrantRevoked) AuthorizeOperationExecution(ctx context.Context, op Operation) error {
+	if op.Input.Action == OperationOptimize {
+		return a.AuthorizeExecution(ctx, op.Owner, "workbench.agent.use")
+	}
+	return nil
+}
+func (agentGrantRevoked) AuthorizeExecution(_ context.Context, _ collection.Scope, purpose string) error {
+	if purpose == "workbench.agent.use" {
+		return collection.ErrForbidden
+	}
+	return nil
+}
+func TestOperationOptimizeChecksItsAgentModuleGrant(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	proof := OperationAccess{service: &OperationService{execution: agentGrantRevoked{}}, operation: Operation{Owner: Scope{"org-a", "actor-a", "member-a"}, Input: OperationInput{Action: OperationOptimize}}, worker: true, expiresAt: time.Now().Add(time.Second)}
+	_, err := proof.Read(ctx)
+	require.ErrorIs(t, err, ErrForbidden, "Supply grants cannot substitute for the operation's Agent grant")
 }
 func TestOperationWorkerRetainsAuthorizationDependencyFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -129,6 +155,10 @@ func TestOperationWorkerRetainsAuthorizationDependencyFailure(t *testing.T) {
 }
 
 type stopExecutionAuth struct{ err error }
+
+func (a *stopExecutionAuth) AuthorizeOperationExecution(context.Context, Operation) error {
+	return a.err
+}
 
 func (a *stopExecutionAuth) AuthorizeExecution(context.Context, collection.Scope, string) error {
 	return a.err
