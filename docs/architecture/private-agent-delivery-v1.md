@@ -28,7 +28,7 @@ contract → implementation → injection → consumer：私有执行 command `{
 
 私有 delivery 继续企业共享：agent.read 读取、agent.use 执行、原需求企业唯一目标。**草稿执行结果改为当前 Organization + Actor 私有读取**，即使企业内另一成员可使用同一 delivery，也不会获得他人的 draft/report。读取草稿报告还须经 inspector 当前 supply.read/来源授权；报告不是获得来源访问的替代凭证。撤权/切企业时前端清空草稿和报告，服务端不信任客户端发送的商品正文、校验结果、organization/actor。
 
-继续使用现有 `quality_runs` 和唯一 `(organization_id,actor_id,key)`；不新增表、schema、Product 写事实或跨库事务。run 只保存窄的不可变草稿引用、草稿标题摘要、保存时 issue 列表和 ReadyForUpload，不复制整份 Product/平台 payload、凭据、图片内容或规则正文。引用与报告是观察结果，不成为 Listing 第二事实源。记录/问题总大小受当前 Target 2 MiB 上限及私有响应 2 MiB 上限约束；报告列表每页至多20，若完整投影超响应上限明确失败，不静默截断检查项。请求只含两个引用字段，最多1 KiB；问题最多4096条，字段/消息沿当前合同有界。
+继续使用现有 `quality_runs` 和唯一 `(organization_id,actor_id,key)`；不新增表、schema、Product 写事实或跨库事务。run 只保存窄的不可变草稿引用、草稿标题摘要、保存时 issue 列表和 ReadyForUpload，不复制整份 Product/平台 payload、凭据、图片内容或规则正文。引用与报告是观察结果，不成为 Listing 第二事实源。记录/问题总大小受当前 Target 2 MiB 上限约束，复用现有私有 BFF/client 4 MiB 响应上限（含 JSON escaping）。报告列表每页至多20条**摘要**，不返回20份完整问题；新增 `GET /agents/:id/reports/:report` 按同一 actor/source 权限读取一份完整报告。摘要含标题、record/revision、检查时间及问题数量；摘要也须源授权。单条投影超过上限明确失败，不静默截断检查项。请求只含两个引用字段，最多1 KiB；问题最多4096条，字段/消息沿当前合同有界。
 
 同 key 锁与完整指纹由 customization DB 唯一负责；指纹包括原 delivery、recordID、expectedRevision、固定定义/版本。原 key 同意图先查已保存结果，重新核对其原 record 的当前读取授权后返回原报告；不得因草稿 head 改变用同 key 改写报告。同 key 不同 record/revision 冲突。首次执行才要求所选 record 等于当前 head、revision 一致；不一致返回需重新选择/核实，不能自动读最新草稿。跨库只读不产生副作用：读失败/超时/撤权不写成功报告；计算/INSERT/COMMIT 任一步失败事务回滚或保留 UNKNOWN，客户端冻结原两个引用和 key 后核实。head 在检查中变化，报告依旧准确指向检查时的不可变 record，并明确不承担上传锁或授权。
 
