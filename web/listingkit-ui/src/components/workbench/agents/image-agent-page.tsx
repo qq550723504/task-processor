@@ -36,7 +36,8 @@ export function ImageAgentPage({ scope, organization }: { scope: ConfigurationSc
   }, []);
   const detail = useConfigurationRead(scope, agentId, catalogEntrySchema, nonce);
   const entry = detail.data;
-  const templates = useConfigurationRead(scope, `${agentId}/templates?pageSize=100${after ? `&cursor=${after}` : ""}`, imageTemplatesPageSchema, nonce, !!entry && entry.agent.activation !== "NOT_ENABLED");
+  // A full image template may contain 64 KiB; one row fits the 128 KiB response cap.
+  const templates = useConfigurationRead(scope, `${agentId}/templates?pageSize=1${after ? `&cursor=${encodeURIComponent(after)}` : ""}`, imageTemplatesPageSchema, nonce, !!entry && entry.agent.activation !== "NOT_ENABLED");
   const defaultRef = entry?.agent.defaultTemplate;
   const defaultTemplate = useConfigurationRead(scope, defaultRef ? `${agentId}/templates/${defaultRef.templateId}/revisions/${defaultRef.revision}` : "", imageTemplateSchema, nonce, !!defaultRef);
   const historic = useConfigurationRead(scope, chosen && configVersion.safeParse(history).success ? `${agentId}/templates/${chosen.templateId}/revisions/${history}` : "", imageTemplateSchema, nonce, !!chosen && configVersion.safeParse(history).success);

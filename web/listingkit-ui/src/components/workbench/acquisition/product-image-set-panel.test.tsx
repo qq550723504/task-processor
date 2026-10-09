@@ -2,6 +2,7 @@ import {StrictMode} from "react";
 import {act,cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {ProductImageSetPanel} from "./product-image-set-panel";
+import {imageTemplateSchema} from "@/lib/contracts/image-set-configuration";
 const calls=vi.hoisted(()=>({context:{} as Record<string,unknown>}));
 vi.mock("@/components/providers/workbench-context-provider",()=>({useWorkbenchContext:()=>calls.context}));
 const operation="11111111-1111-4111-8111-111111111111",runId="22222222-2222-4222-8222-222222222222",templateId="33333333-3333-4333-8333-333333333333";
@@ -133,6 +134,40 @@ it(`can combine new subset output with successful ${parentStatus} parent outputs
  expect(choices.map((v:{run_id:string,slot_id:string})=>[v.run_id,v.slot_id])).toEqual([[runId,"main"],[parentId,"detail"]]);
  expect(fetch.mock.calls.some(([url])=>/\/(prepare|regenerate|confirm)$/.test(String(url)))).toBe(false);
 });
+}
+it("loads both legal near-limit templates through bounded pages",async()=>{
+ const image={schema:"image-config-v1",mode:"custom",shareOriginals:true,background:"",language:"en",carousel:Array.from({length:32},(_,i)=>({id:`task-${i}`,purpose:"custom",brief:"x".repeat(1990)})),detail:[]};
+ image.background="x".repeat(65520-new TextEncoder().encode(JSON.stringify(image)).length);
+ const rows=["Large first","Large second"].map((name,i)=>imageTemplateSchema.parse({...template,templateId:`45a227bb-b572-4138-8e2a-5f1a0be9861${i}`,name:`${name} ${"😀".repeat(100)}`,image}));
+ expect(new TextEncoder().encode(JSON.stringify({items:rows,nextCursor:""})).length).toBeGreaterThan(128*1024);
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation(async(input,init)=>{
+  const url=new URL(String(input),"https://app.test");if(!url.pathname.endsWith("/templates"))return real(input,init);
+  const page=url.searchParams.get("pageSize")==="1"?{items:[rows[url.searchParams.has("cursor")?1:0]],nextCursor:url.searchParams.has("cursor")?"":"next-page"}:{items:rows,nextCursor:""};
+  return new TextEncoder().encode(JSON.stringify(page)).length>128*1024?Response.json({code:"DEPENDENCY_UNAVAILABLE"},{status:503}):Response.json(page);
+ });
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ await screen.findByRole("option",{name:/Large first/});
+ fireEvent.click(screen.getByRole("button",{name:"读取更多模板"}));
+ await screen.findByRole("option",{name:/Large second/});
+ fireEvent.change(screen.getByRole("combobox",{name:"图片模板"}),{target:{value:`${rows[1]!.templateId}:1`}});
+ fireEvent.click(screen.getByRole("checkbox",{name:"共用原始素材 素材 1"}));
+ expect(screen.getByRole("button",{name:"准备整套图片计划（32 项）"})).toBeEnabled();
+ expect(fetch.mock.calls.filter(([url])=>String(url).includes("/templates?")).map(([url])=>new URL(String(url),"https://app.test").searchParams.get("pageSize"))).toEqual(["1","1"]);
+});
+for(const failure of ["templates","recent"]){
+ it(`restores the saved run before optional ${failure} discovery fails`,async()=>{
+  state=projection("awaiting_final_approval",templateId);
+  localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:run`,runId);
+  const real=fetch.getMockImplementation()!;
+  fetch.mockImplementation(async(url,init)=>String(url).includes(failure==="templates"?"/templates?":"/images/runs")&&!String(url).includes(`/runs/${runId}`)?Response.json({code:"DEPENDENCY_UNAVAILABLE"},{status:503}):real(url,init));
+  render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+  const choices=await screen.findAllByRole("button",{name:"选择采用"});
+  await screen.findByRole("alert");
+  expect(choices).toHaveLength(2);choices.forEach(button=>expect(button).toBeEnabled());
+  expect(screen.getByRole("button",{name:"选择原图 1"})).toBeEnabled();
+  expect(fetch.mock.calls.filter(([,init])=>init?.method==="POST")).toHaveLength(0);
+ });
 }
 const sheinTarget={Platform:"shein",StoreID:"saved-store",Site:"US",CategoryID:123,RecordID:"saved-record"} as const;
 const officialPlacement={Group:"spu",SKC:0,SKU:0,Type:1,Sort:1,Site:"US"};
