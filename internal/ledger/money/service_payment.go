@@ -11,6 +11,7 @@ import (
 // Service facts describe funds at the original channel submerchant. They never
 // credit a platform wallet or a referral balance.
 type ServicePaymentInput struct {
+	ChannelAmounts                                                  *ServicePaymentAmounts `json:",omitempty"`
 	Allocation                                                      ServiceAllocationPolicy
 	OrderID, RequestID, BuyerOrganizationID, ProviderOrganizationID string
 	PlatformMerchantID, ProviderMerchantID, PolicyVersion           string
@@ -27,6 +28,13 @@ func (in ServicePaymentInput) Validate() error {
 	if in.Allocation.Validate() != nil || in.BuyerOrganizationID == in.ProviderOrganizationID || in.PlatformMerchantID == in.ProviderMerchantID || in.Binding.Validate() != nil || in.Binding.Provider != "WECHAT_PAY" || in.Binding.MerchantID != in.ProviderMerchantID || in.Payment.Validate() != nil || in.Payment.PaymentPurpose != PaymentPurposeServicePurchase {
 		return ErrInvalid
 	}
+	if in.Allocation.Basis == ServiceAllocationChannelNetFloorV2 {
+		if in.ChannelAmounts == nil || in.ChannelAmounts.Validate(in.Payment.GrossAmountMinor) != nil {
+			return ErrInvalid
+		}
+	} else if in.ChannelAmounts != nil {
+		return ErrInvalid
+	}
 	return nil
 }
 func ServiceFingerprint(value any) string {
@@ -38,6 +46,10 @@ func ServiceFingerprint(value any) string {
 	return hex.EncodeToString(s[:])
 }
 func (in ServicePaymentInput) Fingerprint() string {
+	if in.ChannelAmounts != nil {
+		a := in.ChannelAmounts.Normalize()
+		in.ChannelAmounts = &a
+	}
 	in.Payment.SettledAt = NormalizeTimestamp(in.Payment.SettledAt)
 	return ServiceFingerprint(in)
 }
@@ -55,6 +67,8 @@ const (
 )
 
 type ServiceOperation struct {
+	RefundPlan           *ServiceRefundPlan `json:",omitempty"`
+	RefundPhase          string             `json:",omitempty"`
 	OrderID, OperationID string
 	Kind                 ServiceEffectKind
 	AmountMinor          int64
@@ -70,7 +84,7 @@ func (in ServiceOperation) Validate() error {
 	switch in.Kind {
 	case ServiceShare, ServiceFinish, ServiceRefundRelease:
 	case ServiceReturn:
-		if !isCanonicalWalletIdentifier(in.OriginalShareID) {
+		if !isCanonicalWalletIdentifier(in.OriginalShareID) && !(in.RefundPlan != nil && in.AmountMinor == 0 && in.RefundPlan.OriginalShareID == "") {
 			return ErrInvalid
 		}
 	case ServiceRefund, ServiceChargeback:
@@ -80,10 +94,39 @@ func (in ServiceOperation) Validate() error {
 	default:
 		return ErrInvalid
 	}
+	if in.RefundPlan != nil {
+		p := in.RefundPlan
+		if p.Validate() != nil || p.OrderID != in.OrderID || p.SourceProofID != in.SourceProofID {
+			return ErrInvalid
+		}
+		switch in.RefundPhase {
+		case ServiceReturnPre:
+			if in.Kind != ServiceReturn || in.OperationID != p.PreOperationID || in.AmountMinor != p.PreReturnMinor || in.OriginalShareID != p.OriginalShareID {
+				return ErrInvalid
+			}
+		case ServiceReturnPost:
+			if in.Kind != ServiceReturn || in.OperationID != p.PostOperationID || in.OriginalShareID != p.OriginalShareID {
+				return ErrInvalid
+			}
+		case ServiceRefundPhase:
+			if in.Kind != ServiceRefund || in.OperationID != p.RefundOperationID || in.AmountMinor != p.NominalMinor {
+				return ErrInvalid
+			}
+		case ServiceRefundReleasePhase:
+			if in.Kind != ServiceRefundRelease || in.OperationID != p.ReleaseOperationID {
+				return ErrInvalid
+			}
+		default:
+			return ErrInvalid
+		}
+	} else if in.RefundPhase != "" {
+		return ErrInvalid
+	}
 	return nil
 }
 
 type ServiceEffect struct {
+	RefundAmounts     *ServiceRefundAmounts `json:",omitempty"`
 	Operation         ServiceOperation
 	ProviderReference string
 	OccurredAt        time.Time
@@ -105,14 +148,25 @@ func (e ServiceEffect) Validate() error {
 	if e.Operation.Validate() != nil || !isCanonicalWalletIdentifier(e.ProviderReference) || e.OccurredAt.IsZero() {
 		return ErrInvalid
 	}
+	if e.RefundAmounts != nil && e.Operation.Kind != ServiceRefund {
+		return ErrInvalid
+	}
 	return nil
 }
 func (e ServiceEffect) Fingerprint() string {
+	if e.RefundAmounts != nil {
+		a := e.RefundAmounts.Normalize()
+		e.RefundAmounts = &a
+	}
 	e.OccurredAt = NormalizeTimestamp(e.OccurredAt)
 	return ServiceFingerprint(e)
 }
 
 type ServiceFundsView struct {
+	PendingRefundCommandID                                                    string                 `json:",omitempty"`
+	ChannelAmounts                                                            *ServicePaymentAmounts `json:",omitempty"`
+	SettlementMinor, SettlementRefundedMinor, PayerRefundedMinor              int64
+	VoucherRefundedMinor                                                      map[string]int64 `json:",omitempty"`
 	Allocation                                                                ServiceAllocationPolicy
 	ChannelFeeMinor                                                           int64
 	ChannelFeeObserved                                                        bool
@@ -158,6 +212,9 @@ func (in ServiceUnsplitObservation) Validate() error {
 }
 func (f ServiceFundsView) ExpectedUnsplitMinor() int64 {
 	remaining := f.GrossMinor - f.RefundedMinor - f.ChargedBackMinor - f.SharedMinor - f.ReleasedMinor - f.AutomaticReleasedMinor
+	if f.Allocation.Basis == ServiceAllocationChannelNetFloorV2 {
+		remaining = f.SettlementMinor - f.SettlementRefundedMinor - f.ChargedBackMinor - f.SharedMinor - f.ReleasedMinor - f.AutomaticReleasedMinor
+	}
 	// Commission returns go to available balance, never back to frozen funds.
 	if remaining < 0 {
 		return 0
@@ -166,6 +223,7 @@ func (f ServiceFundsView) ExpectedUnsplitMinor() int64 {
 }
 
 type ServiceReceipt struct {
+	RefundAmounts                                                          *ServiceRefundAmounts `json:",omitempty"`
 	ReceiptID, OrderID, OperationID, RequestFingerprint, ResultFingerprint string
 	Kind                                                                   ServiceEffectKind
 	AmountMinor                                                            int64
@@ -191,14 +249,14 @@ type ServiceAllocationPolicy struct {
 }
 
 func (p ServiceAllocationPolicy) Validate() error {
-	if p.Basis != ServiceAllocationCumulativeNetFloorV1 || p.CommissionBPS < 0 || p.CommissionBPS > 10000 {
+	if p.Basis != ServiceAllocationCumulativeNetFloorV1 && p.Basis != ServiceAllocationChannelNetFloorV2 || p.CommissionBPS < 0 || p.CommissionBPS > 10000 {
 		return ErrInvalid
 	}
 	return nil
 }
 
 func ServiceAllocation(gross, refunded int64, policy ServiceAllocationPolicy) (platform, provider int64, err error) {
-	if policy.Validate() != nil || gross <= 0 || refunded < 0 || refunded > gross {
+	if policy.Validate() != nil || gross < 0 || gross == 0 && policy.Basis != ServiceAllocationChannelNetFloorV2 || refunded < 0 || refunded > gross {
 		return 0, 0, ErrInvalid
 	}
 	net := gross - refunded

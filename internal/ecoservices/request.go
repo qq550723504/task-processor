@@ -59,8 +59,8 @@ func TransitionRequest(r *Request, c Command, now time.Time) (*FinancialCommand,
 		}
 		q := *c.Quote
 		q.CommissionBPS = 1000
-		q.AllocationBasis = "CUMULATIVE_NET_FLOOR_V1"
-		q.PolicyVersion = PolicyVersion
+		q.AllocationBasis = "CHANNEL_SETTLEMENT_NET_FLOOR_V2"
+		q.PolicyVersion = ServicePolicyVersionV2
 		q.Version = 1
 		if r.Quote != nil {
 			q.Version = r.Quote.Version + 1
@@ -68,7 +68,7 @@ func TransitionRequest(r *Request, c Command, now time.Time) (*FinancialCommand,
 		r.Quote = &q
 		r.State = "QUOTED"
 	case "confirm_quote":
-		if r.State != "QUOTED" || r.Quote == nil || c.Quote == nil || c.Quote.Version != r.Quote.Version || c.PolicyAccepted != r.Quote.PolicyVersion || r.Quote.CommissionBPS != 1000 || r.Quote.AllocationBasis != "CUMULATIVE_NET_FLOOR_V1" {
+		if r.State != "QUOTED" || r.Quote == nil || c.Quote == nil || c.Quote.Version != r.Quote.Version || c.PolicyAccepted != r.Quote.PolicyVersion || r.Quote.CommissionBPS != 1000 || !validQuoteAllocation(*r.Quote) {
 			return nil, ErrConflict
 		}
 		r.OrderID = uuid.NewSHA1(uuid.NameSpaceOID, []byte("ecoservices-order:"+r.ID)).String()
@@ -244,4 +244,8 @@ func ApplyFinancialResult(r *Request, result FinancialResult, now time.Time) err
 	r.Version++
 	r.UpdatedAt = now
 	return nil
+}
+
+func validQuoteAllocation(q Quote) bool {
+	return q.AllocationBasis == "CHANNEL_SETTLEMENT_NET_FLOOR_V2" && q.PolicyVersion == ServicePolicyVersionV2 || q.AllocationBasis == "CUMULATIVE_NET_FLOOR_V1" && q.PolicyVersion == PolicyVersion
 }

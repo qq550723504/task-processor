@@ -22,6 +22,8 @@ type channelPaymentClaimRow struct {
 func (channelPaymentClaimRow) TableName() string { return "ledger_channel_payment_claims" }
 
 type servicePaymentRow struct {
+	SettlementRefundedMinor, PayerRefundedMinor                                                                    int64
+	VoucherRefunded, PendingRefundPlan                                                                             []byte
 	ChannelFeeMinor                                                                                                int64
 	ChannelFeeObserved                                                                                             bool
 	OrderID                                                                                                        string `gorm:"primaryKey;size:128"`
@@ -177,6 +179,10 @@ func claimChannelPayment(tx *gorm.DB, b m.ProviderPaymentBinding, paymentID, pur
 	return nil
 }
 func (r *Repository) AcceptServicePayment(ctx context.Context, in m.ServicePaymentInput) (m.ServiceReceipt, error) {
+	if in.ChannelAmounts != nil {
+		a := in.ChannelAmounts.Normalize()
+		in.ChannelAmounts = &a
+	}
 	var out m.ServiceReceipt
 	if r == nil || r.db == nil || in.Validate() != nil {
 		return out, m.ErrInvalid
@@ -263,11 +269,33 @@ func serviceFunds(row servicePaymentRow) (m.ServiceFundsView, error) {
 	} else {
 		reversed += row.ChargedBackMinor
 	}
-	p, s, err := m.ServiceAllocation(row.GrossMinor, reversed, policy)
+	gross := row.GrossMinor
+	var original m.ServicePaymentInput
+	var used map[string]int64
+	var plan m.ServiceRefundPlan
+	if policy.Basis == m.ServiceAllocationChannelNetFloorV2 {
+		if json.Unmarshal(row.Input, &original) != nil || original.ChannelAmounts == nil {
+			return m.ServiceFundsView{}, m.ErrConflict
+		}
+		gross = original.ChannelAmounts.SettlementMinor()
+		reversed = row.SettlementRefundedMinor
+		if row.ChargedBackMinor > gross-reversed {
+			reversed = gross
+		} else {
+			reversed += row.ChargedBackMinor
+		}
+		if len(row.VoucherRefunded) > 0 && json.Unmarshal(row.VoucherRefunded, &used) != nil {
+			return m.ServiceFundsView{}, m.ErrConflict
+		}
+		if len(row.PendingRefundPlan) > 0 && (json.Unmarshal(row.PendingRefundPlan, &plan) != nil || plan.Validate() != nil) {
+			return m.ServiceFundsView{}, m.ErrConflict
+		}
+	}
+	p, s, err := m.ServiceAllocation(gross, reversed, policy)
 	if err != nil {
 		return m.ServiceFundsView{}, err
 	}
-	return m.ServiceFundsView{Allocation: policy, ChannelFeeMinor: row.ChannelFeeMinor, ChannelFeeObserved: row.ChannelFeeObserved, OrderID: row.OrderID, PaymentID: row.PaymentID, BuyerOrganizationID: row.BuyerOrganizationID, ProviderOrganizationID: row.ProviderOrganizationID, Currency: m.WalletCurrencyCNY, GrossMinor: row.GrossMinor, RefundedMinor: row.RefundedMinor, ChargedBackMinor: row.ChargedBackMinor, PlatformMinor: p, ProviderMinor: s, SharedMinor: row.SharedMinor, ReturnedMinor: row.ReturnedMinor, ReleasedMinor: row.ReleasedMinor, AutomaticReleasedMinor: row.AutomaticReleasedMinor, PendingOperationID: row.PendingOperationID, ReconciliationReason: row.ReconciliationReason}, nil
+	return m.ServiceFundsView{PendingRefundCommandID: plan.CommandID, ChannelAmounts: original.ChannelAmounts, SettlementMinor: gross, SettlementRefundedMinor: row.SettlementRefundedMinor, PayerRefundedMinor: row.PayerRefundedMinor, VoucherRefundedMinor: used, Allocation: policy, ChannelFeeMinor: row.ChannelFeeMinor, ChannelFeeObserved: row.ChannelFeeObserved, OrderID: row.OrderID, PaymentID: row.PaymentID, BuyerOrganizationID: row.BuyerOrganizationID, ProviderOrganizationID: row.ProviderOrganizationID, Currency: m.WalletCurrencyCNY, GrossMinor: row.GrossMinor, RefundedMinor: row.RefundedMinor, ChargedBackMinor: row.ChargedBackMinor, PlatformMinor: p, ProviderMinor: s, SharedMinor: row.SharedMinor, ReturnedMinor: row.ReturnedMinor, ReleasedMinor: row.ReleasedMinor, AutomaticReleasedMinor: row.AutomaticReleasedMinor, PendingOperationID: row.PendingOperationID, ReconciliationReason: row.ReconciliationReason}, nil
 }
 func (r *Repository) ReadServiceFunds(ctx context.Context, orderID string) (m.ServiceFundsView, error) {
 	var row servicePaymentRow
@@ -298,6 +326,9 @@ func validateServiceOperation(tx *gorm.DB, row servicePaymentRow, in m.ServiceOp
 	if err != nil {
 		return err
 	}
+	if err := validateServiceRefundPlan(tx, row, in, funds); err != nil {
+		return err
+	}
 	switch in.Kind {
 	case m.ServiceShare:
 		if row.ReleasedMinor > 0 || row.AutomaticReleasedMinor > 0 || row.ReturnedMinor > 0 || in.AmountMinor != funds.PlatformMinor-row.SharedMinor {
@@ -308,10 +339,13 @@ func validateServiceOperation(tx *gorm.DB, row servicePaymentRow, in m.ServiceOp
 			return m.ErrConflict
 		}
 	case m.ServiceRefundRelease:
-		if row.SharedMinor == 0 || row.ReleasedMinor > 0 || row.AutomaticReleasedMinor > 0 || in.AmountMinor != row.GrossMinor-row.RefundedMinor-row.ChargedBackMinor-row.SharedMinor {
+		if row.SharedMinor == 0 || row.ReleasedMinor > 0 || row.AutomaticReleasedMinor > 0 || in.AmountMinor != funds.ExpectedUnsplitMinor() {
 			return m.ErrConflict
 		}
 	case m.ServiceReturn:
+		if in.RefundPlan != nil && in.OriginalShareID == "" && in.AmountMinor == 0 {
+			return nil
+		}
 		var effect serviceEffectRow
 		if err := tx.Where("operation_id=? AND order_id=? AND kind=?", in.OriginalShareID, row.OrderID, string(m.ServiceShare)).Take(&effect).Error; err != nil {
 			return m.ErrConflict
@@ -324,6 +358,9 @@ func validateServiceOperation(tx *gorm.DB, row servicePaymentRow, in m.ServiceOp
 		available := row.GrossMinor - row.RefundedMinor - row.ChargedBackMinor
 		if in.AmountMinor > available {
 			return m.ErrInvalid
+		}
+		if in.Kind == m.ServiceRefund && in.RefundPlan != nil {
+			return nil
 		}
 		target, _, err := m.ServiceAllocation(row.GrossMinor, row.RefundedMinor+row.ChargedBackMinor+in.AmountMinor, funds.Allocation)
 		if err != nil {
@@ -378,11 +415,23 @@ func (r *Repository) PrepareServiceOperation(ctx context.Context, in m.ServiceOp
 		if err := tx.Create(&serviceReservationRow{OperationID: in.OperationID, OrderID: in.OrderID, Kind: string(in.Kind), Fingerprint: m.ServiceFingerprint(in), Operation: operation, State: "PREPARED", Receipt: receipt}).Error; err != nil {
 			return err
 		}
-		return tx.Model(&row).Update("pending_operation_id", in.OperationID).Error
+		updates := map[string]any{"pending_operation_id": in.OperationID}
+		if in.RefundPlan != nil && len(row.PendingRefundPlan) == 0 {
+			payload, err := json.Marshal(in.RefundPlan)
+			if err != nil {
+				return err
+			}
+			updates["pending_refund_plan"] = payload
+		}
+		return tx.Model(&row).Updates(updates).Error
 	})
 	return out, err
 }
 func (r *Repository) AcceptServiceEffect(ctx context.Context, in m.ServiceEffect) (m.ServiceReceipt, error) {
+	if in.RefundAmounts != nil {
+		a := in.RefundAmounts.Normalize()
+		in.RefundAmounts = &a
+	}
 	var out m.ServiceReceipt
 	if r == nil || r.db == nil || in.Validate() != nil {
 		return out, m.ErrInvalid
@@ -418,6 +467,9 @@ func (r *Repository) AcceptServiceEffect(ctx context.Context, in m.ServiceEffect
 		}
 		amount := in.Operation.AmountMinor
 		at := m.NormalizeTimestamp(in.OccurredAt)
+		if err := acceptServiceRefundAmounts(&row, in); err != nil {
+			return err
+		}
 		switch in.Operation.Kind {
 		case m.ServiceShare:
 			row.SharedMinor += amount
@@ -439,7 +491,7 @@ func (r *Repository) AcceptServiceEffect(ctx context.Context, in m.ServiceEffect
 			row.ChargedBackMinor += amount
 			row.ReconciliationReason = "CHANNEL_CHARGEBACK_REQUIRES_RECONCILIATION"
 		}
-		out = m.ServiceReceipt{ReceiptID: "service-effect:" + in.Operation.OperationID, OrderID: row.OrderID, OperationID: in.Operation.OperationID, Kind: in.Operation.Kind, AmountMinor: amount, RequestFingerprint: m.ServiceFingerprint(in.Operation), ProviderReference: in.ProviderReference, OccurredAt: at}
+		out = m.ServiceReceipt{RefundAmounts: in.RefundAmounts, ReceiptID: "service-effect:" + in.Operation.OperationID, OrderID: row.OrderID, OperationID: in.Operation.OperationID, Kind: in.Operation.Kind, AmountMinor: amount, RequestFingerprint: m.ServiceFingerprint(in.Operation), ProviderReference: in.ProviderReference, OccurredAt: at}
 		out.ResultFingerprint = out.Fingerprint()
 		receipt, err := json.Marshal(out)
 		if err != nil {
@@ -452,7 +504,10 @@ func (r *Repository) AcceptServiceEffect(ctx context.Context, in m.ServiceEffect
 			return err
 		}
 		row.PendingOperationID = ""
-		return tx.Model(&row).Select("refunded_minor", "charged_back_minor", "shared_minor", "returned_minor", "released_minor", "pending_operation_id", "reconciliation_reason").Updates(row).Error
+		if in.Operation.RefundPhase == m.ServiceReturnPost {
+			row.PendingRefundPlan = nil
+		}
+		return tx.Model(&row).Select("settlement_refunded_minor", "payer_refunded_minor", "voucher_refunded", "pending_refund_plan", "refunded_minor", "charged_back_minor", "shared_minor", "returned_minor", "released_minor", "pending_operation_id", "reconciliation_reason").Updates(row).Error
 	})
 	return out, err
 }

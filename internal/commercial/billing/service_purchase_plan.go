@@ -42,6 +42,9 @@ func nextServiceOperation(o ServicePurchaseOrder, c ServicePurchaseCommand, f mo
 		}
 		return nil, nil
 	case "REFUND", "CANCEL":
+		if f.Allocation.Basis == money.ServiceAllocationChannelNetFloorV2 {
+			return nextChannelRefund(o, c, f)
+		}
 		if done(money.ServiceRefund) {
 			return nil, nil
 		}

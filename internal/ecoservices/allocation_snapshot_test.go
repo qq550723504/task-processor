@@ -16,7 +16,7 @@ func TestQuoteFreezesServerAllocationPolicy(t *testing.T) {
 	raw, _ := json.Marshal(r.Quote)
 	var snapshot map[string]any
 	_ = json.Unmarshal(raw, &snapshot)
-	if snapshot["commissionBps"] != float64(1000) || snapshot["allocationBasis"] != "CUMULATIVE_NET_FLOOR_V1" || snapshot["policyVersion"] != PolicyVersion {
+	if snapshot["commissionBps"] != float64(1000) || snapshot["allocationBasis"] != "CHANNEL_SETTLEMENT_NET_FLOOR_V2" || snapshot["policyVersion"] != "ecoservices-v2-channel-net-10-platform-fee-manual-expiry" {
 		t.Fatalf("quote lost original allocation policy: %s", raw)
 	}
 }

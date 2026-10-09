@@ -54,6 +54,7 @@ func (c ServicePurchaseCommand) Validate() error {
 func (c ServicePurchaseCommand) Fingerprint() string { return money.ServiceFingerprint(c) }
 
 type ServicePurchaseOrder struct {
+	RefundPlans                              map[string]money.ServiceRefundPlan `json:",omitempty"`
 	Source                                   ServicePurchaseCommand
 	Profile                                  ServiceMerchantProfile
 	TradeNo                                  string
@@ -88,7 +89,12 @@ func (o ServicePurchaseOrder) Fingerprint() string {
 func (o ServicePurchaseOrder) MoneyInput() money.ServicePaymentInput {
 	p := o.Payment
 	binding := money.ProviderPaymentBinding{Provider: "WECHAT_PAY", Environment: o.Profile.Environment, MerchantID: o.Source.ProviderMerchantID, AppID: o.Profile.AppID, TradeID: p.TransactionID}
-	return money.ServicePaymentInput{Allocation: o.Source.Allocation, OrderID: o.Source.OrderID, RequestID: o.Source.RequestID, BuyerOrganizationID: o.Source.BuyerOrganizationID, ProviderOrganizationID: o.Source.ProviderOrganizationID, PlatformMerchantID: o.Profile.PlatformMerchantID, ProviderMerchantID: o.Source.ProviderMerchantID, PolicyVersion: o.Source.PolicyVersion, Binding: binding, Payment: money.PaymentSettlement{PaymentID: "provider-payment:" + binding.ClaimID(), PaymentPurpose: money.PaymentPurposeServicePurchase, CommissionTreatment: money.CommissionNonCommissionable, PayerBinding: money.PayerOrganizationServiceBuyer, Currency: "CNY", GrossAmountMinor: o.Source.AmountMinor, Status: money.PaymentSettled, SettledAt: money.NormalizeTimestamp(p.OccurredAt), ProviderReference: "provider-trade:" + binding.ClaimID(), Version: 1}}
+	out := money.ServicePaymentInput{Allocation: o.Source.Allocation, OrderID: o.Source.OrderID, RequestID: o.Source.RequestID, BuyerOrganizationID: o.Source.BuyerOrganizationID, ProviderOrganizationID: o.Source.ProviderOrganizationID, PlatformMerchantID: o.Profile.PlatformMerchantID, ProviderMerchantID: o.Source.ProviderMerchantID, PolicyVersion: o.Source.PolicyVersion, Binding: binding, Payment: money.PaymentSettlement{PaymentID: "provider-payment:" + binding.ClaimID(), PaymentPurpose: money.PaymentPurposeServicePurchase, CommissionTreatment: money.CommissionNonCommissionable, PayerBinding: money.PayerOrganizationServiceBuyer, Currency: "CNY", GrossAmountMinor: o.Source.AmountMinor, Status: money.PaymentSettled, SettledAt: money.NormalizeTimestamp(p.OccurredAt), ProviderReference: "provider-trade:" + binding.ClaimID(), Version: 1}}
+
+	if o.Source.Allocation.Basis == money.ServiceAllocationChannelNetFloorV2 {
+		out.ChannelAmounts = p.ChannelAmounts
+	}
+	return out
 }
 
 type ServiceFinancialOperation struct {
@@ -97,6 +103,7 @@ type ServiceFinancialOperation struct {
 	Dispatched                                           bool
 }
 type ServicePaymentObservation struct {
+	ChannelAmounts                                                                  *money.ServicePaymentAmounts `json:",omitempty"`
 	EventID, ProfileVersion, PlatformMerchantID, AppID, ProviderMerchantID, TradeNo string
 	TransactionID, Currency, State, VerificationVersion                             string
 	AmountMinor                                                                     int64
@@ -130,6 +137,13 @@ func (p ServicePaymentObservation) Matches(o ServicePurchaseOrder) bool {
 	}
 	switch p.State {
 	case "PAID", "PAID_REFUND_UNKNOWN":
+		if o.Source.Allocation.Basis == money.ServiceAllocationChannelNetFloorV2 {
+			if p.ChannelAmounts == nil || p.ChannelAmounts.Validate(p.AmountMinor) != nil {
+				return false
+			}
+		} else if p.ChannelAmounts != nil && (p.ChannelAmounts.Validate(p.AmountMinor) != nil || len(p.ChannelAmounts.Vouchers) != 0) {
+			return false
+		}
 		return p.AmountMinor == o.Source.AmountMinor && p.TransactionID != "" && !p.OccurredAt.IsZero()
 	case "UNPAID", "CLOSED":
 		return true
@@ -138,6 +152,7 @@ func (p ServicePaymentObservation) Matches(o ServicePurchaseOrder) bool {
 }
 
 type ServiceOperationObservation struct {
+	RefundAmounts                                                                 *money.ServiceRefundAmounts `json:",omitempty"`
 	EventID, ProfileVersion, ProviderMerchantID, TransactionID, ProviderRequestID string
 	Kind                                                                          money.ServiceEffectKind
 	AmountMinor                                                                   int64
@@ -160,6 +175,13 @@ type ServiceUnsplitProvider interface {
 }
 
 func (p ServiceOperationObservation) Matches(o ServicePurchaseOrder, op ServiceFinancialOperation) bool {
+	if p.State == "SUCCESS" && op.Reservation.Kind == money.ServiceRefund && o.Source.Allocation.Basis == money.ServiceAllocationChannelNetFloorV2 {
+		if o.Payment == nil || o.Payment.ChannelAmounts == nil || p.RefundAmounts == nil || p.RefundAmounts.Validate(*o.Payment.ChannelAmounts, op.Reservation.AmountMinor) != nil {
+			return false
+		}
+	} else if p.RefundAmounts != nil {
+		return false
+	}
 	return p.EventID != "" && p.VerificationVersion != "" && p.ProfileVersion == o.Profile.Version && p.ProviderMerchantID == o.Source.ProviderMerchantID && o.Payment != nil && p.TransactionID == o.Payment.TransactionID && p.ProviderRequestID == op.ProviderRequestID && p.Kind == op.Reservation.Kind && p.AmountMinor == op.Reservation.AmountMinor && (p.State == "PENDING" || p.State == "WAITING_FUNDS" || p.State == "FAILED" || p.State == "REPLAY_ALLOWED" && p.ProviderReference != "" && !p.OccurredAt.IsZero() || p.State == "SUCCESS" && p.ProviderReference != "" && !p.OccurredAt.IsZero())
 }
 

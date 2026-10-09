@@ -93,14 +93,17 @@ func (p *WeChat) QueryServicePayment(ctx context.Context, o billing.ServicePurch
 	if err != nil || rsp == nil || rsp.Code != 0 || rsp.Response == nil {
 		return empty, billing.ErrReconciliationRequired
 	}
-	return p.paymentResult(o, *rsp.Response)
+	if rsp.SignInfo == nil {
+		return empty, billing.ErrConflict
+	}
+	return p.paymentResult(o, *rsp.Response, rsp.SignInfo.SignBody)
 }
 func (p *WeChat) paymentObservation(o billing.ServicePurchaseOrder, state, tx string, amount int64, at time.Time) billing.ServicePaymentObservation {
 	v := billing.ServicePaymentObservation{ProfileVersion: p.Profile().Version, PlatformMerchantID: p.Profile().PlatformMerchantID, AppID: p.Profile().AppID, ProviderMerchantID: o.Source.ProviderMerchantID, TradeNo: o.TradeNo, TransactionID: tx, Currency: "CNY", State: state, AmountMinor: amount, OccurredAt: money.NormalizeTimestamp(at), VerificationVersion: "wechat-v3:" + p.config.PublicKeyID}
 	v.EventID = "service-payment:" + money.ServiceFingerprint(v)
 	return v
 }
-func (p *WeChat) paymentResult(o billing.ServicePurchaseOrder, v wechat.PartnerQueryOrder) (billing.ServicePaymentObservation, error) {
+func (p *WeChat) paymentResult(o billing.ServicePurchaseOrder, v wechat.PartnerQueryOrder, raw ...string) (billing.ServicePaymentObservation, error) {
 	var empty billing.ServicePaymentObservation
 	if v.SpAppid != p.Profile().AppID || v.SpMchid != p.Profile().PlatformMerchantID || v.SubMchid != o.Source.ProviderMerchantID || v.OutTradeNo != o.TradeNo || v.TradeType != "" && v.TradeType != "NATIVE" {
 		return empty, billing.ErrConflict
@@ -121,10 +124,13 @@ func (p *WeChat) paymentResult(o billing.ServicePurchaseOrder, v wechat.PartnerQ
 	var amount int64
 	var at time.Time
 	if state == "PAID" || state == "PAID_REFUND_UNKNOWN" {
-		if v.TradeType != "NATIVE" || v.Amount == nil || v.Amount.Currency != "CNY" || int64(v.Amount.Total) != o.Source.AmountMinor || v.Amount.PayerTotal != v.Amount.Total || len(v.PromotionDetail) > 0 {
+		if v.TradeType != "NATIVE" || v.Amount == nil || v.Amount.Currency != "CNY" || int64(v.Amount.Total) != o.Source.AmountMinor {
 			return empty, billing.ErrConflict
 		}
 		amount = int64(v.Amount.Total)
+		if len(raw) > 0 && requiredPaymentAmounts(raw[0]) != nil {
+			return empty, billing.ErrConflict
+		}
 		var err error
 		at, err = time.Parse(time.RFC3339, v.SuccessTime)
 		if err != nil {
@@ -132,6 +138,23 @@ func (p *WeChat) paymentResult(o billing.ServicePurchaseOrder, v wechat.PartnerQ
 		}
 	}
 	obs := p.paymentObservation(o, state, v.TransactionId, amount, at)
+	if state == "PAID" || state == "PAID_REFUND_UNKNOWN" {
+		a, err := channelPaymentAmounts(v)
+		if err != nil {
+			return empty, err
+		}
+		switch o.Source.Allocation.Basis {
+		case money.ServiceAllocationCumulativeNetFloorV1:
+			if a.PayerMinor != o.Source.AmountMinor || len(a.Vouchers) != 0 {
+				return empty, billing.ErrConflict
+			}
+		case money.ServiceAllocationChannelNetFloorV2:
+			obs.ChannelAmounts = &a
+			obs.EventID = "service-payment:" + money.ServiceFingerprint(obs)
+		default:
+			return empty, billing.ErrConflict
+		}
+	}
 	if v.TradeState == "NOTPAY" {
 		if v.TradeType != "NATIVE" || v.Amount == nil || v.Amount.Currency != "CNY" || int64(v.Amount.Total) != o.Source.AmountMinor {
 			return empty, billing.ErrConflict
@@ -303,7 +326,10 @@ func (p *WeChat) QueryServiceOperation(ctx context.Context, o billing.ServicePur
 		if err != nil || rsp == nil || rsp.Code != 0 || rsp.Response == nil {
 			return empty, billing.ErrReconciliationRequired
 		}
-		return p.refundResult(o, op, *rsp.Response)
+		if rsp.SignInfo == nil {
+			return empty, billing.ErrConflict
+		}
+		return p.refundResult(o, op, *rsp.Response, rsp.SignInfo.SignBody)
 	}
 	return empty, billing.ErrInvalid
 }
@@ -365,9 +391,9 @@ func (p *WeChat) shareResult(o billing.ServicePurchaseOrder, op billing.ServiceF
 	}
 	return result, nil
 }
-func (p *WeChat) refundResult(o billing.ServicePurchaseOrder, op billing.ServiceFinancialOperation, v wechat.EcommerceRefundQuery) (billing.ServiceOperationObservation, error) {
+func (p *WeChat) refundResult(o billing.ServicePurchaseOrder, op billing.ServiceFinancialOperation, v wechat.EcommerceRefundQuery, raw ...string) (billing.ServiceOperationObservation, error) {
 	var empty billing.ServiceOperationObservation
-	if op.Reservation.Kind != money.ServiceRefund || o.Payment == nil || v.TransactionId != o.Payment.TransactionID || v.OutTradeNo != o.TradeNo || v.OutRefundNo != op.ProviderRequestID || v.RefundId == "" || v.RefundAccount != "REFUND_SOURCE_SUB_MERCHANT" || v.Amount == nil || v.Amount.Currency != "CNY" || int64(v.Amount.Refund) != op.Reservation.AmountMinor || v.Amount.DiscountRefund != 0 || v.Amount.PayerRefund != v.Amount.Refund {
+	if op.Reservation.Kind != money.ServiceRefund || o.Payment == nil || v.TransactionId != o.Payment.TransactionID || v.OutTradeNo != o.TradeNo || v.OutRefundNo != op.ProviderRequestID || v.RefundId == "" || v.RefundAccount != "REFUND_SOURCE_SUB_MERCHANT" || v.Amount == nil || v.Amount.Currency != "CNY" || int64(v.Amount.Refund) != op.Reservation.AmountMinor {
 		return empty, billing.ErrConflict
 	}
 	state := "PENDING"
@@ -389,6 +415,19 @@ func (p *WeChat) refundResult(o billing.ServicePurchaseOrder, op billing.Service
 		return empty, billing.ErrReconciliationRequired
 	}
 	result := p.operationObservation(o, op, state, "wechat-refund:"+v.RefundId, reason, at)
+	if o.Source.Allocation.Basis == money.ServiceAllocationChannelNetFloorV2 && state == "SUCCESS" {
+		if o.Payment.ChannelAmounts == nil || len(raw) > 0 && requiredRefundAmounts(raw[0]) != nil {
+			return empty, billing.ErrConflict
+		}
+		a, err := channelRefundAmounts(*o.Payment.ChannelAmounts, v)
+		if err != nil {
+			return empty, err
+		}
+		result.RefundAmounts = &a
+		result.EventID = "service-effect:" + money.ServiceFingerprint(result)
+	} else if o.Source.Allocation.Basis != money.ServiceAllocationChannelNetFloorV2 && (v.Amount.DiscountRefund != 0 || v.Amount.PayerRefund != v.Amount.Refund || len(v.PromotionDetail) > 0) {
+		return empty, billing.ErrConflict
+	}
 	if !result.Matches(o, op) {
 		return empty, billing.ErrConflict
 	}

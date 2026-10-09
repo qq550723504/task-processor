@@ -230,3 +230,5 @@ func NewService(repo Repository, trading TradingPort, freezeDays int) (*Service,
 	}
 	return &Service{repo: repo, trading: trading, freezeDays: freezeDays}, nil
 }
+
+const ServicePolicyVersionV2 = "ecoservices-v2-channel-net-10-platform-fee-manual-expiry"

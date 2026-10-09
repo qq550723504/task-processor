@@ -5,6 +5,7 @@ import (
 	"net/http"
 	b "task-processor/internal/commercial/billing"
 	e "task-processor/internal/ecoservices"
+	"task-processor/internal/ledger/money"
 )
 
 type NotificationVerifier interface {
@@ -37,6 +38,14 @@ func (i NotificationIngress) AcceptNotification(req *http.Request) error {
 	}
 	if !p.Matches(original) {
 		return b.ErrConflict
+	}
+	if (p.State == "PAID" || p.State == "PAID_REFUND_UNKNOWN") && original.Source.Allocation.Basis == money.ServiceAllocationCumulativeNetFloorV1 {
+		// The signed notification includes channel facts before the original policy
+		// is known. V1 accepts cash only and keeps its immutable original structure.
+		if p.ChannelAmounts == nil || p.ChannelAmounts.Validate(original.Source.AmountMinor) != nil || p.ChannelAmounts.PayerMinor != original.Source.AmountMinor || len(p.ChannelAmounts.Vouchers) != 0 {
+			return b.ErrConflict
+		}
+		p.ChannelAmounts = nil
 	}
 	if err := i.Inbox.RecordServicePaymentObservation(req.Context(), original, p); err != nil {
 		return err

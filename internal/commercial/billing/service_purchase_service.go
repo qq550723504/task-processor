@@ -81,6 +81,9 @@ func (s *ServicePurchases) acceptPayment(ctx context.Context, o *ServicePurchase
 		if o.Payment != nil && (o.Payment.TransactionID != p.TransactionID || !o.Payment.OccurredAt.Equal(p.OccurredAt)) {
 			return ErrConflict
 		}
+		if o.Payment != nil && money.ServiceFingerprint(o.Payment.ChannelAmounts) != money.ServiceFingerprint(p.ChannelAmounts) {
+			return ErrConflict
+		}
 		if o.PaymentReceiptID != "" && p.State != "PAID_REFUND_UNKNOWN" {
 			continue
 		}
@@ -292,7 +295,7 @@ func (s *ServicePurchases) Execute(ctx context.Context, c ServicePurchaseCommand
 			return serviceResult(o), err
 		}
 	}
-	for step := 0; step < 4; step++ {
+	for step := 0; step < 6; step++ {
 		if o.Operation != nil {
 			if err := s.advanceOperation(ctx, &o, c); err != nil {
 				return serviceResult(o), err
@@ -353,6 +356,12 @@ func (s *ServicePurchases) Execute(ctx context.Context, c ServicePurchaseCommand
 				return serviceResult(o), saveErr
 			}
 			return serviceResult(o), err
+		}
+		if op.Reservation.RefundPlan != nil {
+			if o.RefundPlans == nil {
+				o.RefundPlans = map[string]money.ServiceRefundPlan{}
+			}
+			o.RefundPlans[c.ID] = *op.Reservation.RefundPlan
 		}
 		o.Operation = op
 		if o.Operations == nil {
@@ -542,6 +551,11 @@ func (s *ServicePurchases) acceptFailure(ctx context.Context, o *ServicePurchase
 	if receipt.Validate() != nil || receipt.OrderID != c.OrderID || receipt.RequestFingerprint != money.ServiceFingerprint(op.Reservation) {
 		return ErrConflict
 	}
+	if op.Reservation.RefundPlan != nil {
+		o.State = "RECONCILIATION_REQUIRED"
+		o.Reason = "ORIGINAL_REFUND_PHASE_FAILED"
+		return s.save(ctx, o)
+	}
 	o.State = "CHANNEL_OPERATION_FAILED"
 	o.Reason = p.Reason
 	f, err := s.funds.ReadServiceFunds(ctx, c.OrderID)
@@ -567,7 +581,7 @@ func (s *ServicePurchases) acceptOperation(ctx context.Context, o *ServicePurcha
 	if !p.Matches(*o, op) || p.State != "SUCCESS" {
 		return ErrConflict
 	}
-	receipt, err := s.funds.AcceptServiceEffect(ctx, money.ServiceEffect{Operation: op.Reservation, ProviderReference: p.ProviderReference, OccurredAt: p.OccurredAt})
+	receipt, err := s.funds.AcceptServiceEffect(ctx, money.ServiceEffect{Operation: op.Reservation, ProviderReference: p.ProviderReference, OccurredAt: p.OccurredAt, RefundAmounts: p.RefundAmounts})
 	if err != nil {
 		return err
 	}
@@ -580,7 +594,9 @@ func (s *ServicePurchases) releaseDeniedOperation(ctx context.Context, o *Servic
 	if o.AttemptGenerations == nil {
 		o.AttemptGenerations = map[string]int{}
 	}
-	o.AttemptGenerations[c.ID+":"+string(op.Reservation.Kind)]++
+	if op.Reservation.RefundPlan == nil {
+		o.AttemptGenerations[c.ID+":"+string(op.Reservation.Kind)]++
+	}
 	o.Operation = nil
 	o.ActiveCommand = nil
 	return s.save(ctx, o)

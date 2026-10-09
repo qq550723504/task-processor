@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	b "task-processor/internal/commercial/billing"
+	"task-processor/internal/ledger/money"
 	"testing"
 	"time"
 )
@@ -41,6 +42,7 @@ func (f *ingressFixture) WakeOriginalServicePurchase(context.Context, string) er
 func TestServiceNotificationNeverAcknowledgesMissingDurableRecovery(t *testing.T) {
 	p, o, _ := wechatServiceFixture()
 	f := &ingressFixture{order: o, observation: p.paymentObservation(o, "PAID", "transaction", 100, time.Now()), wakeFail: true}
+	f.observation.ChannelAmounts = &money.ServicePaymentAmounts{PayerMinor: 100}
 	i := NotificationIngress{f, f, f}
 	request := httptest.NewRequest("POST", "/notify", nil)
 	if err := i.AcceptNotification(request); err == nil || !f.recorded {
