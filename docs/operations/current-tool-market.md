@@ -35,6 +35,15 @@ enterprise activation does not authorize their use or prove provider success.
 
 Serving opens the restricted pool, verifies schema, uses current Organization
 resolver/Casbin, and admits the exact domain descriptors through the app module.
+The handler injects `ReadAuthorize=admission.AuthorizeRead` for GET, downloads
+and action visibility (CachedRead), and `Authorize=admission.Authorize` for writes
+and transaction guards (LiveWrite). LiveWrite never falls back to cached grants.
+The existing module catalog enables `tools` and `tools-custom` and uses
+`authz.ToolMarketModulePermissions` before `NewListingKitAuthorizer` creates its
+module enforcer. Native enterprise roles obtain read or read/customize through
+current `RoleModules`; the permission projection is not a grant. Manage stays
+limited to `listingkit_admin`. Retired viewer/operator roles must not be restored
+through `platformAdminRoles`.
 Schema maintenance credentials stay in initializer-only volumes; serving mounts
 only its manifest and runtime credentials. No startup DDL or recovery owner is added.
 
@@ -45,7 +54,8 @@ independent verified platform identity and does not require customer membership.
 Enterprise siblings retain their Organization gate. Seven future tools stay closed.
 
 Local trial: administrator enables acquisition → member reads the enterprise list;
-operator submits a synthetic requirement → platform specialist records progress →
+member assigned the `tools-custom` module submits a synthetic requirement →
+platform specialist records progress →
 enterprise reads the saved events. This is local development verification, not user
 acceptance, payment, tool installation or provider execution. Browser/tool execution
 not actually performed is recorded NOT_RUN. Retain named volumes with stop/start;

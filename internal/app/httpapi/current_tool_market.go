@@ -51,7 +51,7 @@ func buildToolMarket(ctx context.Context, d ToolMarketDependencies, deps routeAu
 	if err != nil {
 		return nil, err
 	}
-	h := &tmhttp.Handler{Repository: repo, Bind: admission.Bind, Authorize: admission.Authorize, Readiness: readiness}
+	h := &tmhttp.Handler{Repository: repo, Bind: admission.Bind, ReadAuthorize: admission.AuthorizeRead, Authorize: admission.Authorize, Readiness: readiness}
 	if d.Package != nil {
 		_ = h.ConfigurePackage(*d.Package)
 	}
