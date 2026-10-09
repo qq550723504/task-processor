@@ -25,13 +25,14 @@ const Base = "/api/v1/workbench/agents"
 const Module = "agent-configuration"
 
 type Handler struct {
-	Bind         func(context.Context, string) (context.Context, error)
-	Repository   agentconfig.Repository
-	Catalog      agentconfig.CatalogReader
-	Authorize    func(context.Context, ...string) (agent.Scope, error)
-	Knowledge    func(context.Context, agent.Scope, string) error
-	Capabilities func(context.Context, agentconfig.CatalogEntry) []agentconfig.Capability
-	Recent       func(context.Context, agent.Scope, string, string, int) (any, string, error)
+	Bind          func(context.Context, string) (context.Context, error)
+	Repository    agentconfig.Repository
+	Catalog       agentconfig.CatalogReader
+	Authorize     func(context.Context, ...string) (agent.Scope, error)
+	Knowledge     func(context.Context, agent.Scope, string) error
+	Capabilities  func(context.Context, agentconfig.CatalogEntry) []agentconfig.Capability
+	Recent        func(context.Context, agent.Scope, string, string, int) (any, string, error)
+	RunsAvailable func(context.Context, agentconfig.CatalogEntry) bool
 }
 type routeModule struct{ h *Handler }
 
@@ -287,8 +288,16 @@ func (h *Handler) project(ctx context.Context, scope agent.Scope, e agentconfig.
 			ready = false
 		}
 	}
-	_, domain := h.Authorize(ctx, authz.PermissionLocalAgentWrite)
-	return gin.H{"agent": a, "name": e.Name, "description": e.Description, "definitionVersion": e.Definition.Version, "parameterSchema": e.ParameterSchema, "capabilities": caps, "canConfigure": configure == nil, "canUse": use == nil && domain == nil && ready && a.Activation == "ENABLED", "canReadRuns": use == nil && domain == nil}, nil
+	domainPermission := authz.PermissionLocalAgentWrite
+	readPermission := domainPermission
+	if e.Definition.ID == agentconfig.ImageAgentID {
+		domainPermission = authz.PermissionImageAgentWrite
+		readPermission = authz.PermissionImageAgentRead
+	}
+	_, domain := h.Authorize(ctx, domainPermission)
+	_, read := h.Authorize(ctx, readPermission)
+	runsAvailable := h.RunsAvailable == nil || h.RunsAvailable(ctx, e)
+	return gin.H{"agent": a, "name": e.Name, "description": e.Description, "definitionVersion": e.Definition.Version, "parameterSchema": e.ParameterSchema, "capabilities": caps, "canConfigure": configure == nil, "canUse": use == nil && domain == nil && ready && a.Activation == "ENABLED", "canReadRuns": use == nil && read == nil && runsAvailable}, nil
 }
 func (h *Handler) serve(c *gin.Context, s spec) {
 	if h.Bind != nil {

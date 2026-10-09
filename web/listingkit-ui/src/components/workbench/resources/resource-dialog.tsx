@@ -7,11 +7,13 @@ export function ResourceDialog({
   onClose,
   locked = false,
   children,
+  className,
 }: {
   title: string;
   onClose: () => void;
   locked?: boolean;
   children: ReactNode;
+  className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -22,7 +24,7 @@ export function ResourceDialog({
   return (
     <dialog
       ref={ref}
-      className={styles.resourceDialog}
+      className={[styles.resourceDialog,className].filter(Boolean).join(" ")}
       aria-label={title}
       onCancel={(event) => {
         event.preventDefault();

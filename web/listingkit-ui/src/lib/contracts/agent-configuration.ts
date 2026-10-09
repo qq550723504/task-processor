@@ -13,7 +13,7 @@ export const templateRefSchema = z.strictObject({
   templateId: knowledgeId,
   revision: configVersion,
 });
-const agentId = z.literal("product.title.agent"),
+const agentId = z.enum(["product.title.agent","product.image.agent"]),
   timestamp = z.string().datetime({ offset: true }),
   platform = z.enum(["shein", "temu", "amazon"]);
 export const templateInputSchema = z.strictObject({
@@ -50,7 +50,7 @@ export const configReceiptSchema = z.strictObject({
 });
 export const templateSchema = z.strictObject({
   templateId: knowledgeId,
-  agentId,
+  agentId:z.literal("product.title.agent"),
   lifecycle: z.enum(["ACTIVE", "ARCHIVED"]),
   revision: configVersion,
   version: configVersion,
@@ -74,7 +74,7 @@ export const catalogEntrySchema = z.strictObject({
   name: z.string().min(1).max(512),
   description: z.string().max(2048),
   definitionVersion: z.string().max(128),
-  parameterSchema: z.literal("title-config-v1"),
+  parameterSchema: z.enum(["title-config-v1","image-config-v1"]),
   canConfigure: z.boolean(),
   canUse: z.boolean(),
   canReadRuns: z.boolean(),
@@ -100,7 +100,7 @@ export const catalogEntrySchema = z.strictObject({
       }),
     )
     .max(5),
-});
+}).refine(entry=>(entry.agent.agentId==="product.image.agent") === (entry.parameterSchema==="image-config-v1"),{message:"智能体与参数类型不一致"});
 const page = <T extends z.ZodType>(schema: T, max = 100) =>
   z.strictObject({
     items: z.array(schema).max(max),
