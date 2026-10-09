@@ -123,7 +123,8 @@ func (r *Repository) ListRecordReleases(ctx context.Context, scope collection.Sc
 		base = base.Where("id>?", q.After)
 	}
 	var rows []releaseRow
-	if err := base.Select(releaseColumns).Order("id").Limit(q.Limit + 1).Find(&rows).Error; err != nil {
+	columns := strings.Replace(releaseColumns, "release_json", `jsonb_set(release_json,'{product}',jsonb_build_object('title',release_json->'product'->'title','images',jsonb_build_array(release_json->'product'->'images'->0))) AS release_json`, 1)
+	if err := base.Select(columns).Order("id").Limit(q.Limit + 1).Find(&rows).Error; err != nil {
 		return page, err
 	}
 	if len(rows) > q.Limit {

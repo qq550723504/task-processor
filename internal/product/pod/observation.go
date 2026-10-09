@@ -19,6 +19,7 @@ var (
 	ErrConflict    = errors.New("POD intent conflict")
 	ErrUnknown     = errors.New("POD result remains unknown")
 	ErrUnavailable = errors.New("POD dependency unavailable")
+	ErrNotFound    = errors.New("POD operation not found")
 )
 
 // DesignIntent is the frozen protocol portion of an authorized operation. It
@@ -64,7 +65,16 @@ type FinishedReference struct {
 
 // QualifiedFinished can only be created by complete readback. It is evidence,
 // not authorization: its consumer must independently recheck the original owner.
-type QualifiedFinished struct{ reference FinishedReference }
+type QualifiedFinished struct {
+	reference    FinishedReference
+	intentDigest string
+}
+
+func (q QualifiedFinished) MatchesIntent(intent DesignIntent) bool {
+	raw, err := json.Marshal(intent)
+	sum := sha256.Sum256(raw)
+	return err == nil && q.intentDigest != "" && q.intentDigest == hex.EncodeToString(sum[:])
+}
 
 func (q QualifiedFinished) Reference() FinishedReference {
 	r := q.reference
@@ -106,7 +116,9 @@ func QualifyFinished(intent DesignIntent, candidates []Observation) (QualifiedFi
 		return QualifiedFinished{}, ErrUnknown
 	}
 	sum := sha256.Sum256(raw)
-	return QualifiedFinished{FinishedReference{OperationID: intent.OperationID, MerchantID: intent.MerchantID, ID: f.ID, KeyID: f.KeyID, TaskID: f.TaskID, EvidenceDigest: hex.EncodeToString(sum[:]), RenderURLs: append([]string(nil), f.RenderURLs...)}}, nil
+	intentRaw, _ := json.Marshal(intent)
+	intentSum := sha256.Sum256(intentRaw)
+	return QualifiedFinished{reference: FinishedReference{OperationID: intent.OperationID, MerchantID: intent.MerchantID, ID: f.ID, KeyID: f.KeyID, TaskID: f.TaskID, EvidenceDigest: hex.EncodeToString(sum[:]), RenderURLs: append([]string(nil), f.RenderURLs...)}, intentDigest: hex.EncodeToString(intentSum[:])}, nil
 }
 
 func validIntent(i DesignIntent) bool {

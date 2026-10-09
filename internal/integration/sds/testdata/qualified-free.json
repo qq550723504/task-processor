@@ -1,0 +1,202 @@
+{
+  "manifest": {
+    "product": {
+      "id": 95147,
+      "parent_id": 95146,
+      "prototypeId": "730897612975054849",
+      "prototypeType": "FREE"
+    },
+    "prototypeGroup": {
+      "id": 15261,
+      "productId": 95146
+    },
+    "layers": [
+      {
+        "id": "730897620537384960",
+        "prototypeId": "730897612975054849",
+        "type": 1,
+        "width": 567,
+        "height": 850,
+        "print_width": 1334,
+        "print_height": 2000,
+        "printWidth": 1334,
+        "printHeight": 2000
+      }
+    ],
+    "psds": [
+      {
+        "id": "753068348962332672",
+        "prototypeId": "730897612975054849",
+        "thumbnail_url": "https://cdn.sdspod.com/images/test/template-0.jpg"
+      },
+      {
+        "id": "753068350002520064",
+        "prototypeId": "730897612975054849",
+        "thumbnail_url": "https://cdn.sdspod.com/images/test/template-1.jpg"
+      },
+      {
+        "id": "753068350027685888",
+        "prototypeId": "730897612975054849",
+        "thumbnail_url": "https://cdn.sdspod.com/images/test/template-2.jpg"
+      },
+      {
+        "id": "753068350048657408",
+        "prototypeId": "730897612975054849",
+        "thumbnail_url": "https://cdn.sdspod.com/images/test/template-3.jpg"
+      },
+      {
+        "id": "753068350069628928",
+        "prototypeId": "730897612975054849",
+        "thumbnail_url": "https://cdn.sdspod.com/images/test/template-4.jpg"
+      },
+      {
+        "id": "753068350090600448",
+        "prototypeId": "730897612975054849",
+        "thumbnail_url": "https://cdn.sdspod.com/images/test/template-5.jpg"
+      },
+      {
+        "id": "753068350124154880",
+        "prototypeId": "730897612975054849",
+        "thumbnail_url": "https://cdn.sdspod.com/images/test/template-6.jpg"
+      },
+      {
+        "id": "753068350153515008",
+        "prototypeId": "730897612975054849",
+        "thumbnail_url": "https://cdn.sdspod.com/images/test/template-7.jpg"
+      }
+    ]
+  },
+  "listed": {
+    "id": "962657110282047488",
+    "key_id": "9rdygezsctts",
+    "task_id": "962657107283120129",
+    "design_task_id": "962657107283120129",
+    "product_parent_id": 95146,
+    "product_id": 95147,
+    "prototype_id": "730897612975054849",
+    "status": 2,
+    "buildFinish": true,
+    "merchant_id": 123,
+    "img_urls": [
+      "https://cdn.sdspod.com/out/123/test/render-0.jpg",
+      "https://cdn.sdspod.com/out/123/test/render-1.jpg",
+      "https://cdn.sdspod.com/out/123/test/render-2.jpg",
+      "https://cdn.sdspod.com/out/123/test/render-3.jpg",
+      "https://cdn.sdspod.com/out/123/test/render-4.jpg",
+      "https://cdn.sdspod.com/out/123/test/render-5.jpg",
+      "https://cdn.sdspod.com/out/123/test/render-6.jpg",
+      "https://cdn.sdspod.com/out/123/test/render-7.jpg"
+    ]
+  },
+  "detail": {
+    "id": "962657110282047488",
+    "key_id": "9rdygezsctts",
+    "task_id": "962657107283120129",
+    "design_task_id": "962657107283120129",
+    "product_parent_id": 95146,
+    "product_id": 95147,
+    "prototype_id": "730897612975054849",
+    "status": 2,
+    "merchant_id": 123,
+    "img_urls": [
+      "https://cdn.sdspod.com/out/123/test/render-0.jpg",
+      "https://cdn.sdspod.com/out/123/test/render-1.jpg",
+      "https://cdn.sdspod.com/out/123/test/render-2.jpg",
+      "https://cdn.sdspod.com/out/123/test/render-3.jpg",
+      "https://cdn.sdspod.com/out/123/test/render-4.jpg",
+      "https://cdn.sdspod.com/out/123/test/render-5.jpg",
+      "https://cdn.sdspod.com/out/123/test/render-6.jpg",
+      "https://cdn.sdspod.com/out/123/test/render-7.jpg"
+    ]
+  },
+  "saved": {
+    "designProductId": "962657110282047488",
+    "product": {
+      "id": 95147,
+      "parent_id": 95146
+    },
+    "prototypeGroup": {
+      "id": 15261
+    },
+    "prototype_id": "730897612975054849",
+    "layers": [
+      {
+        "id": "730897620537384960",
+        "width": 567,
+        "height": 850,
+        "print_width": 1334,
+        "print_height": 2000,
+        "fabric_json": "{\"version\":\"5.2.1\",\"objects\":[{\"type\":\"image\",\"version\":\"5.2.1\",\"originX\":\"center\",\"originY\":\"center\",\"left\":300,\"top\":300,\"width\":1200,\"height\":1799,\"fill\":\"rgb(0,0,0)\",\"stroke\":null,\"strokeWidth\":0,\"strokeDashArray\":null,\"strokeLineCap\":\"butt\",\"strokeDashOffset\":0,\"strokeLineJoin\":\"miter\",\"strokeUniform\":false,\"strokeMiterLimit\":4,\"scaleX\":0.33351862145636,\"scaleY\":0.33351862145636,\"angle\":0,\"flipX\":false,\"flipY\":false,\"opacity\":1,\"shadow\":null,\"visible\":true,\"backgroundColor\":\"\",\"fillRule\":\"nonzero\",\"paintFirst\":\"fill\",\"globalCompositeOperation\":\"source-over\",\"skewX\":0,\"skewY\":0,\"cropX\":0,\"cropY\":0,\"sds\":{\"originUrl\":\"https://cdn.sdspod.com/images1000Thumbs/test/art.png?material_id=480953643&thumbsZoom=1.1117287381878822\",\"styleKey\":\"\"},\"selectable\":true,\"centeredScaling\":false,\"src\":\"https://cdn.sdspod.com/images1000Thumbs/test/art.png?material_id=480953643&thumbsZoom=1.1117287381878822\",\"crossOrigin\":\"anonymous\",\"filters\":[]}],\"centeredScaling\":false}"
+      }
+    ],
+    "designFiles": [
+      {
+        "id": "753068348962332672"
+      },
+      {
+        "id": "753068350002520064"
+      },
+      {
+        "id": "753068350027685888"
+      },
+      {
+        "id": "753068350048657408"
+      },
+      {
+        "id": "753068350069628928"
+      },
+      {
+        "id": "753068350090600448"
+      },
+      {
+        "id": "753068350124154880"
+      },
+      {
+        "id": "753068350153515008"
+      }
+    ]
+  },
+  "task": {
+    "id": "962657107283120129",
+    "status": 5,
+    "qty_complete": 1,
+    "qty_success": 1,
+    "qty_failed": 0,
+    "qty_wait": 0
+  },
+  "children": {
+    "taskId": "962657107283120129",
+    "items": [
+      {
+        "productId": 95147,
+        "productParentId": 95146,
+        "results": [
+          {
+            "file": "http://cdn.sdspod.com/out/123/test/render-0.jpg"
+          },
+          {
+            "file": "http://cdn.sdspod.com/out/123/test/render-1.jpg"
+          },
+          {
+            "file": "http://cdn.sdspod.com/out/123/test/render-2.jpg"
+          },
+          {
+            "file": "http://cdn.sdspod.com/out/123/test/render-3.jpg"
+          },
+          {
+            "file": "http://cdn.sdspod.com/out/123/test/render-4.jpg"
+          },
+          {
+            "file": "http://cdn.sdspod.com/out/123/test/render-5.jpg"
+          },
+          {
+            "file": "http://cdn.sdspod.com/out/123/test/render-6.jpg"
+          },
+          {
+            "file": "http://cdn.sdspod.com/out/123/test/render-7.jpg"
+          }
+        ]
+      }
+    ]
+  }
+}

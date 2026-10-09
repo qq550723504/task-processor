@@ -381,10 +381,11 @@ revision/同键重放；撤销与选品同UoW；资格文件私密读；两个�
 | Figma/当前owner映射 | READ | 不将占位或示例当能力证据 |
 | SDS受控成品保存 | CONFIRMED | 本次成品9rdygezsctts及task/render/detail复查成立；不等于产品验收 |
 | SDS首次自动归属关联 | QUALIFIED / CLOSED | exact finished design GET绑定实际material及原Fabric/PSD意图；原finding独立复核已关闭 |
-| SDS完成及fence释放 | IMPLEMENTATION_TEST候选 | exact task终态与全部预期render已有证据；关联补齐后有界验证其终态及fence释放含义 |
+| SDS完成及fence释放 | 开发自检PASS | 现有隔离PostgreSQL测试执行SaveStep/Finish；Kernel/POD/fence原子提交，失败及错误意图不提前解锁；独立增量复核单列 |
+| SDS同图案复用 | IMPLEMENTATION_TEST未收敛 | 当前内容MD5与repeatReturnId=true可能返回旧素材；须接口资料或另获明确授权的有界复用测试，不能接受别的operation素材名 |
 | 共享authz/navigation/runtime协调 | OWNER_ASSIGNED | 协调指定会话 `01a11f74-2565-78e0-9118-4fe1ff53e726`；本Writer提供本设计feature ports，不修改共享接线；具体接线在批准后由该owner消费 |
 | 独立Architecture Review | IMPLEMENTATION_READY | 两轮及原SDS finding证据增量复核完成，全部BLOCKER关闭，无新增全局评审 |
-| 正式生产/schema修改 | IN_PROGRESS | 已准入；市场 owner/UoW/API/Console 已实现，SDS 正式执行路径仍在实现 |
+| 正式生产/schema修改 | IN_PROGRESS | 已准入；市场及SDS feature-local owner/UoW/API/Console/worker已实现，共享接线和外部依赖仍未完成 |
 | 产品路径/用户验收 | NOT_RUN | 受控provider保存已执行；正式代码路径和真实用户验收尚未执行 |
 
 原SDS阻塞命中AGENTS的“核心happy path按当前设计无法完成”，以及共享账号结果不能归属时
@@ -405,3 +406,48 @@ BLOCKER关闭、IMPLEMENTATION_READY、可冻结基线。终态/fence释放为IM
 platform路径原成员复核须使用明确的
 tokenless窄执行入口，不能传递已清空组织scope的平台HTTP context或制造客户身份，
 此项为IMPLEMENTATION_TEST，与精确投影、Apply绑定、Permit及启动恢复测试一起在准入后收敛。
+
+## 12. 当前实现与共享接线合同
+
+本节记录冻结设计的实现位置及当前消费者入口，不改变准入范围。唯一共享组合owner消费
+以下合同；本Writer未修改默认IAM策略、module/navigation、CurrentApplication或共享Runtime，
+也未部署保留实例。开关和编译成功不等于实际接入或用户验收。
+
+- 市场：`internal/app/supplymarket.NewApplication`注入ProductDB、市场ContextAuthorizer、
+  当前Collection tokenless ExecutionAuthorizer、Collection Service及私密immutable S3。
+  `internal/product/supplymarket/httpapi.Routes`暴露成员和平台专员窄入口。
+- SDS：`internal/app/pod.NewApplication(ctx, Dependencies)`注入同一ProductDB、当前AssetDB、
+  当前Collection Authorizer/Service、原成员ExecutionAuthorizer、DesignExecutionAuthorizer、
+  server-only `sds.CredentialSource`、有界HTTP、精确OSSHosts allowlist及Starter。
+  `internal/app/supplychain.OrganizationExecutionAuthorizer.AuthorizePODDesign`复用当前live IAM，
+  仅核对原成员Collection read/manage与supply-market.design，不接受任意permission。
+  CredentialSource须为每个凭据revision返回已核对的实际merchant身份；不能把浏览器请求、
+  客户body或只声明merchant的文件直接当作该证明。当前后台私密配置尚未具备。
+- Fresh bootstrap分别调用SupplyMarket和POD persistence `InstallSchema`，同一ProductDB须
+  安装当前Submission schema及Collection的`market/sds_template/sds_finished`约束。
+  运行构造只Verify，不执行DDL/迁移/种子。`productsourcing.ReceivePOD`复用Source、Catalog、
+  Collection及原命令回执的同库事务，模板保存状态为not_started，完整成品为saved。
+- `internal/app/pod/httpapi.Routes(app.Service, bind)`挂载`/api/v1/workbench/pod`，
+  module为supply-market；权限为当前read/select/design，写入还要求Collection manage。
+  CurrentIdentity、CachedRead/LiveWrite及原tenant/member范围不变；只读verify仍由服务执行
+  原live design授权。bind与市场成员入口使用同一当前身份/组织scope绑定。
+- `internal/app/runtime/pod.TemporalStarter{Client}`注入Service；
+  `NewWorker(client, app.Processor)`显式启动/停止专用worker。taskqueue为
+  `product-pod-current`，workflow为`ProductPODDesignV1`，固定ID为`pod-design/{operationID}`。
+  Process activity最大一次；后续只读Observe按15分钟wall-clock预算结束，UNKNOWN保留事实和锁。
+  已完成workflow不重跑；原操作无OSS attempt时，原成员查询可Ensure原ID，补齐SQL提交后
+  workflow未启动的缺口；任何已有attempt均不得据此重新发送。
+- Console使用既有私有BFF、scope切换保护和原操作pending记录；SDS pages为
+  `/workbench/supply/catalogs/sds`、`/design`及`/operations/{operationID}`。
+  显式要求`LISTINGKIT_SUPPLY_MARKET_ENABLED=true`和`LISTINGKIT_SDS_POD_ENABLED=true`。
+  图案预览复用react-konva/konva；服务只从原Asset批准读取实际图案，核对SHA256并完全解码，
+  client不提交Fabric、provider URL、账号或凭据。1688入口消费既有ProductAcquisition能力，
+  当前开关不足时展示不可用，不增加另一套采集owner。
+
+2026-10-10开发自检：相关domain/app/transport/HTTP及Temporal SDK测试通过；实际脱敏SDS
+响应用于manifest、saved-design和finished/task/8 renders解码测试。隔离PostgreSQL执行
+Kernel SaveStep及Finish失败回滚/成功终结、物理fence、错误意图、凭据轮换、私密资质owner
+与attachment隔离，以及真实Source/Catalog/Collection receiver回滚与成功。前端相关Vitest、
+typecheck、范围ESLint及Next生产构建通过。自检、controlled provider qualification和产品
+验收分别记录；同图案素材去重、后台凭据、共享接线、正式真实1688/SDS路径和用户验收
+尚未收敛，不将Draft PR视为完整交付。

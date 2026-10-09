@@ -167,4 +167,44 @@ func TestPostgresManualPublicationIsolationAtomicSelectionReplayAndUnknown(t *te
 	verifierFails = true
 	_, err = r.Execute(ctx, publishDraft, guard)
 	require.ErrorIs(t, err, supplymarket.ErrForbidden)
+	t.Run("qualification files retain exact private owner and attachment", func(t *testing.T) {
+		file := supplymarket.PrivateFile{ID: submit.Input.FileIDs[0], Owner: scope, ContentType: "application/pdf", SHA256: collection.Digest("qualification"), Size: 40, CreatedAt: time.Now().UTC()}
+		file.ObjectKey = supplymarket.PrivateObjectKey(scope, file.ID, file.SHA256)
+		_, err := r.SaveUpload(ctx, file, func(context.Context) error { return supplymarket.ErrForbidden })
+		require.ErrorIs(t, err, supplymarket.ErrForbidden)
+		_, err = r.ReadUpload(ctx, scope, file.ID)
+		require.ErrorIs(t, err, supplymarket.ErrNotFound, "revoked commit rolls back file ownership")
+		_, err = r.SaveUpload(ctx, file, guard)
+		require.NoError(t, err)
+		_, err = r.SaveUpload(ctx, file, guard)
+		require.NoError(t, err, "same immutable upload can replay")
+		for _, denied := range []collection.Scope{consumer, {"org-a", "actor-a", "replacement-member"}, {"org-a", "other", "other-member"}} {
+			_, err = r.ReadUpload(ctx, denied, file.ID)
+			require.ErrorIs(t, err, supplymarket.ErrNotFound)
+			_, err = r.ReadAttachedFile(ctx, denied, "", created.RecordID, file.ID)
+			require.ErrorIs(t, err, supplymarket.ErrNotFound)
+		}
+		for _, actor := range []string{"", "platform-a"} {
+			readScope := scope
+			if actor != "" {
+				readScope = collection.Scope{}
+			}
+			read, err := r.ReadAttachedFile(ctx, readScope, actor, created.RecordID, file.ID)
+			require.NoError(t, err)
+			require.Equal(t, file.Owner, read.Owner)
+			require.Equal(t, file.SHA256, read.SHA256)
+		}
+		unattached := file
+		unattached.ID = uuid.NewString()
+		unattached.ObjectKey = supplymarket.PrivateObjectKey(scope, unattached.ID, unattached.SHA256)
+		_, err = r.SaveUpload(ctx, unattached, guard)
+		require.NoError(t, err)
+		_, err = r.ReadAttachedFile(ctx, collection.Scope{}, "platform-a", created.RecordID, unattached.ID)
+		require.ErrorIs(t, err, supplymarket.ErrNotFound, "platform record access does not expose unattached uploads")
+		changed := file
+		changed.Owner = consumer
+		changed.ObjectKey = supplymarket.PrivateObjectKey(consumer, changed.ID, changed.SHA256)
+		_, err = r.SaveUpload(ctx, changed, guard)
+		require.ErrorIs(t, err, supplymarket.ErrConflict, "an immutable upload ID cannot be reassigned")
+	})
 }
