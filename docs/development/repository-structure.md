@@ -83,6 +83,7 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
     - `account-acceptance-fixture`
     - `account-audit-ledger-schema-init`
     - `agent-configuration-schema-init`
+    - `agent-customization-schema-init`
     - `ai-workbench-schema-init`
     - `notification-center-schema-init`
     - `product-agent-credential-provision`
@@ -120,6 +121,7 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
   - `knowledge-schema-init` 由 `deployments/docker/account-compose` 的可选 Knowledge overlay 维护，使用私密 `knowledge_owner` 配置通过 Goose 初始化新空 `knowledge` 数据库，并授予 `knowledge_runtime` 所需列权限；运行进程不执行 DDL，不迁移历史数据。依据 #557 / [Knowledge V1 架构](../architecture/agent-knowledge-context-v1.md)。
   - `ecoservices-schema-init` 的构建归属为 `deployments/docker/Dockerfile.account-compose` 的 `schema-init` target；安装者显式提供私密 `ECOSERVICES_SCHEMA_DSN`，仅在名为 `ecoservices` 的专属新数据库安装 schema 并授予既有 `ecoservices_runtime` 最小权限。Compose 不自动调用，不创建申请、订单或付款，不迁移旧数据。依据 #603 / [生态服务 V1 架构](../architecture/ecosystem-services-v1.md)。
   - `agent-configuration-schema-init` 的构建归属为 `deployments/docker/Dockerfile.account-compose` 的 `schema-init` target；安装人员通过私密 `AGENT_CONFIGURATION_SCHEMA_DSN` 与显式 `--runtime-role` 单独运行，只初始化同 ProductAgentDB 的新配置 schema 并授予最小权限。Compose 不自动调用，不自动启用企业，不迁移旧数据。依据 #570 / [企业智能体配置 V1](../architecture/organization-agent-configuration-v1.md)。
+  - `agent-customization-schema-init` 的构建归属为 `deployments/docker/Dockerfile.account-compose` 的 `schema-init` target；安装人员显式提供私密 `AGENT_CUSTOMIZATION_SCHEMA_DSN` 和既有 `--runtime-role`，只初始化独立空库的人工需求 schema 与最小权限。Compose 不自动调用，不创建需求或交易，不迁移旧数据。依据 #611 / [智能体定制 V1](../architecture/agent-customization-v1.md)。
   - `product-agent-credential-provision` 由 `scripts/product-agent-credential-provision.ps1` 显式委托；部署者用私有 manifest 与私有凭据输入，通过同一 ProductAgentDB 的独立受限写入角色配置标题组织行。它不自动启用 Agent 或执行付费调用；准入条件见 [标题诊断试用交接](../operations/product-agent-trial.md)。
   - 不再新增临时调试可执行程序。
   - `source-account-ownership-preflight` 由 `scripts/source-account-ownership-preflight.ps1` 维护，是历史 Source Account 迁移的只读运维预检，不是 #301 当前新系统开发前置；两个数据库连接从环境注入，不执行 backfill 或生产 cutover。运行说明见 `docs/operations/source-account-ownership-preflight.md`。保留历史运维工具不恢复已取消的迁移授权。

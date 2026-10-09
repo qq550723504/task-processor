@@ -13,6 +13,7 @@ COPY cmd/issue36-local-trial-init ./cmd/issue36-local-trial-init
 COPY cmd/knowledge-schema-init ./cmd/knowledge-schema-init
 COPY cmd/ecoservices-schema-init ./cmd/ecoservices-schema-init
 COPY cmd/agent-configuration-schema-init ./cmd/agent-configuration-schema-init
+COPY cmd/agent-customization-schema-init ./cmd/agent-customization-schema-init
 COPY cmd/account-audit-ledger-schema-init ./cmd/account-audit-ledger-schema-init
 COPY cmd/notification-center-schema-init ./cmd/notification-center-schema-init
 COPY cmd/current-application ./cmd/current-application
@@ -32,6 +33,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/store-center-sche
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/knowledge-schema-init ./cmd/knowledge-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/ecoservices-schema-init ./cmd/ecoservices-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/agent-configuration-schema-init ./cmd/agent-configuration-schema-init && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/agent-customization-schema-init ./cmd/agent-customization-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/account-audit-ledger-schema-init ./cmd/account-audit-ledger-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/notification-center-schema-init ./cmd/notification-center-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/current-application ./cmd/current-application && \
@@ -63,6 +65,7 @@ COPY internal/app/listingrecordstore/schema.sql /etc/issue36-listing-schema.sql
 COPY --from=go-builder /out/knowledge-schema-init /usr/local/bin/knowledge-schema-init
 COPY --from=go-builder /out/ecoservices-schema-init /usr/local/bin/ecoservices-schema-init
 COPY --from=go-builder /out/agent-configuration-schema-init /usr/local/bin/agent-configuration-schema-init
+COPY --from=go-builder /out/agent-customization-schema-init /usr/local/bin/agent-customization-schema-init
 COPY --from=go-builder /out/account-audit-ledger-schema-init /usr/local/bin/account-audit-ledger-schema-init
 COPY --from=go-builder /out/notification-center-schema-init /usr/local/bin/notification-center-schema-init
 COPY --from=go-builder /out/referral-schema-init /usr/local/bin/referral-schema-init

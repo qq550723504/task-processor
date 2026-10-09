@@ -57,6 +57,8 @@ Console BFF 使用现有 `LISTINGKIT_SERVICE_API_BASE`（路径 `/api/v1`）、�
 
 RUN-1 仍是原有身份/路由隔离环境，不因本功能自动增加 schema、角色或可选模块。共享或生产环境启用须按对应环境授权处理。
 
+容器构建复用 `deployments/docker/Dockerfile.account-compose` 的 `schema-init` target，其中提供 `/usr/local/bin/agent-customization-schema-init`。Compose 的默认安装动作不会自动调用本命令；获准安装独立空库后，使用私有环境文件及该显式 entrypoint 按上述相同参数执行。
+
 ## 保存与失败处理
 
 `agent_customization` schema 整体保存需求、附件 bytes、不可变事件和命令回执，须纳入正常 PostgreSQL 备份/恢复范围。正常停启保留数据库即可；本功能不提供删除 API，不要求旧业务迁移。
