@@ -23,12 +23,15 @@ const sensitiveName = /(?:cookie|authorization|password|passwd|token|session|pro
 const attribute = z.strictObject({ name: text.min(1).refine(v => !sensitiveName.test(v)), value: text });
 const price = z.strictObject({ amount: decimal, currency: text.regex(/^[A-Z]{3}$/).nullable(), minQuantity: decimal.nullable().optional() });
 const attrs = z.array(attribute).max(256).refine(a => new Set(a.map(v => v.name)).size === a.length);
+function publicHostname(hostname: string) {
+  return /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(hostname)
+    && !/(?:localhost|\.local|\.internal|\.test|\.invalid|\.localhost|\.example)$/i.test(hostname);
+}
 export function publicImage(value: string) {
   try {
     const url = new URL(value);
     return url.protocol === 'https:' && !url.username && !url.password && !url.port && !url.search && !url.hash
-      && /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(url.hostname)
-      && !/(?:localhost|\.local|\.internal|\.test|\.invalid|\.localhost|\.example)$/i.test(url.hostname)
+      && publicHostname(url.hostname)
       && !sensitiveName.test(url.pathname) && !/%(?:00|0a|0d)/i.test(value);
   } catch { return false; }
 }
@@ -63,6 +66,10 @@ export function validateCapture(value: unknown): CapturePayload {
 export function appURL(input: string, fixture = false) {
   const url = new URL(input);
   if (url.username || url.password || url.search || url.hash || url.pathname !== '/capture/1688') fail('INVALID_APP_URL');
-  if (fixture ? url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port : url.protocol !== 'https:' || !publicImage(`${url.origin}/capture`)) fail('INVALID_APP_URL');
+  // This is the explicit build-time application receiver, not a captured image.
+  // The installed HTTPS loopback receiver binds a non-default port; runtime
+  // messaging still checks its exact compiled origin, path, frame and tab.
+  const applicationHost = publicHostname(url.hostname) || (url.hostname === 'localhost' && !!url.port);
+  if (fixture ? url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port : url.protocol !== 'https:' || !applicationHost) fail('INVALID_APP_URL');
   return url.href;
 }

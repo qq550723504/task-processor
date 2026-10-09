@@ -27,9 +27,10 @@ The private native manifest adds:
 `packageDirectory` is optional. It contains the existing build script's ZIP and
 `release.json`. The recorded full capture URL must match `captureAppURL` exactly;
 the SHA verifies the ZIP and its compiled receiver. An invalid or missing record
-leaves downloads unavailable. The existing nonfixture extension builder rejects
-localhost/private hosts: this loopback trial has no release download. Do not relabel
-a fixture as a release or weaken the destination boundary. Online/local capture
+leaves downloads unavailable. The nonfixture extension builder accepts the fixed
+HTTPS application receiver, including a trusted localhost installation with an
+explicit non-default port. Use the actual installation URL; image admission still
+rejects private/local hosts. Do not relabel a fixture as a release. Online/local capture
 availability derives from the actually injected acquisition and receiver modules;
 enterprise activation does not authorize their use or prove provider success.
 
