@@ -74,7 +74,7 @@ type Capabilities struct {
 
 func Scope(ctx context.Context) (o.Scope, error) {
 	id, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
-	s := o.Scope{id.EffectiveOrganizationID, id.UserID, id.EffectiveMemberID}
+	s := o.Scope{OrganizationID: id.EffectiveOrganizationID, ActorID: id.UserID, MemberID: id.EffectiveMemberID}
 	if !ok || !s.Valid() || id.TenantID != s.OrganizationID || !time.Now().Before(id.TokenExpiresAt) {
 		return s, o.ErrForbidden
 	}

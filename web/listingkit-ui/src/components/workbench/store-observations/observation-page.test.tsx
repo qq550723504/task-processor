@@ -144,6 +144,9 @@ it("reuses the captured sync key after a lost response", async () => {
     await screen.findByRole("button", { name: "同步商品" }),
   );
   await screen.findByRole("button", { name: "重试原同步" });
+  expect(
+    screen.queryByRole("button", { name: "清除此页同步记录" }),
+  ).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "重试原同步" }));
   await waitFor(() =>
     expect(
@@ -155,6 +158,54 @@ it("reuses the captured sync key after a lost response", async () => {
     new Headers(posts[1][1].headers).get("Idempotency-Key"),
   );
   expect(posts[0][1].body).toEqual(posts[1][1].body);
+});
+it.each([
+  ["NOT_FOUND", 404],
+  ["PERMISSION_DENIED", 403],
+])("allows explicitly discarding an inaccessible saved receipt (%s)", async (code, status) => {
+  const storageKey = "store-observations:org-a:actor-a:products";
+  const saved = JSON.stringify({ key: id, input: { kind: "products", stores: [] } });
+  sessionStorage.setItem(storageKey, saved);
+  const fetch = baseFetch();
+  const original = fetch.getMockImplementation()!;
+  fetch.mockImplementation((path: string, init?: RequestInit) =>
+    path.includes("/commands/")
+      ? Promise.resolve(Response.json({ code }, { status }))
+      : original(path, init),
+  );
+  vi.stubGlobal("fetch", fetch);
+  renderPage();
+  const discard = await screen.findByRole("button", { name: "清除此页同步记录" });
+  expect(sessionStorage.getItem(storageKey)).toBe(saved);
+  expect(screen.getByRole("button", { name: "同步商品" })).toBeDisabled();
+  await userEvent.click(discard);
+  expect(sessionStorage.getItem(storageKey)).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "同步商品" }));
+  await waitFor(() => expect(fetch.mock.calls.filter((c) => c[1]?.method === "POST")).toHaveLength(1));
+  const post = fetch.mock.calls.find((c) => c[1]?.method === "POST")!;
+  expect(new Headers(post[1].headers).get("Idempotency-Key")).not.toBe(id);
+  expect(JSON.parse(sessionStorage.getItem(storageKey)!).key).toBe(new Headers(post[1].headers).get("Idempotency-Key"));
+});
+it("keeps the saved key when receipt lookup has a transient dependency failure", async () => {
+  const storageKey = "store-observations:org-a:actor-a:products";
+  const saved = JSON.stringify({ key: id, input: { kind: "products", stores: [] } });
+  sessionStorage.setItem(storageKey, saved);
+  const fetch = baseFetch();
+  const original = fetch.getMockImplementation()!;
+  fetch.mockImplementation((path: string, init?: RequestInit) =>
+    path.includes("/commands/")
+      ? Promise.resolve(Response.json({ code: "DEPENDENCY_UNAVAILABLE" }, { status: 503 }))
+      : original(path, init),
+  );
+  vi.stubGlobal("fetch", fetch);
+  renderPage();
+  await screen.findByRole("button", { name: "重试原同步" });
+  expect(screen.queryByRole("button", { name: "清除此页同步记录" })).not.toBeInTheDocument();
+  expect(sessionStorage.getItem(storageKey)).toBe(saved);
+  await userEvent.click(screen.getByRole("button", { name: "重试原同步" }));
+  await waitFor(() => expect(fetch.mock.calls.filter((c) => c[1]?.method === "POST")).toHaveLength(1));
+  const post = fetch.mock.calls.find((c) => c[1]?.method === "POST")!;
+  expect(new Headers(post[1].headers).get("Idempotency-Key")).toBe(id);
 });
 it.each([false, true])(
   "keeps orders with unknown package numbers visible and tracks only actual packages (valid=%s)",

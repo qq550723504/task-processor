@@ -13,12 +13,14 @@ func InstallObservations(ctx context.Context, records *gorm.DB) error {
 	if records == nil {
 		return errors.New("Store observation schema-owner unavailable")
 	}
-	var count int64
-	if err := records.WithContext(ctx).Table("public.workbench_stores").Count(&count).Error; err != nil || count != 0 {
-		return errors.New("observation initialization requires a fresh empty Store instance")
-	}
-	if err := observationschema.Install(ctx, records); err != nil {
-		return err
-	}
-	return observationschema.GrantRuntime(ctx, records, "store_center_runtime")
+	return records.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Table("public.workbench_stores").Count(&count).Error; err != nil || count != 0 {
+			return errors.New("observation initialization requires a fresh empty Store instance")
+		}
+		if err := observationschema.Install(ctx, tx); err != nil {
+			return err
+		}
+		return observationschema.GrantRuntime(ctx, tx, "store_center_runtime")
+	})
 }

@@ -98,7 +98,7 @@ func (a Authorization) AuthorizeObservation(ctx context.Context, s storecenter.O
 	default:
 		return storecenter.ObservationAuthorization{}, storecenter.ErrNotFound
 	}
-	scope := o.Scope{s.OrganizationID, s.ActorID, s.MemberID}
+	scope := o.Scope{OrganizationID: s.OrganizationID, ActorID: s.ActorID, MemberID: s.MemberID}
 	roles, e := a.current(ctx, scope)
 	if e == nil {
 		e = a.permissions(ctx, scope, kind, s.Sync, roles)

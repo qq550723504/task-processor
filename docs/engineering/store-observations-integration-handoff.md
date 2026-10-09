@@ -4,7 +4,7 @@ Issue #614 / PR #615；Design Basis 为 `store-center-platform-observations-v1.m
 
 ## 注入与生命周期
 
-1. 复用当前 Store 专用数据库的 serving pool，不开第二数据库连接或 schema owner pool 供业务运行。仅在授权的新空实例显式初始化时调用 `sheinobservations.Install(ctx, schemaOwnerDB)` 与 `GrantRuntime(ctx, schemaOwnerDB, servingRole)`；已经存在 schema 时拒绝迁移。
+1. 复用当前 Store 专用数据库的 serving pool，不开第二数据库连接或 schema owner pool 供业务运行。仅在授权的新空实例显式初始化时由当前 schema-owner 命令调用 `storeschema.InstallObservations(ctx, schemaOwnerDB)`；空实例检查、观察 schema 与最小 serving grant 在同一 PostgreSQL 事务中完成，授权失败回滚后可以重新初始化，已经存在 schema 时拒绝迁移。
 2. 所有当前 Store / Supply / resource 的 schema preflight 同时消费相同的 observation-enabled 清单。`search_path` 仍固定 `public`；新增四张表在 `shein_observations`，都是 schema-qualified 查询。运行角色只有该 schema 的 USAGE，commands 的 SELECT/INSERT，其他三表再加 UPDATE；没有 owner、CREATE、DELETE、TRUNCATE、REFERENCES、TRIGGER。不可只放宽新模块 verifier 而让旧 Store verifier 拒绝新增授权。
 3. `sheinobservations.NewRepository(ctx, servingDB)` 验证观察 schema 与权限；constructor 不安装 schema、不 AutoMigrate。缺表、角色过权或未启用时不要创建可用模块。
 4. `storeobservationsapp.Authorization` 注入当前 exact ZITADEL client、service token supplier、ProjectID、`*authz.ListingKitAuthorizer` 和组织状态 checker。原 MemberID 始终来自 verified request 或持久命令，worker 只复核当前 exact grant。

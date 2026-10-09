@@ -172,7 +172,7 @@ func (s *Service) Begin(ctx context.Context, scope Scope, key string, in BeginIn
 			}
 		}
 	}
-	return cmd, nil
+	return s.command(ctx, scope, cmd)
 }
 func (s *Service) command(ctx context.Context, scope Scope, cmd Command) (Command, error) {
 	if cmd.Owner != scope {
@@ -189,16 +189,30 @@ func (s *Service) command(ctx context.Context, scope Scope, cmd Command) (Comman
 	for _, id := range allowed {
 		set[id] = true
 	}
+	visible := make([]Sync, 0, len(cmd.Syncs))
+	stores := make([]string, 0, len(cmd.Syncs))
 	for _, child := range cmd.Syncs {
 		if !set[child.StoreID] {
-			return Command{}, ErrNotFound
+			continue
 		}
 		if child.Binding.ApplicationID != "" {
 			if _, e := s.Access.Open(ctx, scope, child.StoreID, child.Kind, false, &child.Binding); e != nil {
+				if errors.Is(e, ErrNotFound) || errors.Is(e, ErrForbidden) || errors.Is(e, ErrConflict) || errors.Is(e, ErrUnsupported) {
+					continue
+				}
 				return Command{}, e
 			}
 		}
+		visible = append(visible, child)
+		stores = append(stores, child.StoreID)
 	}
+	if len(visible) == 0 {
+		return Command{}, ErrNotFound
+	}
+	// This is a current-access projection, not a rewrite of the immutable parent
+	// receipt. Its original hash and selected set still govern same-key replay.
+	cmd.Syncs = visible
+	cmd.Input.Stores = stores
 	return cmd, nil
 }
 func (s *Service) Command(ctx context.Context, scope Scope, key string) (Command, error) {

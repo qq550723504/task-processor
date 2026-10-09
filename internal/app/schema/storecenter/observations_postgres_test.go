@@ -37,6 +37,12 @@ func TestObservationExplicitInstallRejectsBusinessFactsAndExistingSchema(t *test
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = pool.Close() })
 			require.NoError(t, Migrate(ctx, db))
+			if !nonempty {
+				require.Error(t, InstallObservations(ctx, db), "missing serving role must fail provisioning")
+				var absent bool
+				require.NoError(t, db.Raw(`SELECT to_regnamespace('shein_observations') IS NULL`).Scan(&absent).Error)
+				require.True(t, absent, "failed grants must roll back the schema so a fresh setup can retry")
+			}
 			require.NoError(t, db.Exec(`CREATE ROLE store_center_runtime`).Error)
 			if nonempty {
 				repo, err := currentstore.NewMemberScopedStoreRepository(db, observationInstallMember{})

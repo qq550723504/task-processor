@@ -29,7 +29,7 @@ func TestOriginalMembershipLiveAuthorizationAndOutage(t *testing.T) {
 	a := Authorization{Client: iam, Permissions: policy, ProjectID: "project-a", ServiceToken: func(context.Context) (string, error) { return "private", nil }}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	scope := o.Scope{"org-a", "actor-a", "member-a"}
+	scope := o.Scope{OrganizationID: "org-a", ActorID: "actor-a", MemberID: "member-a"}
 	roles, e := a.current(ctx, scope)
 	require.NoError(t, e)
 	require.Equal(t, []string{"role-a"}, roles)

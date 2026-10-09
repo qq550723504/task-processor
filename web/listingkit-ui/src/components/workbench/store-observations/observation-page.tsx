@@ -61,6 +61,10 @@ const statusLabels: Record<ObservationSync["status"], string> = {
   suspended: "同步暂停",
 };
 const platformURL = "https://sellerhub.shein.com/";
+const inaccessibleReceipt = (error: unknown) =>
+  error instanceof ObservationError &&
+  ((error.status === 404 && error.code === "NOT_FOUND") ||
+    (error.status === 403 && error.code === "PERMISSION_DENIED"));
 export function ObservationPage({ kind }: { kind: ObservationKind }) {
   const context = useWorkbenchContext();
   const org = context.effectiveOrganization?.id ?? "",
@@ -230,6 +234,27 @@ function ScopedPage({
     retry: false,
   });
   const isActive = command.data?.syncs.some((s) => !terminal(s)) ?? false;
+  const canDiscardIntent =
+    intent !== null &&
+    !command.data &&
+    !command.isFetching &&
+    inaccessibleReceipt(command.error) &&
+    !sync.isPending &&
+    (!sync.error || inaccessibleReceipt(sync.error));
+  const discardIntent = () => {
+    if (!canDiscardIntent) return;
+    try {
+      sessionStorage.removeItem(storageKey);
+    } catch {
+      setStorageFailed(true);
+      return;
+    }
+    setStorageFailed(false);
+    setIntent(null);
+    sync.reset();
+    ensure.reset();
+    queryClient.removeQueries({ queryKey: commandKey, exact: true });
+  };
   const begin = () => {
     if (intent && !command.data) return;
     if (isActive) return;
@@ -454,7 +479,9 @@ function ScopedPage({
             <p role="status">
               {sync.isPending
                 ? "正在提交同步…"
-                : "同步结果待核实。保留原操作，可查询回执或重试原同步。"}
+                : canDiscardIntent
+                  ? "原同步回执不存在或当前成员无权访问。可清除此页记录后发起新同步；旧同步不会被取消。"
+                  : "同步结果待核实。保留原操作，可查询回执或重试原同步。"}
             </p>
           )}
           {!command.data && !sync.isPending ? (
@@ -469,6 +496,11 @@ function ScopedPage({
               <Button variant="ghost" onClick={() => void command.refetch()}>
                 查询原回执
               </Button>
+              {canDiscardIntent ? (
+                <Button variant="ghost" onClick={discardIntent}>
+                  清除此页同步记录
+                </Button>
+              ) : null}
             </div>
           ) : null}
           {ensure.isError ? (
