@@ -37,11 +37,21 @@ func fixtureDigest(value any) string {
 
 func imageSetCandidateFixture(t *testing.T) (imageagent.RunProjection, *originalSetFactFixture, productasset.SourceSelection, productasset.ImageSetChoice) {
 	t.Helper()
+	return imageSetCandidateFixtureWithSource(t, nil)
+}
+func imageSetCandidateFixtureWithSource(t *testing.T, data []byte) (imageagent.RunProjection, *originalSetFactFixture, productasset.SourceSelection, productasset.ImageSetChoice) {
+	t.Helper()
 	hash := strings.Repeat("a", 64)
-	catalog, err := imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{ProductContext: imageagent.ProductContextRef{ProductID: "product", SourceSnapshotVersion: 1}, Assets: []imageagent.AuthorizedAsset{{ID: "source", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example.org/original.png", Width: 1024, Height: 1024}}})
+	sourceHash, sourceBytes := hash, int64(100)
+	if len(data) > 0 {
+		sum := sha256.Sum256(data)
+		sourceHash = hex.EncodeToString(sum[:])
+		sourceBytes = int64(len(data))
+	}
+	catalog, err := imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{ProductContext: imageagent.ProductContextRef{ProductID: "product", Title: "Exact product", SourceSnapshotVersion: 1}, Assets: []imageagent.AuthorizedAsset{{ID: "source", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example.org/original.png", Width: 1024, Height: 1024}}})
 	require.NoError(t, err)
 	run := imageagent.Run{ID: "392ed0a2-0f01-4c94-9aa4-eb50271fae9c", TenantID: "org", UserID: "actor", MemberID: "member", BusinessTaskID: "operation", ScopeProtocol: imageagent.OrganizationScopeProtocol, TargetPlatform: "product", Mode: imageagent.RunModeManual, ActivePlanRevision: 1, Status: imageagent.RunStatusAwaitingFinalApproval, StartedAt: time.Now().UTC().Truncate(time.Microsecond)}
-	recipe := &imageagent.ImageSlotRecipe{Purpose: "product_overview", Background: "white", Language: "zh", Placement: imageagent.ImagePlacement{Group: "detail", Order: 1}, PromptVersion: imageagent.ImageSetSchema, Prompt: "Show the exact product.", References: []imageagent.ImageSourceObservation{{AssetID: "source", SHA256: hash, MediaType: "image/png", Bytes: 100, Width: 1024, Height: 1024}}, Quote: imageagent.ImageGenerationQuote{Provider: "grsai", Model: "gpt-image-2.5", Protocol: "grsai-json-sync-v1", Resolution: "1024x1024", Quality: "auto", PriceVersion: "price", Points: 12, RouteReference: "route", CredentialReference: "credential", ConfigurationVersion: "config"}}
+	recipe := &imageagent.ImageSlotRecipe{Purpose: "product_overview", Background: "white", Language: "zh", Placement: imageagent.ImagePlacement{Group: "detail", Order: 1}, PromptVersion: imageagent.ImageSetSchema, Prompt: "Show the exact product.", References: []imageagent.ImageSourceObservation{{AssetID: "source", SHA256: sourceHash, MediaType: "image/png", Bytes: sourceBytes, Width: 1024, Height: 1024}}, Quote: imageagent.ImageGenerationQuote{Provider: "grsai", Model: "gpt-image-2.5", Protocol: "grsai-json-sync-v1", Resolution: "1024x1024", Quality: "auto", PriceVersion: "price", Points: 12, RouteReference: "route", CredentialReference: "credential", ConfigurationVersion: "config"}}
 	slot := imageagent.Slot{ID: "overview", Role: imageagent.SlotRoleDetail, SourceAssetIDs: []string{"source"}, IdempotencyKey: "overview", Status: imageagent.SlotStatusPending, Recipe: recipe}
 	failed := slot
 	failed.ID, failed.IdempotencyKey = "closeup", "closeup"
@@ -71,7 +81,7 @@ func imageSetCandidateFixture(t *testing.T) (imageagent.RunProjection, *original
 	require.NoError(t, err)
 	fact, _, err = fact.BeginDispatch()
 	require.NoError(t, err)
-	fact, err = fact.RecordSuccess(imageagent.GenerationSuccess{ResponseID: "response", ResultDigest: hash, ResultURL: "https://output.example.org/result.png"})
+	fact, err = fact.RecordSuccess(imageagent.GenerationSuccess{ResponseID: "response", RequestID: "request", ResultDigest: hash, ResultURL: "https://output.example.org/result.png"})
 	require.NoError(t, err)
 	fact, err = fact.BindSettlement(imageagent.GenerationSettlementReceipt{IntentID: fact.IntentID, Fingerprint: fact.Fingerprint, OperationID: "image-finalize:" + fact.IntentID, ReservationID: "reservation", State: "committed", Points: 12, ProofDigest: fact.TerminalProofDigest()})
 	require.NoError(t, err)
@@ -90,7 +100,7 @@ func imageSetCandidateFixture(t *testing.T) (imageagent.RunProjection, *original
 	require.NoError(t, err)
 	resultFingerprint, err := imageagent.SlotEffectV3PublishedResultFingerprint(published)
 	require.NoError(t, err)
-	effect := imageagent.SlotEffectV3Attempt{Identity: identity, IdempotencyKey: execution.IdempotencyKey, InputFingerprint: imageagent.SlotExecutionFingerprint(execution), Phase: imageagent.SlotEffectV3PublicationComplete, Published: published, ResultFingerprint: resultFingerprint, FinalManifest: imageagent.FinalManifest{Assets: []imageagent.PublishedAssetRef{{ObjectKey: candidate.DurableAsset.ObjectKey, SHA256: hash, SizeBytes: 100, ContentType: "image/png", Width: 1024, Height: 1024, SourceAssetID: "source", Operations: []string{"render_source_edit"}, ProviderReceiptID: "response"}}}}
+	effect := imageagent.SlotEffectV3Attempt{Identity: identity, IdempotencyKey: execution.IdempotencyKey, InputFingerprint: imageagent.SlotExecutionFingerprint(execution), Phase: imageagent.SlotEffectV3PublicationComplete, Published: published, ResultFingerprint: resultFingerprint, FinalManifest: imageagent.FinalManifest{Assets: []imageagent.PublishedAssetRef{{ObjectKey: candidate.DurableAsset.ObjectKey, SHA256: hash, SizeBytes: 100, ContentType: "image/png", Width: 1024, Height: 1024, SourceAssetID: "source", Operations: []string{"render_source_edit"}, ProviderReceiptID: "request"}}}}
 	source := productasset.SourceSelection{ContextKind: "acquisition", TenantID: run.TenantID, ActorID: run.UserID, MemberID: run.MemberID, ItemID: "operation", ProductKey: "product", OriginalPublicationID: "publication", OriginalSnapshotVersion: 1, EffectiveCatalogVersion: 1, TargetPlatform: "product"}
 	choice := productasset.ImageSetChoice{Kind: "generated", RunID: run.ID, AssetID: candidate.AssetID, SlotID: slot.ID, PlanRevision: 1, Attempt: 1, ResultDigest: projection.ResultDigest, Presentation: productasset.ImagePresentation{Group: "detail", Order: 1}}
 	return projection, &originalSetFactFixture{fact: fact, effect: effect}, source, choice

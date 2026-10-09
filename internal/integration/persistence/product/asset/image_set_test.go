@@ -2,6 +2,7 @@ package assetpersistence
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/stretchr/testify/require"
 	"strings"
 	productasset "task-processor/internal/product/asset"
@@ -62,4 +63,35 @@ func TestImageSetCommitPersistsOrderAndUsesExactHeadCAS(t *testing.T) {
 	bad := setCommit("bad", productasset.ImageInventoryHead{ActionID: "next", PayloadHash: strings.Repeat("a", 64)})
 	_, err = repo.CommitApproval(ctx, bad)
 	require.ErrorIs(t, err, productasset.ErrApprovalConflict)
+}
+
+func TestEmptyImageInventorySerializesAsAnArrayAndRetainsThePreviousHead(t *testing.T) {
+	db := openRepositoryTestDB(t)
+	require.NoError(t, AutoMigrate(db))
+	repo, err := NewRepository(db)
+	require.NoError(t, err)
+	reader := repo.(productasset.ImageSetInventoryReader)
+	commit := setCommit("existing", productasset.ImageInventoryHead{})
+	scope := productasset.InventoryScope{TenantID: commit.TenantID, ProductKey: commit.ProductKey, TargetPlatform: "product", SourceSnapshotVersion: 1}
+	for _, existing := range []bool{false, true} {
+		if existing {
+			_, err = repo.CommitApproval(context.Background(), commit)
+			require.NoError(t, err)
+			scope.SourceSnapshotVersion = 2
+		}
+		inventory, err := reader.ReadImageSetInventory(context.Background(), scope)
+		require.NoError(t, err)
+		require.NotNil(t, inventory.Assets)
+		encoded, err := json.Marshal(inventory)
+		require.NoError(t, err)
+		var decoded map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(encoded, &decoded))
+		require.JSONEq(t, `[]`, string(decoded["assets"]))
+		if existing {
+			require.Equal(t, commit.ActionID, inventory.Head.ActionID)
+			require.NotEmpty(t, inventory.Head.PayloadHash)
+		} else {
+			require.Empty(t, inventory.Head)
+		}
+	}
 }

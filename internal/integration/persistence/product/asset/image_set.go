@@ -51,7 +51,7 @@ func (r *repository) ReadImageSetInventory(ctx context.Context, scope productass
 	var head ApprovedInventoryHeadRecord
 	err := r.db.WithContext(ctx).Where("tenant_id = ? AND product_key = ? AND target_platform = ?", scope.TenantID, scope.ProductKey, scope.TargetPlatform).Take(&head).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return productasset.ImageSetInventory{Scope: scope}, nil
+		return productasset.ImageSetInventory{Scope: scope, Assets: []productasset.ApprovedAsset{}}, nil
 	}
 	if err != nil {
 		return productasset.ImageSetInventory{}, mapRepositoryError("read selected inventory head", err)
@@ -67,7 +67,7 @@ func (r *repository) ReadImageSetInventory(ctx context.Context, scope productass
 	if err != nil {
 		return productasset.ImageSetInventory{}, productasset.ErrRepositoryStateInvalid
 	}
-	result := productasset.ImageSetInventory{Scope: scope, Head: productasset.ImageInventoryHead{ActionID: commit.ActionID, PayloadHash: hash}}
+	result := productasset.ImageSetInventory{Scope: scope, Assets: []productasset.ApprovedAsset{}, Head: productasset.ImageInventoryHead{ActionID: commit.ActionID, PayloadHash: hash}}
 	if commit.SourceSnapshotVersion == scope.SourceSnapshotVersion {
 		result.Assets = commit.Assets
 	}

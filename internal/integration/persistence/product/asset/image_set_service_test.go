@@ -4,6 +4,8 @@ import (
 	"context"
 	"github.com/stretchr/testify/require"
 	"strings"
+	imageapp "task-processor/internal/app/imageagent"
+	"task-processor/internal/marketplace/shein/goods"
 	productasset "task-processor/internal/product/asset"
 	"testing"
 )
@@ -81,7 +83,7 @@ func setSelectionService(t *testing.T, sources *setSourceReader, candidates *set
 	require.NoError(t, AutoMigrate(db))
 	repo, err := NewRepository(db)
 	require.NoError(t, err)
-	service, err := productasset.NewImageSetService(sources, repo, repo.(productasset.ImageSetInventoryReader), repo.(productasset.ApprovalCommitReader), candidates, nil)
+	service, err := productasset.NewImageSetService(sources, repo, repo.(productasset.ImageSetInventoryReader), repo.(productasset.ApprovalCommitReader), candidates, genericMaterialIdentity{})
 	require.NoError(t, err)
 	return service, repo
 }
@@ -232,4 +234,41 @@ func TestImageSetSelectionRejectsUnknownCandidateAndConflictingResultDigests(t *
 			require.ErrorIs(t, err, productasset.ErrApprovedAssetsNotReady)
 		})
 	}
+}
+
+type genericMaterialIdentity struct{}
+
+func (genericMaterialIdentity) ResolveImageSetTarget(context.Context, productasset.SourceSelection, *productasset.ImageSetTarget, []productasset.ApprovedAsset) (productasset.ImageSetTargetResolution, error) {
+	return productasset.ImageSetTargetResolution{}, nil
+}
+
+type originalImageProbe struct{ calls int }
+
+func (p *originalImageProbe) Probe(_ context.Context, a productasset.ApprovedAsset, typ int) (goods.OfficialImageObservation, error) {
+	p.calls++
+	return goods.OfficialImageObservation{AssetID: a.ID, SourceURL: a.URL, Type: typ, Width: 900, Height: 1200, ContentHash: strings.Repeat("a", 64), Bytes: 123, MediaType: "image/png"}, nil
+}
+func TestGenericSourceSelectionProbesRealDimensionsThroughTheMaterialResolver(t *testing.T) {
+	sources, input := setSelectionFixture()
+	sources.selection.Images[0].Width, sources.selection.Images[0].Height = 0, 0
+	input.Choices = input.Choices[:1]
+	candidates := &setCandidateReader{}
+	_, repo := setSelectionService(t, sources, candidates)
+	probe := &originalImageProbe{}
+	service, err := productasset.NewImageSetService(sources, repo, repo.(productasset.ImageSetInventoryReader), repo.(productasset.ApprovalCommitReader), candidates, imageapp.ImageSetMaterialTargetResolver{Images: probe})
+	require.NoError(t, err)
+	preview, err := service.Preview(context.Background(), input)
+	require.NoError(t, err)
+	require.Equal(t, 900, preview.Assets[0].Width)
+	require.Equal(t, 1200, preview.Assets[0].Height)
+	input.SelectionDigest = preview.Digest
+	receipt, err := service.Select(context.Background(), input)
+	require.NoError(t, err)
+	inventory, err := repo.(productasset.ImageSetInventoryReader).ReadImageSetInventory(context.Background(), productasset.InventoryScope{TenantID: "org", ProductKey: "product", TargetPlatform: "product", SourceSnapshotVersion: 1})
+	require.NoError(t, err)
+	require.Equal(t, receipt.AssetIDs[0], inventory.Assets[0].ID)
+	require.Equal(t, 900, inventory.Assets[0].Width)
+	require.Equal(t, 1200, inventory.Assets[0].Height)
+	require.Zero(t, candidates.calls)
+	require.Equal(t, 2, probe.calls)
 }

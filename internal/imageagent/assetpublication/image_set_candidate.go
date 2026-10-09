@@ -96,7 +96,9 @@ func (r *ImageSetCandidateReader) ReadImageSetCandidate(ctx context.Context, sou
 		if err != nil || !reflect.DeepEqual(published, effect.Published) || imageagent.ValidatePublishedAssetRefForSlot(execution, effect.FinalManifest.Assets[0], 0) != nil {
 			return bad()
 		}
-		if effect.FinalManifest.Assets[0].ProviderReceiptID != fact.Success.ResponseID {
+		// The materialization contract carries the HTTP request ID. The job
+		// ID is separately bound by the succeeded fact and settlement proof.
+		if effect.FinalManifest.Assets[0].ProviderReceiptID != fact.Success.RequestID {
 			return bad()
 		}
 		url, err := imageagent.ResolvePublishedAssetURL(execution, candidate.DurableAsset, 0, r.publicURLs, r.trialURLs)

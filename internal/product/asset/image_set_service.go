@@ -79,7 +79,7 @@ type ImageSetService struct {
 }
 
 func NewImageSetService(sources SourceSelectionReader, repository Repository, inventories ImageSetInventoryReader, approvals ApprovalCommitReader, candidates ImageCandidateSelectionReader, targets ImageSetTargetResolver) (*ImageSetService, error) {
-	if sources == nil || repository == nil || inventories == nil || approvals == nil || candidates == nil {
+	if sources == nil || repository == nil || inventories == nil || approvals == nil || candidates == nil || targets == nil {
 		return nil, ErrRepositoryUnavailable
 	}
 	return &ImageSetService{sources: sources, repository: repository, inventories: inventories, approvals: approvals, candidates: candidates, targets: targets}, nil
@@ -184,6 +184,13 @@ func (s *ImageSetService) prepare(ctx context.Context, input ImageSetCommand) (A
 	if source.TargetPlatform == "product" {
 		if input.Target != nil {
 			return ApprovalCommit{}, ErrInvalidApproval
+		}
+		resolved, err := s.targets.ResolveImageSetTarget(ctx, source, nil, commit.Assets)
+		if err != nil {
+			return ApprovalCommit{}, err
+		}
+		if resolved.Target != nil || resolved.RequirementDigest != "" || len(resolved.Placements) != 0 {
+			return ApprovalCommit{}, ErrRepositoryStateInvalid
 		}
 	} else {
 		if s.targets == nil || input.Target == nil {

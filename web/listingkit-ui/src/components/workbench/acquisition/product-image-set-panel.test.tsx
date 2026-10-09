@@ -88,3 +88,44 @@ it("keeps an admitted result reviewable after enterprise activation is disabled"
  expect(await screen.findAllByRole("button",{name:"选择采用"})).toHaveLength(2);
  expect(screen.queryByRole("button",{name:"准备整套图片计划（2 项）"})).not.toBeInTheDocument();
 });
+
+for (const status of ["awaiting_plan_approval","executing"]) {
+ it(`retains the original confirmation after GET reports ${status} and can resume the exact request`,async()=>{
+  const body={actionId:operation,planRevision:1,planDigest:sha,quoteDigest:digest};
+  state=projection(status,status==="executing"?operation:"");
+  localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:intent`,JSON.stringify({action:"confirm",runId,body}));
+  render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+  fireEvent.click(await screen.findByRole("button",{name:"核实原请求"}));
+  await waitFor(()=>expect(screen.getByRole("button",{name:"核实原请求"})).toBeEnabled());
+  expect(localStorage.getItem(`product-image-set:actor:org:acquisition:${operation}:intent`)).not.toBeNull();
+  fireEvent.click(screen.getByRole("button",{name:"继续原确认"}));
+  await waitFor(()=>expect(localStorage.getItem(`product-image-set:actor:org:acquisition:${operation}:intent`)).toBeNull());
+  const requests=fetch.mock.calls.filter(([url])=>String(url).endsWith("/confirm"));
+  expect(requests).toHaveLength(1);expect(JSON.parse(String(requests[0][1]!.body))).toEqual(body);
+ });
+}
+it("prepares the displayed immutable default content version even after the template head advances",async()=>{
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation((url,init)=>String(url).includes("/revisions/")?Promise.resolve(Response.json({...template,revision:"2",version:"1"})):real(url,init));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);await prepare();
+ await screen.findByRole("button",{name:"确认点数并生成"});
+ const request=fetch.mock.calls.find(([url])=>String(url).endsWith("/prepare"))!;
+ expect(JSON.parse(String(request[1]!.body)).template).toEqual({templateId,revision:"1"});
+});
+it("can combine new subset output with unapproved successful original outputs without another generation",async()=>{
+ const parentId="44444444-4444-4444-8444-444444444444";
+ const parent={...projection("awaiting_final_approval",templateId),runId:parentId};
+ const child={...projection("awaiting_final_approval",operation),images:1,slots:projection("awaiting_final_approval").slots.slice(0,1),plan:{...state.plan,Regeneration:{RunID:parentId}}};
+ state=child;localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:run`,runId);
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation((url,init)=>String(url).endsWith(`/runs/${parentId}`)?Promise.resolve(Response.json(parent)):real(url,init));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click((await screen.findAllByRole("button",{name:"选择采用"}))[0]);
+ const original=await screen.findAllByRole("button",{name:"采用原任务结果"});expect(original).toHaveLength(2);fireEvent.click(original[1]);
+ fireEvent.click(screen.getByRole("button",{name:"预览完整选择"}));
+ await screen.findByRole("button",{name:"人工批准并保存素材"});
+ const request=fetch.mock.calls.find(([url])=>String(url).endsWith("/preview"))!;
+ const choices=JSON.parse(String(request[1]!.body)).choices;
+ expect(choices.map((v:{run_id:string,slot_id:string})=>[v.run_id,v.slot_id])).toEqual([[runId,"main"],[parentId,"detail"]]);
+ expect(fetch.mock.calls.some(([url])=>/\/(prepare|regenerate|confirm)$/.test(String(url)))).toBe(false);
+});

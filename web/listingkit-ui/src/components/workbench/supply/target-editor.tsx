@@ -21,7 +21,7 @@ type Role=keyof typeof roleLabel;
 export function SupplyTargetEditor({scope,source,storeId,existing,appliedProposal,command,disabled,saved}:{scope:SupplyScope;source:SupplySourceDetail;storeId:string;existing?:SupplyTarget;appliedProposal?:ProductTitleProposal;command:SupplyCommandState;disabled:boolean;saved:number}){
  const [draft,setDraft]=useState<SupplyDraft>(()=>existing&&appliedProposal?reviewedSupplyDraft(existing,appliedProposal):structuredClone(existing?.input.draft??initialSupplyDraft(source)));
  const [rules,setRules]=useState<SupplyRules>();const [inventory,setInventory]=useState<Inventory>();
- const [selectedImages,setSelectedImages]=useState<Record<string,Role>>({});const [error,setError]=useState<string>();const [resolvedRuleEpoch,setResolvedRuleEpoch]=useState(-1),[ruleEpoch,setRuleEpoch]=useState(0);
+ const [selectedImages,setSelectedImages]=useState<Record<string,Role>>({});const [error,setError]=useState<string>();const [resolvedRuleEpoch,setResolvedRuleEpoch]=useState(-1),[ruleEpoch,setRuleEpoch]=useState(0),[inventoryEpoch,setInventoryEpoch]=useState(0);
  const applied=appliedProposal?.proposal_id??existing?.applyReceiptId;const version=appliedProposal?.apply_receipt?.product_version??existing?.effectiveVersion??source.source.source.version;
  const mode=useRef(existing?.merchant.application_type);
  const currentInput=useRef(draft);
@@ -38,7 +38,7 @@ export function SupplyTargetEditor({scope,source,storeId,existing,appliedProposa
   void supplyInventory(scope,selection,c.signal).then(value=>{if(live)setInventory(value)}).catch(e=>{if(live)setError(e instanceof SupplyAPIError?e.code:"DEPENDENCY_UNAVAILABLE")});return()=>{live=false;c.abort()};
  // Selection facts are immutable during this editor session; saved refreshes the exact inventory.
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[scope,source,version,applied,saved]);
+ },[scope,source,version,applied,saved,inventoryEpoch]);
  const product=draft.product;const attributes=rules?.rules.attributes.attribute_infos??[];
  const visibleAttributes=(dimension:number)=>attributes.filter(a=>(a.attribute_type===3||a.attribute_type===4)&&a.data_dimension===dimension);
  const sale=attributes.filter(a=>a.attribute_type===1),main=sale.filter(a=>a.attribute_label===1);
@@ -47,7 +47,7 @@ export function SupplyTargetEditor({scope,source,storeId,existing,appliedProposa
  function save(){const parsed=targetInputSchema.safeParse({sourceId:source.source.id,storeId,expectedRevision:existing?.revision??0,effectiveVersion:version,...applied?{applyReceiptId:applied}:{},draft});if(!parsed.success){setError("请检查资料格式与数量");return}command.execute("save-target",parsed.data)}
  const selectionSafe=Number.isSafeInteger(selection.originalSnapshotVersion)&&Number.isSafeInteger(selection.effectiveCatalogVersion);
  return <div className="space-y-6">
-  <ProductImageSetPanel kind="supply" contextId={source.source.id} effectiveVersion={Number(version)} applyReceiptId={applied} target={existing?{Platform:"shein",RecordID:existing.id,StoreID:storeId,Site:existing.merchant.site,CategoryID:existing.input.draft.product.category_id}:undefined} onSaved={()=>setRuleEpoch(old=>old+1)}/>
+  <ProductImageSetPanel kind="supply" contextId={source.source.id} effectiveVersion={Number(version)} applyReceiptId={applied} target={existing?{Platform:"shein",RecordID:existing.id,StoreID:storeId,Site:existing.merchant.site,CategoryID:existing.input.draft.product.category_id}:undefined} onSaved={()=>{setRuleEpoch(old=>old+1);setInventoryEpoch(old=>old+1)}}/>
   <details className="rounded-xl bg-slate-50 p-4"><summary className="cursor-pointer text-sm font-medium">查看原始资料 · 版本 {source.source.source.version}</summary><p className="mt-3 font-medium">{source.product.title}</p><p className="mt-2 whitespace-pre-wrap text-sm">{source.product.description}</p><dl className="mt-3 grid gap-2 sm:grid-cols-2">{source.product.attributes?.map((a,i)=><div key={i} className="text-sm"><dt className="text-slate-500">{a.name}</dt><dd>{a.value}</dd></div>)}</dl></details>
   <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-semibold">SHEIN · {priceMode?modeLabel[priceMode]:"正在读取应用类型"} · {priceMode==="fully_managed"?"平台分配市场":"美国站"}</p><Button variant="outline" size="sm" disabled={loading} onClick={()=>setRuleEpoch(n=>n+1)}>刷新店铺规则</Button></div>
   {error?<p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>:null}{loading?<p role="status" className="text-sm text-slate-500">正在读取店铺类目与规则</p>:null}

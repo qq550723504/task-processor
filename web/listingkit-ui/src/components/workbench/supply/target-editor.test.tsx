@@ -5,6 +5,7 @@ import { SupplyTargetEditor } from "./target-editor";
 import type { SupplySourceDetail,SupplyRules } from "@/lib/contracts/supply-chain";
 import type { SupplyCommandState } from "./use-supply-command";
 const state=vi.hoisted(()=>({rules:vi.fn(),inventory:vi.fn(),execute:vi.fn()}));
+vi.mock("../acquisition/product-image-set-panel",()=>({ProductImageSetPanel:({onSaved}:{onSaved:()=>void})=><button onClick={onSaved}>保存图片测试回调</button>}));
 vi.mock("@/lib/api/supply-chain",async original=>({...await original<object>(),supplyRules:state.rules,supplyInventory:state.inventory}));
 const id="11111111-1111-4111-8111-111111111111";
 const source:SupplySourceDetail={source:{id,preparationId:id,collectionItemId:id,collectionRevision:1,source:{productKey:"product-a",publicationId:id,version:"1",kind:"own"}},product:{title:"原始商品",variants:[{sku:"source-sku",price:{amount:99},stock:42}]},images:[{id,url:"https://example.org/main.jpg",width:900,height:900}]};
@@ -41,4 +42,16 @@ it("collects one stock proof only when the current official field is shown",asyn
  await userEvent.type(screen.getByLabelText("库存证明文件名 1"),"stock.pdf");await userEvent.selectOptions(screen.getByLabelText("库存证明类型 1"),"2");await userEvent.type(screen.getByLabelText("库存证明链接 1"),"https://files.example.org/stock.pdf");
  expect(screen.queryByRole("button",{name:"添加库存证明"})).not.toBeInTheDocument();await userEvent.click(screen.getByRole("button",{name:"保存并校验平台资料"}));
  expect(state.execute.mock.calls[0]![1].draft.product.skc_list[0].proof_of_stock_list).toEqual([{file_name:"stock.pdf",type:"2",url:"https://files.example.org/stock.pdf"}]);
+});
+
+it("refreshes the existing official inventory after the image set is saved",async()=>{
+ state.rules.mockResolvedValue(rules("self_operated"));
+ state.inventory.mockResolvedValueOnce({assets:[{id:"old",role:"main",url:"https://example.org/main.jpg"}]}).mockResolvedValue({assets:[{id:"new",role:"main",url:"https://example.org/new.jpg"}]});
+ render(<SupplyTargetEditor scope={{userId:"actor",organizationId:"org"}} source={source} storeId={id} command={command} disabled={false} saved={0}/>);
+ await screen.findByLabelText("美国站售价 USD");await waitFor(()=>expect(state.inventory).toHaveBeenCalledOnce());
+ await userEvent.click(screen.getByRole("button",{name:"添加图片位置"}));expect(screen.getByLabelText("图片 1").querySelector('option[value="old"]')).toBeInTheDocument();
+ await userEvent.click(screen.getByRole("button",{name:"保存图片测试回调"}));
+ await waitFor(()=>expect(state.inventory).toHaveBeenCalledTimes(2));
+ expect(screen.getByLabelText("图片 1").querySelector('option[value="new"]')).toBeInTheDocument();
+ expect(screen.getByLabelText("图片 1").querySelector('option[value="old"]')).toBeNull();
 });
