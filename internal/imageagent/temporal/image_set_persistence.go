@@ -47,7 +47,7 @@ func (a *Activities) deriveImageSetSlotProjection(ctx context.Context, current i
 		return result, imageagent.ErrRevisionConflict
 	}
 	if result.Slot.Status == imageagent.SlotStatusBlocked && input.Result.EffectPhase == imageagent.SlotEffectV3ProviderNotDispatched && effectErr == nil && effect.Phase != imageagent.SlotEffectV3ProviderNotDispatched {
-		result.ErrorCode = imageSetExistingEffectBlockCode(effect.Phase)
+		result.ErrorCode = imageSetExistingEffectBlockCode(effect)
 	}
 	facts, ok := a.repository.(imageagent.GenerationFactRepository)
 	if !ok {
@@ -135,11 +135,11 @@ func (a *Activities) deriveImageSetSlotProjection(ctx context.Context, current i
 	return result, nil
 }
 
-func imageSetExistingEffectBlockCode(phase imageagent.SlotEffectV3Phase) string {
-	if policy, err := imageagent.SlotEffectV3BlockedPolicyFor(phase, ""); err == nil {
+func imageSetExistingEffectBlockCode(effect imageagent.SlotEffectV3Attempt) string {
+	if policy, err := imageagent.SlotEffectV3BlockedPolicyFor(effect.Phase, effect.BlockedCode); err == nil {
 		return policy.Code
 	}
-	switch phase {
+	switch effect.Phase {
 	case imageagent.SlotEffectV3ProviderClaimed:
 		return imageagent.SlotProviderOutcomeUnknownCode
 	case imageagent.SlotEffectV3StagingPrepared, imageagent.SlotEffectV3ArtifactStaged:

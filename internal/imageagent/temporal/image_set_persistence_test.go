@@ -147,6 +147,67 @@ func TestPersistImageSetSlotResultDistinguishesKnownUnstartedFromUnknown(t *test
 	}
 }
 
+func TestExpiredImageSetProjectionPreservesPersistedBlockedEffectPolicy(t *testing.T) {
+	for _, policy := range []struct {
+		phase imageagent.SlotEffectV3Phase
+		code  string
+	}{
+		{imageagent.SlotEffectV3ProviderUnknown, imageagent.SlotProviderOutcomeUnknownCode},
+		{imageagent.SlotEffectV3StagingUnknown, imageagent.SlotStagingOutcomeUnknownCode},
+		{imageagent.SlotEffectV3PublicationUnknown, imageagent.SlotPublicationOutcomeUnknownCode},
+		{imageagent.SlotEffectV3ReviewRequired, imageagent.SlotReviewRequiredCode},
+		{imageagent.SlotEffectV3ReviewTransportRequired, imageagent.SlotReviewTransportRequiredCode},
+		{imageagent.SlotEffectV3RecoveryBlocked, imageagent.SlotRecoveryBlockedCode},
+	} {
+		t.Run(string(policy.phase), func(t *testing.T) {
+			a, repo, input := imageSetPersistenceFixture(t)
+			ctx := context.Background()
+			effects := repo.(imageagent.SlotExternalEffectV3Repository)
+			execution := slotExecutionInputV3(input)
+			reservation := slotEffectReservationV3(execution)
+			_, won, err := effects.ReserveSlotProviderV3(ctx, reservation)
+			require.NoError(t, err)
+			require.True(t, won)
+			transition := imageagent.SlotEffectV3BlockTransition{Reservation: reservation, Phase: policy.phase, Code: policy.code}
+			if policy.phase == imageagent.SlotEffectV3StagingUnknown || policy.phase == imageagent.SlotEffectV3PublicationUnknown {
+				manifest := v3StagingManifest(input, tinyPNGBytes(t))
+				_, err = effects.PrepareSlotStagingV3(ctx, reservation, manifest)
+				require.NoError(t, err)
+				if policy.phase == imageagent.SlotEffectV3PublicationUnknown {
+					fingerprint, err := imageagent.StagingManifestFingerprint(manifest)
+					require.NoError(t, err)
+					_, err = effects.CommitSlotStagedV3(ctx, reservation, fingerprint)
+					require.NoError(t, err)
+					final, err := expectedFinalManifestV3(execution, manifest)
+					require.NoError(t, err)
+					fingerprint, err = imageagent.FinalManifestFingerprint(final)
+					require.NoError(t, err)
+					_, claim, won, err := effects.ClaimSlotPublicationV3(ctx, imageagent.PublicationClaimRequest{Reservation: reservation, Owner: "original-owner", LeaseDuration: time.Minute, PublicationFingerprint: fingerprint, FinalManifest: final})
+					require.NoError(t, err)
+					require.True(t, won)
+					transition.Owner, transition.Fence = claim.Owner, claim.Fence
+				}
+			}
+			original, err := effects.BlockSlotEffectV3(ctx, transition)
+			require.NoError(t, err)
+			result, err := a.PersistImageSetSlotResult(ctx, PersistSlotResultV3ActivityInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: 1, AttemptKey: input.IdempotencyKey, Result: SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: 1}, Status: imageagent.SlotStatusBlocked, ErrorCode: imageagent.BudgetElapsedCode, EffectPhase: imageagent.SlotEffectV3ProviderNotDispatched}})
+			require.NoError(t, err)
+			require.Equal(t, policy.code, result.ErrorCode)
+			require.Equal(t, 1, result.Attempt)
+			require.Nil(t, result.Closure)
+			wantPolicy, err := imageagent.SlotEffectV3BlockedPolicyFor(original.Phase, original.BlockedCode)
+			require.NoError(t, err)
+			gotPolicy, ok := imageagent.SlotEffectV3BlockedPolicyForCode(result.ErrorCode)
+			require.True(t, ok)
+			require.Equal(t, wantPolicy, gotPolicy, "expiration must retain the original permitted actions")
+			retained, err := effects.GetSlotExternalEffectV3(ctx, reservation.Identity)
+			require.NoError(t, err)
+			require.Equal(t, original, retained)
+			require.Zero(t, a.stagedSlotExecutor.(*recordingStagedExecutor).GenerateCalls())
+		})
+	}
+}
+
 func TestSetSlotClosureBindsTheOriginalSettledEconomics(t *testing.T) {
 	for _, mode := range []string{"invalid_locator", "invalid_bytes", "invalid_bytes_execute", "transient", "unsettled_invalid_bytes", "price_drift"} {
 		t.Run(mode, func(t *testing.T) {
