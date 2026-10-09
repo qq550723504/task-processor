@@ -8,16 +8,17 @@ import (
 )
 
 type ImageSetChoice struct {
-	Kind             string            `json:"kind"`
-	SourceID         string            `json:"source_id,omitempty"`
-	ApprovalActionID string            `json:"approval_action_id,omitempty"`
-	AssetID          string            `json:"asset_id,omitempty"`
-	RunID            string            `json:"run_id,omitempty"`
-	PlanRevision     int64             `json:"plan_revision,omitempty"`
-	SlotID           string            `json:"slot_id,omitempty"`
-	Attempt          int               `json:"attempt,omitempty"`
-	ResultDigest     string            `json:"result_digest,omitempty"`
-	Presentation     ImagePresentation `json:"presentation"`
+	Kind              string                  `json:"kind"`
+	SourceID          string                  `json:"source_id,omitempty"`
+	ApprovalActionID  string                  `json:"approval_action_id,omitempty"`
+	AssetID           string                  `json:"asset_id,omitempty"`
+	RunID             string                  `json:"run_id,omitempty"`
+	PlanRevision      int64                   `json:"plan_revision,omitempty"`
+	SlotID            string                  `json:"slot_id,omitempty"`
+	Attempt           int                     `json:"attempt,omitempty"`
+	ResultDigest      string                  `json:"result_digest,omitempty"`
+	Presentation      ImagePresentation       `json:"presentation"`
+	OfficialPlacement *ImageOfficialPlacement `json:"official_placement,omitempty"`
 }
 
 type ImageSetCommand struct {
@@ -140,6 +141,13 @@ func (s *ImageSetService) prepare(ctx context.Context, input ImageSetCommand) (A
 		position := choice.Presentation
 		asset.Presentation = &position
 		asset.OfficialPlacement = nil
+		if choice.OfficialPlacement != nil {
+			if source.TargetPlatform == "product" {
+				return ApprovalCommit{}, ErrInvalidApproval
+			}
+			requested := *choice.OfficialPlacement
+			asset.OfficialPlacement = &requested
+		}
 		commit.Assets = append(commit.Assets, asset)
 		if result.RunID != "" {
 			key := fmt.Sprintf("%s/%d", result.RunID, result.PlanRevision)

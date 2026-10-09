@@ -55,6 +55,45 @@ func setSelectionService(t *testing.T, sources *setSourceReader, candidates *set
 	return service, repo
 }
 
+type selectedTargetPositions struct {
+	t    *testing.T
+	deny bool
+}
+
+func (r selectedTargetPositions) ResolveImageSetTarget(_ context.Context, source productasset.SourceSelection, target *productasset.ImageSetTarget, assets []productasset.ApprovedAsset) (productasset.ImageSetTargetResolution, error) {
+	if r.deny {
+		return productasset.ImageSetTargetResolution{}, productasset.ErrApprovedAssetsNotReady
+	}
+	require.NotNil(r.t, assets[0].OfficialPlacement, "the rule owner must see the explicit position independently of the UI group")
+	require.Equal(r.t, 5, assets[0].OfficialPlacement.Type)
+	positions := make([]*productasset.ImageOfficialPlacement, len(assets))
+	for i := range assets {
+		positions[i] = assets[i].OfficialPlacement
+	}
+	return productasset.ImageSetTargetResolution{Target: target, RequirementDigest: strings.Repeat("c", 64), Placements: positions}, nil
+}
+
+func TestImageSetSelectionBindsExplicitPlatformPositionsToOriginalRequest(t *testing.T) {
+	sources, input := setSelectionFixture()
+	sources.selection.TargetPlatform = "shein"
+	input.Source.TargetPlatform = "shein"
+	input.Choices = input.Choices[:1]
+	input.Target = &productasset.ImageSetTarget{StoreID: "store", Site: "shein-us", ApplicationID: "application", ApplicationMode: "self_operated", CategoryID: 1, ProductTypeID: 2, AttributesDigest: strings.Repeat("a", 64), VariantsDigest: strings.Repeat("b", 64)}
+	input.Choices[0].OfficialPlacement = &productasset.ImageOfficialPlacement{Group: "skc", Type: 5, Sort: 3, Site: "shein-us"}
+	_, repo := setSelectionService(t, sources, &setCandidateReader{})
+	service, err := productasset.NewImageSetService(sources, repo, repo.(productasset.ImageSetInventoryReader), repo.(productasset.ApprovalCommitReader), &setCandidateReader{}, selectedTargetPositions{t: t})
+	require.NoError(t, err)
+	preview, err := service.Preview(context.Background(), input)
+	require.NoError(t, err)
+	require.Equal(t, input.Choices[0].OfficialPlacement, preview.Assets[0].OfficialPlacement)
+	input.SelectionDigest = preview.Digest
+	_, err = service.Select(context.Background(), input)
+	require.NoError(t, err)
+	input.Choices[0].OfficialPlacement.Type = 1
+	_, err = service.Select(context.Background(), input)
+	require.ErrorIs(t, err, productasset.ErrApprovalConflict, "original action cannot be replayed with another official position")
+}
+
 func TestImageSetSelectionResolvesSourcesAndCandidatesThenReplaysOriginalReceipt(t *testing.T) {
 	sources, input := setSelectionFixture()
 	candidates := &setCandidateReader{}

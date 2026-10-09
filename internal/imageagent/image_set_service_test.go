@@ -184,6 +184,40 @@ func TestPrepareImageSetRejectsAResolvedDifferentStore(t *testing.T) {
 	require.Empty(t, config.snapshot.ID)
 }
 
+func TestPrepareImageSetBindsExplicitOfficialPositionsToEachConfiguredTask(t *testing.T) {
+	for _, mode := range []string{"exact", "changed", "missing", "extra", "generic_claim"} {
+		t.Run(mode, func(t *testing.T) {
+			s, _, _, configuration, contexts, _, ctx, input := imageSetServiceFixture(t)
+			configuration.template.Detail = nil
+			position := imageagent.OfficialImagePlacement{Group: "skc", Type: 1, Sort: 1, Site: "shein-us"}
+			input.Target = imageagent.ImageTargetSelection{Platform: "shein", StoreID: "store", Site: "shein-us", CategoryID: 1}
+			input.OfficialPlacements = map[string]imageagent.OfficialImagePlacement{"identity": position}
+			contexts.preparation.Target = imageagent.ImageTarget{Platform: "shein", StoreID: "store", Site: "shein-us", ApplicationID: "application", ApplicationMode: "self_operated", CategoryID: 1, ProductTypeID: 2, AttributesDigest: strings.Repeat("a", 64), VariantsDigest: strings.Repeat("b", 64), RequirementDigest: strings.Repeat("c", 64), RequirementVersion: "shein-images-v1"}
+			contexts.preparation.OfficialPlacements = map[string]imageagent.OfficialImagePlacement{"identity": position}
+			switch mode {
+			case "changed":
+				changed := position
+				changed.Type = 2
+				input.OfficialPlacements["identity"] = changed
+			case "missing":
+				input.OfficialPlacements = nil
+			case "extra":
+				input.OfficialPlacements["unused"] = position
+			case "generic_claim":
+				input.Target = imageagent.ImageTargetSelection{Platform: "product"}
+				contexts.preparation.Target = imageagent.ImageTarget{Platform: "product"}
+			}
+			prepared, err := s.PrepareImageSet(ctx, input)
+			if mode == "exact" {
+				require.NoError(t, err)
+				require.Equal(t, &position, prepared.Projection.Plan.Slots[0].Recipe.OfficialPlacement)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+}
+
 func TestPreparedSetCannotBypassConfirmationThroughOriginalStart(t *testing.T) {
 	s, _, workflows, _, _, _, ctx, input := imageSetServiceFixture(t)
 	prepared, err := s.PrepareImageSet(ctx, input)

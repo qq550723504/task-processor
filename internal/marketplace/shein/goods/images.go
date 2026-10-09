@@ -18,13 +18,9 @@ func ValidImageObservation(value OfficialImageObservation) bool {
 }
 
 func (b *officialBuild) pictures() map[string]bool {
-	rules := map[string]bool{}
-	for _, rule := range b.rules.Fill.Pictures {
-		if rule.Enabled == nil {
-			b.issue("image_info", "rule_unavailable", "当前图片规范不完整")
-		} else {
-			rules[rule.Field] = *rule.Enabled
-		}
+	rules, err := officialPictureRules(b.rules.Fill)
+	if err != nil {
+		b.issue("image_info", "rule_unavailable", "当前图片规范不完整或存在冲突")
 	}
 	return rules
 }
@@ -41,16 +37,6 @@ func (b *officialBuild) images(slots []OfficialImageSlot, observations []Officia
 	rules := b.pictures()
 	_, newScheme := rules["spu_image_detail_show"]
 	p.IsSPUPic = newScheme
-	if _, ok := rules["sku_image_required"]; !ok {
-		b.issue("image_info", "rule_unavailable", "当前类目的 SKU 图片必填规则不可用")
-	}
-	if newScheme {
-		for _, field := range []string{"spu_image_detail_required", "spu_image_detail_single", "spu_image_square_show", "spu_image_square_required", "skc_image_detail_show", "skc_image_detail_required", "skc_image_detail_single", "skc_image_square_show", "skc_image_square_required"} {
-			if _, ok := rules[field]; !ok {
-				b.issue("image_info", "rule_unavailable", "当前 SPU 图片方案不完整")
-			}
-		}
-	}
 	if inventory := b.inventory; inventory.Scope.TenantID == "" || inventory.Scope.ProductKey == "" || inventory.Scope.TargetPlatform != "shein" || inventory.Scope.SourceSnapshotVersion == 0 {
 		b.issue("image_info", "approval_missing", "先确认本次商品版本的完整图片选择")
 	}
@@ -136,21 +122,7 @@ func (b *officialBuild) images(slots []OfficialImageSlot, observations []Officia
 			}
 		}
 		allRemote = allRemote && remoteMatched
-		validSize := false
-		switch slot.Type {
-		case 1, 2:
-			validSize = width == 1340 && height == 1785 || width == height && width >= 900 && width <= 2200
-		case 5:
-			validSize = width == height && width >= 900 && width <= 2200
-			if slot.Group == "spu" {
-				validSize = width == 1200 && height == 1200
-			}
-		case 6:
-			validSize = width == 80 && height == 80
-		case 7:
-			validSize = width > 900 && height > 900 && width*4 == height*3
-		}
-		if !validSize {
+		if !OfficialImageSizeAllowed(slot.Group, slot.Type, width, height) {
 			b.issue(path, "image_dimensions", "图片尺寸不符合所选图片类型的规范，或尚未核实真实尺寸")
 		}
 		groups[path] = append(groups[path], model.ProductImage{Sort: slot.Sort, Type: slot.Type, URL: imageURL})
@@ -159,12 +131,12 @@ func (b *officialBuild) images(slots []OfficialImageSlot, observations []Officia
 		sort.Slice(images, func(i, j int) bool { return images[i].Sort < images[j].Sort })
 		groups[path] = images
 	}
-	validateGroup := func(path string, mainRequired, detailRequired, detailAllowed, squareRequired, squareAllowed, pieceRequired, single bool) {
+	validateGroup := func(path string, policy imageGroupPolicy) {
 		counts := map[int]int{}
 		for _, image := range groups[path] {
 			counts[image.Type]++
 		}
-		if counts[1] > 1 || mainRequired && counts[1] != 1 || counts[2] > 10 || detailRequired && counts[2] < 1 || !detailAllowed && counts[2] > 0 || counts[5] > 1 || squareRequired && counts[5] != 1 || !squareAllowed && counts[5] > 0 || counts[6] > 1 || pieceRequired && counts[6] != 1 || single && counts[2] > 0 {
+		if imageGroupViolation(counts, policy) {
 			b.issue(path, "missing_images", "按当前店铺规范补齐所需图片，并移除不允许的类型")
 		}
 	}
@@ -172,7 +144,9 @@ func (b *officialBuild) images(slots []OfficialImageSlot, observations []Officia
 		spuPath := "image_info"
 		spuImages := groups[spuPath]
 		if len(spuImages) > 0 || rules["spu_image_detail_required"] || rules["spu_image_square_required"] {
-			validateGroup(spuPath, rules["spu_image_detail_required"] || len(spuImages) > 0, rules["spu_image_detail_required"] && !rules["spu_image_detail_single"], rules["spu_image_detail_show"], rules["spu_image_square_required"], rules["spu_image_square_show"], false, rules["spu_image_detail_single"])
+			policy := spuImagePolicy(rules)
+			policy.mainRequired = policy.mainRequired || len(spuImages) > 0
+			validateGroup(spuPath, policy)
 		}
 		if len(spuImages) > 0 {
 			p.ImageInfo = &model.ImageInfo{Images: spuImages}
@@ -181,20 +155,13 @@ func (b *officialBuild) images(slots []OfficialImageSlot, observations []Officia
 	for i := range p.SKCs {
 		skc := &p.SKCs[i]
 		path := fmt.Sprintf("skc_list.%d.image_info", i)
-		if newScheme {
-			validateGroup(path, true, rules["skc_image_detail_required"] && !rules["skc_image_detail_single"], rules["skc_image_detail_show"], rules["skc_image_square_required"], rules["skc_image_square_show"], len(p.SKCs) > 1, rules["skc_image_detail_single"])
-		} else {
-			validateGroup(path, true, true, true, true, true, len(p.SKCs) > 1, false)
-		}
+		validateGroup(path, skcImagePolicy(rules, newScheme, len(p.SKCs) > 1))
 		skc.ImageInfo = model.ImageInfo{Images: groups[path]}
-		allSKURequired := rules["sku_image_required"]
-		for j, sku := range skc.SKUs {
-			allSKURequired = allSKURequired || len(groups[fmt.Sprintf("skc_list.%d.sku_list.%d.image_info", i, j)]) > 0 || sku.Quantity != nil && sku.Quantity.Quantity >= 2
-		}
+		allSKURequired := officialSKUImagesRequired(rules, *skc, i, slots)
 		for j := range skc.SKUs {
 			skuPath := fmt.Sprintf("skc_list.%d.sku_list.%d.image_info", i, j)
 			if allSKURequired {
-				validateGroup(skuPath, true, false, false, false, false, false, true)
+				validateGroup(skuPath, imageGroupPolicy{mainRequired: true, single: true})
 			}
 			if images := groups[skuPath]; len(images) > 0 {
 				skc.SKUs[j].ImageInfo = &model.ImageInfo{Images: images}

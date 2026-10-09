@@ -99,10 +99,12 @@ func TestImageSetLostApprovalACKResumesExactOrderedSelection(t *testing.T) {
 }
 
 func TestImageSetSelectionCommandsDoNotModifyCallerOwnedChoices(t *testing.T) {
-	command := &productasset.ImageSetCommand{ActionID: "action", Choices: []productasset.ImageSetChoice{{Kind: "source", SourceID: "source", Presentation: productasset.ImagePresentation{Group: "detail", Order: 1}}}, Target: &productasset.ImageSetTarget{StoreID: "store"}}
+	command := &productasset.ImageSetCommand{ActionID: "action", Choices: []productasset.ImageSetChoice{{Kind: "source", SourceID: "source", Presentation: productasset.ImagePresentation{Group: "detail", Order: 1}, OfficialPlacement: &productasset.ImageOfficialPlacement{Group: "skc", Type: 1, Sort: 1}}}, Target: &productasset.ImageSetTarget{StoreID: "store"}}
 	copy := imageagent.CloneImageSetCommand(command)
 	command.Choices[0].SourceID = "changed"
 	command.Target.StoreID = "changed"
+	command.Choices[0].OfficialPlacement.Type = 5
 	require.Equal(t, "source", copy.Choices[0].SourceID)
 	require.Equal(t, "store", copy.Target.StoreID)
+	require.Equal(t, 1, copy.Choices[0].OfficialPlacement.Type)
 }

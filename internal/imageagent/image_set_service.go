@@ -22,6 +22,7 @@ type PrepareImageSetInput struct {
 	Template                                                  *agentconfig.TemplateRef
 	Target                                                    ImageTargetSelection
 	SharedOriginalIDs, CarouselOriginalIDs, DetailOriginalIDs []string
+	OfficialPlacements                                        map[string]OfficialImagePlacement `json:",omitempty"`
 }
 
 type ImageTargetSelection struct {
@@ -85,6 +86,14 @@ func imageSetRunID(identity ExecutionIdentity, input PrepareImageSetInput) strin
 }
 
 func validPrepareImageSetInput(input PrepareImageSetInput) bool {
+	if len(input.OfficialPlacements) > MaxPlanSlots || input.Target.Platform == "product" && len(input.OfficialPlacements) != 0 {
+		return false
+	}
+	for id, position := range input.OfficialPlacements {
+		if !canonicalImageValue(id) || position.Site != input.Target.Site || position.Group != "spu" && position.Group != "skc" && position.Group != "sku" && position.Group != "detail" || position.SKC < 0 || position.SKU < 0 || position.Type < 1 || position.Sort < 1 || position.Sort > 100 {
+			return false
+		}
+	}
 	if !agentconfig.UUID(input.RequestID) || !canonicalImageValue(input.ContextID) || input.Target.Platform != "product" && (!agentconfig.Platform(input.Target.Platform) || !canonicalImageValue(input.Target.StoreID) || !canonicalImageValue(input.Target.Site) || input.Target.CategoryID <= 0) || input.Target.Platform == "product" && input.Target != (ImageTargetSelection{Platform: "product"}) {
 		return false
 	}
@@ -223,6 +232,9 @@ func selectedImageOriginals(input PrepareImageSetInput) []string {
 }
 
 func buildImageSetPlan(input PrepareImageSetInput, resolved ImageSetPreparation, snapshot agentconfig.ImageConfigurationSnapshot, quote ImageGenerationQuote, sources []string, observations map[string]ImageSourceObservation, actor string) (Plan, error) {
+	if resolved.Target.Platform != "product" && (len(input.OfficialPlacements) != len(snapshot.Parameters.Carousel)+len(snapshot.Parameters.Detail) || len(resolved.OfficialPlacements) != len(input.OfficialPlacements)) {
+		return Plan{}, ErrRevisionConflict
+	}
 	template := snapshot.Parameters
 	if template.ShareOriginals != (len(input.SharedOriginalIDs) > 0) {
 		return Plan{}, fmt.Errorf("%w: choose originals matching the template sharing mode", ErrValidation)
@@ -245,6 +257,10 @@ func buildImageSetPlan(input PrepareImageSetInput, resolved ImageSetPreparation,
 				placement, ok := resolved.OfficialPlacements[task.ID]
 				if !ok {
 					return Plan{}, fmt.Errorf("%w: target position for %s is unavailable", ErrValidation, task.ID)
+				}
+				requested, selected := input.OfficialPlacements[task.ID]
+				if !selected || requested != placement {
+					return Plan{}, ErrRevisionConflict
 				}
 				recipe.OfficialPlacement = &placement
 			}
