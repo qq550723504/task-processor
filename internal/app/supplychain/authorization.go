@@ -35,7 +35,10 @@ func (a OrganizationExecutionAuthorizer) current(ctx context.Context, scope coll
 	if _, bounded := ctx.Deadline(); !bounded {
 		return nil, collection.ErrForbidden
 	}
-	if identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx); ok && (identity.TenantID != scope.OrganizationID || identity.EffectiveOrganizationID != scope.OrganizationID || identity.UserID != scope.ActorID || identity.EffectiveMemberID != scope.MemberID || !time.Now().Before(identity.TokenExpiresAt)) {
+	// A restored durable worker subject has no browser token expiry. Its
+	// exact fields remain bound here and its current grant is checked below.
+	// Request identities with a token expiry must still be unexpired.
+	if identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx); ok && (identity.TenantID != scope.OrganizationID || identity.EffectiveOrganizationID != scope.OrganizationID || identity.UserID != scope.ActorID || identity.EffectiveMemberID != scope.MemberID || (!identity.TokenExpiresAt.IsZero() && !time.Now().Before(identity.TokenExpiresAt))) {
 		return nil, collection.ErrForbidden
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)

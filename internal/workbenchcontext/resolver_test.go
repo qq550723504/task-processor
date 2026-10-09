@@ -111,6 +111,10 @@ func TestResolverRejectsExpiredOrIncompleteAuthenticationBeforeGrantLookup(t *te
 			input: ResolveInput{Identity: authidentity.AuthenticatedIdentity{UserID: "user-1", TokenExpiresAt: now.Add(-time.Nanosecond)}, BearerToken: "secret-token"},
 		},
 		{
+			name:  "missing token expiry",
+			input: ResolveInput{Identity: authidentity.AuthenticatedIdentity{UserID: "user-1"}, BearerToken: "secret-token"},
+		},
+		{
 			name:  "missing verified subject",
 			input: ResolveInput{Identity: authidentity.AuthenticatedIdentity{TokenExpiresAt: now.Add(time.Minute)}, BearerToken: "secret-token"},
 		},

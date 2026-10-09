@@ -71,6 +71,9 @@ func TestProductReviewRequestCapabilityRejectsReplayOutsideBoundRequest(t *testi
 	})
 	_, err = (productReviewCapabilityBinder{now: func() time.Time { return now }}).Bind(expired, "Bearer request-secret")
 	require.ErrorIs(t, err, review.ErrForbidden)
+	identity.TokenExpiresAt = time.Time{}
+	_, err = (productReviewCapabilityBinder{now: func() time.Time { return now }}).Bind(authidentity.WithAuthenticatedIdentity(context.Background(), identity), "Bearer request-secret")
+	require.ErrorIs(t, err, review.ErrForbidden, "a durable worker subject cannot become a browser request capability")
 }
 
 func TestProductReviewRequestCapabilityMapsLiveRevocation(t *testing.T) {

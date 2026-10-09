@@ -86,6 +86,18 @@ func TestSupplyExecutionChecksOriginalGrantCurrentRoleAndOrganizationStatus(t *t
 	owner.OrganizationStatus = status
 	_, authenticated := authidentity.AuthenticatedIdentityFromContext(ctx)
 	require.False(t, authenticated)
+	// Temporal restores this exact durable subject after live authorization,
+	// without retaining the originating browser token or its expiry.
+	workerIdentity := authidentity.AuthenticatedIdentity{TenantID: scope.OrganizationID, EffectiveOrganizationID: scope.OrganizationID, UserID: scope.ActorID, EffectiveMemberID: scope.MemberID}
+	ctx = authidentity.WithAuthenticatedIdentity(ctx, workerIdentity)
+	require.NoError(t, owner.AuthorizeImageExecution(ctx, scope))
+	require.NoError(t, owner.AuthorizeImageSource(ctx, scope))
+	expired := workerIdentity
+	expired.TokenExpiresAt = time.Now().Add(-time.Minute)
+	require.ErrorIs(t, owner.AuthorizeImageExecution(authidentity.WithAuthenticatedIdentity(ctx, expired), scope), collection.ErrForbidden)
+	foreign := workerIdentity
+	foreign.EffectiveOrganizationID = "org-b"
+	require.ErrorIs(t, owner.AuthorizeImageSource(authidentity.WithAuthenticatedIdentity(ctx, foreign), scope), collection.ErrForbidden)
 	replaced.Store(true)
 	require.ErrorIs(t, owner.AuthorizeImageExecution(ctx, scope), collection.ErrForbidden)
 	_, err = owner.ResolveAgentExecution(ctx, scope)

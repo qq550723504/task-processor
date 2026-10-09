@@ -129,7 +129,7 @@ func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB
 		manual = mediaReaders[0]
 	}
 	sourceLive := imageSourceScopeAuthority{current: live}
-	imageAuth := imageapp.ScopedImageAuthorizer{Live: live}
+	imageAuth := newFullImageWorkerAuthorizer(live)
 	sourceAuth := imageapp.ScopedImageAuthorizer{Live: sourceLive}
 	receipts, err := newImageSetAcquisitionReceipts(startup, productDB, imageapp.ImagePublicationScopeAuthorizer{Live: sourceLive})
 	if err != nil {
@@ -222,6 +222,15 @@ func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB
 		return nil, empty, err
 	}
 	return &fullImageApplication{service: service, readSources: readSources, contexts: contexts, quotes: quotes, selections: selections, inventories: inventories, approvals: approvals, publicURLs: publicURLs, trial: trial, configuration: configuration, recent: recent, gate: gate, rules: rules, manualAvailable: manual != nil}, dependencies, nil
+}
+
+func newFullImageWorkerAuthorizer(live supplyapp.OrganizationExecutionAuthorizer) imageagent.ExecutionAuthorizer {
+	// Activities validate the persisted Run subject before live authorization,
+	// then restore its context. They never inherit a browser request identity.
+	return imageworker.OrganizationExecutionAuthorizer{
+		Client: live.Client, ServiceToken: live.ServiceToken, ProjectID: live.ProjectID,
+		Authorizer: live.Permissions, OrganizationStatus: live.OrganizationStatus,
+	}
 }
 
 type closedImageSetCatalog struct{}
