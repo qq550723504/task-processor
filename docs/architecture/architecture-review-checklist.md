@@ -395,6 +395,7 @@ Supporting context documents must not be listed as review references unless prom
 - `docs/architecture/ecosystem-services-v1.md`
 - `docs/architecture/self-service-subscription-purchase-contract.md`
 - `docs/architecture/store-center-current-application-v1.md`
+- `docs/architecture/store-center-platform-observations-v1.md`
 - `docs/architecture/httpapi-assembly-boundaries.md`
 - `docs/architecture/app-assembly-boundaries.md`
 - `docs/architecture/temporal-boundaries.md`
