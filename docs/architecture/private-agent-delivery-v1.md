@@ -1,6 +1,6 @@
 # 指定企业私有智能体交付 V1
 
-Status: DRAFT / NOT_READY (2026-10-09). Design Basis: Independent Architecture. Execution: #611, primary PR #617.
+Status: APPROVED / IMPLEMENTATION_READY (2026-10-09). Design Basis: Independent Architecture. Execution: #611, primary PR #617.
 
 ## 产品结果与权威
 
@@ -44,4 +44,4 @@ Legacy decision: EXTRACT 合格 Console/当前 auth/BFF/SQL transaction/installe
 
 ## 准入
 
-待独立 Architecture Review。仅设计文档与 Issue 范围先行；IMPLEMENTATION_READY 前不改正式业务代码。原人工设计仍作为其范围的冻结基线，本文件仅覆盖上述新边界。
+第1轮独立只读 Architecture Review（/root/architecture_review，设计提交 f56e9299666aa7be9991704d6dcbe114caed4805）明确 IMPLEMENTATION_READY，无 BLOCKER。IMPLEMENTATION_TEST：事务中插入交付后失败全部回滚、发布标志纳入 fingerprint、CAS/并发/同阶段不重复；正常 middleware/BFF 的跨企业/撤权/重放/平台边界；title 依赖缺失仍可用、报告停启读回、冻结命令及 installer/serving 权限。由本 Writer 在同一 PR 收敛，未满足 Must 不得合并。原人工设计仍为其范围的冻结基线，本文件仅覆盖新边界；实现者不签发用户验收。
