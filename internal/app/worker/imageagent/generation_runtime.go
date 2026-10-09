@@ -34,7 +34,10 @@ func (a generationResourceAuthorizer) AuthorizeImageGeneration(ctx context.Conte
 	return a.authorizer.AuthorizeExecution(ctx, imageagent.ExecutionIdentity{ScopeProtocol: run.ScopeProtocol, RunID: run.ID, TenantID: run.TenantID, UserID: run.UserID, MemberID: run.MemberID, BusinessTaskID: run.BusinessTaskID})
 }
 
-func buildOrganizationGeneration(cfg config.ImageAgentGenerationConfig, db, commercial *gorm.DB, repository imageagent.Repository, authorizer imageagent.ExecutionAuthorizer, logger *logrus.Logger) (*imageagent.GenerationExecution, imageagent.GenerationRecovery, error) {
+func buildOrganizationGeneration(cfg config.ImageAgentGenerationConfig, db, commercial *gorm.DB, repository imageagent.Repository, authorizer imageagent.ExecutionAuthorizer, logger *logrus.Logger, sourceContexts ...imageagent.ImageSetContextReader) (*imageagent.GenerationExecution, imageagent.GenerationRecovery, error) {
+	if len(sourceContexts) > 1 {
+		return nil, nil, imageagent.ErrValidation
+	}
 	facts, ok := repository.(imageagent.GenerationFactRepository)
 	if !ok || db == nil || commercial == nil || authorizer == nil {
 		return nil, nil, imageagent.ErrValidation
@@ -82,10 +85,36 @@ func buildOrganizationGeneration(cfg config.ImageAgentGenerationConfig, db, comm
 			if !reflect.DeepEqual(catalog, input.AssetCatalog) {
 				return nil, imageagent.ErrRevisionConflict
 			}
+			if input.ImageSet != nil {
+				var contexts imageagent.ImageSetContextReader
+				if len(sourceContexts) == 1 {
+					contexts = sourceContexts[0]
+				}
+				if err = revalidateGenerationImageSet(ctx, repository, contexts, input); err != nil {
+					return nil, err
+				}
+			}
 			return readGenerationSource(ctx, input)
 		},
 	})
 	return executor, recovery, err
+}
+
+func revalidateGenerationImageSet(ctx context.Context, repository imageagent.Repository, contexts imageagent.ImageSetContextReader, input imageagent.SlotExecutionInput) error {
+	if input.ImageSet == nil {
+		return nil
+	}
+	if contexts == nil {
+		return imageagent.ErrCommandBlocked
+	}
+	projection, err := repository.GetProjection(ctx, imageagent.RunScope{TenantID: input.TenantID, OwnerUserID: input.UserID, RunID: input.RunID})
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(projection.Plan.Set, input.ImageSet) {
+		return imageagent.ErrRevisionConflict
+	}
+	return contexts.RevalidateImageSet(ctx, input.OrganizationIdentity, projection)
 }
 
 func readGenerationSource(ctx context.Context, input imageagent.SlotExecutionInput) ([]byte, error) {

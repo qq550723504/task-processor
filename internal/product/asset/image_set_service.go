@@ -106,7 +106,7 @@ func (s *ImageSetService) prepare(ctx context.Context, input ImageSetCommand) (A
 	if err != nil {
 		return ApprovalCommit{}, err
 	}
-	if source.ItemID != input.Source.ItemID || source.OriginalPublicationID != input.Source.OriginalPublicationID || source.OriginalSnapshotVersion != input.Source.OriginalSnapshotVersion || source.EffectiveCatalogVersion != input.Source.EffectiveCatalogVersion || source.ApplyReceiptID != input.Source.ApplyReceiptID || source.TargetPlatform != input.Source.TargetPlatform {
+	if source.ContextKind != input.Source.ContextKind || source.ItemID != input.Source.ItemID || source.OriginalPublicationID != input.Source.OriginalPublicationID || source.OriginalSnapshotVersion != input.Source.OriginalSnapshotVersion || source.EffectiveCatalogVersion != input.Source.EffectiveCatalogVersion || source.ApplyReceiptID != input.Source.ApplyReceiptID || source.TargetPlatform != input.Source.TargetPlatform {
 		return ApprovalCommit{}, ErrApprovalConflict
 	}
 	if !validIdentityPart(source.TenantID) || !validIdentityPart(source.ActorID) || !validIdentityPart(source.MemberID) || !validIdentityPart(source.ProductKey) {

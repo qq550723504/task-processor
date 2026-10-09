@@ -54,7 +54,9 @@ func (r AcquisitionImageSetSources) ReadImageSetSource(ctx context.Context, iden
 		}
 		assets = append(assets, imageagent.AuthorizedAsset{ID: image.ID, Type: imageagent.AuthorizedAssetSource, URL: url, SourceURL: url, DisplayURL: url, Label: "商品原始素材", Width: image.Width, Height: image.Height})
 	}
-	return PrepareImageProduct(input.ContextID, original, effective, input.ApplyReceiptID, assets)
+	prepared, err := PrepareImageProduct(input.ContextID, original, effective, input.ApplyReceiptID, assets)
+	prepared.Source.ContextKind = imageagent.ImageSourceAcquisition
+	return prepared, err
 }
 
 func (r EffectiveImageProductReader) ReadEffectiveImageProduct(ctx context.Context, identity imageagent.ExecutionIdentity, original catalog.PublishedSnapshot, version uint64, applyID string) (catalog.PublishedSnapshot, error) {

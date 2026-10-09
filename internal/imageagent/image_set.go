@@ -12,7 +12,19 @@ import (
 const ImageSetSchema = "product-image-set-v1"
 const InvalidGeneratedOutputCode = "invalid_generated_output"
 
+type ImageSourceContextKind string
+
+const (
+	ImageSourceAcquisition ImageSourceContextKind = "acquisition"
+	ImageSourceSupply      ImageSourceContextKind = "supply"
+)
+
+func (k ImageSourceContextKind) Valid() bool {
+	return k == ImageSourceAcquisition || k == ImageSourceSupply
+}
+
 type ImageSourceBinding struct {
+	ContextKind                                   ImageSourceContextKind
 	ProductID, OperationID, OriginalPublicationID string
 	OriginalVersion, EffectiveVersion             uint64
 	CatalogHash                                   string
@@ -114,7 +126,7 @@ func ValidateImageSetPlan(plan Plan) error {
 	if s == nil || s.Schema != ImageSetSchema || len(plan.Slots) > MaxPlanSlots || len(plan.StyleReferenceIDs) > 0 {
 		return fmt.Errorf("%w: incomplete image set binding", ErrValidation)
 	}
-	if !canonicalImageValue(s.Source.ProductID) || !canonicalImageValue(s.Source.OperationID) || !canonicalImageValue(s.Source.OriginalPublicationID) || s.Source.OriginalVersion == 0 || s.Source.EffectiveVersion == 0 || !validGenerationCatalogHash(s.Source.CatalogHash) {
+	if !s.Source.ContextKind.Valid() || !canonicalImageValue(s.Source.ProductID) || !canonicalImageValue(s.Source.OperationID) || !canonicalImageValue(s.Source.OriginalPublicationID) || s.Source.OriginalVersion == 0 || s.Source.EffectiveVersion == 0 || !validGenerationCatalogHash(s.Source.CatalogHash) {
 		return fmt.Errorf("%w: incomplete image source binding", ErrValidation)
 	}
 	if s.Source.OriginalVersion > math.MaxInt64 || s.Source.EffectiveVersion > math.MaxInt64 || s.Source.EffectiveVersion < s.Source.OriginalVersion || (s.Source.EffectiveVersion > s.Source.OriginalVersion) != (s.Source.ApplyReceiptID != "") || s.Source.ApplyReceiptID != "" && !agentconfig.UUID(s.Source.ApplyReceiptID) {

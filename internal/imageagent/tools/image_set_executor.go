@@ -7,6 +7,12 @@ import (
 	productimage "task-processor/internal/product/image"
 )
 
+// Building a materialized set result is deterministic and requires no legacy
+// Extract, background renderer, Review model or token-usage capability.
+func NewImageSetResultBuilder() *ProductImageSlotExecutor {
+	return &ProductImageSlotExecutor{}
+}
+
 func (e *ProductImageSlotExecutor) resolveImageSetInput(input imageagent.SlotExecutionInput) (resolvedSlotInput, error) {
 	if e.legacyV2 || input.RunID == "" || input.TenantID == "" || input.UserID == "" || input.PlanRevision <= 0 || input.Attempt <= 0 || input.IdempotencyKey == "" || input.Slot.IdempotencyKey == "" {
 		return resolvedSlotInput{}, imageagent.ErrValidation

@@ -34,16 +34,12 @@ func (r ImageSetTargetRules) ResolveImageSetTarget(ctx context.Context, identity
 	if err != nil {
 		return imageagent.ImageTarget{}, nil, err
 	}
-	seen := map[string]bool{}
+	dimensions := make([]goods.OfficialImageDimensions, 0, len(slots))
 	for _, slot := range slots {
-		position := collection.Digest([]any{slot.Group, slot.SKC, slot.SKU, slot.Sort})
-		if !resolved.requirements.AllowsSlot(slot) || seen[position] {
-			return imageagent.ImageTarget{}, nil, imageagent.ErrRevisionConflict
-		}
-		seen[position] = true
-		if !goods.OfficialImageSizeAllowed(slot.Group, slot.Type, 1024, 1024) {
-			return imageagent.ImageTarget{}, nil, imageagent.ErrCommandBlocked
-		}
+		dimensions = append(dimensions, goods.OfficialImageDimensions{AssetID: slot.AssetID, Width: 1024, Height: 1024})
+	}
+	if len(resolved.requirements.ValidateMaterialSelection(slots, dimensions)) > 0 {
+		return imageagent.ImageTarget{}, nil, imageagent.ErrCommandBlocked
 	}
 	return resolved.target, positions, nil
 }

@@ -11,6 +11,9 @@ import (
 )
 
 func (a *Activities) PublishApproved(ctx context.Context, input PublishApprovedActivityInput) error {
+	if a.publisher == nil {
+		return imageagent.ErrCommandBlocked
+	}
 	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return err

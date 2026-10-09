@@ -26,7 +26,7 @@ func (f *sourceContextFixture) ReadImageSetSource(context.Context, imageagent.Ex
 func TestImageSetSourceContextUsesExactAuthorizedOriginalBytesAndRechecksThem(t *testing.T) {
 	catalog, err := imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{ProductContext: imageagent.ProductContextRef{ProductID: "product", SourceSnapshotVersion: 1, Title: "Original title"}, Assets: []imageagent.AuthorizedAsset{{ID: "first", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/first.png"}, {ID: "second", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/second.png"}}})
 	require.NoError(t, err)
-	source := &sourceContextFixture{preparation: imageagent.ImageSetPreparation{Catalog: catalog, Source: imageagent.ImageSourceBinding{ProductID: "product", OperationID: "source", OriginalPublicationID: "publication", OriginalVersion: 1, EffectiveVersion: 1}}}
+	source := &sourceContextFixture{preparation: imageagent.ImageSetPreparation{Catalog: catalog, Source: imageagent.ImageSourceBinding{ContextKind: imageagent.ImageSourceAcquisition, ProductID: "product", OperationID: "source", OriginalPublicationID: "publication", OriginalVersion: 1, EffectiveVersion: 1}}}
 	var raw bytes.Buffer
 	require.NoError(t, png.Encode(&raw, image.NewNRGBA(image.Rect(0, 0, 1024, 1024))))
 	content := raw.Bytes()

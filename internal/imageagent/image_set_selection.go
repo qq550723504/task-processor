@@ -56,7 +56,7 @@ func ValidateImageSetSelectionIntent(plan Plan, actionID string, selection *prod
 	}
 	source := plan.Set.Source
 	selected := selection.Source
-	if selected.ItemID != source.OperationID || selected.OriginalPublicationID != source.OriginalPublicationID || selected.OriginalSnapshotVersion != source.OriginalVersion || selected.EffectiveCatalogVersion != source.EffectiveVersion || selected.ApplyReceiptID != source.ApplyReceiptID || selected.TargetPlatform != plan.Set.Target.Platform {
+	if selected.ContextKind != string(source.ContextKind) || selected.ItemID != source.OperationID || selected.OriginalPublicationID != source.OriginalPublicationID || selected.OriginalSnapshotVersion != source.OriginalVersion || selected.EffectiveCatalogVersion != source.EffectiveVersion || selected.ApplyReceiptID != source.ApplyReceiptID || selected.TargetPlatform != plan.Set.Target.Platform {
 		return ErrRevisionConflict
 	}
 	target := plan.Set.Target

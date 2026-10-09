@@ -11,11 +11,12 @@ import (
 
 type generationProjectionReader struct {
 	imageagent.Repository
-	run imageagent.Run
+	run  imageagent.Run
+	plan imageagent.Plan
 }
 
 func (r generationProjectionReader) GetProjection(context.Context, imageagent.RunScope) (imageagent.RunProjection, error) {
-	return imageagent.RunProjection{Run: r.run}, nil
+	return imageagent.RunProjection{Run: r.run, Plan: r.plan}, nil
 }
 
 type generationLiveAuthorizer struct {

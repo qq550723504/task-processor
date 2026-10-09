@@ -23,6 +23,7 @@ const (
 )
 
 type ImageAgentTemporalDependencies struct {
+	ImageSetPublisher        imageagent.ApprovedImageSetPublisher
 	GenerationRecovery       imageagent.GenerationRecovery
 	GenerationOutputRecovery imageagent.GenerationOutputRecovery
 	ExecutionAuthorizer      imageagent.ExecutionAuthorizer
@@ -158,6 +159,7 @@ func startImageAgentTemporalWorkerWithOptionsAndDependenciesContext(ctx context.
 		return nil, fmt.Errorf("organization image agent execution authorizer requires organization worker mode")
 	}
 	activities, err := imageagenttemporal.NewActivities(imageagenttemporal.ActivityDependencies{
+		ImageSetPublisher:        dependencies.ImageSetPublisher,
 		GenerationRecovery:       dependencies.GenerationRecovery,
 		GenerationOutputRecovery: dependencies.GenerationOutputRecovery,
 		ExecutionAuthorizer:      dependencies.ExecutionAuthorizer,

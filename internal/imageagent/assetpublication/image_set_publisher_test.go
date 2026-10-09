@@ -21,7 +21,7 @@ func (f *selectedSetFixture) Select(_ context.Context, command productasset.Imag
 func TestImageSetPublisherConsumesExactSelectionAfterOriginalPublicationBoundary(t *testing.T) {
 	projection, _, source, choice := imageSetCandidateFixture(t)
 	action := "1b912e40-d50a-48f5-a12b-62c73a42e4b8"
-	selection := productasset.ImageSetCommand{ActionID: action, SelectionDigest: strings.Repeat("b", 64), Source: productasset.SourceSelectionRequest{ItemID: source.ItemID, OriginalPublicationID: source.OriginalPublicationID, OriginalSnapshotVersion: source.OriginalSnapshotVersion, EffectiveCatalogVersion: source.EffectiveCatalogVersion, TargetPlatform: source.TargetPlatform}, Choices: []productasset.ImageSetChoice{choice}}
+	selection := productasset.ImageSetCommand{ActionID: action, SelectionDigest: strings.Repeat("b", 64), Source: productasset.SourceSelectionRequest{ContextKind: "acquisition", ItemID: source.ItemID, OriginalPublicationID: source.OriginalPublicationID, OriginalSnapshotVersion: source.OriginalSnapshotVersion, EffectiveCatalogVersion: source.EffectiveCatalogVersion, TargetPlatform: source.TargetPlatform}, Choices: []productasset.ImageSetChoice{choice}}
 	projection.PendingCommand = &imageagent.PendingCommandReceipt{ActionID: action, Kind: "approve_results", Phase: imageagent.ImageSetApprovalPublicationStarted, PlanRevision: 1, SelectionDigest: selection.SelectionDigest, ResultDigest: projection.ResultDigest}
 	selector := &selectedSetFixture{}
 	publisher, err := NewImageSetPublisher(staticProjectionSource{projection: projection}, selector)

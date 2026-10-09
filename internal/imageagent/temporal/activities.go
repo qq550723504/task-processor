@@ -71,7 +71,7 @@ func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
 	if dependencies.SlotEffects == nil {
 		return nil, fmt.Errorf("image agent slot external effect repository is required")
 	}
-	if dependencies.Publisher == nil {
+	if dependencies.Publisher == nil && dependencies.ImageSetPublisher == nil {
 		return nil, fmt.Errorf("image agent approved asset publisher is required")
 	}
 	v3Requested := dependencies.SlotEffectsV3 != nil || dependencies.StagedSlotExecutor != nil || dependencies.ArtifactStore != nil
@@ -90,7 +90,7 @@ func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
 		if dependencies.ArtifactStore == nil {
 			return nil, fmt.Errorf("image agent durable artifact store is required")
 		}
-		if dependencies.PublisherV3 == nil {
+		if dependencies.PublisherV3 == nil && dependencies.ImageSetPublisher == nil {
 			return nil, fmt.Errorf("image agent v3 approved asset publisher is required")
 		}
 		if dependencies.PublicationOwner == nil {

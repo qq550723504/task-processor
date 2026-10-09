@@ -53,6 +53,7 @@ func approvalDigest(value any) string {
 func ReferenceHash(id, imageURL string) string { return approvalDigest([]string{id, imageURL}) }
 
 type SourceSelectionRequest struct {
+	ContextKind             string `json:"contextKind,omitempty"`
 	ItemID                  string `json:"itemId"`
 	OriginalPublicationID   string `json:"originalPublicationId"`
 	OriginalSnapshotVersion uint64 `json:"originalSnapshotVersion"`
@@ -65,6 +66,7 @@ type SourceImage struct {
 	Width, Height          int
 }
 type SourceSelection struct {
+	ContextKind                                                                            string `json:",omitempty"`
 	TenantID, ActorID, MemberID, ItemID, ProductKey, OriginalPublicationID, TargetPlatform string
 	ApplyReceiptID                                                                         string `json:",omitempty"`
 	OriginalSnapshotVersion, EffectiveCatalogVersion                                       uint64

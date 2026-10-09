@@ -48,7 +48,7 @@ func imageSetCandidateFixture(t *testing.T) (imageagent.RunProjection, *original
 	failed.Recipe = imageagent.CloneImageSlotRecipe(recipe)
 	failed.Recipe.Purpose = "detail_closeup"
 	failed.Recipe.Placement.Order = 2
-	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan", CreatedBy: run.UserID, SourceAssetIDs: []string{"source"}, Slots: []imageagent.Slot{slot, failed}, Set: &imageagent.ImageSetPlan{Schema: imageagent.ImageSetSchema, Source: imageagent.ImageSourceBinding{ProductID: "product", OperationID: "operation", OriginalPublicationID: "publication", OriginalVersion: 1, EffectiveVersion: 1, CatalogHash: catalog.Manifest.Hash}, Target: imageagent.ImageTarget{Platform: "product"}, Configuration: agent.ConfigurationSnapshotRef{Kind: agentconfig.SnapshotKind, ID: "91d39d8d-3819-4a7c-ae7f-04ce91951f9a", Digest: hash}, ConfigurationEpoch: "1", ParametersDigest: hash, InputDigest: hash, MaxPoints: 24}}
+	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan", CreatedBy: run.UserID, SourceAssetIDs: []string{"source"}, Slots: []imageagent.Slot{slot, failed}, Set: &imageagent.ImageSetPlan{Schema: imageagent.ImageSetSchema, Source: imageagent.ImageSourceBinding{ContextKind: imageagent.ImageSourceAcquisition, ProductID: "product", OperationID: "operation", OriginalPublicationID: "publication", OriginalVersion: 1, EffectiveVersion: 1, CatalogHash: catalog.Manifest.Hash}, Target: imageagent.ImageTarget{Platform: "product"}, Configuration: agent.ConfigurationSnapshotRef{Kind: agentconfig.SnapshotKind, ID: "91d39d8d-3819-4a7c-ae7f-04ce91951f9a", Digest: hash}, ConfigurationEpoch: "1", ParametersDigest: hash, InputDigest: hash, MaxPoints: 24}}
 	plan.Set.QuoteDigest, err = imageagent.ImageSetQuoteDigest(plan)
 	require.NoError(t, err)
 	planDigest, err := imageagent.ImageSetPlanDigest(plan)
@@ -91,7 +91,7 @@ func imageSetCandidateFixture(t *testing.T) (imageagent.RunProjection, *original
 	resultFingerprint, err := imageagent.SlotEffectV3PublishedResultFingerprint(published)
 	require.NoError(t, err)
 	effect := imageagent.SlotEffectV3Attempt{Identity: identity, IdempotencyKey: execution.IdempotencyKey, InputFingerprint: imageagent.SlotExecutionFingerprint(execution), Phase: imageagent.SlotEffectV3PublicationComplete, Published: published, ResultFingerprint: resultFingerprint, FinalManifest: imageagent.FinalManifest{Assets: []imageagent.PublishedAssetRef{{ObjectKey: candidate.DurableAsset.ObjectKey, SHA256: hash, SizeBytes: 100, ContentType: "image/png", Width: 1024, Height: 1024, SourceAssetID: "source", Operations: []string{"render_source_edit"}, ProviderReceiptID: "response"}}}}
-	source := productasset.SourceSelection{TenantID: run.TenantID, ActorID: run.UserID, MemberID: run.MemberID, ItemID: "operation", ProductKey: "product", OriginalPublicationID: "publication", OriginalSnapshotVersion: 1, EffectiveCatalogVersion: 1, TargetPlatform: "product"}
+	source := productasset.SourceSelection{ContextKind: "acquisition", TenantID: run.TenantID, ActorID: run.UserID, MemberID: run.MemberID, ItemID: "operation", ProductKey: "product", OriginalPublicationID: "publication", OriginalSnapshotVersion: 1, EffectiveCatalogVersion: 1, TargetPlatform: "product"}
 	choice := productasset.ImageSetChoice{Kind: "generated", RunID: run.ID, AssetID: candidate.AssetID, SlotID: slot.ID, PlanRevision: 1, Attempt: 1, ResultDigest: projection.ResultDigest, Presentation: productasset.ImagePresentation{Group: "detail", Order: 1}}
 	return projection, &originalSetFactFixture{fact: fact, effect: effect}, source, choice
 }

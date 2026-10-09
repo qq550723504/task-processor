@@ -68,5 +68,7 @@ func (r ImageSetSources) ReadImageSetSource(ctx context.Context, identity imagea
 		}
 		assets = append(assets, imageagent.AuthorizedAsset{ID: image.ID, Type: imageagent.AuthorizedAssetSource, URL: url, SourceURL: url, DisplayURL: url, Label: "商品原始素材", Width: image.Width, Height: image.Height})
 	}
-	return imageapp.PrepareImageProduct(input.ContextID, original, effective, input.ApplyReceiptID, assets)
+	prepared, err := imageapp.PrepareImageProduct(input.ContextID, original, effective, input.ApplyReceiptID, assets)
+	prepared.Source.ContextKind = imageagent.ImageSourceSupply
+	return prepared, err
 }

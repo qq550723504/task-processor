@@ -2,6 +2,7 @@ package supplychainapp
 
 import (
 	"context"
+	"fmt"
 	"github.com/stretchr/testify/require"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
@@ -28,7 +29,7 @@ func TestImageSetTargetUsesActualSavedCategoryBindingAndRejectsUnsupportedNative
 	uploader, scope, records, merchant, _, _, _ := uploadFixture(t)
 	verified := authidentity.AuthenticatedIdentity{TenantID: scope.OrganizationID, EffectiveOrganizationID: scope.OrganizationID, UserID: scope.ActorID, EffectiveMemberID: scope.MemberID}
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), verified)
-	source := imageagent.ImageSourceBinding{ProductID: records.saved.Source.Source.ProductKey, OperationID: records.saved.Source.ID, OriginalPublicationID: records.saved.Source.Source.PublicationID, OriginalVersion: 1, EffectiveVersion: 1}
+	source := imageagent.ImageSourceBinding{ContextKind: imageagent.ImageSourceAcquisition, ProductID: records.saved.Source.Source.ProductKey, OperationID: records.saved.Source.ID, OriginalPublicationID: records.saved.Source.Source.PublicationID, OriginalVersion: 1, EffectiveVersion: 1}
 	owner := &imageTargetSourceFixture{source: asset.SourceSelection{TenantID: scope.OrganizationID, ActorID: scope.ActorID, MemberID: scope.MemberID, ItemID: records.saved.Source.ID, ProductKey: source.ProductID, OriginalPublicationID: source.OriginalPublicationID, OriginalSnapshotVersion: 1, EffectiveCatalogVersion: 1, TargetPlatform: "shein"}}
 	reader := ImageSetTargetRules{Records: records, Sources: owner, Rules: uploader.dependencies.Rules}
 	input := imageagent.PrepareImageSetInput{ContextID: source.OperationID, Target: imageagent.ImageTargetSelection{Platform: "shein", RecordID: records.saved.ID, StoreID: merchant.binding.StoreID, Site: merchant.binding.Site, CategoryID: 123}, OfficialPlacements: map[string]imageagent.OfficialImagePlacement{"main": {Group: "skc", SKC: 0, SKU: 0, Type: 1, Sort: 1, Site: "shein-us"}}}
@@ -57,6 +58,13 @@ func TestImageSetTargetUsesActualSavedCategoryBindingAndRejectsUnsupportedNative
 	_, _, err = reader.ResolveImageSetTarget(ctx, identity, input, imageagent.ImageSetPreparation{Source: source})
 	require.ErrorIs(t, err, imageagent.ErrCommandBlocked, "native 1024 cannot satisfy official 3:4 detail dimensions")
 	input.OfficialPlacements["main"] = positions["main"]
+	input.OfficialPlacements = map[string]imageagent.OfficialImagePlacement{}
+	for i := 1; i <= 11; i++ {
+		input.OfficialPlacements[fmt.Sprint(i)] = imageagent.OfficialImagePlacement{Group: "skc", Type: 2, Sort: i, Site: "shein-us"}
+	}
+	_, _, err = reader.ResolveImageSetTarget(ctx, identity, input, imageagent.ImageSetPreparation{Source: source})
+	require.Error(t, err, "official per-type limits must block preparation before any paid dispatch")
+	input.OfficialPlacements = positions
 	owner.denied = true
 	_, _, err = reader.ResolveImageSetTarget(ctx, identity, input, imageagent.ImageSetPreparation{Source: source})
 	require.Error(t, err)
