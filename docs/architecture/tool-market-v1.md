@@ -1,7 +1,12 @@
 # 工具市场 v1 — 企业启用与人工定制需求
 
-Status: **NOT_READY — awaiting independent Architecture Review**  
-Execution: [#613](https://github.com/qq550723504/task-processor/issues/613), parent #137  
+Status: **IMPLEMENTATION_READY**
+
+2026-10-09 独立Architecture Review第二轮确认设计blob
+`f9298fe72c11e10586411f538323eafad0738a69`原平台授权BLOCKER已消除；
+企业权限、原子提交/并发重放和发布包校验归IMPLEMENTATION_TEST，按下文实现验证。
+
+Execution: [#613](https://github.com/qq550723504/task-processor/issues/613), parent #137
 Design baseline: main d95807f13475d27c0b8691f044cca6320a540d06, 2026-10-09.
 
 ## Product outcome, scope and authority
@@ -69,9 +74,9 @@ toolmarket Repository/Catalog/Authorize窄Port → tool_market PG及专属HTTP m
 
 ## Permissions and trusted scope
 
-GET清单/当前企业需求用CurrentIdentity和CachedRead组织策略；
-所有写入用LiveWrite，服务调用前解析新鲜有效成员与对应authz许可。
-写入前/事务内通过注入回调重新确认相同actor+organization；撤权则回滚。
+企业GET清单/需求用CurrentIdentity和CachedRead组织策略；企业写入用LiveWrite，
+服务调用前解析新鲜有效成员与对应scoped authz许可。
+企业写入前/事务内通过注入回调重新确认相同actor+organization；撤权则回滚。
 
 拟新增workbench.tools.read/manage/customize权限：
 - 当前企业成员可查看清单/需求（现有viewer/operator/admin角色的read许可）。
@@ -80,6 +85,13 @@ GET清单/当前企业需求用CurrentIdentity和CachedRead组织策略；
 - 专员跨企业list/detail/update仅由现有PermissionListingKitPlatformAdm授权。
   平台权限判断使用现有平台authorizer；企业角色、模块权限、JSON布尔字段不授予平台权。
   可读取的企业事实范围和平台权限分开，不让工具manage自动获得跨企业进度权限。
+
+平台list/detail/progress精确复用现有ecoservices路径：
+AuthPolicyCurrentIdentityWithVerifiedRoles + OrganizationAccessPolicyNone +
+PermissionListingKitPlatformAdm；不要求专员是客户企业成员，不将角色替换为客户企业角色。
+平台事务内回调重新检查同一已验证平台actor、未过期token和平台许可，
+不能使用企业成员resolve替代平台检查。锁定请求行后取得owner organization，
+仅用于事实查询/回执命名空间，不能据此生成客户企业成员权限。
 
 新permission常量可落独立authz/tool_market.go。
 共享authz默认策略、WorkbenchPermissions/module_catalog及console-navigation/runtime
@@ -134,7 +146,8 @@ readiness失效时保留启用事实但显示不可用原因，不假删除选�
 GET market/mine；PUT activations/:tool_id；GET/POST requests；
 GET requests/:id；平台GET admin/requests(/:id)和POST admin/requests/:id/progress。
 平台URL无organization body override；BFF将平台路径映射到已批准的platform-admin路由。
-正式API前缀为/api/v1/workbench/tool-market；平台分支同模块单独要求平台权限。
+企业API前缀为/api/v1/workbench/tool-market；平台分支为/api/v1/admin/tool-market，
+同模块单独使用上述verified-roles/None策略和平台权限。
 
 JSON strict decode（含重复字段/unknown字段）、body最大16KiB、title120 Unicode字符、
 description4000字符、stage note2000字符。list最多50、UUID游标、响应最多256KiB。
@@ -144,7 +157,10 @@ no-store；错误使用INVALID_REQUEST/FORBIDDEN/NOT_FOUND/IDEMPOTENCY_CONFLICT/
 REVISION_MISMATCH/PRECONDITION_REQUIRED/DEPENDENCY_UNAVAILABLE现有语义。
 
 插件包是现有build生成的部署产物，runtime明确注入包路径、sha256及接收origin，
-仅接受非fixture manifest和当前精确origin匹配的已知文件集；有界读取，不以用户URL下载。
+仅接受非fixture manifest和已知文件集；有界读取，不以用户URL下载。
+manifest match忽略端口，不能仅凭hostname证明接收地址绑定；下载必须校验整个archive
+与可信部署构建记录中的sha256、完整CAPTURE_APP_URL为同一个绑定，
+复用既有编译地址/exact origin+path/tab交接检查。配置缺失或绑定不符则不可用。
 没有包或接收能力时下载按钮显示不可用。不能通过当前浏览器origin临时生成任意可信包。
 客户端未知响应保留原actor+organization+key+请求意图，切换组织/账号不自动重发；
 恢复原上下文后原key查回执或重放同命令。成功后从服务端重读，不能前端假保存。
@@ -170,7 +186,7 @@ HTTP与BFF覆盖认证/Origin/strict body/timeout/错误映射；UI覆盖启用�
 稳定候选仅执行相关Go/Web检查及必需CI；最终独立复核检查实际diff和完整消费者路径。
 
 本批一Writer、一主要PR；适用设计review最多两轮，finding先按AGENTS分类。
-准入前不写生产业务路径/schema。当前独立review和新实现测试均NOT_RUN。
+准入前不写生产业务路径/schema。独立设计review已完成；新实现测试尚未执行。
 实现完成进In Review，交独立HTTP模块、schema安装/权限/包构建与BFF入口给指定runtime
 Writer；共享接线、真实1688/付费provider及用户试用未执行保持NOT_RUN，不称可上线。
 
@@ -180,4 +196,3 @@ Reusable behavior：现有扩展build/extractor/receiver、当前Acquisition/SRC
 Current owner：原采集/授权/价格owner不变，新增市场管理事实在toolmarket。
 Cutover/deletion condition：三个占位页面由真实模块消费后退休；不回依赖旧Service/Task-first，
 不迁移旧数据或建立双事实源。
-
