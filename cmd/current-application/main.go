@@ -56,8 +56,11 @@ func execute() error {
 	}
 	return currentapplication.Run(ctx, cfg, logger, currentapplication.Dependencies{
 		IdentityPreflight: currentapplication.VerifyIdentityProvider,
-		NewKnowledge:      prepareKnowledge,
-		NewEcoservices:    prepareEcoservices,
+		OpenToolMarket: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
+		NewKnowledge:   prepareKnowledge,
+		NewEcoservices: prepareEcoservices,
 		OpenEcoservices: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
@@ -170,6 +173,9 @@ func execute() error {
 			if features.ProductAcquisitionDB != nil {
 				options = append(options, httpapi.WithProductAcquisition(features.ProductAcquisitionDB))
 				options = append(options, httpapi.WithBrowserCapture())
+			}
+			if features.ToolMarketDB != nil && features.ToolMarket != nil {
+				options = append(options, httpapi.WithToolMarket(httpapi.ToolMarketDependencies{DB: features.ToolMarketDB, Package: features.ToolMarket.PackageConfig()}))
 			}
 			if features.ProductCollections {
 				options = append(options, httpapi.WithProductCollections())

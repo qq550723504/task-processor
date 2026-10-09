@@ -24,6 +24,7 @@ import (
 )
 
 type Dependencies struct {
+	OpenToolMarket               func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenEcoservices              func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	NewEcoservices               func(context.Context, *gorm.DB, *EcoservicesConfig, *logrus.Logger) (*EcoservicesRuntime, error)
 	OpenNotificationCenter       func(context.Context, DatabaseConfig) (*gorm.DB, error)
@@ -59,6 +60,8 @@ type Dependencies struct {
 // ApplicationFeatures keeps separately owned, opt-in current modules together
 // only at the serving composition boundary.
 type ApplicationFeatures struct {
+	ToolMarketDB                                         *gorm.DB
+	ToolMarket                                           *ToolMarketConfig
 	Ecoservices                                          *EcoservicesRuntime
 	SourceMediaStorage                                   productsourcing.SourceMediaStorage
 	NotificationCenterDB                                 *gorm.DB
@@ -153,6 +156,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	if cfg.Knowledge != nil && cfg.Knowledge.Enabled && (dependencies.OpenKnowledge == nil || dependencies.NewKnowledge == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("knowledge runtime lifecycle unavailable")
+	}
+	if cfg.ToolMarket != nil && (dependencies.OpenToolMarket == nil || dependencies.NewApplicationWithFeatures == nil) {
+		return errors.New("tool market lifecycle unavailable")
 	}
 	if cfg.ProductAgent != nil && (dependencies.OpenProductAgent == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("product agent lifecycle unavailable")
@@ -516,9 +522,25 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			return errors.New("source media storage unavailable")
 		}
 	}
+	var toolMarketDB *gorm.DB
+	if cfg.ToolMarket != nil {
+		toolMarketDB, err = dependencies.OpenToolMarket(startupContext, cfg.ToolMarket.Database)
+		if err != nil || toolMarketDB == nil {
+			return errors.New("tool market database unavailable")
+		}
+		for _, other := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, trialDB, notificationDB, supplyAssetDB} {
+			if other == toolMarketDB {
+				return errors.New("tool market requires its independent owner pool")
+			}
+		}
+		if ecoservicesRuntime != nil && ecoservicesRuntime.DB == toolMarketDB {
+			return errors.New("tool market requires its independent owner pool")
+		}
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(toolMarketDB)) }()
+	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Ecoservices: ecoservicesRuntime, NotificationCenterDB: notificationDB, Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, SourceMediaStorage: sourceMediaStorage, SupplyAssetDB: supplyAssetDB, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, ImageSetWorkerDB: imageWorkerDB, ImageSetWorkerConfig: imageWorkerConfig, ImageSetTemporal: imageTemporal, ImageSetWorker: &imageWorker, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{ToolMarketDB: toolMarketDB, ToolMarket: cfg.ToolMarket, Ecoservices: ecoservicesRuntime, NotificationCenterDB: notificationDB, Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, SourceMediaStorage: sourceMediaStorage, SupplyAssetDB: supplyAssetDB, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, ImageSetWorkerDB: imageWorkerDB, ImageSetWorkerConfig: imageWorkerConfig, ImageSetTemporal: imageTemporal, ImageSetWorker: &imageWorker, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {

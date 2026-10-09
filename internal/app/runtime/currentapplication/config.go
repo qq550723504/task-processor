@@ -32,6 +32,7 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
+	ToolMarket                 *ToolMarketConfig                         `json:"toolMarket,omitempty"`
 	Ecoservices                *EcoservicesConfig                        `json:"ecoservices,omitempty"`
 	NotificationCenterDatabase *DatabaseConfig                           `json:"notificationCenterDatabase,omitempty"`
 	Knowledge                  *KnowledgeConfig                          `json:"knowledge,omitempty"`
@@ -290,6 +291,9 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 func (cfg *Config) validate() error {
 	if cfg == nil || cfg.SchemaVersion != manifestSchemaVersion {
 		return fmt.Errorf("unsupported current application manifest schema version")
+	}
+	if err := cfg.validateToolMarket(); err != nil {
+		return err
 	}
 	if cfg.NotificationCenterDatabase != nil {
 		if err := cfg.NotificationCenterDatabase.validate("notificationCenterDatabase"); err != nil {
