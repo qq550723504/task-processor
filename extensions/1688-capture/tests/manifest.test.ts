@@ -29,4 +29,11 @@ it('builds only activeTab/scripting with exact app messaging, and rejects implic
   expect(shipped.permissions).toEqual(manifest.permissions);
   expect(shipped.host_permissions).toEqual(manifest.host_permissions);
   expect(shipped.externally_connectable).toEqual({matches:['https://app.example.com/capture/1688']});
+  execFileSync(process.execPath,[build],{env:{...env,CAPTURE_APP_URL:'https://localhost:31544/capture/1688'},stdio:'pipe'});
+  const local=JSON.parse(readFileSync('dist/manifest.json','utf8'));
+  expect(local.name).toBe(shipped.name);
+  expect(local.permissions).toEqual(shipped.permissions);
+  expect(local.host_permissions).toEqual(shipped.host_permissions);
+  expect(local.externally_connectable).toEqual({matches:['https://localhost/capture/1688']});
+  expect(readFileSync('dist/background.js','utf8')).toContain('https://localhost:31544/capture/1688');
 },20000);
