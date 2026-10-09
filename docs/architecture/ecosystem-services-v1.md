@@ -392,7 +392,7 @@ Product Authority：同一次用户明确批准，平台按商户实际应结净
 
 当前只读渠道调查已确认：[电商退款查询](https://pay.wechatpay.cn/doc/v3/partner/4012476911)只在受理后提供实际逐券退款，无已核实 preview；[现金退款规则](https://pay.wechatpay.cn/doc/v3/partner/4013080622)不构成混合券/多次逐券尾差分配证明。[原分账回退](https://pay.wechatpay.cn/doc/v3/partner/4012477737)及[分账FAQ](https://pay.wechatpay.cn/doc/v3/partner/4012525463)允许回退先于或后于退款、同原分账多次回退。原冻结的“全部对应佣金先回退再退款”与混合券不确定部分退款有冲突。2026-10-09 用户在原会话明确回答“确认两项推荐顺序，继续实施”，批准本节 RETURN_PRE→原 REFUND→RETURN_POST 最小顺序例外。产品决定已满足，正式生产仍须原 Reviewer 对该实际准入明确 IMPLEMENTATION_READY；不重问已批准决定。
 
-有界合同候选（只原 E/B/M/GoPay）：
+已准入有界合同（只原 E/B/M/GoPay）：
 
 - 新成交封存 `CHANNEL_SETTLEMENT_NET_FLOOR_V2` 及独立 service purchase policy version。原 quote gross/total、原 fee payer 与 NON_COMMISSIONABLE 不变；原 V1 的零券合同不重新解释或迁移。B payment observation 及 M original ServicePaymentInput 增加 bounded verified payment amounts：payer cash 与每券 ID、CASH/NOCASH、面额；精确 gross=payer+所有券，商户应结 S0=payer+ΣCASH。券ID唯一、币种CNY、金额非负/有界、不未知。纯现金也显式封存该 V2 amounts，不用空字段 fallback。规范排序保证相同明细不同数组顺序不会改事实 fingerprint。
 - B 的 verified native query/notify/close后迟到付款共用同一 amounts 校验；签名/原 profile/mch/app/交易/total/date 不放松。receipt 明细在原 durable inbox 中保存，再原 wake、M payment acceptance，不能在 wake 前因为合法券而拒绝。未知/缺失/矛盾仍原单待核实，无成功或新身份。SDK 的原始 verified response/decrypted notify 数据须核实 required 金额字段存在，不能把缺字段零值当成全券支付或零现金退款。
@@ -406,6 +406,8 @@ Product Authority：同一次用户明确批准，平台按商户实际应结净
 - TDD与必要检查：cash/CASH/NOCASH/混合/全券付款及原通知durable wake；unknown/缺失/矛盾拒绝；100元两个批准分配例子、零应结收入；原bps快照、多次小额累计取整/原券逐ID现金累计；未分账部分退款/CANCEL全退/迟到付款无SHARE原退款；精确refund SUCCESS明细、full及mixed partial预回退/实际差额；M1/M3成功而B保存丢失原回读、两个RETURN phase原share关联、未知不重派、WAITING_FUNDS及退款成功后POST失败/响应丢失不解除hold；NOCASH正常应结余额/unsplit/release/share/finish口径、独立拒付/fees/原V1保留；真实渠道/新版浏览器/用户验收独立NOT_RUN，不扩验证平台。
 
 本增量 Product Authority：净收入政策及 phase 顺序例外均已批准。Independent Architecture：原 Reviewer 于 2026-10-09 绑定 b735e0a3 / staged tree 84f68bab3317a58a74bba3f578dc47676b5ff644，只核实本次 authority 增量及既有两轮候选合同，无新增设计 BLOCKER，明确 IMPLEMENTATION_READY，先于生产/schema 修改；Issue #603 本增量 Ready。无需重审其它已解决增量。第一次原 Reviewer 草案预检指出未分账原退款被 SHARE/负POST拦住的设计 BLOCKER，已按上述零回退分支补齐；资金消费口径及POST失败保留hold归入 IMPLEMENTATION_TEST，不扩大产品范围。
+
+实施证据：8cd3137af 的 tree 139889ebd38b911df76c00c945ccab4a51b14131 已由原 Reviewer 独立增量 PASS。实际签名 SDK/通知核实现金及 CASH/NOCASH，原 B→M 三阶段累计退款、零应结/未分账 CANCEL、POST 丢响应/等待/失败保存事实和 hold、受限 PG 原锁竞争与 receipt 回读均通过。原 V1 查单/关单/通知显式现金合同保留 nil、原身份及 fingerprint，不解释为旧数据兼容或迁移。当前券资金投影/typed BFF/UI 检查通过；真实渠道、部署和用户验收仍 NOT_RUN。
 
 ### 12.6 拒付与履约准入排序（2026-10-09，IMPLEMENTATION_READY）
 
@@ -429,7 +431,7 @@ Owner/contract→implementation→injection→consumer：E 仍拥有履约命令
 
 验证范围：先复用已实际四 RED 的 E→B→M 测试证明“拒付在旧预读后、M 精确准入前”全部拒绝；再以原受限 PG 的独立实例/连接验证 chargeback 与 admission 两种真实锁顺序。仅被批准的“准入先、拒付后”原命令可继续且不得绕过 E 较新 CAS/fence；已完成 replay 保持，异键/载荷/actor/version/receipt 拒绝，M proof 保存/回读失败零 E 提交，原 proof 丢响应精确回读，不重复 acceptance/financial command。覆盖 service chargeback sibling、不产生新 SHARE/FINISH，以及 E 已投影 RECON 的拒绝；合法部分退款/原回退之后正常继续履约和按剩余净额验收分账，全退/取消依旧拒绝。复用既有测试/隔离 PG，未执行场景保持 NOT_RUN，不新建验收平台。真实渠道/新版运行/用户验收独立 NOT_RUN。
 
-开工条件：上述单一顺序例外已获用户明确决定；原 Reviewer 仅对本节实际新边界完成有界独立检查并明确 IMPLEMENTATION_READY，Issue #603 对应增量 Ready，然后同一 Writer TDD。本节新准入协议当前只有测试/调查，尚未修改生产或正式 schema；原 ServiceEffect(CHARGEBACK) 漏保存既有 RECON 的 sibling 是独立的 Reuse Existing Architecture 修复，不是本节新准入实现或竞态修复完成。
+开工条件已满足：上述单一顺序例外已获用户明确决定；原 Reviewer 仅对本节实际新边界完成有界独立检查并明确 IMPLEMENTATION_READY，Issue #603 对应增量 Ready，先于同一 Writer TDD。正式准入协议已在 3f7d051b 实现；四条真实 E→B→M 预读后拒付路径、精确 proof 回读、E 当前 CAS/fence 和受限 PG 两种锁顺序实际通过，原 Reviewer 绑定 tree bc2bbe1b10113ae8a8a08ce7fd795d57fa965cd4 增量 PASS。原 ServiceEffect(CHARGEBACK) 漏保存既有 RECON 的 sibling 是此前独立修复，不代替主竞态证据。真实渠道、部署和用户验收仍 NOT_RUN。
 
 原 Reviewer 首轮草案预检指出“非零 reversal”会误伤合法部分退款后的正常履约，属于核心 happy path 设计 BLOCKER；本节已限定为 canonical chargeback/独立 RECON，并明确原部分退款/佣金回退的正常继续与剩余净额验收路径。该修正未改变待用户决定的排序例外，不提前写 Ready。
 
