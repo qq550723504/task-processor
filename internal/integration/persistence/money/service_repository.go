@@ -61,7 +61,7 @@ type serviceEffectRow struct {
 
 func (serviceEffectRow) TableName() string { return "ledger_service_effect_receipts" }
 func migrateServicePayments(db *gorm.DB) error {
-	return db.AutoMigrate(&channelPaymentClaimRow{}, &servicePaymentRow{}, &serviceReservationRow{}, &serviceEffectRow{})
+	return db.AutoMigrate(&channelPaymentClaimRow{}, &servicePaymentRow{}, &serviceReservationRow{}, &serviceEffectRow{}, &serviceRefundReviewRow{})
 }
 
 // A verified refund state without its original refund facts is not available

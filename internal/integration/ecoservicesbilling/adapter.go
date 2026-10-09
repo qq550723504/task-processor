@@ -100,6 +100,19 @@ func (s Source) AuthorizeServiceCheckout(ctx context.Context, org, actor, order 
 
 type Trading struct{ Purchases *billing.ServicePurchases }
 
+func (t Trading) AdmitServiceRefundReview(ctx context.Context, in e.RefundReviewAdmission) (e.RefundReviewProof, error) {
+	if !in.Scope.Platform || in.Kind != "refund_review" {
+		return e.RefundReviewProof{}, e.ErrForbidden
+	}
+	proof, err := t.Purchases.AdmitServiceRefundReview(ctx, billing.ServiceRefundReviewCommand{OrderID: in.OrderID, RequestID: in.RequestID, PaymentReceiptID: in.PaymentReceiptID, BuyerOrganizationID: in.BuyerOrganizationID, ProviderOrganizationID: in.ProviderOrganizationID, OrganizationID: in.Scope.OrganizationID, ActorID: in.Scope.ActorID, Kind: in.Kind, Key: in.Key, CommandFingerprint: in.CommandFingerprint, RequestVersion: in.RequestVersion, RefundVersion: in.RefundVersion, QuoteVersion: in.QuoteVersion, AmountMinor: in.AmountMinor})
+	if err != nil {
+		return e.RefundReviewProof{}, err
+	}
+	out := e.RefundReviewProof{ReceiptID: proof.ReceiptID, InputFingerprint: e.Fingerprint(in), PaymentReceiptID: proof.PaymentReceiptID, RemainingMinor: proof.RemainingMinor}
+	out.ResultFingerprint = out.Fingerprint()
+	return out, nil
+}
+
 func (t Trading) ReadServiceRefundableAmount(ctx context.Context, order string) (int64, error) {
 	return t.Purchases.ReadServiceRefundableAmount(ctx, order)
 }

@@ -66,7 +66,16 @@ func TestRefundAgreementNeedsBothExactVersionsAndPlatformReview(t *testing.T) {
 	if _, err := TransitionRequest(&r, Command{Scope: buyer, Kind: "refund_confirm", Version: r.Version, RefundVersion: r.Refund.Version}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	fc, err := TransitionRequest(&r, Command{Scope: admin, Kind: "refund_review", Key: "review", Version: r.Version, RefundVersion: r.Refund.Version, Reason: "approved", RefundableAmount: &remaining}, time.Now())
+	review := Command{Scope: admin, Kind: "refund_review", Key: "review", ID: r.ID, Version: r.Version, RefundVersion: r.Refund.Version, Reason: "approved"}
+	review.Fingerprint = Fingerprint(review)
+	in, err := BuildRefundReviewAdmission(review, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := RefundReviewProof{ReceiptID: "original-review-proof", InputFingerprint: Fingerprint(in), PaymentReceiptID: r.PaymentReceiptID, RemainingMinor: remaining}
+	proof.ResultFingerprint = proof.Fingerprint()
+	review.RefundReviewProof = &proof
+	fc, err := TransitionRequest(&r, review, time.Now())
 	if err != nil || fc == nil || fc.Kind != "REFUND" || fc.AmountMinor != 50 {
 		t.Fatalf("approved agreed refund missing: %+v %v", fc, err)
 	}

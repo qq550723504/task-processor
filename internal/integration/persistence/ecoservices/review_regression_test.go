@@ -57,6 +57,15 @@ func (p *refundCapacityTrading) ReadServiceRefundableAmount(context.Context, str
 	p.calls++
 	return p.remaining, nil
 }
+func (p *refundCapacityTrading) AdmitServiceRefundReview(_ context.Context, in e.RefundReviewAdmission) (e.RefundReviewProof, error) {
+	p.calls++
+	if in.AmountMinor > p.remaining {
+		return e.RefundReviewProof{}, e.ErrInvalid
+	}
+	proof := e.RefundReviewProof{ReceiptID: "exact-review-proof", InputFingerprint: e.Fingerprint(in), PaymentReceiptID: in.PaymentReceiptID, RemainingMinor: p.remaining}
+	proof.ResultFingerprint = proof.Fingerprint()
+	return proof, nil
+}
 
 func TestRefundProposalAndApprovalReadCanonicalRemainingAmount(t *testing.T) {
 	r, _ := fixture(t)
@@ -65,7 +74,7 @@ func TestRefundProposalAndApprovalReadCanonicalRemainingAmount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := e.Request{ID: uuid.NewString(), OrderID: uuid.NewString(), BuyerOrganizationID: "buyer", ProviderOrganizationID: "provider", State: "SERVICING", Version: 1, Quote: &e.Quote{AmountMinor: 100}}
+	req := e.Request{ID: uuid.NewString(), OrderID: uuid.NewString(), PaymentReceiptID: "original-payment", BuyerOrganizationID: "buyer", ProviderOrganizationID: "provider", State: "SERVICING", Version: 1, Quote: &e.Quote{AmountMinor: 100, Version: 1}}
 	if err := r.db.Create(requestRecord(req)).Error; err != nil {
 		t.Fatal(err)
 	}

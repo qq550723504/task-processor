@@ -17,6 +17,9 @@ func Fingerprint(v any) string {
 	return hex.EncodeToString(sum[:])
 }
 func (s *Service) Mutate(ctx context.Context, c Command) (Result, error) {
+	// Internal owner evidence is never accepted from a caller.
+	c.RefundReviewProof = nil
+	c.RefundableAmount = nil
 	if !ValidID(c.Key) || !validText(c.Scope.ActorID, 256) || !c.Scope.Platform && !validText(c.Scope.OrganizationID, 128) {
 		return Result{}, ErrInvalid
 	}
@@ -136,6 +139,27 @@ func (s *Service) Mutate(ctx context.Context, c Command) (Result, error) {
 		}
 		if s.trading == nil {
 			return Result{}, ErrUnavailable
+		}
+		if c.Kind == "refund_review" {
+			in, err := BuildRefundReviewAdmission(c, page.Requests[0])
+			if err != nil {
+				return Result{}, err
+			}
+			trading, ok := s.trading.(RefundReviewTradingPort)
+			if !ok {
+				return Result{}, ErrUnavailable
+			}
+			callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			proof, err := trading.AdmitServiceRefundReview(callCtx, in)
+			cancel()
+			if err != nil {
+				return Result{}, err
+			}
+			if !proof.Matches(in) {
+				return Result{}, ErrConflict
+			}
+			c.RefundReviewProof = &proof
+			return s.repo.Apply(ctx, c, s.freezeDays)
 		}
 		remaining, err := s.trading.ReadServiceRefundableAmount(ctx, page.Requests[0].OrderID)
 		if err != nil {

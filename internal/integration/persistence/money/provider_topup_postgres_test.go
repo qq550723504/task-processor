@@ -100,7 +100,7 @@ func newMoneyPostgresRuntime(t *testing.T) (context.Context, *gorm.DB, *Reposito
  GRANT SELECT,INSERT,UPDATE ON public.ledger_organization_wallets,public.ledger_organization_wallet_reservations,public.ledger_provider_topup_claims,public.ledger_topup_refund_holds TO money_owner_runtime;`).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Exec(`GRANT SELECT,INSERT ON public.ledger_channel_payment_claims,public.ledger_service_effect_receipts TO money_owner_runtime; GRANT SELECT,INSERT,UPDATE ON public.ledger_service_payment_bindings,public.ledger_service_operation_reservations TO money_owner_runtime`).Error; err != nil {
+	if err := db.Exec(`GRANT SELECT,INSERT ON public.ledger_channel_payment_claims,public.ledger_service_effect_receipts,public.ledger_service_refund_review_admissions TO money_owner_runtime; GRANT SELECT,INSERT,UPDATE ON public.ledger_service_payment_bindings,public.ledger_service_operation_reservations TO money_owner_runtime`).Error; err != nil {
 		t.Fatal(err)
 	}
 	moneyURL, _ := url.Parse(dsn)

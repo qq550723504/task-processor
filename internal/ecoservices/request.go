@@ -165,11 +165,12 @@ func TransitionRequest(r *Request, c Command, now time.Time) (*FinancialCommand,
 		if !r.Refund.BuyerConfirmed || !r.Refund.ProviderConfirmed {
 			return nil, ErrConflict
 		}
-		if c.RefundableAmount == nil {
-			return nil, ErrUnavailable
+		in, err := BuildRefundReviewAdmission(c, *r)
+		if err != nil {
+			return nil, err
 		}
-		if r.Refund.AmountMinor > *c.RefundableAmount {
-			return nil, ErrInvalid
+		if c.RefundReviewProof == nil || !c.RefundReviewProof.Matches(in) {
+			return nil, ErrUnavailable
 		}
 		r.Refund.State = "APPROVED"
 		r.Refund.Review = &RefundReview{Reason: c.Reason, ActorID: c.Scope.ActorID, ReviewedAt: now}
