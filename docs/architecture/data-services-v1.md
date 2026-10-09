@@ -4,7 +4,7 @@ Refs [执行 Issue #621](https://github.com/qq550723504/task-processor/issues/62
 
 - Product Decision：`PD-DATA-SERVICES-2026-10-09`，见 §1。
 - Design Basis：**Independent Architecture**。
-- Admission：**NOT_READY / DRAFT**。本文先于生产实现；没有 schema 或正式业务代码。
+- Admission：**IMPLEMENTATION_READY**。本文先于生产实现；R1 于设计候选 `6921e70816dadb4f0f552cbd138e60fd94aeaec0` 完成，无 BLOCKER。共享窄合同 Writer 已由用户确认。
 - Investigation baseline：`origin/main @ 2e40643f63a4314a33b0f59f21def10a0cd2ecc9`。
 - 唯一 Writer：会话 `01a11f6e-8e8c-7783-9131-fd88e18394c4`，`codex/data-services-v1`。
 - 公共 runtime / 启动组合 Writer：会话 `01a11f74-2565-78e0-9118-4fe1ff53e726` / #619；共享 owner 改动按 §13 协调。
@@ -117,7 +117,7 @@ job admission在单一Product事务锁key→quota day/month→job，原key/hash�
 
 发现集合写入同事务后，为每item派生稳定operation ID/command hash；未使用的requested quota释放。每商品在Fetch前将1 DATA_ROW intent（原scope/member/funding/rowID/queryhash/source/5分价格）持久化，调用Resource reserve，再在Product记录准确reservation；未确认reservation不Fetch。admin使用enterprise-unallocated，成员使用member-allocated，消费既有规则；funding选择冻结，权限降低不能重选资金来源。
 
-成功item的一个Product UoW：锁job/item/fence与key/限制→重新核对scope/未取消→current SRC publication、Catalog bridge、Collection append同事务→exact publication receipt→item `SAVED` 与可验证成功proof。任一步失败回滚；不得先签发success再append Collection。此UoW是唯一成功来源，Collection只保存refs。提交未知不重新Fetch/重新发布另一key，核实原item/publication/collection receipt。
+所有写命令采用统一锁顺序 key→quota（day/month）→job→item，取消、撤销、改限额及发布不能逆序。成功item的一个Product UoW：按该顺序锁定fence与限制→重新核对scope/未取消→current SRC publication、Catalog bridge、Collection append同事务→exact publication receipt→item `SAVED` 与可验证成功proof。任一步失败回滚；不得先签发success再append Collection。此UoW是唯一成功来源，Collection只保存refs。提交未知不重新Fetch/重新发布另一key，核实原item/publication/collection receipt。
 
 Resource `Reconcile`消费immutable terminal proof，将原reservation committed/released。已保存但结算未知展示 `SAVED / CHARGE_PENDING`，不称余额扣减完成；UI/API实际费用只计已commit owner receipts，pending金额单列且继续占quota。成功quota转consumed与终结proof在同一Product事务，Resource COMMIT未知时保留原reservation，不释放或再reserve。后台沿既有RecoverDue只核实相同owner，不新增第二reconciler。
 
@@ -192,7 +192,7 @@ Cutover/deletion condition: 新用户路径不导入LegacyCrawlSource/旧Service
 2. `ledger/orgresource/consumer_charge.go`消费枚举/intent校验登记Amazon专属1-row consumer；既有余额/结算schema/状态不改。公共Resource map/RecoverDue注册由runtime owner注入，不能抢改其装配。
 3. Product installer/runtime enabled grants必须与Collection新来源/data-service tables、同owner publish Port一致，startup仅verify不DDL；`authz/module_catalog.go`与native RoleModules消费data-market/data-api窄permission；console-navigation/WorkspaceAppShell/currentapplication/Compose/worker启动由 #619 writer负责。
 
-Issue #621记录以上owner/消费者/依赖，请协调方明确上述窄合同修改的唯一Writer；未协调不写共享路径。公共runtime不准备或未合入时本模块保持准确的未接线状态，不以独立测试声明正常安装已开放。本批不会修改其他worktree或临时借未合并代码覆盖main。
+用户于 2026-10-09 明确：本线程负责上述 Collection 与 Resource 两处窄合同，#619负责公共导航/runtime，已记录Issue #621及PR #623。公共runtime不准备或未合入时本模块保持准确的未接线状态，不以独立测试声明正常安装已开放。本批不会修改其他worktree或临时借未合并代码覆盖main。
 
 准入要求：§1产品细节已确认；本设计R1（最多R2）独立检查分类后达到IMPLEMENTATION_READY；共享owner明确；Issue正文Ready才开始production/schema。高风险检查只围绕新增key授权、Product UoW、quota与资源proof、跨scope专员交付，不重审无关全局架构。
 
@@ -206,4 +206,6 @@ Issue #621记录以上owner/消费者/依赖，请协调方明确上述窄合同
 
 ## 15. 独立评审记录
 
-R1：NOT_RUN。R2：NOT_RUN。尚不声明IMPLEMENTATION_READY；独立结论及finding分类记录Issue/PR，本文只保存冻结合同与最终准入状态。
+R1：`/root/architecture_review`只读检查设计候选 `6921e70816dadb4f0f552cbd138e60fd94aeaec0`（blob `6eb54f1a8c6eaa82c2e3991d0e95d3092b437599`），结论IMPLEMENTATION_READY，无BLOCKER。共享owner协调已完成，Issue Ready后允许实施。R2不需要；冻结边界不变时只复核实现增量。
+
+三项 finding 均为 IMPLEMENTATION_TEST，影响当前Must且必须在本批合并前收敛：①资金来源冻结后，每次新reserve/Fetch/publication仍检查当前资金授权；管理员降权不能继续企业未分配资金，已保存结果的原费用核实仍允许；②按§7统一锁顺序验证并发准入/改限额/撤销/发布/取消；③原Resource reserve已提交但绑定响应丢失时，按原operation ID核实同一reservation并恢复准确绑定，撤销后仅允许核实/fence/release，不再Fetch/publication或新reserve。测试、运行及用户验收在R1中均NOT_RUN。
