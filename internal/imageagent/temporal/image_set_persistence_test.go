@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/png"
 	"path/filepath"
@@ -140,8 +141,9 @@ func TestPersistImageSetSlotResultDistinguishesKnownUnstartedFromUnknown(t *test
 }
 
 func TestSetSlotClosureBindsTheOriginalSettledEconomics(t *testing.T) {
-	for _, drift := range []bool{false, true} {
-		t.Run(map[bool]string{false: "original", true: "price_drift"}[drift], func(t *testing.T) {
+	for _, mode := range []string{"invalid_locator", "invalid_bytes", "invalid_bytes_execute", "transient", "unsettled_invalid_bytes", "price_drift"} {
+		t.Run(mode, func(t *testing.T) {
+			drift := mode == "price_drift"
 			a, repo, input := imageSetPersistenceFixture(t)
 			execution := slotExecutionInputV3(input)
 			reservation := slotEffectReservationV3(execution)
@@ -174,18 +176,53 @@ func TestSetSlotClosureBindsTheOriginalSettledEconomics(t *testing.T) {
 				err = a.PersistRunState(context.Background(), PersistRunStateActivityInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: 1, CommitID: "blocked", CurrentNode: "retry_slot", Projection: WorkflowResult{Status: imageagent.RunStatusBlocked, Block: block, Plan: current.Plan, Slots: current.Slots, RecoverableEffects: []imageagent.RecoverableEffect{{SlotID: input.Slot.ID, Attempt: 1, Code: imageagent.SlotProviderOutcomeUnknownCode}}}})
 				require.NoError(t, err)
 			}
-			fact, err = facts.RecordGenerationSuccess(context.Background(), intent, imageagent.GenerationSuccess{ResponseID: "response", ResultDigest: strings.Repeat("b", 64), ResultUnavailable: "invalid_result"})
+			proof := imageagent.GenerationSuccess{ResponseID: "response", ResultDigest: strings.Repeat("b", 64), ResultUnavailable: "invalid_result"}
+			if mode == "invalid_bytes" || mode == "invalid_bytes_execute" || mode == "transient" || mode == "unsettled_invalid_bytes" {
+				proof = proof.WithResultLocator("https://output.example/image.png", "")
+			}
+			fact, err = facts.RecordGenerationSuccess(context.Background(), intent, proof)
 			require.NoError(t, err)
-			_, err = facts.BindGenerationSettlement(context.Background(), intent, imageagent.GenerationSettlementReceipt{IntentID: fact.IntentID, Fingerprint: fact.Fingerprint, OperationID: "image-finalize:" + fact.IntentID, ReservationID: "reservation", State: "committed", Points: intent.Points, ProofDigest: fact.TerminalProofDigest()})
-			require.NoError(t, err)
+			if mode != "unsettled_invalid_bytes" {
+				fact, err = facts.BindGenerationSettlement(context.Background(), intent, imageagent.GenerationSettlementReceipt{IntentID: fact.IntentID, Fingerprint: fact.Fingerprint, OperationID: "image-finalize:" + fact.IntentID, ReservationID: "reservation", State: "committed", Points: intent.Points, ProofDigest: fact.TerminalProofDigest()})
+				require.NoError(t, err)
+			}
 			if drift {
 				_, err := a.PersistImageSetSlotResult(context.Background(), PersistSlotResultV3ActivityInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: 1, AttemptKey: input.IdempotencyKey, Result: SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: 1}, Status: imageagent.SlotStatusBlocked, ErrorCode: imageagent.SlotProviderOutcomeUnknownCode, EffectPhase: imageagent.SlotEffectV3ProviderUnknown}})
 				require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
 				return
 			}
 			recovery := EffectRecoveryWorkflowInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: 1, Slot: input.Slot, Attempt: 1, ImageSet: input.ImageSet, TargetPlatform: input.TargetPlatform, AssetCatalog: input.AssetCatalog}
+			gets := 0
+			if proof.ResultURL != "" {
+				a.generationOutputRecovery = func(_ context.Context, original imageagent.SlotExecutionInput, persisted imageagent.GenerationFact) (imageagent.SlotGeneratedOutput, error) {
+					gets++
+					require.Equal(t, input.Slot.ID, original.Slot.ID)
+					require.Equal(t, fact, persisted)
+					if mode == "transient" {
+						return imageagent.SlotGeneratedOutput{}, errors.New("download timed out")
+					}
+					return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
+				}
+				if mode == "invalid_bytes_execute" {
+					_, err = a.ExecuteSlotV3(context.Background(), input)
+					require.ErrorContains(t, err, imageagent.SlotProviderOutcomeUnknownCode)
+				} else if mode == "transient" {
+					_, err = a.RecoverEffectV3(context.Background(), recovery)
+					require.Error(t, err)
+				} else {
+					_, err = a.RecoverEffectV3(context.Background(), recovery)
+					require.NoError(t, err, "known invalid output must reach original durable reconciliation")
+				}
+			}
 			result, err := a.ReconcileEffectRecoveryV3(context.Background(), recovery)
 			require.NoError(t, err)
+			if mode == "transient" || mode == "unsettled_invalid_bytes" {
+				require.Nil(t, result.Closure)
+				current, err := repo.GetProjection(context.Background(), reservation.Identity.RunScope)
+				require.NoError(t, err)
+				require.Len(t, current.RecoverableEffects, 1)
+				return
+			}
 			require.Equal(t, &imageagent.ImageSlotClosure{Kind: "settled", IntentID: fact.IntentID, Fingerprint: fact.Fingerprint, SettlementProofDigest: fact.TerminalProofDigest(), Points: intent.Points}, result.Closure)
 			require.Equal(t, imageagent.InvalidGeneratedOutputCode, result.BlockedCode)
 			current, err := repo.GetProjection(context.Background(), reservation.Identity.RunScope)
@@ -195,6 +232,20 @@ func TestSetSlotClosureBindsTheOriginalSettledEconomics(t *testing.T) {
 			replay, err := a.ReconcileEffectRecoveryV3(context.Background(), recovery)
 			require.NoError(t, err, "lost acknowledgement must read the original reconciled result")
 			require.Equal(t, result, replay)
+			if proof.ResultURL != "" {
+				closedGets := gets
+				_, err = a.RecoverEffectV3(context.Background(), recovery)
+				require.NoError(t, err)
+				_, err = a.ReconcileEffectRecoveryV3(context.Background(), recovery)
+				require.NoError(t, err)
+				require.Equal(t, closedGets, gets, "durable invalid closure must not repeatedly download or generate")
+			}
+			storedFact, err := facts.ReadGenerationFact(context.Background(), reservation.Identity)
+			require.NoError(t, err)
+			require.Equal(t, fact, storedFact, "invalid output cannot rewrite the original economic success or settlement")
+			require.Zero(t, a.stagedSlotExecutor.(*recordingStagedExecutor).GenerateCalls(), "known bad output never redispatches the provider")
+			_, err = imageagent.ImageSetClosedEffectsDigest(current.Plan, current.Slots, current.RecoverableEffects)
+			require.NoError(t, err, "known charged failure must permit review/subset preparation")
 		})
 	}
 }

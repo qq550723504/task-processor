@@ -79,7 +79,21 @@ func (a *Activities) deriveImageSetSlotProjection(ctx context.Context, current i
 		return result, err
 	}
 	if result.Slot.Status != imageagent.SlotStatusAccepted {
-		if fact.State == imageagent.GenerationNoEffect || fact.State == imageagent.GenerationSucceeded && fact.Success.ResultUnavailable == "invalid_result" {
+		invalidOutput := fact.State == imageagent.GenerationSucceeded && fact.Success.ResultUnavailable == "invalid_result"
+		if fact.State == imageagent.GenerationSucceeded && !invalidOutput {
+			invalidOutput = hasClosedInvalidImageSetOutput(current, execution, closure)
+			if !invalidOutput && a.generationOutputRecovery != nil && effectErr == nil {
+				switch effect.Phase {
+				case imageagent.SlotEffectV3ProviderClaimed, imageagent.SlotEffectV3ProviderUnknown, imageagent.SlotEffectV3StagingUnknown, imageagent.SlotEffectV3RecoveryBlocked:
+					if err := a.validateOrganizationCatalog(ctx, input.Identity, input.RunID, current.AssetCatalog); err != nil {
+						return result, err
+					}
+					_, outputErr := a.generationOutputRecovery(ctx, execution, fact)
+					invalidOutput = errors.Is(outputErr, imageagent.ErrInvalidGeneratedOutput)
+				}
+			}
+		}
+		if fact.State == imageagent.GenerationNoEffect || invalidOutput {
 			result.Closure = closure
 			if fact.State == imageagent.GenerationNoEffect {
 				result.ErrorCode = imageagent.SlotProviderNotDispatchedCode
@@ -100,4 +114,18 @@ func (a *Activities) deriveImageSetSlotProjection(ctx context.Context, current i
 	result.Closure = closure
 	candidate.GenerationProof = &imageagent.ImageGenerationProof{IntentID: closure.IntentID, Fingerprint: closure.Fingerprint, SettlementProofDigest: closure.SettlementProofDigest, Points: closure.Points}
 	return result, nil
+}
+
+// The already-committed closure is the output decision. Its economic identity
+// is always re-derived from the original settled generation fact.
+func hasClosedInvalidImageSetOutput(current imageagent.RunProjection, input imageagent.SlotExecutionInput, closure *imageagent.ImageSlotClosure) bool {
+	if current.Plan.Set == nil || current.Plan.Revision != input.PlanRevision || current.Run.ActivePlanRevision != input.PlanRevision {
+		return false
+	}
+	for _, slot := range current.Slots {
+		if slot.Slot.ID == input.Slot.ID && slot.Attempt == input.Attempt && slot.Slot.Status == imageagent.SlotStatusBlocked && slot.ErrorCode == imageagent.InvalidGeneratedOutputCode && reflect.DeepEqual(slot.Closure, closure) {
+			return true
+		}
+	}
+	return false
 }

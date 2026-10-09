@@ -49,15 +49,18 @@ func generationOutputRecovery(fetch func(context.Context, string) ([]byte, error
 			return bad()
 		}
 		data, err := fetch(ctx, fact.Success.ResultURL)
-		if err != nil || len(data) == 0 || len(data) > productimage.MaxInlineArtifactBytes {
-			return bad()
-		}
-		contentType, width, height, err := httpimage.InspectGeneratedArtifact(data)
 		if err != nil {
 			return bad()
 		}
+		if len(data) == 0 || len(data) > productimage.MaxInlineArtifactBytes {
+			return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
+		}
+		contentType, width, height, err := httpimage.InspectGeneratedArtifact(data)
+		if err != nil {
+			return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
+		}
 		if input.ImageSet != nil && (width != 1024 || height != 1024) {
-			return bad()
+			return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
 		}
 		return imageagent.SlotGeneratedOutput{SlotID: input.Slot.ID, Attempt: input.Attempt, SourceAssetID: input.Slot.SourceAssetIDs[0], Assets: []imageagent.GeneratedAsset{{Bytes: append([]byte(nil), data...), ContentType: contentType, Width: width, Height: height, SourceURL: sourceURL, Operations: []string{operation}, ProviderReceiptID: fact.Success.RequestID}}}, nil
 	}

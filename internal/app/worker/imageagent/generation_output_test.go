@@ -37,12 +37,12 @@ func TestGenerationOutputRecoveryOnlyFetchesBoundOriginalResult(t *testing.T) {
 	proof := imageagent.GenerationSuccess{ResponseID: "generated-1", ResultDigest: strings.Repeat("c", 64)}.WithResultLocator("https://output.example/image.png?signature=private", "")
 	fact, err = fact.RecordSuccess(proof)
 	require.NoError(t, err)
-	for _, mode := range []string{"valid", "image_set", "changed_set", "private", "oversized_locator", "member", "catalog", "unknown", "bad_image", "fetch_failure"} {
+	for _, mode := range []string{"valid", "image_set", "changed_set", "bad_set", "wrong_size", "empty_set", "fetch_failure_set", "private", "oversized_locator", "member", "catalog", "unknown", "bad_image", "fetch_failure"} {
 		t.Run(mode, func(t *testing.T) {
 			calls := 0
 			in, current := input, fact
 			switch mode {
-			case "image_set", "changed_set":
+			case "image_set", "changed_set", "bad_set", "wrong_size", "empty_set", "fetch_failure_set":
 				hash := strings.Repeat("a", 64)
 				in.ImageSet = &imageagent.ImageSetPlan{Schema: imageagent.ImageSetSchema, Source: imageagent.ImageSourceBinding{ContextKind: imageagent.ImageSourceAcquisition, ProductID: "product-1", OperationID: "source-operation", OriginalPublicationID: "publication-1", OriginalVersion: 1, EffectiveVersion: 1, CatalogHash: catalog.Manifest.Hash}, Target: imageagent.ImageTarget{Platform: "product"}, Configuration: agent.ConfigurationSnapshotRef{Kind: "agent-configuration-v1", ID: "9e7afaa9-a9f9-48ba-a11a-b5bb377f08e9", Digest: hash}, ConfigurationEpoch: "1", ParametersDigest: hash, InputDigest: hash, MaxPoints: 12}
 				in.TargetPlatform = "product"
@@ -83,11 +83,14 @@ func TestGenerationOutputRecoveryOnlyFetchesBoundOriginalResult(t *testing.T) {
 			materialize := generationOutputRecovery(func(_ context.Context, raw string) ([]byte, error) {
 				calls++
 				require.Equal(t, proof.ResultURL, raw)
-				if mode == "fetch_failure" {
+				if mode == "fetch_failure" || mode == "fetch_failure_set" {
 					return nil, errors.New(raw)
 				}
-				if mode == "bad_image" {
+				if mode == "bad_image" || mode == "bad_set" {
 					return []byte("not image"), nil
+				}
+				if mode == "empty_set" {
+					return nil, nil
 				}
 				if mode == "image_set" {
 					return setEncoded.Bytes(), nil
@@ -111,7 +114,12 @@ func TestGenerationOutputRecoveryOnlyFetchesBoundOriginalResult(t *testing.T) {
 				require.NotContains(t, err.Error(), "signature")
 				require.Empty(t, got.Assets)
 			}
-			if mode == "valid" || mode == "image_set" || mode == "bad_image" || mode == "fetch_failure" {
+			if mode == "bad_set" || mode == "wrong_size" || mode == "empty_set" {
+				require.ErrorIs(t, err, imageagent.ErrInvalidGeneratedOutput)
+			} else if mode != "bad_image" {
+				require.NotErrorIs(t, err, imageagent.ErrInvalidGeneratedOutput)
+			}
+			if mode == "valid" || mode == "image_set" || mode == "bad_image" || mode == "fetch_failure" || mode == "bad_set" || mode == "wrong_size" || mode == "empty_set" || mode == "fetch_failure_set" {
 				require.Equal(t, 1, calls)
 			} else {
 				require.Zero(t, calls)
