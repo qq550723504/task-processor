@@ -4,18 +4,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go.temporal.io/sdk/client"
 	"net"
 	"net/http"
+	"task-processor/internal/app/productsourcing"
+	supplyapp "task-processor/internal/app/supplychain"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
 	aistore "task-processor/internal/aicapability/store"
+	storeapp "task-processor/internal/app/storecenter"
 	coreconfig "task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/knowledge"
-	"task-processor/internal/storecenter"
 )
 
 type Dependencies struct {
@@ -36,6 +39,8 @@ type Dependencies struct {
 	OpenImageAgent               func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenAccountAuditUsage        func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	DialImageAgentWorkflow       func(context.Context, string, string) (imageagent.WorkflowClient, func() error, error)
+	OpenSupplyAssets             func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	DialSupplyWorkflow           func(context.Context, string, string) (client.Client, func() error, error)
 	OpenReferrals                func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenMembership               func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	NewApplicationWithFeatures   func(context.Context, *gorm.DB, ApplicationFeatures, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
@@ -51,12 +56,12 @@ type Dependencies struct {
 // only at the serving composition boundary.
 type ApplicationFeatures struct {
 	Ecoservices                                          *EcoservicesRuntime
+	SourceMediaStorage                                   productsourcing.SourceMediaStorage
 	NotificationCenterDB                                 *gorm.DB
 	Knowledge                                            *knowledge.Service
 	StoreCenterDB                                        *gorm.DB
 	LocalTrialDB                                         *gorm.DB
-	OfficialStoreProvider                                storecenter.OfficialConnectionProvider
-	OfficialStoreProtection                              storecenter.OfficialCredentialProtection
+	OfficialStoreApplications                            *storeapp.OfficialApplicationRegistry
 	ProductAgentDB, ProductReviewDB, ProductAgentAssetDB *gorm.DB
 	ProductAgent                                         *ProductAgentConfig
 	AIWorkbenchDB                                        *gorm.DB
@@ -64,6 +69,10 @@ type ApplicationFeatures struct {
 	CommercialOwnerDB                                    *gorm.DB
 	MoneyOwnerDB                                         *gorm.DB
 	ProductAcquisitionDB                                 *gorm.DB
+	ProductCollections                                   bool
+	SupplyAssetDB                                        *gorm.DB
+	SupplyWorkflow                                       client.Client
+	SupplyWorker                                         *supplyapp.OperationWorker
 	ImageAgentDB                                         *gorm.DB
 	AccountAuditImageDB, AccountAuditProductDB           *gorm.DB
 	ImageAgentWorkflow                                   imageagent.WorkflowClient
@@ -98,11 +107,10 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	if cfg.Ecoservices != nil && cfg.Ecoservices.Enabled && (dependencies.OpenEcoservices == nil || dependencies.NewEcoservices == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("ecoservices runtime lifecycle unavailable")
 	}
-	var officialProvider storecenter.OfficialConnectionProvider
-	var officialProtection storecenter.OfficialCredentialProtection
+	var officialApplications *storeapp.OfficialApplicationRegistry
 	if cfg.StoreCenter != nil && cfg.StoreCenter.Enabled {
 		var err error
-		officialProvider, officialProtection, err = cfg.StoreCenter.OfficialConnection.prepare(ctx)
+		officialApplications, err = prepareOfficialApplications(ctx, cfg.StoreCenter.OfficialApplications)
 		if err != nil {
 			return err
 		}
@@ -146,6 +154,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	if cfg.ImageAgent != nil && (dependencies.OpenImageAgent == nil || dependencies.DialImageAgentWorkflow == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("current image agent owner and organization workflow lifecycle unavailable")
+	}
+	if cfg.SupplyChain != nil && (dependencies.OpenSupplyAssets == nil || dependencies.DialSupplyWorkflow == nil || dependencies.NewApplicationWithFeatures == nil) {
+		return errors.New("supply chain runtime dependencies unavailable")
 	}
 	if cfg.AccountAuditUsage != nil && (dependencies.OpenAccountAuditUsage == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("account audit usage read-only lifecycle unavailable")
@@ -390,6 +401,27 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			}
 		}
 	}
+	var supplyAssetDB *gorm.DB
+	var supplyWorkflow client.Client
+	var supplyWorker supplyapp.OperationWorker
+	if s := cfg.SupplyChain; s != nil {
+		supplyAssetDB, err = dependencies.OpenSupplyAssets(startupContext, s.AssetDatabase)
+		if err != nil || supplyAssetDB == nil {
+			return errors.New("open supply Asset runtime owner failed")
+		}
+		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, imageDB, storeDB, notificationDB} {
+			if supplyAssetDB == existing {
+				return errors.New("supply requires its narrow independently opened Asset pool")
+			}
+		}
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(supplyAssetDB)) }()
+		var closeWorkflow func() error
+		supplyWorkflow, closeWorkflow, err = dependencies.DialSupplyWorkflow(startupContext, s.TemporalAddress, s.TemporalNamespace)
+		if err != nil || supplyWorkflow == nil || closeWorkflow == nil {
+			return errors.New("supply workflow runtime unavailable")
+		}
+		defer func() { resultErr = errors.Join(resultErr, closeWorkflow()) }()
+	}
 	var trialDB *gorm.DB
 	if cfg.LocalTrial != nil {
 		trialDB, err = dependencies.OpenLocalTrial(startupContext, cfg.LocalTrial.Database)
@@ -416,7 +448,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if openErr != nil || pool == nil {
 			return errors.New("ecoservices owner database unavailable")
 		}
-		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, trialDB, notificationDB} {
+		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, trialDB, notificationDB, supplyAssetDB} {
 			if pool == existing {
 				return errors.New("ecoservices requires an independent owner pool")
 			}
@@ -450,9 +482,16 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	if dependencies.NewApplicationWithFeatures == nil && commercialOwnerDB == nil && productDB == nil && referralDB == nil && membershipDB == nil && dependencies.NewApplication == nil {
 		return errors.New("current application serving lifecycle unavailable")
 	}
+	var sourceMediaStorage productsourcing.SourceMediaStorage
+	if cfg.SourceMedia != nil {
+		sourceMediaStorage, err = NewSourceMediaStorage(*cfg.SourceMedia, logger)
+		if err != nil {
+			return errors.New("source media storage unavailable")
+		}
+	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Ecoservices: ecoservicesRuntime, NotificationCenterDB: notificationDB, Knowledge: knowledgeService, OfficialStoreProvider: officialProvider, OfficialStoreProtection: officialProtection, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{Ecoservices: ecoservicesRuntime, NotificationCenterDB: notificationDB, Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, SourceMediaStorage: sourceMediaStorage, SupplyAssetDB: supplyAssetDB, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {
@@ -480,6 +519,17 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		return fmt.Errorf("listen for current application: %w", err)
 	}
 	server.Addr = cfg.ListenAddress()
+	if cfg.SupplyChain != nil {
+		if supplyWorker == nil {
+			_ = listener.Close()
+			return errors.New("supply worker was not assembled")
+		}
+		if err := supplyWorker.Start(); err != nil {
+			_ = listener.Close()
+			return errors.New("start supply worker failed")
+		}
+		defer supplyWorker.Stop()
+	}
 	serveResult := make(chan error, 1)
 	go func() { serveResult <- server.Serve(listener) }()
 

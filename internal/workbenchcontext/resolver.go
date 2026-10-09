@@ -80,6 +80,15 @@ func NewResolver(
 	return resolver
 }
 
+// BusinessStatusChecker shares the configured deny-only overlay with durable
+// execution adapters. It does not grant membership or access.
+func (resolver *Resolver) BusinessStatusChecker() OrganizationBusinessStatusChecker {
+	if resolver == nil {
+		return nil
+	}
+	return resolver.status
+}
+
 func (resolver *Resolver) Resolve(
 	ctx context.Context,
 	policy httproute.OrganizationAccessPolicy,

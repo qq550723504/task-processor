@@ -1,7 +1,7 @@
 import { PRODUCT_REVIEW_RESPONSE_BYTES, parseProductTitleProposal, parseProductTitleProposalList, parseProductTitleReviewFailure, productTitleApplySchema, productTitleCursorSchema, productTitleDecisionSchema, productTitleIDSchema, productTitleIdempotencyKeySchema, productTitleOrganizationSchema, type ProductTitleApplyInput, type ProductTitleDecisionInput, type ProductTitleProposal, type ProductTitleProposalList, type ProductTitleReviewFailure } from "./product-title-review";
 import { readProductReviewJSON } from "./product-title-review-json";
 
-type Scope = { organizationId: string; signal?: AbortSignal };
+type Scope = { organizationId: string; userId?: string; signal?: AbortSignal };
 type Detail = Scope & { proposalId: string };
 type Write<T> = Detail & { idempotencyKey: string; input: T };
 type Outcome = "not_sent" | "rejected" | "unknown";
@@ -14,7 +14,7 @@ export class ProductTitleReviewError extends Error {
 const error = (status: number, code: string, outcome: "not_sent" | "unknown") => new ProductTitleReviewError(status, code, { code, message: "Product title review request could not complete", requestId: "", fieldErrors: [], outcome }, outcome);
 const invalid = () => error(400, "INVALID_REQUEST", "not_sent");
 const base = "/api/product/text-proposals";
-function validateScope(input: Scope) { if (!productTitleOrganizationSchema.safeParse(input.organizationId).success) throw invalid(); }
+function validateScope(input: Scope) { if (!productTitleOrganizationSchema.safeParse(input.organizationId).success || (input.userId!==undefined && !productTitleOrganizationSchema.safeParse(input.userId).success)) throw invalid(); }
 function validateDetail(input: Detail) { validateScope(input); if (!productTitleIDSchema.safeParse(input.proposalId).success) throw invalid(); }
 
 async function request<T>(path: string, input: Scope, parse: (value: unknown) => T | null, write?: { key: string; body: string }): Promise<T> {
@@ -25,6 +25,7 @@ async function request<T>(path: string, input: Scope, parse: (value: unknown) =>
     const response = await fetch(path, {
       method: write ? "POST" : "GET", credentials: "same-origin", cache: "no-store", redirect: "error", signal: input.signal,
       headers: { Accept: "application/json", "X-Expected-Organization-ID": input.organizationId,
+        ...(input.userId ? {"X-Expected-User-ID":input.userId} : {}),
         ...(write ? { "Content-Type": "application/json", "Idempotency-Key": write.key } : {}) },
       ...(write ? { body: write.body } : {}),
     });

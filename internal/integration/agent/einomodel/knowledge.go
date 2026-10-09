@@ -27,7 +27,7 @@ func (m *AgentTextModel) readKnowledge(p preparedAgentText, input agent.ModelInp
 	if m.knowledge == nil || !ref.Valid() {
 		return nil, agent.ErrUnavailable
 	}
-	scope := k.Scope{OrganizationID: p.identity.TenantID, ActorID: p.identity.UserID}
+	scope := k.Scope{OrganizationID: p.identity.OrganizationID, ActorID: p.identity.ActorID}
 	bundle, err := m.knowledge.ReadContext(p.ctx, scope, ref)
 	if err != nil {
 		return nil, err

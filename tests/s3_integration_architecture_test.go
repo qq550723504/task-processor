@@ -30,10 +30,11 @@ func TestS3IntegrationAndImageAgentBoundaries(t *testing.T) {
 func TestProductionS3UploaderConstructorInventoryIsComplete(t *testing.T) {
 	got := scanProductionS3Uses(t, true)
 	want := map[string]int{
-		"cmd/current-application/ecoservices.go":              1,
-		"cmd/current-application/knowledge.go":                1,
-		"internal/app/worker/imageagent/dependencies.go":      1,
-		"internal/listingkit/httpapi/builders_image_store.go": 1,
+		"cmd/current-application/ecoservices.go":                          1,
+		"internal/app/runtime/currentapplication/source_media_storage.go": 1,
+		"cmd/current-application/knowledge.go":                            1,
+		"internal/app/worker/imageagent/dependencies.go":                  1,
+		"internal/listingkit/httpapi/builders_image_store.go":             1,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("NewUploaderWithOptions production callers = %v, want %v", got, want)

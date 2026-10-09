@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/review"
@@ -88,6 +89,34 @@ func load(db *gorm.DB, a review.Scope, id string, lock bool) (review.Record, err
 }
 func (r *Repository) Read(ctx context.Context, a review.Scope, id string) (review.Record, error) {
 	return load(r.db.WithContext(ctx), a, id, false)
+}
+
+func readAppliedPublication(ctx context.Context, db *gorm.DB, scope review.Scope, product string, version uint64, publication string) (review.Record, error) {
+	if ctx == nil || db == nil || !review.ValidKey(scope.Org) || !review.ValidKey(scope.Actor) || !review.ValidKey(product) || version == 0 || version > 1<<63-1 || !review.ValidKey(publication) {
+		return review.Record{}, review.ErrInvalid
+	}
+	var rows []proposalRow
+	err := db.WithContext(ctx).Model(&proposalRow{}).Select("org,id,owner,state,CASE WHEN octet_length(payload) <= ? THEN payload ELSE NULL END AS payload", review.MaxRecordBytes).
+		Where("org=? AND owner=? AND state='applied' AND convert_from(payload,'UTF8')::jsonb->'Input'->>'product_key'=? AND convert_from(payload,'UTF8')::jsonb->'Receipt'->>'product_version'=? AND convert_from(payload,'UTF8')::jsonb->'Receipt'->>'publication_id'=?", scope.Org, scope.Actor, product, fmt.Sprint(version), publication).Limit(2).Find(&rows).Error
+	if err != nil {
+		return review.Record{}, review.ErrUnavailable
+	}
+	if len(rows) == 0 {
+		return review.Record{}, review.ErrNotFound
+	}
+	if len(rows) != 1 {
+		return review.Record{}, review.ErrConflict
+	}
+	return decodeProposalRow(rows[0])
+}
+func (r *Repository) ReadAppliedPublication(ctx context.Context, scope review.Scope, product string, version uint64, publication string) (review.Record, error) {
+	return readAppliedPublication(ctx, r.db, scope, product, version, publication)
+}
+func (t *transaction) ReadAppliedPublication(ctx context.Context, scope review.Scope, product string, version uint64, publication string) (review.Record, error) {
+	if scope.Org != t.op.Scope.Org || !t.op.Scope.Admin && scope.Actor != t.op.Scope.Actor {
+		return review.Record{}, review.ErrForbidden
+	}
+	return readAppliedPublication(ctx, t.db, scope, product, version, publication)
 }
 
 func (r *Repository) FindAgentReviewID(ctx context.Context, scope review.Scope, runID string) (string, bool, error) {

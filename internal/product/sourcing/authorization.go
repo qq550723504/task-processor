@@ -70,6 +70,12 @@ func (a *readProofAuthorizer) Authorize(ctx context.Context) (PublicationScope, 
 		now = a.now
 	}
 	current := now()
+	if execution, present, err := verifyPublicationExecutionProof(ctx, current); present {
+		if err != nil {
+			return PublicationScope{}, err
+		}
+		return PublicationScope{OrganizationID: execution.OrganizationID, ActorID: execution.ActorID}, nil
+	}
 	if !ok || !authenticated || !hasDeadline ||
 		identity.UserID != proof.actorID || identity.TenantID != proof.tenantID ||
 		identity.EffectiveOrganizationID != proof.effectiveOrganizationID ||

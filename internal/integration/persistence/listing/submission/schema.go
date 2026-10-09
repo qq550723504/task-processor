@@ -3,6 +3,7 @@ package submissionpersistence
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"gorm.io/gorm"
@@ -279,7 +280,7 @@ func VerifySchema(ctx context.Context, db *gorm.DB) error {
 	}, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 }
 
-func verifySchema(ctx context.Context, db *gorm.DB) error {
+func verifySchema(ctx context.Context, db *gorm.DB) (resultErr error) {
 	var encoding string
 	if err := db.WithContext(ctx).Raw("SHOW server_encoding").Row().Scan(&encoding); err != nil {
 		return fmt.Errorf("inspect submission execution database encoding: %w", err)
@@ -287,9 +288,18 @@ func verifySchema(ctx context.Context, db *gorm.DB) error {
 	if encoding != "UTF8" {
 		return fmt.Errorf("submission execution database requires UTF8 encoding, got %s", encoding)
 	}
-	if err := db.WithContext(ctx).Exec(`SELECT set_config('search_path', 'pg_catalog', true)`).Error; err != nil {
+	var searchPath string
+	if err := db.WithContext(ctx).Raw("SHOW search_path").Row().Scan(&searchPath); err != nil {
+		return fmt.Errorf("inspect submission execution caller search_path: %w", err)
+	}
+	if err := db.WithContext(ctx).Exec(`SELECT pg_catalog.set_config('search_path', 'pg_catalog', true)`).Error; err != nil {
 		return fmt.Errorf("set submission execution schema verification search_path: %w", err)
 	}
+	defer func() {
+		if err := db.WithContext(ctx).Exec("SELECT pg_catalog.set_config('search_path', ?, true)", searchPath).Error; err != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("restore submission execution caller search_path: %w", err))
+		}
+	}()
 	for _, table := range []string{AttemptTable, TargetFenceTable} {
 		if err := verifyRelation(ctx, db, table); err != nil {
 			return err

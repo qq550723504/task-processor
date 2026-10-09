@@ -1,16 +1,19 @@
 package assetpersistence
 
 // ApprovedAssetRecord persists one approved product asset. The composite
-// primary key preserves the ImageAgent approval identity, while AssetID is
-// unique only inside a tenant.
+// primary key identifies a member of one complete approval set. The typed
+// origin identity preserves real ImageAgent identities and original-source
+// identities without inventing a run for a source image.
 type ApprovedAssetRecord struct {
-	TenantID              string `gorm:"primaryKey;size:128;uniqueIndex:ux_product_approved_asset_id,priority:1;index:ix_product_approved_inventory,priority:1"`
-	RunID                 string `gorm:"primaryKey;size:128"`
-	PlanRevision          int64  `gorm:"primaryKey;autoIncrement:false"`
-	SlotID                string `gorm:"primaryKey;size:128"`
-	Attempt               int    `gorm:"primaryKey;autoIncrement:false"`
-	ActionID              string `gorm:"primaryKey;size:128"`
-	AssetID               string `gorm:"size:128;not null;uniqueIndex:ux_product_approved_asset_id,priority:2"`
+	TenantID              string `gorm:"primaryKey;size:128;uniqueIndex:ux_product_approved_asset_id,priority:1;uniqueIndex:ux_product_approval_origin,priority:1;index:ix_product_approved_inventory,priority:1"`
+	RunID                 string `gorm:"size:128;not null"`
+	PlanRevision          int64  `gorm:"not null"`
+	SlotID                string `gorm:"size:128;not null"`
+	Attempt               int    `gorm:"not null"`
+	ActionID              string `gorm:"primaryKey;size:128;uniqueIndex:ux_product_approval_origin,priority:2"`
+	AssetID               string `gorm:"primaryKey;size:128;not null;uniqueIndex:ux_product_approved_asset_id,priority:2"`
+	OriginKind            string `gorm:"size:32;not null;uniqueIndex:ux_product_approval_origin,priority:3"`
+	OriginIdentity        string `gorm:"size:64;not null;uniqueIndex:ux_product_approval_origin,priority:4"`
 	ProductKey            string `gorm:"size:128;not null;index:ix_product_approved_inventory,priority:2"`
 	TargetPlatform        string `gorm:"size:128;not null;index:ix_product_approved_inventory,priority:3"`
 	SourceSnapshotVersion uint64 `gorm:"not null;index:ix_product_approved_inventory,priority:4"`

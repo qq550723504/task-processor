@@ -23,7 +23,7 @@ var inputSchema = json.RawMessage(`{
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema"
 }`)
-var outputSchema = json.RawMessage(`{
+var originalOutputSchema = json.RawMessage(`{
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -288,3 +288,23 @@ var outputSchema = json.RawMessage(`{
 
 func InputSchema() json.RawMessage  { return append(json.RawMessage(nil), inputSchema...) }
 func OutputSchema() json.RawMessage { return append(json.RawMessage(nil), outputSchema...) }
+
+// v2 keeps original provenance fields unchanged and separately identifies the
+// requested effective version and its real title-only Apply receipts.
+var outputSchema = func() json.RawMessage {
+	var schema map[string]any
+	if json.Unmarshal(originalOutputSchema, &schema) != nil {
+		panic("invalid source evidence schema")
+	}
+	props := schema["properties"].(map[string]any)
+	id := map[string]any{"type": "string", "minLength": 1, "maxLength": 128}
+	version := map[string]any{"type": "string", "pattern": "^[1-9][0-9]{0,18}$"}
+	props["requested_reference"] = map[string]any{"type": "object", "additionalProperties": false, "required": []string{"product_key", "catalog_version", "publication_id"}, "properties": map[string]any{"product_key": id, "catalog_version": version, "publication_id": id}}
+	props["applied_title_lineage"] = map[string]any{"type": "array", "maxItems": 64, "items": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"proposal_id", "base_version", "base_publication_id", "catalog_version", "publication_id"}, "properties": map[string]any{"proposal_id": map[string]any{"type": "string", "format": "uuid"}, "base_version": version, "base_publication_id": id, "catalog_version": version, "publication_id": id}}}
+	schema["required"] = append(schema["required"].([]any), "requested_reference", "applied_title_lineage")
+	result, err := json.Marshal(schema)
+	if err != nil {
+		panic(err)
+	}
+	return result
+}()

@@ -9,16 +9,62 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	storeapp "task-processor/internal/app/storecenter"
+	supplyapp "task-processor/internal/app/supplychain"
 	"task-processor/internal/authz"
 	b "task-processor/internal/commercial/billing"
 	"task-processor/internal/core/config"
 	e "task-processor/internal/ecoservices"
 	kernelmodule "task-processor/internal/kernel/module"
+	"task-processor/internal/ledger/orgresource"
 )
 
 type combinationObjects struct{ e.PrivateObjectStore }
 type combinationProvider struct{ b.ServicePurchaseProvider }
 type combinationProtection struct{ b.ServicePayloadProtection }
+type combinationSupplyStarter struct{ supplyapp.OperationStarter }
+
+func TestCurrentApplicationEcoservicesAndSupplyAssetOwnersCannotAlias(t *testing.T) {
+	for _, alias := range []bool{false, true} {
+		t.Run(map[bool]string{false: "independent", true: "aliased"}[alias], func(t *testing.T) {
+			source, commercial, money, product, store, assets, eco := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
+			if alias {
+				eco = assets
+			}
+			cfg := currentApplicationTestConfig()
+			cfg.ListingKit.Zitadel.TenantDirectoryToken = "fixture-token"
+			stop := errors.New("bounded workbench construction stop")
+			built := 0
+			factories := currentApplicationFactories{
+				buildResourceCharges: func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (*orgresource.ConsumerChargeService, error) {
+					built++
+					return nil, stop
+				},
+				buildWorkbench: func(*config.Config, *logrus.Logger) (workbenchContextBuildResult, error) {
+					return workbenchContextBuildResult{}, stop
+				},
+				buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
+				buildCommercial:    func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
+				buildStoreCenter: func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, *storeapp.OfficialApplicationRegistry) (kernelmodule.Module, error) {
+					return nil, nil
+				},
+			}
+			var worker supplyapp.OperationWorker
+			_, err := buildCurrentApplication(context.Background(), source, cfg, logrus.New(), factories,
+				WithCommercialOwnerDatabase(commercial), WithMoneyOwnerDatabase(money), WithProductAcquisition(product), WithProductCollections(),
+				WithStoreCenter(store), WithStoreOfficialApplications(&storeapp.OfficialApplicationRegistry{}),
+				WithSupplyChain(SupplyChainDependencies{AssetDB: assets, Starter: &combinationSupplyStarter{}, Worker: &worker, NewWorker: func(*supplyapp.OperationActivities) (supplyapp.OperationWorker, error) { return nil, stop }}),
+				WithEcoservices(EcoservicesDependencies{DB: eco, Objects: &combinationObjects{}, Channel: &combinationProvider{}, Protection: &combinationProtection{}}))
+			if alias {
+				if err == nil || !strings.Contains(err.Error(), "ecoservices requires its independent owner pool") || built != 0 {
+					t.Fatalf("alias escaped admission: err=%v built=%d", err, built)
+				}
+			} else if !errors.Is(err, stop) || built != 1 {
+				t.Fatalf("independent options denied: %v", err)
+			}
+		})
+	}
+}
 
 func TestCurrentApplicationEcoservicesAndNotificationOwnersCannotAlias(t *testing.T) {
 	for _, alias := range []bool{false, true} {

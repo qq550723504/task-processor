@@ -8,9 +8,9 @@ import (
 
 func Definition() commercetool.Definition {
 	return commercetool.Definition{
-		Ref:        commercetool.ToolRef{ID: "product.source-evidence.inspect", Version: "v1.0.0"},
+		Ref:        commercetool.ToolRef{ID: "product.source-evidence.inspect", Version: "v2.0.0"},
 		Capability: "product.source-evidence", Owner: "product.sourcing",
-		Description: "Inspect structured source evidence for one exact Catalog publication; raw text and source URLs are not returned.",
+		Description: "Inspect the real original source provenance and verified title Apply lineage for an exact requested Catalog version; raw text and source URLs are not returned.",
 		InputSchema: InputSchema(), OutputSchema: OutputSchema(), Risk: commercetool.RiskRead,
 		Permission:  commercetool.PermissionRequirement{Permission: authz.PermissionProductSourcingWrite},
 		SideEffects: commercetool.SideEffectPolicy{Mode: commercetool.SideEffectNone},

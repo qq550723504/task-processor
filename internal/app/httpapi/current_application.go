@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	supplyhttp "task-processor/internal/app/supplychain/httpapi"
 	billinghttp "task-processor/internal/commercial/billing/httpapi"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	confighttp "task-processor/internal/agentconfig/httpapi"
 	registration "task-processor/internal/app/referralregistration"
+	storeapp "task-processor/internal/app/storecenter"
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
@@ -30,7 +32,7 @@ import (
 	knowledgehttp "task-processor/internal/knowledge/httpapi"
 	"task-processor/internal/ledger/orgresource"
 	notificationhttp "task-processor/internal/notificationcenter/httpapi"
-	"task-processor/internal/storecenter"
+	collectionhttp "task-processor/internal/product/collection/httpapi"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
 	"task-processor/internal/workbenchcontext"
 )
@@ -90,7 +92,7 @@ var currentCommercialBillingApplicationRoutes = []currentApplicationRoute{
 }
 
 type currentApplicationFactories struct {
-	buildStoreCenter         func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, storecenter.OfficialConnectionProvider, storecenter.OfficialCredentialProtection) (kernelmodule.Module, error)
+	buildStoreCenter         func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, *storeapp.OfficialApplicationRegistry) (kernelmodule.Module, error)
 	buildLocalTrial          func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildResourceCharges     func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (*orgresource.ConsumerChargeService, error)
 	buildCommercialResources func(context.Context, *gorm.DB) (kernelmodule.Module, error)
@@ -112,40 +114,44 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
-	ecoservicesConfigs      int
-	ecoservices             *EcoservicesDependencies
-	notifications           int
-	notificationDB          *gorm.DB
-	agentConfigurationDB    *gorm.DB
-	knowledgeServices       int
-	knowledge               *knowledge.Service
-	storeCenters            int
-	storeCenterDB           *gorm.DB
-	localTrials             int
-	localTrialDB            *gorm.DB
-	officialStoreProvider   storecenter.OfficialConnectionProvider
-	officialStoreProtection storecenter.OfficialCredentialProtection
-	officialStoreConfigs    int
-	runtimeContext          context.Context
-	commercialOwnerDB       *gorm.DB
-	moneyOwnerDB            *gorm.DB
-	referralDB              *gorm.DB
-	productAcquisitionDB    *gorm.DB
-	imageAgentDB            *gorm.DB
-	accountAuditImageDB     *gorm.DB
-	accountAuditProductDB   *gorm.DB
-	accountAuditSources     int
-	imageAgentWorkflows     imageagent.WorkflowClient
-	membership              *MembershipDependencies
-	referrals               int
-	productAcquisitions     int
-	imageAgents             int
-	memberships             int
-	browserCaptures         int
-	productAgent            *ProductAgentDependencies
-	productAgents           int
-	aiWorkbench             *AIWorkbenchDependencies
-	aiWorkbenches           int
+	ecoservicesConfigs        int
+	ecoservices               *EcoservicesDependencies
+	notifications             int
+	notificationDB            *gorm.DB
+	agentConfigurationDB      *gorm.DB
+	knowledgeServices         int
+	knowledge                 *knowledge.Service
+	storeCenters              int
+	storeCenterDB             *gorm.DB
+	localTrials               int
+	localTrialDB              *gorm.DB
+	officialStoreApplications *storeapp.OfficialApplicationRegistry
+	officialStoreConfigs      int
+	runtimeContext            context.Context
+	commercialOwnerDB         *gorm.DB
+	moneyOwnerDB              *gorm.DB
+	referralDB                *gorm.DB
+	productAcquisitionDB      *gorm.DB
+	imageAgentDB              *gorm.DB
+	accountAuditImageDB       *gorm.DB
+	accountAuditProductDB     *gorm.DB
+	accountAuditSources       int
+	imageAgentWorkflows       imageagent.WorkflowClient
+	membership                *MembershipDependencies
+	referrals                 int
+	productAcquisitions       int
+	collectionSourceMedias    int
+	collectionSourceMedia     *collectionSourceMediaDependencies
+	productCollections        int
+	supplyChains              int
+	supplyChain               *SupplyChainDependencies
+	imageAgents               int
+	memberships               int
+	browserCaptures           int
+	productAgent              *ProductAgentDependencies
+	productAgents             int
+	aiWorkbench               *AIWorkbenchDependencies
+	aiWorkbenches             int
 }
 
 // WithRuntimeContext supplies the long-lived application context for bounded
@@ -181,6 +187,12 @@ func WithProductAcquisition(db *gorm.DB) CurrentApplicationOption {
 		options.productAcquisitions++
 		options.productAcquisitionDB = db
 	}
+}
+
+// WithProductCollections opts the supplied Product pool into the admitted
+// collection schema/privilege footprint and atomic new-source references.
+func WithProductCollections() CurrentApplicationOption {
+	return func(options *currentApplicationOptions) { options.productCollections++ }
 }
 
 // WithAcquisitionImageAgent enables only the receipt-backed, single-main-image
@@ -311,8 +323,17 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		option(&supplied)
 	}
-	if supplied.storeCenters > 1 || supplied.localTrials > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 || supplied.accountAuditSources > 1 {
+	if supplied.storeCenters > 1 || supplied.localTrials > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.productCollections > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 || supplied.accountAuditSources > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
+	}
+	if supplied.collectionSourceMedias > 1 || cfg.ProductCollectionSourceMedia.Enabled != (supplied.collectionSourceMedias == 1) || supplied.collectionSourceMedias == 1 && (supplied.productCollections != 1 || supplied.collectionSourceMedia == nil || supplied.collectionSourceMedia.Storage == nil) {
+		return nil, errors.New("source media requires its explicit current storage port and collections")
+	}
+	if supplied.productCollections > 0 && supplied.productAcquisitionDB == nil {
+		return nil, errors.New("collections require their current Product owner pool")
+	}
+	if supplied.supplyChains > 1 || supplied.supplyChains > 0 && (supplied.supplyChain == nil || supplied.supplyChain.AssetDB == nil || supplied.supplyChain.Starter == nil || supplied.supplyChain.NewWorker == nil || supplied.supplyChain.Worker == nil || supplied.productCollections != 1 || supplied.productAcquisitionDB == nil || supplied.storeCenters != 1 || supplied.officialStoreApplications == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "") {
+		return nil, errors.New("supply chain requires current Product, Store, Asset and workflow owners")
 	}
 	if supplied.localTrials > 0 {
 		if supplied.localTrialDB == nil || supplied.storeCenters != 1 || supplied.storeCenterDB == nil || factories.buildLocalTrial == nil || supplied.productAcquisitionDB != nil || supplied.productAgent != nil || supplied.aiWorkbench != nil || supplied.imageAgentDB != nil {
@@ -335,6 +356,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, errors.New("ecoservices dependencies unavailable or supplied more than once")
 	}
 	if supplied.ecoservices != nil {
+		if supplied.supplyChain != nil && supplied.ecoservices.DB == supplied.supplyChain.AssetDB {
+			return nil, errors.New("ecoservices requires its independent owner pool")
+		}
 		for _, existing := range []*gorm.DB{sourceAccountDB, supplied.commercialOwnerDB, supplied.moneyOwnerDB, supplied.referralDB, supplied.productAcquisitionDB, supplied.imageAgentDB, supplied.storeCenterDB, supplied.localTrialDB, supplied.agentConfigurationDB, supplied.notificationDB} {
 			if supplied.ecoservices.DB == existing {
 				return nil, errors.New("ecoservices requires its independent owner pool")
@@ -385,7 +409,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	if err != nil {
 		return nil, fmt.Errorf("build current application authorizer: %w", err)
 	}
-	if supplied.officialStoreConfigs > 1 || (supplied.officialStoreConfigs > 0 && supplied.storeCenters == 0) || (supplied.officialStoreProvider == nil) != (supplied.officialStoreProtection == nil) {
+	if supplied.officialStoreConfigs > 1 || (supplied.officialStoreConfigs > 0 && supplied.storeCenters == 0) || (supplied.officialStoreConfigs > 0 && supplied.officialStoreApplications == nil) {
 		return nil, errors.New("official Store configuration must accompany its owner and protection")
 	}
 	if supplied.productAcquisitionDB != nil || supplied.storeCenters > 0 {
@@ -419,7 +443,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 			if err != nil {
 				return nil, err
 			}
-			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges)
+			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges, supplied.productCollections > 0, supplied.supplyChains > 0)
 		}
 	}
 	if supplied.browserCaptures > 1 {
@@ -434,7 +458,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		browserDB := supplied.productAcquisitionDB
 		factories.buildBrowserCapture = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer)
+			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer, supplied.productCollections > 0, supplied.supplyChains > 0)
 		}
 	}
 	if supplied.imageAgents > 0 {
@@ -496,7 +520,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, knowledgehttp.NewModule(handler))
 	}
 	if supplied.storeCenters > 0 {
-		stores, err := factories.buildStoreCenter(ctx, supplied.storeCenterDB, authorizer, consumerCharges, supplied.officialStoreProvider, supplied.officialStoreProtection)
+		stores, err := factories.buildStoreCenter(ctx, supplied.storeCenterDB, authorizer, consumerCharges, supplied.officialStoreApplications)
 		if err != nil {
 			return nil, fmt.Errorf("build current store center: %w", err)
 		}
@@ -598,6 +622,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		modules = append(modules, acquisition)
 	}
+	if supplied.productCollections > 0 {
+		collections, err := buildProductCollectionModuleWithSourceMedia(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, cfg, supplied.supplyChains > 0, supplied.collectionSourceMedia)
+		if err != nil {
+			return nil, fmt.Errorf("build current product collections: %w", err)
+		}
+		modules = append(modules, collections)
+	}
 	if factories.buildAcquisitionImage != nil {
 		image, imageErr := factories.buildAcquisitionImage(authorizer, *workbench.authDependencies)
 		if imageErr != nil {
@@ -609,6 +640,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, image)
 	}
 	var productRuntime *productAgentApplication
+	var supplyRuntime *supplyChainModule
 	if supplied.productAgent != nil {
 		agentConfig := *supplied.productAgent
 		agentConfig.Knowledge = supplied.knowledge
@@ -620,6 +652,14 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, agentModule)
 		modelPointRecovery = agentModule.(productAgentModule).recoverPoints
 		productRuntime = agentModule.(productAgentModule).application
+	}
+	if supplied.supplyChain != nil {
+		module, e := buildSupplyChainModule(ctx, supplied.productAcquisitionDB, supplied.storeCenterDB, *supplied.supplyChain, *workbench.authDependencies, authorizer, supplied.officialStoreApplications, cfg, productRuntime)
+		if e != nil {
+			return nil, fmt.Errorf("build current supply chain: %w", e)
+		}
+		modules = append(modules, module)
+		supplyRuntime = &module
 	}
 	if supplied.agentConfigurationDB != nil {
 		m, e := buildAgentConfigurationModule(ctx, supplied.agentConfigurationDB, workbench.authDependencies.organizationResolver, authorizer, supplied.knowledge, productRuntime)
@@ -729,6 +769,8 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	}
 	routeFeatures := currentApplicationOptionalRoutes{
 		Ecoservices:         supplied.ecoservices != nil,
+		SupplyChain:         supplied.supplyChains > 0,
+		Collections:         supplied.productCollections > 0,
 		NotificationCenter:  supplied.notifications > 0,
 		ZitadelSMS:          true,
 		StoreCenter:         supplied.storeCenters > 0,
@@ -753,6 +795,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 			runtimeContext = context.Background()
 		}
 		startCommercialRecoveryLoop(runtimeContext, server, ecoservicesRecovery, 15*time.Second, "ecoservices original commands", logger)
+	}
+	if supplyRuntime != nil {
+		*supplied.supplyChain.Worker = supplyRuntime.worker
 	}
 	if resourceRecovery != nil {
 		runtimeContext := supplied.runtimeContext
@@ -826,6 +871,8 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 
 type currentApplicationOptionalRoutes struct {
 	Ecoservices         bool
+	SupplyChain         bool
+	Collections         bool
 	NotificationCenter  bool
 	AgentConfiguration  bool
 	Knowledge           bool
@@ -846,6 +893,23 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	if optional.Ecoservices {
 		for _, r := range ehttp.Routes(nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
+	if optional.SupplyChain {
+		for _, r := range supplyhttp.SupplyRoutes(nil, nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
+	if optional.Collections {
+		for _, r := range collectionhttp.Routes(nil, nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+		for _, r := range routes {
+			if r.Path == collectionhttp.BasePath || strings.HasPrefix(r.Path, collectionhttp.BasePath+"/") {
+				if err := validateCollectionDescriptor(r); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	if optional.NotificationCenter {
@@ -984,6 +1048,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			}
 			if err := validateEcoservicesDescriptor(descriptor); err != nil {
 				return err
+			}
+		}
+		if descriptor.Path == supplyhttp.SupplyBasePath || strings.HasPrefix(descriptor.Path, supplyhttp.SupplyBasePath+"/") {
+			if !optional.SupplyChain {
+				return errors.New("supply chain feature not admitted")
+			}
+			if e := validateSupplyDescriptor(descriptor); e != nil {
+				return e
 			}
 		}
 		if strings.HasPrefix(descriptor.Path, "/api/v1/notifications/") || strings.HasPrefix(descriptor.Path, "/api/v1/workbench/notifications") || strings.HasPrefix(descriptor.Path, "/api/v1/platform/notifications/") {

@@ -32,26 +32,29 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
-	Ecoservices                *EcoservicesConfig            `json:"ecoservices,omitempty"`
-	NotificationCenterDatabase *DatabaseConfig               `json:"notificationCenterDatabase,omitempty"`
-	Knowledge                  *KnowledgeConfig              `json:"knowledge,omitempty"`
-	StoreCenter                *StoreCenterConfig            `json:"storeCenter,omitempty"`
-	LocalTrial                 *LocalTrialConfig             `json:"localTrial,omitempty"`
-	SchemaVersion              int                           `json:"schemaVersion"`
-	Listen                     ListenConfig                  `json:"listen"`
-	Identity                   IdentityConfig                `json:"identity"`
-	SourceAccountDatabase      DatabaseConfig                `json:"sourceAccountDatabase"`
-	CommercialOwnerDatabase    *DatabaseConfig               `json:"commercialOwnerDatabase,omitempty"`
-	MoneyOwnerDatabase         *DatabaseConfig               `json:"moneyOwnerDatabase,omitempty"`
-	WalletTopUp                topupconfig.Config            `json:"walletTopUp,omitempty"`
-	ProductAcquisitionDatabase *DatabaseConfig               `json:"productAcquisitionDatabase,omitempty"`
-	ImageAgent                 *ImageAgentConfig             `json:"imageAgent,omitempty"`
-	ProductAgent               *ProductAgentConfig           `json:"productAgent,omitempty"`
-	AIWorkbench                *AIWorkbenchConfig            `json:"aiWorkbench,omitempty"`
-	AccountAuditUsage          *AccountAuditUsageConfig      `json:"accountAuditUsage,omitempty"`
-	Membership                 *MembershipConfig             `json:"membership,omitempty"`
-	ListingKitAuthorization    ListingKitAuthorizationConfig `json:"listingKitAuthorization,omitempty"`
-	Referrals                  ReferralsConfig               `json:"referrals"`
+	Ecoservices                *EcoservicesConfig                        `json:"ecoservices,omitempty"`
+	NotificationCenterDatabase *DatabaseConfig                           `json:"notificationCenterDatabase,omitempty"`
+	Knowledge                  *KnowledgeConfig                          `json:"knowledge,omitempty"`
+	StoreCenter                *StoreCenterConfig                        `json:"storeCenter,omitempty"`
+	LocalTrial                 *LocalTrialConfig                         `json:"localTrial,omitempty"`
+	SchemaVersion              int                                       `json:"schemaVersion"`
+	Listen                     ListenConfig                              `json:"listen"`
+	Identity                   IdentityConfig                            `json:"identity"`
+	SourceAccountDatabase      DatabaseConfig                            `json:"sourceAccountDatabase"`
+	CommercialOwnerDatabase    *DatabaseConfig                           `json:"commercialOwnerDatabase,omitempty"`
+	MoneyOwnerDatabase         *DatabaseConfig                           `json:"moneyOwnerDatabase,omitempty"`
+	WalletTopUp                topupconfig.Config                        `json:"walletTopUp,omitempty"`
+	ProductAcquisitionDatabase *DatabaseConfig                           `json:"productAcquisitionDatabase,omitempty"`
+	ProductCollections         bool                                      `json:"productCollections,omitempty"`
+	SupplyChain                *SupplyChainConfig                        `json:"supplyChain,omitempty"`
+	SourceMedia                *coreconfig.ImageAgentArtifactStoreConfig `json:"sourceMedia,omitempty"`
+	ImageAgent                 *ImageAgentConfig                         `json:"imageAgent,omitempty"`
+	ProductAgent               *ProductAgentConfig                       `json:"productAgent,omitempty"`
+	AIWorkbench                *AIWorkbenchConfig                        `json:"aiWorkbench,omitempty"`
+	AccountAuditUsage          *AccountAuditUsageConfig                  `json:"accountAuditUsage,omitempty"`
+	Membership                 *MembershipConfig                         `json:"membership,omitempty"`
+	ListingKitAuthorization    ListingKitAuthorizationConfig             `json:"listingKitAuthorization,omitempty"`
+	Referrals                  ReferralsConfig                           `json:"referrals"`
 	// BrowserCollector enables the standalone anonymous public 1688 browser
 	// collector (design D13). Omitted means the application keeps the existing
 	// anonymous public HTTP provider unchanged.
@@ -319,6 +322,9 @@ func (cfg *Config) validate() error {
 		if cfg.ImageAgent != nil {
 			other = append(other, &cfg.ImageAgent.Database)
 		}
+		if cfg.SupplyChain != nil {
+			other = append(other, &cfg.SupplyChain.AssetDatabase)
+		}
 		for _, db := range other {
 			n := cfg.NotificationCenterDatabase
 			if db != nil && db.Host == n.Host && db.Port == n.Port && db.Database == n.Database {
@@ -395,6 +401,20 @@ func (cfg *Config) validate() error {
 			if cfg.Membership.Database.Host == other.Host && cfg.Membership.Database.Port == other.Port && cfg.Membership.Database.Database == other.Database {
 				return errors.New("membership requires a dedicated database")
 			}
+		}
+	}
+	if cfg.ProductCollections && cfg.ProductAcquisitionDatabase == nil {
+		return errors.New("product collections require the current Product database")
+	}
+	if err := cfg.validateSupplyChain(); err != nil {
+		return err
+	}
+	if cfg.SourceMedia != nil {
+		if !cfg.ProductCollections || cfg.SupplyChain == nil {
+			return errors.New("source media requires current collections and supply chain")
+		}
+		if err := ValidateSourceMediaStorage(*cfg.SourceMedia); err != nil {
+			return errors.New("source media storage configuration unavailable")
 		}
 	}
 	if product := cfg.ProductAcquisitionDatabase; product != nil {
@@ -613,6 +633,9 @@ func (cfg *Config) CoreConfig() *coreconfig.Config {
 		core.ImageAgent.Generation = image.Generation
 		core.ImageAgent.Admission = coreconfig.ImageAgentAdmissionConfig{Enabled: true, AllowedTenantIDs: append([]string(nil), image.AllowedOrganizationIDs...)}
 		core.ImageAgent.ArtifactStore = coreconfig.ImageAgentArtifactStoreConfig{Enabled: true, Provider: "s3", PublicBase: image.PublicBase, IsolatedTrialGeneratedURLs: image.IsolatedTrialGeneratedURLs, S3: coreconfig.ImageAgentArtifactStoreS3Config{Bucket: image.Bucket}}
+	}
+	if cfg.SourceMedia != nil {
+		core.ProductCollectionSourceMedia = *cfg.SourceMedia
 	}
 	return core
 }

@@ -35,6 +35,36 @@ type sourceStub struct {
 	publication string
 }
 
+type executionSourceStub struct {
+	*sourceStub
+	denied bool
+}
+
+func (s executionSourceStub) AuthorizePublicationExecution(_ context.Context, org, actor string) error {
+	if s.denied || org != "org" || actor != "actor" {
+		return sourcing.ErrPublicationForbidden
+	}
+	return nil
+}
+func TestReadExactRequiresExplicitLiveExecutionSourceGate(t *testing.T) {
+	_, p, c, s := bindingFixture()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	for _, denied := range []bool{true, false} {
+		e, _ := NewExecutor(c, executionSourceStub{s, denied})
+		_, err := e.readExact(ctx, p, Input{ProductKey: "product", CatalogVersion: "9007199254740993"})
+		if denied && !errors.Is(err, sourcing.ErrPublicationForbidden) {
+			t.Fatalf("expected denial, got %v", err)
+		}
+		if !denied && err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.calls != 1 || s.calls != 1 {
+		t.Fatal("denied execution must read no source facts")
+	}
+}
+
 func (s *sourceStub) Read(_ context.Context, publication string) (sourcing.PersistedPublication, error) {
 	s.calls++
 	s.publication = publication

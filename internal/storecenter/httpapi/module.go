@@ -46,6 +46,7 @@ func (m routeModule) Register(registry *kernelmodule.Registry) error {
 	if m.handler.officialConnections != nil {
 		registry.AddRoutes(
 			route(http.MethodGet, "/api/v1/workbench/stores/:store_id/connection", authz.PermissionWorkbenchStoreRead, httproute.OrganizationAccessPolicyLiveWrite, m.handler.ReadOfficialConnection),
+			route(http.MethodGet, "/api/v1/workbench/stores/:store_id/connection/applications", authz.PermissionWorkbenchStoreRead, httproute.OrganizationAccessPolicyLiveWrite, m.handler.OfficialApplications),
 			route(http.MethodPost, "/api/v1/workbench/stores/:store_id/connection/begin", authz.PermissionWorkbenchStoreUpdate, httproute.OrganizationAccessPolicyLiveWrite, m.handler.BeginOfficialConnection),
 			route(http.MethodPost, "/api/v1/workbench/stores/:store_id/connection/complete", authz.PermissionWorkbenchStoreUpdate, httproute.OrganizationAccessPolicyLiveWrite, m.handler.CompleteOfficialConnection),
 			route(http.MethodPost, "/api/v1/workbench/stores/:store_id/connection/query", authz.PermissionWorkbenchStoreUpdate, httproute.OrganizationAccessPolicyLiveWrite, m.handler.ResumeOfficialConnectionQuery),

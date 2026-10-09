@@ -18,6 +18,11 @@ const (
 	PermissionWorkbenchChatRead                 = "workbench.chat.read"
 	PermissionWorkbenchChatUse                  = "workbench.chat.use"
 	PermissionWorkbenchTaskRead                 = "workbench.task.read"
+	PermissionWorkbenchCollectionRead           = "workbench.collection.read"
+	PermissionWorkbenchCollectionManage         = "workbench.collection.manage"
+	PermissionWorkbenchSupplyRead               = "workbench.supply.read"
+	PermissionWorkbenchSupplyManage             = "workbench.supply.manage"
+	PermissionWorkbenchListingSubmit            = "workbench.listing.submit"
 	PermissionListingKitAdminRead               = "listingkit.admin.read"
 	PermissionListingKitAdminWrite              = "listingkit.admin.write"
 	PermissionListingKitPromptWrite             = "listingkit.prompt.write"
@@ -57,6 +62,8 @@ var workbenchEcoservicesPermissions = []string{PermissionWorkbenchEcoservicesRea
 
 var workbenchChatPermissions = []string{PermissionWorkbenchChatRead, PermissionWorkbenchChatUse, PermissionWorkbenchTaskRead}
 
+var workbenchSupplyPermissions = []string{PermissionWorkbenchCollectionRead, PermissionWorkbenchCollectionManage, PermissionWorkbenchSupplyRead, PermissionWorkbenchSupplyManage, PermissionWorkbenchListingSubmit}
+
 var workbenchSourceAccountPermissions = []string{
 	PermissionWorkbenchSourceAccountRead,
 	PermissionWorkbenchSourceAccountManage,
@@ -76,7 +83,7 @@ var workbenchCommercialPermissions = []string{
 // WorkbenchPermissions is a bounded display contract, never a policy source.
 func WorkbenchPermissions() []string {
 	result := []string{PermissionListingKitAdminRead, PermissionListingKitAdminWrite, PermissionProductSourcingWrite, PermissionLocalAgentWrite, PermissionImageAgentRead, PermissionImageAgentWrite, PermissionWorkbenchAgentRead, PermissionWorkbenchAgentUse, PermissionWorkbenchAgentConfigure}
-	for _, group := range [][]string{workbenchChatPermissions, workbenchKnowledgePermissions, workbenchEcoservicesPermissions, workbenchStorePermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
+	for _, group := range [][]string{workbenchChatPermissions, workbenchKnowledgePermissions, workbenchEcoservicesPermissions, workbenchSupplyPermissions, workbenchStorePermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
 		result = append(result, group...)
 	}
 	return result
@@ -226,6 +233,25 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		}
 	}
 
+	for _, role := range append([]string{"listingkit_operator", "listingkit_admin", "platform_admin"}, normalizeUnique(platformAdminRoles)...) {
+		for _, permission := range workbenchSupplyPermissions {
+			if _, err := enforcer.AddPolicy(role, permission); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for _, permission := range []string{PermissionWorkbenchCollectionRead, PermissionWorkbenchSupplyRead} {
+		if _, err := enforcer.AddPolicy("listingkit_viewer", permission); err != nil {
+			return nil, err
+		}
+	}
+	for _, userID := range normalizeUnique(platformAdminUsers) {
+		for _, permission := range workbenchSupplyPermissions {
+			if _, err := enforcer.AddPolicy(userSubject(userID), permission); err != nil {
+				return nil, err
+			}
+		}
+	}
 	for _, role := range normalizeUnique(platformAdminRoles) {
 		for _, permission := range workbenchChatPermissions {
 			if _, err := enforcer.AddPolicy(role, permission); err != nil {
