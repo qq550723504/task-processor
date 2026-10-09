@@ -476,9 +476,11 @@ func (s *Service) ConfirmImagePlan(ctx context.Context, input ConfirmImagePlanIn
 		if err = s.imageSets.Contexts.RevalidateImageSet(ctx, identity, current); err != nil {
 			return RunProjection{}, err
 		}
-		if !s.imageSets.Now().Before(current.Run.ImageAdmission.Deadline) {
-			return current, ErrCommandBlocked
+		if ImageSetClosedRunStatus(current.Run.Status) {
+			return current, nil
 		}
+		// Re-deliver only the original workflow input. Its immutable deadline
+		// prevents new dispatch and lets the original owner persist expiration.
 		if err = s.workflows.StartManual(ctx, WorkflowStart{Run: current.Run, Plan: current.Plan, Identity: identity, AssetCatalog: current.AssetCatalog, MaxConcurrentSlots: current.Run.MaxConcurrentSlots}); err != nil {
 			return current, err
 		}
@@ -519,7 +521,7 @@ func (s *Service) ConfirmImagePlan(ctx context.Context, input ConfirmImagePlanIn
 	} else if err != nil {
 		return current, err
 	}
-	if !reflect.DeepEqual(receipt.Command, command) || !s.imageSets.Now().Before(receipt.Deadline) {
+	if !reflect.DeepEqual(receipt.Command, command) {
 		return current, ErrCommandBlocked
 	}
 	next := current

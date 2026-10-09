@@ -64,6 +64,8 @@ func TestSetWorkflowOffersKnownPartialResultsOnlyAfterEveryEffectCloses(t *testi
 	results[1].Execution.Attempt = 1
 	results[1].ErrorCode = imageagent.SlotProviderOutcomeUnknownCode
 	results[1].EffectPhase = imageagent.SlotEffectV3ProviderUnknown
+	unknown := summarizeResultsForWire(plan, results, wire)
+	require.Equal(t, []imageagent.RecoverableEffect{{SlotID: second.ID, Attempt: 1, Code: imageagent.SlotProviderOutcomeUnknownCode}}, unknown.RecoverableEffects, "the full set must expose the original UNKNOWN recovery identity")
 	projection = summarizeResultsForWire(plan, results, wire)
 	require.Equal(t, imageagent.RunStatusBlocked, projection.Status)
 	_, err = resultDigestForWire(plan, results, wire)

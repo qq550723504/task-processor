@@ -46,6 +46,9 @@ func (a *Activities) deriveImageSetSlotProjection(ctx context.Context, current i
 	if effectErr == nil && (validatePersistedSlotEffectV3(effect) != nil || effect.InputFingerprint != reservation.InputFingerprint || effect.IdempotencyKey != reservation.IdempotencyKey) {
 		return result, imageagent.ErrRevisionConflict
 	}
+	if result.Slot.Status == imageagent.SlotStatusBlocked && input.Result.EffectPhase == imageagent.SlotEffectV3ProviderNotDispatched && effectErr == nil && effect.Phase != imageagent.SlotEffectV3ProviderNotDispatched {
+		result.ErrorCode = imageSetExistingEffectBlockCode(effect.Phase)
+	}
 	facts, ok := a.repository.(imageagent.GenerationFactRepository)
 	if !ok {
 		return result, imageagent.ErrValidation
@@ -79,6 +82,22 @@ func (a *Activities) deriveImageSetSlotProjection(ctx context.Context, current i
 		return result, err
 	}
 	if result.Slot.Status != imageagent.SlotStatusAccepted {
+		// A late pre-dispatch denial cannot replace an already materialized
+		// success. Revalidate its original fact and artifact through this owner.
+		if input.Result.EffectPhase == imageagent.SlotEffectV3ProviderNotDispatched && effectErr == nil && effect.Phase == imageagent.SlotEffectV3PublicationComplete {
+			for _, existing := range current.Slots {
+				if existing.Slot.ID != result.Slot.ID || existing.Attempt != input.Result.Published.Attempt || existing.Slot.Status != imageagent.SlotStatusAccepted {
+					continue
+				}
+				accepted := input
+				accepted.Result = SlotWorkflowV3Result{Published: effect.Published, Status: imageagent.SlotStatusAccepted, EffectPhase: effect.Phase}
+				verified, verifyErr := a.deriveImageSetSlotProjection(ctx, current, accepted, existing)
+				if verifyErr != nil || !reflect.DeepEqual(existing, verified) {
+					return result, imageagent.ErrRevisionConflict
+				}
+				return existing, nil
+			}
+		}
 		invalidOutput := fact.State == imageagent.GenerationSucceeded && fact.Success.ResultUnavailable == "invalid_result"
 		if fact.State == imageagent.GenerationSucceeded && !invalidOutput {
 			invalidOutput = hasClosedInvalidImageSetOutput(current, execution, closure)
@@ -114,6 +133,22 @@ func (a *Activities) deriveImageSetSlotProjection(ctx context.Context, current i
 	result.Closure = closure
 	candidate.GenerationProof = &imageagent.ImageGenerationProof{IntentID: closure.IntentID, Fingerprint: closure.Fingerprint, SettlementProofDigest: closure.SettlementProofDigest, Points: closure.Points}
 	return result, nil
+}
+
+func imageSetExistingEffectBlockCode(phase imageagent.SlotEffectV3Phase) string {
+	if policy, err := imageagent.SlotEffectV3BlockedPolicyFor(phase, ""); err == nil {
+		return policy.Code
+	}
+	switch phase {
+	case imageagent.SlotEffectV3ProviderClaimed:
+		return imageagent.SlotProviderOutcomeUnknownCode
+	case imageagent.SlotEffectV3StagingPrepared, imageagent.SlotEffectV3ArtifactStaged:
+		return imageagent.SlotStagingOutcomeUnknownCode
+	case imageagent.SlotEffectV3PublicationClaimed, imageagent.SlotEffectV3PublicationComplete:
+		return imageagent.SlotPublicationOutcomeUnknownCode
+	default:
+		return imageagent.SlotRecoveryBlockedCode
+	}
 }
 
 // The already-committed closure is the output decision. Its economic identity

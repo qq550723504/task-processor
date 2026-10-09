@@ -286,6 +286,67 @@ func TestConfirmImageSetRejectsChangedPriceSourceOrDisabledEnterprise(t *testing
 	}
 }
 
+func TestConfirmImageSetRestoresExpiredOriginalStartWithoutExtendingBudget(t *testing.T) {
+	for _, kind := range []string{"run_receipt", "config_receipt"} {
+		t.Run(kind, func(t *testing.T) {
+			service, repo, workflows, config, contexts, quotes, ctx, input := imageSetServiceFixtureWithRepository(t, func(r imageagent.Repository) imageagent.Repository {
+				return &confirmCommitFailure{Repository: r, fail: kind == "config_receipt"}
+			})
+			prepared, err := service.PrepareImageSet(ctx, input)
+			require.NoError(t, err)
+			command := confirmSetInput(prepared)
+			workflows.startErr = errors.New("Temporal unavailable")
+			_, err = service.ConfirmImagePlan(ctx, command)
+			require.Error(t, err)
+			original := *imageagent.CloneImageAdmission(config.receipt)
+			config.enabled = false
+			quotes.quote.Points++
+			workflows.startErr = nil
+			restarted, err := imageagent.NewService(repo, workflows, staticCatalogResolver{catalog: contexts.preparation.Catalog}, imageagent.WithOrganizationScope(), imageagent.WithTenantStartGate(imageagent.TenantAllowlistStartGate{Enabled: true, AllowedTenantIDs: []string{"another-org"}}), imageagent.WithImageSetDependencies(imageagent.ImageSetDependencies{Configuration: config, Contexts: contexts, Quotes: quotes, HardLimits: agentconfig.ImageRunLimits{Images: 32, Points: 10000, ElapsedSeconds: 3600}, Now: func() time.Time { return original.Deadline.Add(time.Second) }}))
+			require.NoError(t, err)
+			resumed, err := restarted.ConfirmImagePlan(ctx, command)
+			require.NoError(t, err, "the original owner must get the expired immutable input to close it without dispatch")
+			require.Equal(t, original, *resumed.Run.ImageAdmission)
+			require.Equal(t, original.AdmittedAt, resumed.Run.StartedAt)
+			require.Equal(t, original.Deadline, resumed.Run.StartedAt.Add(resumed.Run.Budget.MaxElapsed))
+			require.Equal(t, 1, config.admissions)
+			last := workflows.starts[len(workflows.starts)-1]
+			require.Equal(t, original, *last.Run.ImageAdmission)
+			require.Equal(t, prepared.Projection.Plan, last.Plan)
+			if kind == "run_receipt" {
+				require.Len(t, workflows.starts, 2)
+				require.Equal(t, workflows.starts[0], workflows.starts[1])
+			} else {
+				require.Len(t, workflows.starts, 1)
+			}
+		})
+	}
+}
+
+func TestExpiredImageSetConfirmationDoesNotReviveClosedWorkflowProgress(t *testing.T) {
+	for _, status := range []imageagent.RunStatus{imageagent.RunStatusBlocked, imageagent.RunStatusFailed} {
+		t.Run(string(status), func(t *testing.T) {
+			service, repo, workflows, config, contexts, quotes, ctx, input := imageSetServiceFixture(t)
+			prepared, err := service.PrepareImageSet(ctx, input)
+			require.NoError(t, err)
+			command := confirmSetInput(prepared)
+			current, err := service.ConfirmImagePlan(ctx, command)
+			require.NoError(t, err)
+			next := current
+			next.Run.Status, next.Run.Version = status, current.Run.Version+1
+			scope := imageagent.ScopeForRun(current.Run)
+			original, err := repo.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: "workflow-progress", ExpectedProjectionVersion: current.ProjectionVersion, ExpectedRunVersion: current.Run.Version, Snapshot: next, RunMutation: &imageagent.RunMutation{Status: status, CurrentNode: next.Run.CurrentNode, ActivePlanRevision: next.Plan.Revision}, EventType: "run.updated", EventPayload: []byte(`{}`)})
+			require.NoError(t, err)
+			restarted, err := imageagent.NewService(repo, workflows, staticCatalogResolver{catalog: contexts.preparation.Catalog}, imageagent.WithOrganizationScope(), imageagent.WithImageSetDependencies(imageagent.ImageSetDependencies{Configuration: config, Contexts: contexts, Quotes: quotes, HardLimits: agentconfig.ImageRunLimits{Images: 32, Points: 10000, ElapsedSeconds: 3600}, Now: func() time.Time { return config.receipt.Deadline.Add(time.Second) }}))
+			require.NoError(t, err)
+			resumed, err := restarted.ConfirmImagePlan(ctx, command)
+			require.NoError(t, err)
+			require.Equal(t, original, resumed)
+			require.Len(t, workflows.starts, 1, "confirmation must not start another execution after workflow progress is already closed or blocked")
+		})
+	}
+}
+
 func TestPrepareImageSetMissingSpecificationsBlocksBeforeGeneration(t *testing.T) {
 	s, _, workflows, config, _, _, ctx, input := imageSetServiceFixture(t)
 	config.template.Detail = []agentconfig.ContentTask{{ID: "dimensions", Purpose: "specification_dimensions"}}

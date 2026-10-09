@@ -135,7 +135,7 @@ ImageAgent 在自己的本地事务初始化 Run、Plan、授权 Catalog、配�
 
 图片企业停用沿当前已批准配置产品语义：**停止新的整套任务准入，已经准入的有界执行可完成**。不把一次跨库 live 读取声称为可线性排序的逐 Slot 停用门禁，不新增逐图片许可平台。配置 owner 拟增 `AdmitImageRun`：锁当前企业 Agent 行并核对 ENABLED/原 epoch、snapshot scope与hard ceilings，在同一原配置事务写入一次 `ImageRunAdmissionReceipt`，**该事务成功提交是整套任务准入点**。disable 先提交则新准入失败；原准入先提交则该 Run 可在原预算/deadline 内继续。UI 在停用确认中沿现语义说明这点；新的重生成必须新的整套准入。
 
-准入回执是原 start snapshot 的 append-only/write-once关联记录，固定 snapshot ID/digest、Organization/actor/member、稳定 RunID/confirm actionID、source/input/plan/quote digests、definition/模板版本及原 admittedAt/deadline/硬预算；原 immutable snapshot payload/digest不改写，不复制 ImageAgent 状态。ImageDB 确认CAS与Temporal启动只消费原确切回执；配置事务ACK未知时先按原action读取回执，绝不换key或刷新原预算/deadline。配置准入成功、ImageDB确认/启动失败按原回执重放；已经cancelled/completed的Run不复活，过期回执不产生新工作。确认CAS同时比较当前Run/plan/action摘要，不由配置回执覆盖已改变的ImageDB状态。此处仍是两个本地事务，不冒称跨库原子。
+准入回执是原 start snapshot 的 append-only/write-once关联记录，固定 snapshot ID/digest、Organization/actor/member、稳定 RunID/confirm actionID、source/input/plan/quote digests、definition/模板版本及原 admittedAt/deadline/硬预算；原 immutable snapshot payload/digest不改写，不复制 ImageAgent 状态。ImageDB 确认CAS与Temporal启动只消费原确切回执；配置事务ACK未知时先按原action读取回执，绝不换key或刷新原预算/deadline。配置准入成功、ImageDB确认/启动失败按原回执重放；已经cancelled/completed的Run不复活，过期回执不产生新生成、点数预留或 provider POST，但允许原稳定 workflow 按原期限保存超期结果。已有工作流阻止/失败/等待审核的进度不通过确认动作复活；已有成功与 UNKNOWN 仍由原 Slot/fact owner 判断，不能根据启动 ACK 未知统一标为未派发。确认CAS同时比较当前Run/plan/action摘要，不由配置回执覆盖已改变的ImageDB状态。此处仍是两个本地事务，不冒称跨库原子。
 
 每次实际派发仍核原 actor/member 的 live 身份、image write 与当前 source权限、原 recipe/config引用、provider凭据/价格及当前资源月限；企业配置停用本身不撤销已获得整套准入的执行，也不删除候选或代替领域权限。领域授权/来源/凭据等重验失败走原 no-generation proof/预留释放；已取得唯一dispatch CAS的工作沿原 proof/recovery收束，不授权第二 POST。结果读取与 Asset批准保持原领域 live 权限，配置停用不新增审批门禁。这里不声称与外部IAM原子提交。
 

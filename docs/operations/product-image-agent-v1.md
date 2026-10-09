@@ -52,6 +52,8 @@ pnpm.cmd exec next start --hostname 127.0.0.1 --port 3000
 
 页面在发送前保存当前企业/身份/商品作用域下的原命令。刷新后只读同一 Run、原准备键或原不可变批准回执。准备/批准 ACK 未明时不会因为当前库存变化而推断成功。已准入但 Temporal Start ACK 丢失时，显式“继续原确认”使用相同确认动作与 workflow ID。未知 provider 结果只核实原 effect，不重新 POST。未找到不能视为未执行证明。
 
+如果 Temporal 启动一直不可用，直到原生成期限已过，“继续原确认”仍把完整匹配的原回执交给同一个工作流，期限与预算不延长。原 owner 将从未派发的项记录为预算超期；已有成功保留原图片和结算，已有未明调用保留原核实入口，不能因为期限已过就声称未执行。已经阻止、失败或等待人工审核的工作流进度不会通过确认动作重新启动生成。
+
 所有原 effect 已知收束后，可以选定部分内容创建新的 Run/新报价/新确认；原成功结果仍持有原 ID，不复制生成或重复扣点。停用阻止新准入；已准入任务、读取和人工审核保留，实际领域权限仍实时检查。
 
 原图与集合/Apply 在 Product DB，模板与准入回执在 ProductAgentDB，Run/Plan/effect 与批准图片在各自同一物理 Image/Asset owner 的事实表，点数在 orgresource owner，图片字节在既有不可变 object storage，workflow 在原 Temporal namespace。停止或重启沿用原私有配置和数据；不重新初始化，不使用 `down -v`。

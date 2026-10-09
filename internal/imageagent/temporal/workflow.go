@@ -527,10 +527,16 @@ func (o *workflowEffectOwner) persistImageSetCompletion(ctx workflow.Context, in
 		if err := workflow.ExecuteActivity(ownerCtx, activityPersistImageSetSlotResult, activityInput).Get(ownerCtx, &projection); err != nil {
 			return err
 		}
-		if projection.Slot.ID != result.Published.SlotID || projection.Slot.Status != result.Status {
+		if projection.Slot.ID != result.Published.SlotID || projection.Slot.Status != result.Status && (result.Status != imageagent.SlotStatusBlocked || projection.Slot.Status != imageagent.SlotStatusAccepted || projection.Closure == nil || projection.Closure.Kind != "settled") {
 			return imageagent.ErrRevisionConflict
 		}
-		completion.Result = SlotWorkflowResult{Execution: imageagent.SlotExecutionResult{SlotID: projection.Slot.ID, Attempt: projection.Attempt, Candidates: projection.Candidates}, Status: projection.Slot.Status, ErrorCode: projection.ErrorCode, EffectPhase: result.EffectPhase, Closure: projection.Closure}
+		phase := result.EffectPhase
+		if projection.Slot.Status == imageagent.SlotStatusAccepted {
+			phase = imageagent.SlotEffectV3PublicationComplete
+		} else if projection.Closure == nil {
+			phase = terminalEffectPhaseForErrorCode(projection.ErrorCode)
+		}
+		completion.Result = SlotWorkflowResult{Execution: imageagent.SlotExecutionResult{SlotID: projection.Slot.ID, Attempt: projection.Attempt, Candidates: projection.Candidates}, Status: projection.Slot.Status, ErrorCode: projection.ErrorCode, EffectPhase: phase, Closure: projection.Closure}
 		return nil
 	})
 }
@@ -2471,7 +2477,7 @@ func summarizeResults(plan imageagent.Plan, results []SlotWorkflowResult) Workfl
 func summarizeResultsForWire(plan imageagent.Plan, results []SlotWorkflowResult, activityWire workflowActivityWire) WorkflowResult {
 	result := summarizeResults(plan, results)
 	if plan.Set != nil && activityWire.useV3Slot && activityWire.useV3Approval {
-		result.RecoverableEffects = recoverableEffectsForCancellation(results, activityWire)
+		result.RecoverableEffects = imageSetRecoverableEffects(results)
 		if _, err := imageagent.ImageSetResultDigest(plan, result.Slots, result.RecoverableEffects); err == nil {
 			result.Status, result.Block = imageagent.RunStatusAwaitingFinalApproval, nil
 		} else if len(result.RecoverableEffects) > 0 {
@@ -2499,6 +2505,24 @@ func summarizeResultsForWire(plan imageagent.Plan, results []SlotWorkflowResult,
 	result.Block.Code = code
 	result.Block.Message = code
 	return result
+}
+
+// Full-set closure is stricter than stopping a child during cancellation:
+// an unclosed original effect must remain visible for identity-bound recovery.
+func imageSetRecoverableEffects(results []SlotWorkflowResult) []imageagent.RecoverableEffect {
+	var effects []imageagent.RecoverableEffect
+	for _, result := range results {
+		if result.Status != imageagent.SlotStatusBlocked || result.Execution.SlotID == "" || result.Execution.Attempt <= 0 || result.Closure != nil && result.Closure.Valid(result.Execution.Attempt) {
+			continue
+		}
+		code := result.ErrorCode
+		if !imageagent.IsRecoverableEffectBlockCode(code) {
+			code = imageagent.SlotRecoveryBlockedCode
+		}
+		effects = append(effects, imageagent.RecoverableEffect{SlotID: result.Execution.SlotID, Attempt: result.Execution.Attempt, Code: code})
+	}
+	normalized, _ := imageagent.NormalizeRecoverableEffects(effects)
+	return normalized
 }
 
 func summarizeResultsV3(plan imageagent.Plan, results []SlotWorkflowV3Result) WorkflowResult {

@@ -109,6 +109,9 @@ func TestPersistImageSetAcceptedOutputKeepsOriginalGenerationProof(t *testing.T)
 	replay, err := a.PersistImageSetSlotResult(context.Background(), PersistSlotResultV3ActivityInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: 1, AttemptKey: input.IdempotencyKey, Result: SlotWorkflowV3Result{Published: published, Status: imageagent.SlotStatusAccepted, EffectPhase: imageagent.SlotEffectV3PublicationComplete}})
 	require.NoError(t, err)
 	require.Equal(t, projection, replay)
+	expired, err := a.PersistImageSetSlotResult(context.Background(), PersistSlotResultV3ActivityInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: 1, AttemptKey: input.IdempotencyKey, Result: SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: 1}, Status: imageagent.SlotStatusBlocked, ErrorCode: imageagent.BudgetElapsedCode, EffectPhase: imageagent.SlotEffectV3ProviderNotDispatched}})
+	require.NoError(t, err)
+	require.Equal(t, projection, expired, "expiration must not overwrite original settled materialized success")
 	require.Equal(t, 1, recorder.GenerateCalls())
 	current, err := repo.GetProjection(context.Background(), originalFact.Intent.Identity.RunScope)
 	require.NoError(t, err)
@@ -117,15 +120,18 @@ func TestPersistImageSetAcceptedOutputKeepsOriginalGenerationProof(t *testing.T)
 }
 
 func TestPersistImageSetSlotResultDistinguishesKnownUnstartedFromUnknown(t *testing.T) {
-	for _, mode := range []string{"known_unstarted", "unknown"} {
+	for _, mode := range []string{"known_unstarted", "unknown", "expired_unknown"} {
 		t.Run(mode, func(t *testing.T) {
 			activities, repo, input := imageSetPersistenceFixture(t)
 			code, phase := imageagent.BudgetElapsedCode, imageagent.SlotEffectV3ProviderNotDispatched
-			if mode == "unknown" {
+			if mode != "known_unstarted" {
 				_, won, err := repo.(imageagent.SlotExternalEffectV3Repository).ReserveSlotProviderV3(context.Background(), slotEffectReservationV3(slotExecutionInputV3(input)))
 				require.NoError(t, err)
 				require.True(t, won)
 				code, phase = imageagent.SlotProviderOutcomeUnknownCode, imageagent.SlotEffectV3ProviderUnknown
+				if mode == "expired_unknown" {
+					code, phase = imageagent.BudgetElapsedCode, imageagent.SlotEffectV3ProviderNotDispatched
+				}
 			}
 			result, err := activities.PersistImageSetSlotResult(context.Background(), PersistSlotResultV3ActivityInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: 1, AttemptKey: input.IdempotencyKey, Result: SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: 1}, Status: imageagent.SlotStatusBlocked, ErrorCode: code, EffectPhase: phase}})
 			require.NoError(t, err)
@@ -135,6 +141,7 @@ func TestPersistImageSetSlotResultDistinguishesKnownUnstartedFromUnknown(t *test
 			} else {
 				require.Equal(t, 1, result.Attempt)
 				require.Nil(t, result.Closure)
+				require.Equal(t, imageagent.SlotProviderOutcomeUnknownCode, result.ErrorCode, "a later budget denial cannot replace the original UNKNOWN owner")
 			}
 		})
 	}
