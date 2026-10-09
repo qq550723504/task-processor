@@ -1,6 +1,6 @@
 # 指定企业私有智能体交付 V1
 
-Status: 原手工输入基线 APPROVED / IMPLEMENTATION_READY；下述平台草稿范围修订 DRAFT / PENDING_ARCHITECTURE_REVIEW (2026-10-09). Design Basis: Independent Architecture. Execution: #611, primary PR #617. 修订准入前不修改正式生产路径。
+Status: APPROVED / IMPLEMENTATION_READY (2026-10-09)，平台草稿范围修订已独立准入。Design Basis: Independent Architecture. Execution: #611, primary PR #617.
 
 ## 当前产品决定：上传前的平台草稿质检
 
@@ -43,6 +43,8 @@ Legacy decision: RETIRE 手工表单和手工执行/checker生产路径；EXTRAC
 ### 必要验证和准入
 
 Independent Architecture 的新增高风险边界仅为 source/report 授权及跨 owner 只读观察。本次复核只检查本节实际增量，原人工定制/单库发布有效证据继续复用。必须先获得明确 IMPLEMENTATION_READY，再修改正式代码。
+
+独立 Architecture Review `/root/architecture_review` 绑定 `9d561ae243e3170f15f8e87fddfcb6b2f956898a`，结论 **IMPLEMENTATION_READY / 无 BLOCKER**。必要 IMPLEMENTATION_TEST：复用 `productReviewCapabilityBinder.Bind` 和现有 Org/Actor/Member/live data.read + supply.read；摘要/详情/回放逐来源核对；首执 exact head/revision 且用 `StageProjection.RequireUploadReady` 与 `Publication.CurrentRecordUploaded` 排除优化中/待审核/已上传，历史回放只核对原 immutable record 与来源权限；20条摘要+单条完整读取有界；新2.0.0/旧1.0.0只读切换和手工执行拒绝。上述已有owner合同接线由本Writer在同一PR收敛，无需重开全局设计。
 
 TDD：原手工 payload 拒绝；客户端伪造正文/issue拒绝；当前 source/actor/org隔离与撤权；陈旧 record/revision 新执行拒绝、原 key 回放仍返回原报告；同 key 不同绑定冲突、并发一个结果、失败无成功报告；source unavailable 不泄露报告；不依赖实时外部规则且不写 Product/Store/Asset；正常装配与 BFF/选择/冻结 command。复用已有真实隔离 PG 与供应链 fixture/测试，不新增 runner/验收平台。当前独立本地实例没有 SupplyChain runtime，须如实保留无法选草稿的限制；仅在现有获准隔离范围内复用正式 native supply wiring 与受控 fixture，无真实平台、provider或生产授权。开发自检不签发用户验收。
 
