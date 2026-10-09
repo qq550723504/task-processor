@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+
+	"task-processor/internal/agentconfig"
 )
 
 var (
@@ -25,6 +27,7 @@ type RunScope struct {
 }
 
 type RunMutation struct {
+	ImageAdmission     *agentconfig.ImageRunAdmissionReceipt `json:",omitempty"`
 	Status             RunStatus
 	CurrentNode        string
 	ActivePlanRevision int64

@@ -4,15 +4,19 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"task-processor/internal/agent"
+	"task-processor/internal/agentconfig"
 	"task-processor/internal/imageagent"
 	assetpersistence "task-processor/internal/integration/persistence/product/asset"
 )
@@ -58,15 +62,17 @@ func TestOrganizationImageRuntimeRoleHasOnlyCurrentAPIGrants(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
 	require.NoError(t, verifyOrganizationRuntimePermissions(ctx, runtimeDB, role))
 	require.Error(t, verifyOrganizationRuntimePermissions(ctx, owner, role))
-	run := manualRun("runtime-start", "org-runtime")
+	run := manualRun("392ed0a2-0f01-4c94-9aa4-eb50271fae9c", "org-runtime")
 	run.ScopeProtocol = imageagent.OrganizationScopeProtocol
 	run.MemberID = "member-runtime"
 	run.BusinessTaskID = "operation-runtime"
 	run.TargetPlatform = "product"
-	run.ImagePolicyContext = imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}
+	run.Status, run.CurrentNode = imageagent.RunStatusAwaitingPlanApproval, "confirm_plan"
 	run.ActivePlanRevision = 1
 	run.Version = 1
-	plan := planRevision(1)
+	plan := imageSetPlanForStore(t)
+	limits := agentconfig.ImageRunLimits{Images: 1, Points: 20, ElapsedSeconds: 300}
+	run.Budget = imageagent.ImageSetBudget(limits)
 	scope := imageagent.ScopeForRun(*run)
 	repository := NewOrganizationRepository(runtimeDB)
 	_, err = repository.InitializeRun(ctx, imageagent.ProjectionInitialization{
@@ -79,8 +85,19 @@ func TestOrganizationImageRuntimeRoleHasOnlyCurrentAPIGrants(t *testing.T) {
 		EventType: "run.initialized", EventPayload: []byte(`{}`),
 	})
 	require.NoError(t, err, "current API Start must initialize only its admitted tables")
-	_, err = repository.GetProjection(ctx, scope)
+	current, err := repository.GetProjection(ctx, scope)
 	require.NoError(t, err, "current API GET/Approve must read its projection")
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	planDigest, err := imageagent.ImageSetPlanDigest(plan)
+	require.NoError(t, err)
+	receipt := agentconfig.ImageRunAdmissionReceipt{ID: "74e01be8-f4e6-461f-8acb-18fe37329f1c", AdmittedAt: now, Deadline: now.Add(300 * time.Second), Command: agentconfig.ImageRunAdmissionCommand{Scope: agent.Scope{OrganizationID: scope.TenantID, ActorID: scope.OwnerUserID}, Snapshot: plan.Set.Configuration, MemberID: run.MemberID, RunID: run.ID, ConfirmActionID: "1b912e40-d50a-48f5-a12b-62c73a42e4b8", SourceDigest: imageagent.ImageSetSourceDigest(plan.Set.Source, plan), InputDigest: plan.Set.InputDigest, PlanDigest: planDigest, QuoteDigest: plan.Set.QuoteDigest, Limits: limits}}
+	receipt.Digest, err = hashJSON(receipt)
+	require.NoError(t, err)
+	next := current
+	next.Run.ImageAdmission, next.Run.StartedAt = &receipt, receipt.AdmittedAt
+	next.Run.Status, next.Run.CurrentNode, next.Run.Version = imageagent.RunStatusExecuting, "execute_slots", current.Run.Version+1
+	_, err = repository.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: "confirm:" + receipt.Command.ConfirmActionID, ExpectedProjectionVersion: current.ProjectionVersion, ExpectedRunVersion: current.Run.Version, Snapshot: next, RunMutation: &imageagent.RunMutation{ImageAdmission: &receipt, Status: next.Run.Status, CurrentNode: next.Run.CurrentNode, ActivePlanRevision: 1}, EventType: "run.confirmed", EventPayload: json.RawMessage(`{}`)})
+	require.NoError(t, err, "current API confirms the set with the original receipt in its existing transaction")
 	for _, tc := range []struct{ name, grant, revoke string }{
 		{"delete_run", "GRANT DELETE ON image_agent_v2_runs TO " + role, "REVOKE DELETE ON image_agent_v2_runs FROM " + role},
 		{"write_attempt", "GRANT INSERT ON image_agent_v2_attempts TO " + role, "REVOKE INSERT ON image_agent_v2_attempts FROM " + role},
@@ -88,17 +105,24 @@ func TestOrganizationImageRuntimeRoleHasOnlyCurrentAPIGrants(t *testing.T) {
 		{"missing_commit_insert", "REVOKE INSERT ON image_agent_v2_projection_commits FROM " + role, "GRANT INSERT ON image_agent_v2_projection_commits TO " + role},
 		{"missing_approval_read", "REVOKE SELECT ON product_approval_receipts FROM " + role, "GRANT SELECT ON product_approval_receipts TO " + role},
 		{"approval_write", "GRANT INSERT ON product_approved_assets TO " + role, "REVOKE INSERT ON product_approved_assets FROM " + role},
+		{"whole_run_update", "GRANT UPDATE ON image_agent_v2_runs TO " + role, "REVOKE UPDATE ON image_agent_v2_runs FROM " + role},
+		{"budget_column", "GRANT UPDATE(budget_json) ON image_agent_v2_runs TO " + role, "REVOKE UPDATE(budget_json) ON image_agent_v2_runs FROM " + role},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.NoError(t, owner.Exec(tc.grant).Error)
 			require.Error(t, verifyOrganizationRuntimePermissions(ctx, runtimeDB, role))
 			require.NoError(t, owner.Exec(tc.revoke).Error)
+			if tc.name == "whole_run_update" {
+				for _, grant := range organizationRuntimeColumnGrants {
+					require.NoError(t, owner.Exec("GRANT UPDATE("+grant.columns+") ON TABLE public."+grant.name+" TO "+role).Error)
+				}
+			}
 			require.NoError(t, verifyOrganizationRuntimePermissions(ctx, runtimeDB, role))
 		})
 	}
 	require.Error(t, runtimeDB.Exec("DELETE FROM image_agent_v2_runs").Error)
 	require.Error(t, runtimeDB.Exec("SELECT value FROM unrelated_secret").Error)
 	require.Error(t, runtimeDB.Exec("SELECT id FROM image_agent_v2_asset_catalog").Error)
-	require.Error(t, runtimeDB.Exec("UPDATE image_agent_v2_runs SET status='failed'").Error)
+	require.Error(t, runtimeDB.Exec("UPDATE image_agent_v2_runs SET budget_json='{}'").Error)
 	require.Error(t, runtimeDB.Exec("INSERT INTO product_approval_receipts(tenant_id,action_id,payload_hash,asset_ids_json) VALUES('x','y','z','[]')").Error)
 }

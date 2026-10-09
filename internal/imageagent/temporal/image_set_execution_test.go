@@ -80,11 +80,9 @@ func (r setPlanRepository) GetProjection(context.Context, imageagent.RunScope) (
 }
 
 func TestV3ImageSetExecutionRejectsAChangedOrOmittedPersistedRecipe(t *testing.T) {
-	set := &imageagent.ImageSetPlan{Schema: imageagent.ImageSetSchema, InputDigest: "approved"}
-	slot := imageagent.Slot{ID: "detail", Recipe: &imageagent.ImageSlotRecipe{Prompt: "approved prompt"}}
-	projection := imageagent.RunProjection{Run: imageagent.Run{TargetPlatform: "product", ActivePlanRevision: 1}, Plan: imageagent.Plan{Revision: 1, Set: set, Slots: []imageagent.Slot{slot}}}
-	activities := &Activities{repository: setPlanRepository{projection: projection}}
-	input := imageagent.SlotExecutionInput{RunID: "run", TenantID: "org", UserID: "actor", TargetPlatform: "product", PlanRevision: 1, Slot: slot, ImageSet: imageagent.CloneImageSetPlan(set)}
+	activities, _, activityInput := imageSetPersistenceFixture(t)
+	input := slotExecutionInputV3(activityInput)
+	set := activityInput.ImageSet
 	require.NoError(t, activities.validatePersistedImageSetExecution(context.Background(), input))
 	input.ImageSet = nil
 	require.ErrorIs(t, activities.validatePersistedImageSetExecution(context.Background(), input), imageagent.ErrRevisionConflict)

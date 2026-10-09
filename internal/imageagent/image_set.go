@@ -109,8 +109,17 @@ func SlotRoleForImagePurpose(purpose string) SlotRole {
 
 func ValidateImageSetPlan(plan Plan) error {
 	s := plan.Set
-	if s == nil || s.Schema != ImageSetSchema || !canonicalImageValue(s.Source.ProductID) || !canonicalImageValue(s.Source.OperationID) || !canonicalImageValue(s.Source.OriginalPublicationID) || s.Source.OriginalVersion == 0 || s.Source.EffectiveVersion == 0 || !agentconfig.ImageDigest(s.Source.CatalogHash) || s.Configuration.Kind != agentconfig.SnapshotKind || !agentconfig.UUID(s.Configuration.ID) || !agentconfig.ImageDigest(s.Configuration.Digest) || !canonicalImageValue(s.ConfigurationEpoch) || !agentconfig.ImageDigest(s.ParametersDigest) || !agentconfig.ImageDigest(s.InputDigest) || !agentconfig.ImageDigest(s.QuoteDigest) || len(plan.Slots) > MaxPlanSlots || len(plan.StyleReferenceIDs) > 0 {
+	if s == nil || s.Schema != ImageSetSchema || len(plan.Slots) > MaxPlanSlots || len(plan.StyleReferenceIDs) > 0 {
 		return fmt.Errorf("%w: incomplete image set binding", ErrValidation)
+	}
+	if !canonicalImageValue(s.Source.ProductID) || !canonicalImageValue(s.Source.OperationID) || !canonicalImageValue(s.Source.OriginalPublicationID) || s.Source.OriginalVersion == 0 || s.Source.EffectiveVersion == 0 || !validGenerationCatalogHash(s.Source.CatalogHash) {
+		return fmt.Errorf("%w: incomplete image source binding", ErrValidation)
+	}
+	if s.Configuration.Kind != agentconfig.SnapshotKind || !agentconfig.UUID(s.Configuration.ID) || !agentconfig.ImageDigest(s.Configuration.Digest) || !canonicalImageValue(s.ConfigurationEpoch) || !agentconfig.ImageDigest(s.ParametersDigest) || !agentconfig.ImageDigest(s.InputDigest) {
+		return fmt.Errorf("%w: incomplete image configuration binding", ErrValidation)
+	}
+	if !agentconfig.ImageDigest(s.QuoteDigest) {
+		return fmt.Errorf("%w: incomplete image quote binding", ErrValidation)
 	}
 	if s.Target.Platform != "product" {
 		if !agentconfig.Platform(s.Target.Platform) || !canonicalImageValue(s.Target.StoreID) || !canonicalImageValue(s.Target.Site) || !canonicalImageValue(s.Target.ApplicationID) || !canonicalImageValue(s.Target.ApplicationMode) || s.Target.CategoryID <= 0 || s.Target.ProductTypeID <= 0 || !agentconfig.ImageDigest(s.Target.AttributesDigest) || !agentconfig.ImageDigest(s.Target.VariantsDigest) || !agentconfig.ImageDigest(s.Target.RequirementDigest) || !canonicalImageValue(s.Target.RequirementVersion) {

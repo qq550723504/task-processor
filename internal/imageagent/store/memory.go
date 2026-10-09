@@ -417,6 +417,7 @@ func nextCursor(events []imageagent.RunEvent) int64 {
 }
 
 func cloneRun(run imageagent.Run) imageagent.Run {
+	run.ImageAdmission = imageagent.CloneImageAdmission(run.ImageAdmission)
 	run.Block = cloneBlock(run.Block)
 	return run
 }

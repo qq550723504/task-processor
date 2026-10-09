@@ -25,6 +25,9 @@ func (a *Activities) validatePersistedImageSetExecution(ctx context.Context, inp
 	if projection.Plan.Set == nil || input.ImageSet == nil || !reflect.DeepEqual(projection.Plan.Set, input.ImageSet) || projection.Plan.Revision != input.PlanRevision || projection.Run.ActivePlanRevision != input.PlanRevision || projection.Run.TargetPlatform != input.TargetPlatform || input.ImagePolicyContext != nil {
 		return imageagent.ErrRevisionConflict
 	}
+	if err := imageagent.ValidateImageSetAdmission(projection.Run, projection.Plan); err != nil {
+		return err
+	}
 	for _, declared := range projection.Plan.Slots {
 		if declared.ID == input.Slot.ID {
 			declared.Status = input.Slot.Status

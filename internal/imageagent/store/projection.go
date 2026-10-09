@@ -198,6 +198,10 @@ func (r *memoryRepository) applyMemoryProjectionMutation(input imageagent.Projec
 		run.CurrentNode = input.RunMutation.CurrentNode
 		run.ActivePlanRevision = input.RunMutation.ActivePlanRevision
 		run.Block = cloneBlock(input.RunMutation.Block)
+		if input.RunMutation.ImageAdmission != nil {
+			run.ImageAdmission = imageagent.CloneImageAdmission(input.RunMutation.ImageAdmission)
+			run.StartedAt = run.ImageAdmission.AdmittedAt
+		}
 		run.Version++
 		r.runs[key] = run
 	}
@@ -362,6 +366,9 @@ func (r *gormRepository) GetProjection(ctx context.Context, scope imageagent.Run
 	result.Run.Budget = authoritativeRun.Budget
 	result.Run.Usage = authoritativeRun.Usage
 	result.Run.StartedAt = authoritativeRun.StartedAt
+	if !reflect.DeepEqual(result.Run.ImageAdmission, authoritativeRun.ImageAdmission) {
+		return imageagent.RunProjection{}, imageagent.ErrRevisionConflict
+	}
 	if result.Run.ScopeProtocol != authoritativeRun.ScopeProtocol {
 		return imageagent.RunProjection{}, imageagent.ErrRevisionConflict
 	}
@@ -535,6 +542,16 @@ func validateProjectionMutation(current imageagent.RunProjection, input imageage
 		expectedRun.CurrentNode = input.RunMutation.CurrentNode
 		expectedRun.ActivePlanRevision = input.RunMutation.ActivePlanRevision
 		expectedRun.Block = cloneBlock(input.RunMutation.Block)
+		if input.RunMutation.ImageAdmission != nil {
+			if current.Run.ImageAdmission != nil || current.Run.Status != imageagent.RunStatusAwaitingPlanApproval || current.Plan.Set == nil || input.PlanMutation != nil || len(mutations) != 0 || input.RunMutation.Status != imageagent.RunStatusExecuting || input.RunMutation.CurrentNode != "execute_slots" || input.RunMutation.ActivePlanRevision != current.Plan.Revision {
+				return imageagent.ErrRevisionConflict
+			}
+			expectedRun.ImageAdmission = imageagent.CloneImageAdmission(input.RunMutation.ImageAdmission)
+			expectedRun.StartedAt = expectedRun.ImageAdmission.AdmittedAt
+			if err := imageagent.ValidateImageSetAdmission(expectedRun, current.Plan); err != nil {
+				return err
+			}
+		}
 		expectedRun.Version++
 	}
 	expectedPlan := current.Plan
@@ -702,7 +719,15 @@ func (r *gormRepository) applyGormProjectionMutation(ctx context.Context, tx *go
 		if err != nil {
 			return err
 		}
-		updates := scopedRunWhere(tx.Model(&runRecord{}), input.Scope).Where("version = ?", input.ExpectedRunVersion).Updates(map[string]any{"status": string(input.RunMutation.Status), "current_node": input.RunMutation.CurrentNode, "active_plan_revision": input.RunMutation.ActivePlanRevision, "block_json": blockJSON, "version": input.ExpectedRunVersion + 1})
+		values := map[string]any{"status": string(input.RunMutation.Status), "current_node": input.RunMutation.CurrentNode, "active_plan_revision": input.RunMutation.ActivePlanRevision, "block_json": blockJSON, "version": input.ExpectedRunVersion + 1}
+		if input.RunMutation.ImageAdmission != nil {
+			admissionJSON, err := marshalJSON(input.RunMutation.ImageAdmission)
+			if err != nil || len(admissionJSON) > 8192 {
+				return imageagent.ErrRevisionConflict
+			}
+			values["admission_json"] = admissionJSON
+		}
+		updates := scopedRunWhere(tx.Model(&runRecord{}), input.Scope).Where("version = ?", input.ExpectedRunVersion).Updates(values)
 		if updates.Error != nil {
 			return updates.Error
 		}

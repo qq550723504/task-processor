@@ -93,7 +93,19 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 	if input.RunID == "" || input.Identity.TenantID == "" || input.Identity.UserID == "" {
 		return WorkflowResult{}, fmt.Errorf("run ID and verified execution identity are required")
 	}
-	if input.TargetPlatform != "" || input.ImagePolicyContext != nil {
+	if input.Plan.Set != nil {
+		if input.ImageAdmission == nil || input.ImagePolicyContext != nil {
+			return WorkflowResult{}, imageagent.ErrRevisionConflict
+		}
+		run := imageagent.Run{ID: input.RunID, ScopeProtocol: input.Identity.ScopeProtocol, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID, MemberID: input.Identity.MemberID, TargetPlatform: input.TargetPlatform, StartedAt: input.StartedAt, ImageAdmission: input.ImageAdmission, Budget: imageagent.ImageSetBudget(input.ImageAdmission.Command.Limits)}
+		if err := imageagent.ValidateImageSetAdmission(run, input.Plan); err != nil {
+			return WorkflowResult{}, err
+		}
+		policy, err := run.Budget.Policy()
+		if err != nil || policy != input.BudgetPolicy || !input.DeadlineAt.Equal(input.ImageAdmission.Deadline) {
+			return WorkflowResult{}, imageagent.ErrRevisionConflict
+		}
+	} else if input.TargetPlatform != "" || input.ImagePolicyContext != nil {
 		if input.ImagePolicyContext == nil || imageagent.ValidateImagePolicyContext(input.TargetPlatform, *input.ImagePolicyContext) != nil {
 			return WorkflowResult{}, fmt.Errorf("validate image policy context: %w", imageagent.ErrValidation)
 		}

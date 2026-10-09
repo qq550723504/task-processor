@@ -3,6 +3,8 @@ package imageagent
 import (
 	"fmt"
 	"time"
+
+	"task-processor/internal/agentconfig"
 )
 
 type RunMode string
@@ -78,6 +80,7 @@ type ImagePolicyContext struct {
 }
 
 type Run struct {
+	ImageAdmission *agentconfig.ImageRunAdmissionReceipt `json:",omitempty"`
 	ScopeProtocol  string
 	ID             string
 	BusinessTaskID string

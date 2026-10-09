@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"task-processor/internal/agentconfig"
 	"task-processor/internal/imageagent"
 )
 
@@ -328,6 +329,14 @@ func (r *gormRepository) findRunForUpdate(ctx context.Context, db *gorm.DB, scop
 }
 
 func runToRecord(run imageagent.Run) (runRecord, error) {
+	var admissionJSON []byte
+	if run.ImageAdmission != nil {
+		var err error
+		admissionJSON, err = marshalJSON(run.ImageAdmission)
+		if err != nil || len(admissionJSON) > 8192 {
+			return runRecord{}, imageagent.ErrRevisionConflict
+		}
+	}
 	policyContextJSON, err := marshalJSON(run.ImagePolicyContext)
 	if err != nil {
 		return runRecord{}, fmt.Errorf("marshal run image policy context: %w", err)
@@ -345,6 +354,7 @@ func runToRecord(run imageagent.Run) (runRecord, error) {
 		return runRecord{}, fmt.Errorf("marshal run block: %w", err)
 	}
 	return runRecord{
+		AdmissionJSON: admissionJSON,
 		ScopeProtocol: run.ScopeProtocol,
 		TenantID:      run.TenantID, ID: run.ID, BusinessTaskID: run.BusinessTaskID, TargetPlatform: run.TargetPlatform, UserID: run.UserID, MemberID: run.MemberID,
 		PolicyContextJSON: policyContextJSON,
@@ -354,6 +364,12 @@ func runToRecord(run imageagent.Run) (runRecord, error) {
 }
 
 func recordToRun(row runRecord) (imageagent.Run, error) {
+	var admission *agentconfig.ImageRunAdmissionReceipt
+	if len(row.AdmissionJSON) > 0 {
+		if len(row.AdmissionJSON) > 8192 || json.Unmarshal(row.AdmissionJSON, &admission) != nil || admission == nil {
+			return imageagent.Run{}, imageagent.ErrRevisionConflict
+		}
+	}
 	var policyContext imageagent.ImagePolicyContext
 	if err := unmarshalJSON(row.PolicyContextJSON, &policyContext); err != nil {
 		return imageagent.Run{}, fmt.Errorf("decode run image policy context: %w", err)
@@ -370,13 +386,18 @@ func recordToRun(row runRecord) (imageagent.Run, error) {
 	if err := unmarshalJSON(row.BlockJSON, &block); err != nil {
 		return imageagent.Run{}, fmt.Errorf("decode run block: %w", err)
 	}
-	return imageagent.Run{
-		ScopeProtocol: row.ScopeProtocol,
-		ID:            row.ID, TenantID: row.TenantID, BusinessTaskID: row.BusinessTaskID, TargetPlatform: row.TargetPlatform, UserID: row.UserID, MemberID: row.MemberID, Mode: imageagent.RunMode(row.Mode),
+	run := imageagent.Run{
+		ImageAdmission: admission,
+		ScopeProtocol:  row.ScopeProtocol,
+		ID:             row.ID, TenantID: row.TenantID, BusinessTaskID: row.BusinessTaskID, TargetPlatform: row.TargetPlatform, UserID: row.UserID, MemberID: row.MemberID, Mode: imageagent.RunMode(row.Mode),
 		ImagePolicyContext: policyContext,
 		IdempotencyKey:     row.IdempotencyKey, Status: imageagent.RunStatus(row.Status), CurrentNode: row.CurrentNode,
 		ActivePlanRevision: row.ActivePlanRevision, Version: row.Version, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(row.MaxConcurrentSlots), Budget: budget, Usage: usage, Block: block, StartedAt: row.CreatedAt.UTC(),
-	}, nil
+	}
+	if admission != nil {
+		run.StartedAt = admission.AdmittedAt
+	}
+	return run, nil
 }
 
 func planToRecords(scope imageagent.RunScope, plan imageagent.Plan) (planRecord, []slotRecord, error) {

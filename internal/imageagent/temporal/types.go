@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"task-processor/internal/agentconfig"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
 )
@@ -91,6 +92,7 @@ func (mode WorkerWireMode) DefaultTaskQueue() (string, error) {
 }
 
 type WorkflowInput struct {
+	ImageAdmission      *agentconfig.ImageRunAdmissionReceipt `json:",omitempty"`
 	RunID               string
 	TargetPlatform      string                         `json:",omitempty"`
 	ImagePolicyContext  *imageagent.ImagePolicyContext `json:",omitempty"`

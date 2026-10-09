@@ -3,6 +3,9 @@ package temporal
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"image"
 	"image/png"
 	"path/filepath"
@@ -30,13 +33,24 @@ func imageSetPersistenceFixture(t *testing.T) (*Activities, imageagent.Repositor
 	t.Cleanup(func() { _ = pool.Close() })
 	repo := store.NewOrganizationRepository(db)
 	hash := strings.Repeat("a", 64)
-	run := imageagent.Run{ID: "run-set", TenantID: "org", UserID: "actor", MemberID: "member", BusinessTaskID: "source-operation", ScopeProtocol: imageagent.OrganizationScopeProtocol, TargetPlatform: "product", Mode: imageagent.RunModeManual, IdempotencyKey: "prepare", Status: imageagent.RunStatusPlanning, CurrentNode: "plan", Version: 1, ActivePlanRevision: 1, MaxConcurrentSlots: 1, Budget: imageagent.Budget{MaxImages: 1, MaxModelCalls: 1}}
+	run := imageagent.Run{ID: "392ed0a2-0f01-4c94-9aa4-eb50271fae9c", TenantID: "org", UserID: "actor", MemberID: "member", BusinessTaskID: "source-operation", ScopeProtocol: imageagent.OrganizationScopeProtocol, TargetPlatform: "product", Mode: imageagent.RunModeManual, IdempotencyKey: "prepare", Status: imageagent.RunStatusPlanning, CurrentNode: "plan", Version: 1, ActivePlanRevision: 1, MaxConcurrentSlots: 1}
 	catalog, err := imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{ProductContext: imageagent.ProductContextRef{ProductID: "product"}, Assets: []imageagent.AuthorizedAsset{{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://images.example.org/source.png"}}})
 	require.NoError(t, err)
 	slot := imageagent.Slot{ID: "overview", Role: imageagent.SlotRoleDetail, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "overview", Status: imageagent.SlotStatusPending, Recipe: &imageagent.ImageSlotRecipe{Purpose: "product_overview", Background: "white", Language: "zh", Placement: imageagent.ImagePlacement{Group: "detail", Order: 1}, PromptVersion: imageagent.ImageSetSchema, Prompt: "Show the exact original product.", References: []imageagent.ImageSourceObservation{{AssetID: "source-1", SHA256: hash, Bytes: 100, Width: 1024, Height: 1024, MediaType: "image/png"}}, Quote: imageagent.ImageGenerationQuote{Provider: "grsai", Model: "gpt-image-2.5", Protocol: "grsai-json-sync-v1", Resolution: "1024x1024", Quality: "auto", PriceVersion: "price", Points: 12, RouteReference: "route", CredentialReference: "credential", ConfigurationVersion: "config"}}}
-	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan", SourceAssetIDs: []string{"source-1"}, CreatedBy: "actor", Slots: []imageagent.Slot{slot}, Set: &imageagent.ImageSetPlan{Schema: imageagent.ImageSetSchema, Source: imageagent.ImageSourceBinding{ProductID: "product", OperationID: run.BusinessTaskID, OriginalPublicationID: "publication", OriginalVersion: 1, EffectiveVersion: 1, CatalogHash: hash}, Target: imageagent.ImageTarget{Platform: "product"}, Configuration: agent.ConfigurationSnapshotRef{Kind: agentconfig.SnapshotKind, ID: "9e7afaa9-a9f9-48ba-a11a-b5bb377f08e9", Digest: hash}, ConfigurationEpoch: "1", ParametersDigest: hash, InputDigest: hash, MaxPoints: 12}}
+	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan", SourceAssetIDs: []string{"source-1"}, CreatedBy: "actor", Slots: []imageagent.Slot{slot}, Set: &imageagent.ImageSetPlan{Schema: imageagent.ImageSetSchema, Source: imageagent.ImageSourceBinding{ProductID: "product", OperationID: run.BusinessTaskID, OriginalPublicationID: "publication", OriginalVersion: 1, EffectiveVersion: 1, CatalogHash: catalog.Manifest.Hash}, Target: imageagent.ImageTarget{Platform: "product"}, Configuration: agent.ConfigurationSnapshotRef{Kind: agentconfig.SnapshotKind, ID: "9e7afaa9-a9f9-48ba-a11a-b5bb377f08e9", Digest: hash}, ConfigurationEpoch: "1", ParametersDigest: hash, InputDigest: hash, MaxPoints: 12}}
 	plan.Set.QuoteDigest, err = imageagent.ImageSetQuoteDigest(plan)
 	require.NoError(t, err)
+	limits := agentconfig.ImageRunLimits{Images: 1, Points: 12, ElapsedSeconds: 3600}
+	run.Budget = imageagent.ImageSetBudget(limits)
+	run.StartedAt = time.Now().UTC().Truncate(time.Microsecond)
+	planDigest, err := imageagent.ImageSetPlanDigest(plan)
+	require.NoError(t, err)
+	receipt := agentconfig.ImageRunAdmissionReceipt{ID: "74e01be8-f4e6-461f-8acb-18fe37329f1c", AdmittedAt: run.StartedAt, Deadline: run.StartedAt.Add(time.Hour), Command: agentconfig.ImageRunAdmissionCommand{Scope: agent.Scope{OrganizationID: run.TenantID, ActorID: run.UserID}, Snapshot: plan.Set.Configuration, MemberID: run.MemberID, RunID: run.ID, ConfirmActionID: "1b912e40-d50a-48f5-a12b-62c73a42e4b8", SourceDigest: imageagent.ImageSetSourceDigest(plan.Set.Source, plan), InputDigest: plan.Set.InputDigest, PlanDigest: planDigest, QuoteDigest: plan.Set.QuoteDigest, Limits: limits}}
+	receiptBytes, err := json.Marshal(receipt)
+	require.NoError(t, err)
+	receiptSum := sha256.Sum256(receiptBytes)
+	receipt.Digest = hex.EncodeToString(receiptSum[:])
+	run.ImageAdmission = &receipt
 	projection, err := repo.InitializeRun(context.Background(), imageagent.ProjectionInitialization{Scope: imageagent.ScopeForRun(run), Run: run, Plan: plan, Catalog: catalog, Snapshot: imageagent.RunProjection{Run: run, Plan: plan}, CommitID: "prepare", EventType: "run.initialized", EventPayload: []byte(`{}`)})
 	require.NoError(t, err)
 	input := ExecuteSlotV3ActivityInput{RunID: run.ID, Identity: imageagent.ExecutionIdentity{RunID: run.ID, ScopeProtocol: run.ScopeProtocol, TenantID: run.TenantID, UserID: run.UserID, MemberID: run.MemberID, BusinessTaskID: run.BusinessTaskID}, TargetPlatform: "product", PlanRevision: 1, Slot: slot, Attempt: 1, ImageSet: plan.Set, AssetCatalog: projection.AssetCatalog, IdempotencyKey: slotAttemptKey(1, slot, 1)}

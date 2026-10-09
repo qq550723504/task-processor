@@ -15,6 +15,7 @@ import (
 )
 
 type Service struct {
+	imageSets         *ImageSetDependencies
 	organizationScope bool
 	repository        Repository
 	workflows         WorkflowClient
@@ -102,6 +103,9 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	identity, err := s.executionIdentity(ctx)
 	if err != nil {
 		return err
+	}
+	if input.Plan.Set != nil {
+		return fmt.Errorf("%w: image sets require PrepareImageSet and ConfirmImagePlan", ErrCommandBlocked)
 	}
 	if input.Mode != RunModeManual {
 		return fmt.Errorf("%w: image agent start mode must be manual", ErrValidation)
@@ -544,6 +548,29 @@ func (s *Service) ApproveResults(ctx context.Context, runID string, planRevision
 func (s *Service) Cancel(ctx context.Context, runID string, planRevision int64, actionID string) error {
 	identity, err := s.commandIdentity(ctx, runID, planRevision, actionID)
 	if err != nil {
+		return err
+	}
+	scope := RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: runID}
+	current, err := s.repository.GetProjection(ctx, scope)
+	if err != nil {
+		return err
+	}
+	if current.Plan.Set != nil && current.Run.ImageAdmission == nil {
+		if _, err = s.identityForRun(identity, current.Run); err != nil {
+			return err
+		}
+		if current.Plan.Revision != planRevision {
+			return ErrRevisionConflict
+		}
+		if current.Run.Status == RunStatusCancelled {
+			return nil
+		}
+		if current.Run.Status != RunStatusAwaitingPlanApproval {
+			return ErrCommandBlocked
+		}
+		next := current
+		next.Run.Status, next.Run.CurrentNode, next.Run.Version = RunStatusCancelled, "cancel", current.Run.Version+1
+		_, err = s.repository.CommitProjection(ctx, ProjectionCommit{Scope: scope, CommitID: "cancel-prepared:" + actionID, ExpectedProjectionVersion: current.ProjectionVersion, ExpectedRunVersion: current.Run.Version, Snapshot: next, RunMutation: &RunMutation{Status: next.Run.Status, CurrentNode: next.Run.CurrentNode, ActivePlanRevision: planRevision}, EventType: "run.cancelled", EventPayload: json.RawMessage(`{}`)})
 		return err
 	}
 	return s.workflows.Cancel(ctx, CancelRunCommand{RunID: strings.TrimSpace(runID), PlanRevision: planRevision, ActorID: identity.UserID, ActionID: strings.TrimSpace(actionID), Identity: identity})

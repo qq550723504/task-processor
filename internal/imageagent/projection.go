@@ -63,6 +63,11 @@ func ValidateProjectionSnapshot(scope RunScope, snapshot RunProjection) error {
 	if snapshot.Plan.Revision != snapshot.Run.ActivePlanRevision {
 		return ErrRevisionConflict
 	}
+	if snapshot.Run.ImageAdmission != nil {
+		if err := ValidateImageSetAdmission(snapshot.Run, snapshot.Plan); err != nil {
+			return err
+		}
+	}
 	recoverableEffects, err := NormalizeRecoverableEffects(snapshot.RecoverableEffects)
 	if err != nil {
 		return err
