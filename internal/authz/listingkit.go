@@ -68,6 +68,8 @@ var workbenchEcoservicesPermissions = []string{PermissionWorkbenchEcoservicesRea
 
 var workbenchChatPermissions = []string{PermissionWorkbenchChatRead, PermissionWorkbenchChatUse, PermissionWorkbenchTaskRead}
 
+var workbenchToolPermissions = []string{PermissionWorkbenchToolsRead, PermissionWorkbenchToolsManage, PermissionWorkbenchToolsCustomize}
+
 var workbenchSupplyPermissions = []string{PermissionWorkbenchCollectionRead, PermissionWorkbenchCollectionManage, PermissionWorkbenchSupplyRead, PermissionWorkbenchSupplyManage, PermissionWorkbenchListingSubmit}
 
 var workbenchSourceAccountPermissions = []string{
@@ -89,7 +91,7 @@ var workbenchCommercialPermissions = []string{
 // WorkbenchPermissions is a bounded display contract, never a policy source.
 func WorkbenchPermissions() []string {
 	result := []string{PermissionListingKitAdminRead, PermissionListingKitAdminWrite, PermissionProductSourcingWrite, PermissionLocalAgentWrite, PermissionImageAgentRead, PermissionImageAgentWrite, PermissionWorkbenchAgentRead, PermissionWorkbenchAgentUse, PermissionWorkbenchAgentConfigure}
-	for _, group := range [][]string{workbenchChatPermissions, workbenchKnowledgePermissions, workbenchEcoservicesPermissions, workbenchSupplyPermissions, workbenchStorePermissions, workbenchStoreObservationPermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
+	for _, group := range [][]string{workbenchToolPermissions, workbenchChatPermissions, workbenchKnowledgePermissions, workbenchEcoservicesPermissions, workbenchSupplyPermissions, workbenchStorePermissions, workbenchStoreObservationPermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
 		result = append(result, group...)
 	}
 	return result
@@ -238,6 +240,11 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		}
 	}
 
+	for _, policy := range ToolMarketPolicies() {
+		if _, err := enforcer.AddPolicy(policy); err != nil {
+			return nil, err
+		}
+	}
 	for _, role := range append([]string{"listingkit_operator", "listingkit_admin", "platform_admin"}, normalizeUnique(platformAdminRoles)...) {
 		for _, permission := range workbenchStoreObservationPermissions {
 			if _, err := enforcer.AddPolicy(role, permission); err != nil {

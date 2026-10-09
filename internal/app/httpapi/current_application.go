@@ -36,6 +36,8 @@ import (
 	collectionhttp "task-processor/internal/product/collection/httpapi"
 	"task-processor/internal/storecenter"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
+	tm "task-processor/internal/toolmarket"
+	tmhttp "task-processor/internal/toolmarket/httpapi"
 	"task-processor/internal/workbenchcontext"
 )
 
@@ -116,6 +118,8 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
+	toolMarketConfigs            int
+	toolMarket                   *ToolMarketDependencies
 	ecoservicesConfigs           int
 	ecoservices                  *EcoservicesDependencies
 	notifications                int
@@ -362,6 +366,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	}
 	if supplied.ecoservicesConfigs > 1 || supplied.ecoservicesConfigs > 0 && (supplied.ecoservices == nil || supplied.ecoservices.DB == nil || supplied.ecoservices.Channel == nil || supplied.ecoservices.Objects == nil || supplied.ecoservices.Protection == nil || supplied.commercialOwnerDB == nil || supplied.moneyOwnerDB == nil) {
 		return nil, errors.New("ecoservices dependencies unavailable or supplied more than once")
+	}
+	if supplied.toolMarketConfigs > 1 || supplied.toolMarketConfigs > 0 && (supplied.toolMarket == nil || supplied.toolMarket.DB == nil) {
+		return nil, errors.New("tool market dependencies unavailable or supplied more than once")
 	}
 	if supplied.ecoservices != nil {
 		if supplied.supplyChain != nil && supplied.ecoservices.DB == supplied.supplyChain.AssetDB {
@@ -658,6 +665,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, image)
 	}
 	var productRuntime *productAgentApplication
+	if supplied.toolMarket != nil {
+		module, err := buildToolMarket(ctx, *supplied.toolMarket, *workbench.authDependencies, authorizer, tm.Readiness{LocalCapture: factories.buildBrowserCapture != nil, OnlineCapture: factories.buildAcquisition != nil})
+		if err != nil {
+			return nil, fmt.Errorf("build current tool market: %w", err)
+		}
+		modules = append(modules, module)
+	}
 	var supplyRuntime *supplyChainModule
 	if supplied.productAgent != nil {
 		agentConfig := *supplied.productAgent
@@ -786,6 +800,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, err
 	}
 	routeFeatures := currentApplicationOptionalRoutes{
+		ToolMarket:          supplied.toolMarket != nil,
 		Ecoservices:         supplied.ecoservices != nil,
 		SupplyChain:         supplied.supplyChains > 0,
 		Collections:         supplied.productCollections > 0,
@@ -889,6 +904,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	ToolMarket          bool
 	Ecoservices         bool
 	SupplyChain         bool
 	Collections         bool
@@ -910,6 +926,11 @@ type currentApplicationOptionalRoutes struct {
 
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if optional.ToolMarket {
+		for _, r := range tmhttp.Routes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
 	if optional.Ecoservices {
 		for _, r := range ehttp.Routes(nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
@@ -1070,6 +1091,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {
+		if descriptor.Path == tmhttp.Base || strings.HasPrefix(descriptor.Path, tmhttp.Base+"/") || descriptor.Path == tmhttp.AdminBase || strings.HasPrefix(descriptor.Path, tmhttp.AdminBase+"/") {
+			if !optional.ToolMarket {
+				return errors.New("tool market feature not admitted")
+			}
+			if err := tmhttp.ValidateDescriptor(descriptor); err != nil {
+				return err
+			}
+		}
 		if descriptor.Path == ehttp.NotifyPath || descriptor.Path == ehttp.Base || strings.HasPrefix(descriptor.Path, ehttp.Base+"/") || descriptor.Path == ehttp.AdminBase || strings.HasPrefix(descriptor.Path, ehttp.AdminBase+"/") {
 			if !optional.Ecoservices {
 				return errors.New("ecoservices feature not admitted")

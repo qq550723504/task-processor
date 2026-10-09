@@ -62,6 +62,20 @@ function renderShell(child = <p>organization child</p>) {
 }
 
 describe("WorkspaceAppShell", () => {
+  it("allows the enabled exact tool review route without customer enterprise membership", () => {
+    navigation.pathname = "/workbench/tools/custom/review";
+    injectProfileContext({ selectionRequired: true });
+    render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><WorkspaceAppShell toolMarketAvailable><p>tool specialist consumer</p></WorkspaceAppShell></QueryClientProvider>);
+    expect(screen.getByText("tool specialist consumer")).toBeVisible();
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+  it.each(["/workbench/tools/custom", "/workbench/tools/custom/review/extra"])("keeps enterprise gates on the tool sibling %s", pathname => {
+    navigation.pathname = pathname;
+    injectProfileContext();
+    render(<WorkspaceAppShell toolMarketAvailable><p>protected tool consumer</p></WorkspaceAppShell>);
+    expect(screen.queryByText("protected tool consumer")).not.toBeInTheDocument();
+    expect(navigation.replace).toHaveBeenCalledWith("/workbench/no-organization");
+  });
   it("does not apply Browser recovery presentation to the personal profile", () => {
     navigation.pathname = "/workbench/account/profile";
     injectProfileContext({ error: { code: "AUTHENTICATION_REQUIRED" } });

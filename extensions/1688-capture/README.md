@@ -23,6 +23,14 @@ $env:CAPTURE_APP_URL = 'https://app.example.com/capture/1688'
 npm run build
 ```
 
+A retained local installation can use its already trusted
+`https://localhost:<explicit non-default port>/capture/1688` receiver. Set that
+exact URL at build time; certificate trust remains the user's normal browser
+requirement. This uses the real application and release build, with the same
+permissions and exact sender origin/port/path checks. It permits no runtime
+destination input or private IP receiver. Captured images remain public HTTPS
+URLs; the local application exception does not apply to image admission.
+
 Load the resulting `dist` directory as an unpacked extension. The application
 at `/capture/1688` must implement the receiving contract below. A build alone
 does not establish that the receiving application is available.
