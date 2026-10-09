@@ -101,6 +101,8 @@ func (a *Authorizer) allowed(ctx context.Context, scope collection.Scope, roles 
 	return nil
 }
 func (a *Authorizer) Check(ctx context.Context, scope collection.Scope, p string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	required, err := permissions(p)
 	if err != nil {
 		return err
@@ -132,6 +134,8 @@ func acquisitionError(err error) error {
 	return dataacquisition.ErrUnavailable
 }
 func (a *Authorizer) CheckExecution(ctx context.Context, p dataacquisition.Principal, funding orgresource.ResourceFunding) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	roles, err := a.current(ctx, p.Scope)
 	if err != nil {
 		return acquisitionError(err)
@@ -155,6 +159,8 @@ func (a *Authorizer) CheckExecution(ctx context.Context, p dataacquisition.Princ
 	return nil
 }
 func (a *Authorizer) CheckRead(ctx context.Context, p dataacquisition.Principal) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	roles, err := a.current(ctx, p.Scope)
 	if err != nil {
 		return acquisitionError(err)
@@ -166,6 +172,8 @@ func (a *Authorizer) CheckRead(ctx context.Context, p dataacquisition.Principal)
 	return acquisitionError(a.allowed(ctx, p.Scope, roles, required))
 }
 func (a *Authorizer) Funding(ctx context.Context, scope collection.Scope) (orgresource.ResourceFunding, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	roles, err := a.current(ctx, scope)
 	if err != nil {
 		return "", err
@@ -178,6 +186,38 @@ func (a *Authorizer) Funding(ctx context.Context, scope collection.Scope) (orgre
 	}
 	return orgresource.FundingMember, nil
 }
+
+func (a *Authorizer) Specialist(ctx context.Context) (dataservice.Operator, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+	if !ok || !identity.TokenExpiresAt.After(time.Now()) || !authidentity.IsBoundedIdentifier(identity.UserID) || !a.policy.Authorize(identity.UserID, identity.Roles, authz.PermissionListingKitPlatformAdm) {
+		return dataservice.Operator{}, dataservice.ErrForbidden
+	}
+	token, err := a.token(ctx)
+	if err != nil || token == "" {
+		return dataservice.Operator{}, dataservice.ErrUnavailable
+	}
+	active, err := a.users.IsUserActive(ctx, token, identity.UserID)
+	if err != nil {
+		return dataservice.Operator{}, dataservice.ErrUnavailable
+	}
+	if !active {
+		return dataservice.Operator{}, dataservice.ErrForbidden
+	}
+	return dataservice.Operator{ID: identity.UserID}, nil
+}
+func (a *Authorizer) CheckApplicant(ctx context.Context, scope collection.Scope) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	roles, err := a.current(ctx, scope)
+	if err != nil {
+		return err
+	}
+	return a.allowed(ctx, scope, roles, []string{collection.PermissionManage})
+}
+
+var _ dataservice.SpecialistAccess = (*Authorizer)(nil)
 
 var _ dataservice.Access = (*Authorizer)(nil)
 var _ dataacquisition.LiveAccess = (*Authorizer)(nil)

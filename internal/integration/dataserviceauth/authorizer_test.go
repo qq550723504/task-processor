@@ -49,7 +49,9 @@ type policyFixture struct {
 	admin  bool
 }
 
-func (f *policyFixture) Authorize(string, []string, string) bool { return false }
+func (f *policyFixture) Authorize(_ string, roles []string, p string) bool {
+	return p == "listingkit.platform_admin" && len(roles) == 1 && roles[0] == "platform_admin"
+}
 func (f *policyFixture) AuthorizeScoped(_ context.Context, actor, org string, roles []string, p string) (bool, error) {
 	return actor == "creator" && org == "org" && len(roles) == 1 && roles[0] == "native-current" && p != f.denied, nil
 }
@@ -94,4 +96,14 @@ func TestOriginalGrantUserStateModuleAndFrozenFundingAreLive(t *testing.T) {
 	identity.EffectiveOrganizationID = "foreign"
 	_, err = a.Resolve(authidentity.WithAuthenticatedIdentity(ctx, identity), dataservice.PermissionManage)
 	require.ErrorIs(t, err, dataservice.ErrForbidden)
+	identity.TenantID = ""
+	identity.EffectiveOrganizationID = ""
+	identity.EffectiveMemberID = ""
+	identity.Roles = []string{"listingkit_admin"}
+	_, err = a.Specialist(authidentity.WithAuthenticatedIdentity(ctx, identity))
+	require.ErrorIs(t, err, dataservice.ErrForbidden, "enterprise admin is not a platform specialist")
+	identity.Roles = []string{"platform_admin"}
+	op, err := a.Specialist(authidentity.WithAuthenticatedIdentity(ctx, identity))
+	require.NoError(t, err)
+	require.Equal(t, "creator", op.ID)
 }
