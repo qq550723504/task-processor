@@ -149,6 +149,9 @@ func ValidID(value string) bool {
 	id, err := uuid.Parse(value)
 	return err == nil && id != uuid.Nil && id.String() == value
 }
+func ValidSourceKind(value string) bool {
+	return value == "own" || value == "acquisition" || value == "market" || value == "sds_template" || value == "sds_finished"
+}
 func StableID(parts ...string) string {
 	data, _ := json.Marshal(parts)
 	return uuid.NewSHA1(uuid.NameSpaceURL, data).String()

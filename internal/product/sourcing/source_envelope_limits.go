@@ -59,6 +59,14 @@ func validateSourceEnvelopePreflight(envelope SourceEnvelope) error {
 			!budget.addMap(variant.Attributes) {
 			return ErrSourcePublicationTooLarge
 		}
+		if !budget.addItems(len(variant.Images)) {
+			return ErrSourcePublicationTooLarge
+		}
+		for _, image := range variant.Images {
+			if !budget.addStrings(image.SourceID, image.URL, image.MediaType, image.Role, image.Checksum) {
+				return ErrSourcePublicationTooLarge
+			}
+		}
 	}
 	if !budget.addItems(len(envelope.AssetCandidates)) {
 		return ErrSourcePublicationTooLarge

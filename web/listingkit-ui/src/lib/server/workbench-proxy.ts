@@ -5,7 +5,7 @@ import { BROWSER_CAPTURE_MAX_BYTES, browserCaptureSchema } from "@/lib/contracts
 import {agentEmptyRequestSchema,agentStartRequestSchema,agentResumeRequestSchema,agentResultSchema,agentReviewLinkSchema,agentPath} from "@/lib/contracts/product-agent";
 import { aiWorkbenchPath, aiCreateBody, aiMessageBody, aiMetadataBody, aiResumeBody, parseAIWorkbenchResponse, type AIWorkbenchRoute } from "@/lib/contracts/ai-workbench";
 import { NextResponse } from "next/server";
-import { COLLECTION_MAX_BYTES, collectionPath, collectionCommandSchema, parseCollectionResponse, type CollectionRoute } from "@/lib/contracts/product-collection";
+import { COLLECTION_MAX_BYTES, collectionPath, collectionCommandSchema, collectionSourceKindSchema, parseCollectionResponse, type CollectionRoute } from "@/lib/contracts/product-collection";
 import {
   findNodeAtLocation,
   parseTree,
@@ -510,7 +510,7 @@ export async function buildWorkbenchUpstreamRequest(
         if(/%(?![0-9A-Fa-f]{2})/.test(url.search)||(action==="operations"||action==="stages")&&!isAcquisitionUUID(url.searchParams.get("storeId")??"")||action==="stages"&&!["all","waiting","missing","ready","review","uploaded"].includes(url.searchParams.get("stage")??""))return protocolError(400,"INVALID_REQUEST","Supply query invalid");
         for(const key of url.searchParams.keys()){
           const values=url.searchParams.getAll(key);if(!allowed.has(key)||values.length!==1||!values[0])return protocolError(400,"INVALID_REQUEST","Supply query invalid");
-          const value=values[0];if(key==="limit"&&(!/^[1-9][0-9]*$/.test(value)||Number(value)>100)||(key==="after"||key==="storeId")&&!isAcquisitionUUID(value)||key==="sourceKind"&&!["own","acquisition"].includes(value)||key==="keyword"&&(new TextEncoder().encode(value).length>80||/[\0\r\n]/.test(value)))return protocolError(400,"INVALID_REQUEST","Supply query invalid");
+          const value=values[0];if(key==="limit"&&(!/^[1-9][0-9]*$/.test(value)||Number(value)>100)||(key==="after"||key==="storeId")&&!isAcquisitionUUID(value)||key==="sourceKind"&&!collectionSourceKindSchema.safeParse(value).success||key==="keyword"&&(new TextEncoder().encode(value).length>80||/[\0\r\n]/.test(value)))return protocolError(400,"INVALID_REQUEST","Supply query invalid");
         }
         query=url.search;
       }

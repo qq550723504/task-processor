@@ -20,7 +20,7 @@ import { ExcelImportForm } from "./excel-import-form";
 import { SourceImageUploader } from "./source-image-uploader";
 import { ConsolePage, ConsoleState } from "../console/console-page";
 
-const kindLabels = { acquisition: "在线采集", own: "自有商品", manual: "手动分组" };
+const kindLabels = { acquisition: "在线采集", own: "自有商品", manual: "手动分组", market: "供应市场", sds_template: "SDS 模板（未定制）", sds_finished: "SDS 定制成品" };
 const failureText: Record<string, string> = { OUTCOME_UNKNOWN: "结果待核实", INTENT_STORAGE_UNAVAILABLE: "无法保存原请求，请恢复浏览器存储后重试。", REVISION_CONFLICT: "资料已发生变化，请刷新后重试。", PERMISSION_DENIED: "当前权限不足。", NOT_FOUND: "未找到当前身份下的记录。", ORGANIZATION_CONTEXT_CHANGED: "企业上下文已变化。", IDENTITY_CONTEXT_CHANGED: "登录身份已变化。", INVALID_REQUEST: "请检查填写内容。" };
 
 export function CollectionPage({supplyAvailable=false}:{supplyAvailable?:boolean}) {

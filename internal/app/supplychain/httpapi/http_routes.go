@@ -84,7 +84,7 @@ func SupplyRoutes(app *supplyapp.Application, bind func(context.Context, string)
 				output, err = app.Preparations.Read(ctx, c.Param("preparation_id"))
 			case "stages":
 				values, e := url.ParseQuery(c.Request.URL.RawQuery)
-				if e != nil || len(values["storeId"]) != 1 || !collection.ValidID(values.Get("storeId")) || len(values["stage"]) != 1 || !validStage(values.Get("stage")) || len(values["sourceKind"]) > 1 || values.Has("sourceKind") && values.Get("sourceKind") != "own" && values.Get("sourceKind") != "acquisition" {
+				if e != nil || len(values["storeId"]) != 1 || !collection.ValidID(values.Get("storeId")) || len(values["stage"]) != 1 || !validStage(values.Get("stage")) || len(values["sourceKind"]) > 1 || values.Has("sourceKind") && !collection.ValidSourceKind(values.Get("sourceKind")) {
 					supplyError(c, preparation.ErrInvalid)
 					return
 				}

@@ -2,7 +2,7 @@
 
 Execution: [#622](https://github.com/qq550723504/task-processor/issues/622), parent #137。
 Design Basis: **Independent Architecture**。
-Status: **IMPLEMENTATION_READY**；设计基线冻结，正式生产代码与 schema 尚未修改。
+Status: **IMPLEMENTATION_READY**；设计基线冻结，同一 Delivery Batch 正式实现进行中。
 Investigation baseline: `main @ 2e40643f63a4314a33b0f59f21def10a0cd2ecc9`，2026-10-09。
 
 ## 1. 用户结果、产品决定与范围
@@ -384,7 +384,7 @@ revision/同键重放；撤销与选品同UoW；资格文件私密读；两个�
 | SDS完成及fence释放 | IMPLEMENTATION_TEST候选 | exact task终态与全部预期render已有证据；关联补齐后有界验证其终态及fence释放含义 |
 | 共享authz/navigation/runtime协调 | OWNER_ASSIGNED | 协调指定会话 `01a11f74-2565-78e0-9118-4fe1ff53e726`；本Writer提供本设计feature ports，不修改共享接线；具体接线在批准后由该owner消费 |
 | 独立Architecture Review | IMPLEMENTATION_READY | 两轮及原SDS finding证据增量复核完成，全部BLOCKER关闭，无新增全局评审 |
-| 正式生产/schema修改 | NOT_STARTED | 上述准入后才能开工 |
+| 正式生产/schema修改 | IN_PROGRESS | 已准入；市场 owner/UoW/API/Console 已实现，SDS 正式执行路径仍在实现 |
 | 产品路径/用户验收 | NOT_RUN | 受控provider保存已执行；正式代码路径和真实用户验收尚未执行 |
 
 原SDS阻塞命中AGENTS的“核心happy path按当前设计无法完成”，以及共享账号结果不能归属时
