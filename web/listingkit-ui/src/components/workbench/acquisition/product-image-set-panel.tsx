@@ -97,14 +97,18 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
     const query=new URLSearchParams();if(effectiveVersion)query.set("effectiveCatalogVersion",String(effectiveVersion));if(applyReceiptId)query.set("applyReceiptId",applyReceiptId);
     const source=await imageSetRequest(stableScope,"sources",imageSetSourcesSchema,{query:query.toString(),signal:controller.signal});if(controller.signal.aborted)return;setSources(source);
     // Recover the known run before optional template or recent-run discovery.
-    const id=initialRunId??localStorage.getItem(storageKey+":run");if(id)await readRun(id,controller.signal);if(controller.signal.aborted)return;
-    const pageRuns=await imageSetRequest(stableScope,"recent",imageSetRecentSchema,{signal:controller.signal});if(controller.signal.aborted)return;setRecent(pageRuns.items);
+    const id=initialRunId??localStorage.getItem(storageKey+":run");
+    if(id){try{await readRun(id,controller.signal)}catch(e){if(!controller.signal.aborted)fail(e)}}
+    if(controller.signal.aborted)return;
     if(agent.agent.activation!=="NOT_ENABLED"){
      // Each image template may contain 64 KiB; a single row fits the 128 KiB response cap.
-     const page=await configurationRequest(stableScope,"product.image.agent/templates?pageSize=1",imageTemplatesPageSchema,{signal:controller.signal});if(controller.signal.aborted)return;setTemplates(page.items);setCursor(page.nextCursor);
+     try{const page=await configurationRequest(stableScope,"product.image.agent/templates?pageSize=1",imageTemplatesPageSchema,{signal:controller.signal});if(controller.signal.aborted)return;setTemplates(page.items);setCursor(page.nextCursor)}catch(e){if(!controller.signal.aborted)fail(e)}
      }
+    if(controller.signal.aborted)return;
     const defaultRef=agent.agent.defaultTemplate;
-    if(defaultRef){const pinned=await configurationRequest(stableScope,`product.image.agent/templates/${defaultRef.templateId}/revisions/${defaultRef.revision}`,imageTemplateSchema,{signal:controller.signal});if(controller.signal.aborted)return;installTemplate(pinned,source.evidence)}
+    if(defaultRef){try{const pinned=await configurationRequest(stableScope,`product.image.agent/templates/${defaultRef.templateId}/revisions/${defaultRef.revision}`,imageTemplateSchema,{signal:controller.signal});if(controller.signal.aborted)return;installTemplate(pinned,source.evidence)}catch(e){if(!controller.signal.aborted)fail(e)}}
+    if(controller.signal.aborted)return;
+    const pageRuns=await imageSetRequest(stableScope,"recent",imageSetRecentSchema,{signal:controller.signal});if(controller.signal.aborted)return;setRecent(pageRuns.items);
    }catch(e){if(!controller.signal.aborted)fail(e)}finally{if(!controller.signal.aborted)setLoading(false)}
   })();return()=>controller.abort();
  },[stableScope,storageKey,effectiveVersion,applyReceiptId,initialRunId,readRun,fail]);

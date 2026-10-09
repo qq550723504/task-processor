@@ -169,6 +169,20 @@ for(const failure of ["templates","recent"]){
   expect(fetch.mock.calls.filter(([,init])=>init?.method==="POST")).toHaveLength(0);
  });
 }
+for(const failure of ["read","inventory"]){
+ it(`keeps current template preparation available when original run ${failure} fails`,async()=>{
+  state=projection("awaiting_final_approval",templateId);
+  const key=`product-image-set:actor:org:acquisition:${operation}:run`;localStorage.setItem(key,runId);
+  const real=fetch.getMockImplementation()!;
+  fetch.mockImplementation(async(url,init)=>String(url).endsWith(failure==="read"?`/runs/${runId}`:"/inventory")?Response.json({code:failure==="read"?"IMAGE_NOT_FOUND":"IMAGE_UNAVAILABLE"},{status:failure==="read"?404:503}):real(url,init));
+  render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+  await screen.findByRole("alert");
+  fireEvent.click(await screen.findByRole("checkbox",{name:"共用原始素材 素材 1"}));
+  expect(screen.getByRole("button",{name:"准备整套图片计划（2 项）"})).toBeEnabled();
+  expect(localStorage.getItem(key)).toBe(runId);
+  expect(fetch.mock.calls.filter(([,init])=>init?.method==="POST")).toHaveLength(0);
+ });
+}
 const sheinTarget={Platform:"shein",StoreID:"saved-store",Site:"US",CategoryID:123,RecordID:"saved-record"} as const;
 const officialPlacement={Group:"spu",SKC:0,SKU:0,Type:1,Sort:1,Site:"US"};
 const sheinRequirements={platform:"shein",site:"US",categoryId:123,version:"current-official-rules",nativeWidth:1024,nativeHeight:1024,groups:[{group:"spu",skc:0,sku:0,types:[{type:1,minimum:1,maximum:8,nativeCompatible:true}]}]};
