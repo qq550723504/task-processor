@@ -2,7 +2,7 @@
 
 Execution: [#622](https://github.com/qq550723504/task-processor/issues/622), parent #137。
 Design Basis: **Independent Architecture**。
-Status: **DESIGNING / NOT_READY**；正式生产代码与 schema 尚未修改。
+Status: **IMPLEMENTATION_READY**；设计基线冻结，正式生产代码与 schema 尚未修改。
 Investigation baseline: `main @ 2e40643f63a4314a33b0f59f21def10a0cd2ecc9`，2026-10-09。
 
 ## 1. 用户结果、产品决定与范围
@@ -27,6 +27,10 @@ Investigation baseline: `main @ 2e40643f63a4314a33b0f59f21def10a0cd2ecc9`，2026
 本批不新建 AI/Agent、ERP/PLM 连接器、通用审批平台、通用恢复平台或新 IAM；
 不迁移旧业务数据、不兼容旧 ListingKit Workspace、不访问共享试用/生产数据。
 账号归属决定不替代真实账号联调、真实远端写入、付费调用或共享部署授权。
+用户随后明确授权有界 SDS qualification：单张测试图、单款模板、保存一件成品，
+不下单、不付款、不删除，结果未知停止。额度拒绝后用户明确要求重试；成品未核实后
+用户报告可能已自行清理，并另行明确要求重新设计一次。每次新授权和原操作结果分别保留，
+不把可能清理当作已证实失败，不自动重发或执行远端 cleanup。
 
 Must：完整市场选品；有真实版本证据的人工优选申请及明确发布；1688 原采集链；
 真实 SDS 定制成品；企业隔离、撤权、精确来源及批准、幂等和未知结果不重发。
@@ -140,7 +144,7 @@ Collection 私有约束不变。POD 创建者是唯一成员消费者，企业 a
 企业普通角色、自定义模块、请求header/body 不授予平台权。
 
 平台路径精确沿现有 AuthPolicyCurrentIdentityWithVerifiedRoles + OrganizationAccessPolicyNone
-+ PermissionListingKitPlatformAdm；事务回调重新检查相同平台actor、token时效和权限。
+及 PermissionListingKitPlatformAdm；事务回调重新检查相同平台actor、token时效和权限。
 先锁申请/发布行取得事实 owner，再读取该行授权范围内的资料，不推导客户成员权限。
 普通 HTTP body 不接受 organization/actor/member/role/SDS账号/cookie/provider URL。
 
@@ -151,8 +155,15 @@ title optimization Apply lineage。采集商品或只是候选 proposal 不满�
 申请包含原供货声明、必要资质 refs、明确准许平台评审该申请及在批准后发布列明字段的确认。
 市场授权不涵盖资质文件；“审核通过”不自动发布，不获得企业剩余私有商品访问。
 
-自营由专员从其有权管理的当前自有 Product 中选择真实版本；不任意填客户 Product ID，
-不在市场模块手工存第二份商品正文。自营更新同样生成明确的新发布 revision。
+自营使用两步授权，避免None平台路径与私有Collection合同冲突：组织LiveWrite入口先用
+原Collection manage及sealed AuthorizedSelection选择本人的own Product，保存官方供给draft、
+exact source/effective ref和披露确认。draft的Organization/Actor/Member来自可信context，
+不是body；此时尚未公开，也未创建第二份Product。平台verified-global/None命令仅锁该draft，
+要求publisher actor等于draft原actor，再消费该draft的窄披露授权发布；None路径不调用
+普通Collection.Select，不从请求伪造成员scope。发布前使用现有tokenless execution授权
+核实原actor/member在原organization的Collection manage仍有效；此检查不赋予跨企业成员身份。
+平台发布只取得draft允许的exact ref/字段，不任意填客户Product ID。自营更新用新的
+组织选择draft及新的immutable发布revision，不原地跟随商品最新版本。
 
 资质附件用已有 S3 immutable client 的**私密 bucket**，最大 20 MiB/件，JPG/PNG/PDF，
 最多6件且总计60 MiB；内容签名/图片解码、digest及size校验；PDF仅作为下载附件。
@@ -172,10 +183,12 @@ Product database 中新增有界 `supply_market_*` / `product_pod_*` tables，
 复用现有同库 Catalog/Collection/Submission UoW，Asset 仍跨库只读批准。
 fresh installer 显式建表/约束及窄 runtime DML grants；运行只验证，不 AutoMigrate、不写旧数据。
 
-市场：applications 保存 original scope/ref、Apply ref、immutable original supply input、
+市场：official_drafts保存原scope、sealed selection解析后的exact ref、披露确认及revision；
+applications 保存 original scope/ref、Apply ref、immutable original supply input、
 stage/revision；application_inputs/events 追加补充和评估；releases 保存 channel、
 original canonical ref、公开字段 allowlist、供货说明 ref、申请/合作确认 ref、revision/active；
-commands 保存(scope,actor,key)及canonical intent hash/immutable result。
+commands 保存(scope,actor,key)及canonical intent hash/immutable result；private_upload_receipts
+持不可变私密对象identity/hash/size、原scope和供申请引用的receipt，不存PublicURL。
 供应说明与合作评估是新市场事实，不是 Product 正文副本。所有actor/owner不可后改。
 
 优选状态：SUBMITTED → EVALUATING → APPROVED | REJECTED；
@@ -215,15 +228,17 @@ bytes hash、各区域transform、账号binding revision、protocol revision、�
 设计支持当前模板声明的可编辑区域与所选款式；无合格manifest的模板不可开始设计，
 不默选“第一layer”或忽略不支持区域。复用成熟canvas组件及可提取纯几何映射，禁止模型改payload。
 
-跨企业共享模板必须有数据库持久fence：key为(account merchant identity, binding revision,
-merchant template/result-group identity)，active value为原 POD operation ID。
+跨企业共享模板必须有数据库持久fence：key为稳定的(provider merchant identity,
+真实共享merchant template/result-group identity)，active value为原 POD operation ID。
+binding/credential/protocol revision只绑定intent和观察证据，不参与互斥键。
+轮换凭据、新建binding或改协议不能为同一实际merchant/template创建第二把锁或释放旧锁。
 所有企业竞争同key，而非按Organization划分；先提交保留fence及immutable intent，
 再允许独立 acquire SendPermit。取得fence后任何原operation重复启动都只能读其回执/attempt。
 同账号其他设计被占用时显示“该模板正在定制/待核实”，不能用新operation覆盖。
 租约过期或worker失联不自动释放未知fence；需原operation核实所有远端副作用及模板不再
 被延迟执行改变的证据后才能释放，不能用时间窗冒充provider完成证据。
 
-每个不安全重复步骤（OSS写、material create、syncDesign、add_and_design）使用现有
+每个已资格验证的不安全重复步骤（OSS写、material create、syncDesign）使用现有
 ExecutionKernel自己的immutable intent与唯一SendPermit，Target包含平台账号和原operation
 稳定 step身份，payload绑定manifest。外层fence只保护共享template竞争，不成为另一个attempt状态机。
 成功回执和POD step引用用现有NewTransactionFinalizer同库提交；不会在跨库重复创建Permit。
@@ -234,19 +249,46 @@ ExecutionKernel自己的immutable intent与唯一SendPermit，Target包含平台
 
 使用现有 Temporal SDK承担长时间设计编排；SQL意图是durable事实，Temporal不是身份/发送authority。
 Activity重放最多重读原intent，任何远端mutation只能持新获得的一次Permit执行。
+workflow ID固定为pod-design/{原operation UUID}，沿已有OperationStarter的有界EnsureExecution
+做提交后启动：SQLcommit成功但启动失败/响应丢失时，同意图重放及原操作查询只恢复该ID的
+未启动执行，不创建第二个workflow或远端intent；已启动/终态/UNKNOWN只读原状态。
+SendPermit只在取得首次授权的Activity进程内消费，不存入workflow history/SQL/可重放输出；
+进程丢失permit视为原步骤可能已发送，读原Kernel进入UNKNOWN而不是恢复permit重发。
+实际发送前校验下载图案bytes和冻结hash，并重新验证原account、manifest、live权限和持有fence。
 restart/resume先读取原steps；原申请成员经tokenless live membership/permission复核后才进行
 尚未发送步骤。撤权时停止新副作用，保留已发送/unknown记录及fence；平台专员可只读核实，
 不得伪造客户身份继续设计。保存动作在worker受限deadline内执行；UI轮询读取进度即可。
 
-## 8. SDS 协议资格与成品核实（当前开工阻塞）
+## 8. SDS 协议资格与成品核实
 
 旧代码提供待核实候选 endpoints：公開/products/page、/products/:id；登录后material/设计
 manifest、/ps/design/syncDesign、/ps/design/add_and_design，以及mapi2的/design_products查询。
-没有已验证的当前官方协议/账号成功样本，不能根据旧DTO指定不存在的关联字段。
-特别是SaveDesign旧路径忽略body，SyncDesign只记200空响应；成品列表DTO有parent/variant、
-material_img_name、prototype、ItemID/img_urls，缺exact layer/material-ID关联证明。
+上述旧候选不是当前全部合格协议；不能根据旧DTO指定不存在的关联字段。
+2026-10-09用户另行授权重新设计的有界联调，实际单次syncDesign已持久保存成品，
+不需要再调用add_and_design；后者不进入新调用路径，除非另有当前必要合同证据。
 
-provider adapter必须先通过有界protocol qualification：
+本次独立测试 operation `12752596-6056-4316-9f2f-380c97df9675` 的当前实测：
+
+| 事实 | 只读复查结果 |
+| --- | --- |
+| 原测试图 | 1334×2000、62,279 bytes；SHA256 `1e234e6b533c98cc4f02e37b3982f464bdfac96763784eef3d63d5ceef745627` |
+| 单次素材创建 | HTTP200 / ret=0；material ID `480953643`，独立operation素材名；成功后未再次上传 |
+| 单次保存 | `/ps/design/syncDesign` HTTP200、空响应；payload含exact related material ID及Fabric transform；无再次保存 |
+| 成品与详情 | stable ID `962657110282047488`、成品编号 `9rdygezsctts`、task `962657107283120129`；parent `95146` / variant `95147` / prototype `730897612975054849` 一致 |
+| 完成证据 | finished `buildFinish=true` / `status=2`；task `status=5`、complete/success=1、failed/wait=0；8张HTTPS out图，task children返回相同图路径 |
+| 成品原图层 | 成品下载面板给出exact `task_child_layers/962657107438309376`；GET返回153,441-byte渲染图片，含本次测试UUID，非material/Fabric JSON；其hash不同于原测试图 |
+| 候选观察 | sync响应无task/finished identity；finished/detail/task children无actual material ID或manifest；素材名称在成品编辑页可改，只能寻找候选 |
+| 精确设计复读 | UI打开已有成品布局调用GET `/ps/endproducts/962657110282047488/design`；返回exact designProductId、parent/variant/prototype/group、layer、实际material `480953643`及相同fileCode；无再次保存 |
+| 原意图匹配 | 保存成品layer.fabric_json与原发送字符串逐字一致，双方SHA256 `66dc0259ab13562a1b74ef0099bb3ec6aca424f08e9c270f881b2dd99c6c4880`；全部8个designFiles ID与原psd_ids一致 |
+
+本次**成品存在及保存已确认**，不得再描述为“成品未核实”。以上是一次受控provider
+资格证据，不是产品接入代码或用户验收。此前 operation
+`b99c0426-fc19-4375-87f7-460d4b8180be` 的保存后查无成品保持UNCONFIRMED；
+用户“可能自行清理”不等于agent证实失败或授权重发旧操作。没有下单、付款、删除。
+脱敏请求、回执、task、原图层和截图保留在本工作区ignored `.local/sds-qualification`，
+凭据不提交、不写入文档或Issue。
+
+provider adapter的有界protocol qualification及实现不变量：
 
 1. 明确平台账号identity和当前credential revision；固定HTTPS origins、写endpoint/结果合同。
 2. 证明素材名称/对象键能保留唯一原operation marker，远端不会跨租户内容去重后混合归属；
@@ -255,13 +297,25 @@ provider adapter必须先通过有界protocol qualification：
    证明何时可以安全释放共享fence，UNKNOWN时不释放。
 4. 证明成品观察至少绑定原account、operation marker或由已匹配response返回的stable finished ID、
    chosen parent/variant/prototype及actual design material/manifest关联；具备非模板的全部预期render图。
-   如果SDS只返回操作唯一素材名，须证明这是不可变exact字段且远端能核查对应素材/设计，
+   如果SDS只返回操作唯一素材名，仍须有远端可核查的对应素材/设计证据；本次可编辑名称
+   仅为候选查询条件，不是自动归属依据。无需扩大为抵抗供应商管理员恶意改名的Threat Model。
    不能把search模糊结果、最新时间、parent-only、图片相似或普通模板图当证据。
 5. 证明finished ItemID稳定可复查，远端成品和素材保留；选择入Product后可正常查看。
 
-成品query只能由server用已授权原operation的saved refs查询；对重复/多候选/字段缺失
-保持UNKNOWN。若端点无法提供以上最小合同，应先取得SDS提供的正式对接方式或具体当前证据，
-不得发明关联字段、弱化隔离或以假fixture宣布“实际接入”。本设计在此证据缺失时仍NOT_READY。
+实际合格观察链：server以原账号和operation唯一素材名找有界候选，再对候选stable finished ID
+调用`/ps/endproducts/{id}/design`，要求response designProductId=候选ID、原parent/variant/
+prototype/group一致、全部区域/印刷尺寸及Fabric设计语义一致、Fabric每个实际material ID和
+fileCode与原成功素材回执一致、render文件ID集合与原PSD意图一致。素材名不是adoption proof。
+此后复查exact finished ID和task状态、预期render数量和非模板out路径，才形成qualified
+observation。已核实finished ID持久绑定后按ID复读，不再次通过名字挑“最新”。
+代码解析Fabric只允许本设计支持的image对象及冻结transform/approved素材，拒绝额外对象、
+跨区域/错误材质或未支持字段；JSON字段顺序、provider URL缩略参数不是自动宽松匹配理由。
+具体comparison与终态fence释放用有界实现测试收敛，不另建恢复平台。
+
+成品query只能由server用已授权原operation的saved refs查询；重复、多候选或缺任一关联字段
+保持UNKNOWN。端点变化或当前账号不能返回此最小合同时fail closed，禁止发明字段、弱化隔离
+或以假fixture宣布“实际接入”。此资格只覆盖本次实测FREE image/Fabric设计协议；其他模板
+声明如文字、刺绣、来图、组合成品未资格验证，不显示可定制成功入口。
 
 成功路径：各mutation qualified receipt → 渲染完成exact observation →
 同Product UoW完成原Submission receipt并写POD finished ref → 明确选择导入Product。
@@ -306,7 +360,7 @@ parent/latest/fallback readback、cleanup和legacy Task消费者不进入新cons
 一个主要PR `codex/supply-market-v1`。实现/提交可分为：明确发布与市场导入；优选/对接申请
 及专员入口；SDS模板与图案配置；持久设计/远端成品及恢复；Console和批准后的运行接线。
 这是一个完整用户结果的开发边界，不按文件数拆多个PR或派多个Writer。
-当前仅设计；协议资格和共享owner协调不足时，不以首个切片可做为由绕过独立准入。
+当前已取得有界协议资格证据，原剩余finding增量复核已关闭，达到IMPLEMENTATION_READY。
 
 ## 11. 验证、交付与准入
 
@@ -325,12 +379,29 @@ revision/同键重放；撤销与选品同UoW；资格文件私密读；两个�
 | --- | --- | --- |
 | 用户范围/账号归属 | CONFIRMED | 已记录本会话明确决定 |
 | Figma/当前owner映射 | READ | 不将占位或示例当能力证据 |
-| SDS成品精确关联及fence完成边界 | **BLOCKER / UNKNOWN** | 当前协议文档或脱敏成功/查询样本；必要时指定账号受控qualification授权 |
-| 共享authz/navigation/runtime协调 | PENDING | Issue记录feature合同的唯一接线owner和准入责任；本Writer不抢写共享文件 |
-| 独立Architecture Review | NOT_RUN | 本文具体高风险边界review及finding分类；BLOCKER消除后IMPLEMENTATION_READY |
+| SDS受控成品保存 | CONFIRMED | 本次成品9rdygezsctts及task/render/detail复查成立；不等于产品验收 |
+| SDS首次自动归属关联 | QUALIFIED / CLOSED | exact finished design GET绑定实际material及原Fabric/PSD意图；原finding独立复核已关闭 |
+| SDS完成及fence释放 | IMPLEMENTATION_TEST候选 | exact task终态与全部预期render已有证据；关联补齐后有界验证其终态及fence释放含义 |
+| 共享authz/navigation/runtime协调 | OWNER_ASSIGNED | 协调指定会话 `01a11f74-2565-78e0-9118-4fe1ff53e726`；本Writer提供本设计feature ports，不修改共享接线；具体接线在批准后由该owner消费 |
+| 独立Architecture Review | IMPLEMENTATION_READY | 两轮及原SDS finding证据增量复核完成，全部BLOCKER关闭，无新增全局评审 |
 | 正式生产/schema修改 | NOT_STARTED | 上述准入后才能开工 |
-| provider/用户验收 | NOT_RUN | 单独授权并真实执行，开发测试不替代 |
+| 产品路径/用户验收 | NOT_RUN | 受控provider保存已执行；正式代码路径和真实用户验收尚未执行 |
 
-SDS阻塞命中AGENTS的“核心happy path按当前设计无法完成”，以及共享账号结果不能归属时
-“跨租户访问/数据混淆、重复不可安全恢复外部副作用”。阻塞层级为正式实施准入及实际接入；
-不是恢复为public-catalog-only范围，也不自动要求通用平台重建。
+原SDS阻塞命中AGENTS的“核心happy path按当前设计无法完成”，以及共享账号结果不能归属时
+“跨租户访问/数据混淆、重复不可安全恢复外部副作用”。实测关联链已补齐并复核关闭；
+不恢复为public-catalog-only范围，也不要求通用平台重建。
+
+独立 Reviewer `/root/supply_architecture_review` 两轮已完成。第一轮先分类再修订：
+共享fence误含binding revision、自营platform None不具备私有来源selection授权均为BLOCKER。
+第二轮复核修订blob `007788f55d3dd1e29000bade0ce48fde4c81b340`，关闭这两个finding，
+未发现新增AGENTS BLOCKER；未变化部分无需再次全局评审。
+原SDS finding的首次受控证据增量复查确认成品存在及8张成品图，尚缺actual material/
+manifest链；随后只读打开已有成品布局，实际GET已取得精确关联和逐字Fabric匹配。
+完整新证据交原Reviewer仅复核该finding；不是再次远端保存或第三轮全局架构设计。
+2026-10-10增量复核设计blob `25363e1153d2e2f1510ace68ac6093691cec4236`，明确原SDS
+BLOCKER关闭、IMPLEMENTATION_READY、可冻结基线。终态/fence释放为IMPLEMENTATION_TEST：
+完整关联、全部已发送steps收敛后，同Product UoW保存Kernel/POD回执并释放原fence；
+缺字段、冲突、多候选、部分render或UNKNOWN保留fence，不能凭HTTP200或超时释放。
+platform路径原成员复核须使用明确的
+tokenless窄执行入口，不能传递已清空组织scope的平台HTTP context或制造客户身份，
+此项为IMPLEMENTATION_TEST，与精确投影、Apply绑定、Permit及启动恢复测试一起在准入后收敛。
