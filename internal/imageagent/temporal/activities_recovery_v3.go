@@ -29,6 +29,7 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 		return EffectRecoveryResult{}, err
 	}
 	executionInput := imageagent.SlotExecutionInput{
+		ImageSet:             imageagent.CloneImageSetPlan(input.ImageSet),
 		OrganizationIdentity: input.Identity,
 		RunID:                input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
 		TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
@@ -38,6 +39,9 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 		ProductContext: input.AssetCatalog.ProductContext,
 	}
 	reservation := slotEffectReservationV3(executionInput)
+	if err := a.validatePersistedImageSetExecution(ctx, executionInput); err != nil {
+		return EffectRecoveryResult{}, err
+	}
 	effect, err := a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
 	if err != nil {
 		if errors.Is(err, imageagent.ErrRunNotFound) {
@@ -53,6 +57,9 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 	}
 	reservation.Policy = effect.Policy
 	reservation.Quote = effect.Quote
+	if input.ImageSet != nil && effect.InputFingerprint != reservation.InputFingerprint {
+		return EffectRecoveryResult{}, imageagent.ErrRevisionConflict
+	}
 	if effect.Phase == imageagent.SlotEffectV3RecoveryBlocked && strings.TrimSpace(input.ActionID) != "" {
 		restorer, ok := a.slotEffectsV3.(imageagent.RecoveryBlockedSlotEffectV3Repository)
 		if !ok {
@@ -94,7 +101,8 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 	}
 	budgetAuthorization := effect.Quote.Fingerprint != ""
 	published, err := a.ExecuteSlotV3(ctx, ExecuteSlotV3ActivityInput{
-		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision,
+		ImageSet: imageagent.CloneImageSetPlan(input.ImageSet),
+		RunID:    input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision,
 		TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 		Slot: input.Slot, Attempt: input.Attempt,
 		IdempotencyKey:             executionInput.IdempotencyKey,
@@ -123,8 +131,12 @@ func (a *Activities) PersistRecoveryBlockedEffectV3(ctx context.Context, input E
 	if err != nil {
 		return EffectRecoveryResult{}, err
 	}
+	if err := a.validatePersistedImageSetExecution(ctx, recoverySlotExecutionInput(input)); err != nil {
+		return EffectRecoveryResult{}, err
+	}
 	executionInput := imageagent.SlotExecutionInput{
-		RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
+		ImageSet: imageagent.CloneImageSetPlan(input.ImageSet),
+		RunID:    input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
 		TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 		PlanRevision: input.PlanRevision, Slot: input.Slot, Attempt: input.Attempt,
 		IdempotencyKey: slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt),
@@ -174,6 +186,9 @@ func (a *Activities) StartEffectRecoveryV3(ctx context.Context, input EffectReco
 	if err != nil {
 		return err
 	}
+	if err := a.validatePersistedImageSetExecution(ctx, recoverySlotExecutionInput(input)); err != nil {
+		return err
+	}
 	return a.recoveryWorkflowStarter(ctx, input)
 }
 
@@ -183,6 +198,9 @@ func (a *Activities) ReconcileEffectRecoveryV3(ctx context.Context, input Effect
 	}
 	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
+		return EffectRecoveryResult{}, err
+	}
+	if err := a.validatePersistedImageSetExecution(ctx, recoverySlotExecutionInput(input)); err != nil {
 		return EffectRecoveryResult{}, err
 	}
 	execution := imageagent.SlotExecutionInput{
@@ -201,6 +219,9 @@ func (a *Activities) ReconcileEffectRecoveryV3(ctx context.Context, input Effect
 	}
 	if err := validatePersistedSlotEffectV3(effect); err != nil {
 		return EffectRecoveryResult{}, err
+	}
+	if input.ImageSet != nil && effect.InputFingerprint != imageagent.SlotExecutionFingerprint(recoverySlotExecutionInput(input)) {
+		return EffectRecoveryResult{}, imageagent.ErrRevisionConflict
 	}
 	result, err := effectRecoveryResultFromDurableEffect(effect)
 	if err != nil {

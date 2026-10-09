@@ -101,6 +101,9 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 	stopHeartbeat := startExternalEffectHeartbeat(ctx)
 	defer stopHeartbeat()
 	executionInput := slotExecutionInputV3(input)
+	if err := a.validatePersistedImageSetExecution(ctx, executionInput); err != nil {
+		return v3Result, err
+	}
 	reservation := slotEffectReservationV3(executionInput)
 	var budgeted imageagent.BudgetedStagedSlotExecutor
 	providerCtx := ctx

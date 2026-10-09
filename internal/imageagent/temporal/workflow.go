@@ -1049,6 +1049,9 @@ func (s *workflowUpdateState) validateReplacePlan(signal ReplacePlanSignal) erro
 }
 
 func (s *workflowUpdateState) validateReplacePlanBusiness(signal ReplacePlanSignal) error {
+	if s.input.Plan.Set != nil || signal.Plan.Set != nil {
+		return updateBlockedError("image set changes require a new prepared and confirmed run")
+	}
 	if err := validateCommandRevision(*s.input, signal.ExpectedRevision); err != nil {
 		return err
 	}
@@ -1145,6 +1148,9 @@ func (s *workflowUpdateState) validateRetrySlot(signal RetrySlotSignal) error {
 }
 
 func (s *workflowUpdateState) validateRetrySlotBusiness(signal RetrySlotSignal) error {
+	if s.input.Plan.Set != nil {
+		return updateBlockedError("image set regeneration requires a new prepared and confirmed run")
+	}
 	if err := validateCommandRevision(*s.input, signal.PlanRevision); err != nil {
 		return err
 	}
@@ -2065,7 +2071,8 @@ func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, c
 	})
 	if activityWire.useV3Slot {
 		future := workflow.ExecuteChildWorkflow(childCtx, ImageSlotWorkflowV3, SlotWorkflowV3Input{
-			RunID: slotInput.RunID, Identity: slotInput.Identity, PlanRevision: slotInput.PlanRevision,
+			ImageSet: imageagent.CloneImageSetPlan(input.Plan.Set),
+			RunID:    slotInput.RunID, Identity: slotInput.Identity, PlanRevision: slotInput.PlanRevision,
 			TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 			Slot: slotInput.Slot, Attempt: slotInput.Attempt, AssetCatalog: slotInput.AssetCatalog,
 			ExecuteActivityName: activityWire.executeSlot,
@@ -2177,7 +2184,8 @@ func effectRecoveryInputsForCancellation(input WorkflowInput, results []SlotWork
 				continue
 			}
 			inputs = append(inputs, EffectRecoveryWorkflowInput{
-				RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision,
+				ImageSet: imageagent.CloneImageSetPlan(input.Plan.Set),
+				RunID:    input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision,
 				TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 				Slot: input.Plan.Slots[index], Attempt: effect.Attempt, AssetCatalog: input.AssetCatalog,
 			})

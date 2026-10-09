@@ -45,6 +45,7 @@ type planRecord struct {
 func (planRecord) TableName() string { return "image_agent_v2_plans" }
 
 type slotRecord struct {
+	ClosureJSON       []byte
 	RecipeJSON        []byte
 	TenantID          string `gorm:"primaryKey;type:varchar(64);uniqueIndex:idx_image_agent_v2_slots_plan_idempotency,priority:1"`
 	OwnerUserID       string `gorm:"primaryKey;type:varchar(128);uniqueIndex:idx_image_agent_v2_slots_plan_idempotency,priority:2"`

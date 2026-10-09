@@ -32,6 +32,7 @@ type RunMutation struct {
 }
 
 type SlotResult struct {
+	Closure           *ImageSlotClosure `json:",omitempty"`
 	SlotID            string
 	Attempt           int
 	Status            SlotStatus

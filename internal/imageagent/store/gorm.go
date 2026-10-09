@@ -475,9 +475,15 @@ func samePlanDefinition(existing existingPlan, wanted planRecord, wantedSlots []
 }
 
 func slotResultFromRecord(record slotRecord) (imageagent.SlotResult, error) {
+	var closure *imageagent.ImageSlotClosure
+	if len(record.ClosureJSON) > 0 {
+		if err := unmarshalJSON(record.ClosureJSON, &closure); err != nil {
+			return imageagent.SlotResult{}, err
+		}
+	}
 	var candidates []string
 	if err := unmarshalJSON(record.CandidateAssetIDs, &candidates); err != nil {
 		return imageagent.SlotResult{}, fmt.Errorf("decode slot candidate asset IDs: %w", err)
 	}
-	return imageagent.SlotResult{SlotID: record.ID, Attempt: record.Attempt, Status: imageagent.SlotStatus(record.Status), CandidateAssetIDs: candidates, ErrorCode: record.ErrorCode}, nil
+	return imageagent.SlotResult{Closure: closure, SlotID: record.ID, Attempt: record.Attempt, Status: imageagent.SlotStatus(record.Status), CandidateAssetIDs: candidates, ErrorCode: record.ErrorCode}, nil
 }

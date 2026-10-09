@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -24,6 +25,43 @@ func imageSetPlanForStore(t *testing.T) imageagent.Plan {
 	require.NoError(t, err)
 	require.NoError(t, imageagent.ValidateInitialSubmittedPlan(plan))
 	return plan
+}
+
+func TestSetSlotClosurePreservesUnstartedWorkInNormalizedAndProjectedState(t *testing.T) {
+	for _, kind := range []string{"memory", "gorm"} {
+		t.Run(kind, func(t *testing.T) {
+			var repo repositoryContract = NewMemoryRepository().(repositoryContract)
+			var sqlRepo *gormRepository
+			if kind == "gorm" {
+				sqlRepo = NewGormRepository(newConcurrentSQLite(t)).(*gormRepository)
+				repo = sqlRepo
+			}
+			ctx := context.Background()
+			run := manualRun("set-unstarted", "tenant-a")
+			plan := imageSetPlanForStore(t)
+			scope := imageagent.ScopeForRun(*run)
+			current, err := repo.InitializeRun(ctx, imageagent.ProjectionInitialization{Scope: scope, Run: *run, Plan: plan, Catalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://images.example.org/source.png"}}}, Snapshot: imageagent.RunProjection{Run: *run, Plan: plan}, CommitID: "start", EventType: "run.initialized", EventPayload: json.RawMessage(`{}`)})
+			require.NoError(t, err)
+			closure := &imageagent.ImageSlotClosure{Kind: "not_dispatched"}
+			updated := current
+			updated.Slots = append([]imageagent.SlotProjection(nil), current.Slots...)
+			updated.Slots[0].Slot.Status = imageagent.SlotStatusBlocked
+			updated.Slots[0].ErrorCode = imageagent.BudgetElapsedCode
+			updated.Slots[0].Closure = closure
+			mutation := &imageagent.SlotProjectionMutation{PlanRevision: 1, Result: imageagent.SlotResult{SlotID: plan.Slots[0].ID, Status: imageagent.SlotStatusBlocked, ErrorCode: imageagent.BudgetElapsedCode, Closure: closure}, Projection: updated.Slots[0], Attempt: imageagent.StepAttempt{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, PlanRevision: 1, SlotID: plan.Slots[0].ID, Node: "execute_slot_v3", IdempotencyKey: "unstarted", Outcome: "blocked", ErrorCategory: imageagent.BudgetElapsedCode}}
+			got, err := repo.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: scope, CommitID: "unstarted", ExpectedProjectionVersion: current.ProjectionVersion, Snapshot: updated, EventType: "slot.result.persisted", EventPayload: json.RawMessage(`{}`), SlotMutation: mutation})
+			require.NoError(t, err)
+			require.Zero(t, got.Slots[0].Attempt)
+			require.Equal(t, closure, got.Slots[0].Closure)
+			if sqlRepo != nil {
+				var row slotRecord
+				require.NoError(t, sqlRepo.db.Where("run_id = ?", scope.RunID).Take(&row).Error)
+				result, err := slotResultFromRecord(row)
+				require.NoError(t, err)
+				require.Equal(t, closure, result.Closure)
+			}
+		})
+	}
 }
 
 func TestSetPlanReplayBindsNormalizedRecipeAndConfiguration(t *testing.T) {

@@ -31,6 +31,12 @@ func (a *Activities) ReviewStagedSlotV3(ctx context.Context, input ExecuteSlotV3
 		return imageagent.SlotEffectV3PublishedResult{}, err
 	}
 	executionInput := slotExecutionInputV3(input)
+	if err := a.validatePersistedImageSetExecution(ctx, executionInput); err != nil {
+		return imageagent.SlotEffectV3PublishedResult{}, err
+	}
+	if input.ImageSet != nil {
+		return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("image sets require human selection", imageagent.SlotReviewTransportRequiredCode, imageagent.ErrCommandBlocked)
+	}
 	reservation := slotEffectReservationV3(executionInput)
 	effect, err := a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
 	if err != nil {

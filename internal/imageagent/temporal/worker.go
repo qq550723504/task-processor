@@ -149,7 +149,8 @@ func (c *Client) RecoverEffect(ctx context.Context, command imageagent.RecoverEf
 		return err
 	}
 	return newRecoveryWorkflowStarter(c.client, c.taskQueue())(ctx, EffectRecoveryWorkflowInput{
-		RunID: command.RunID, Identity: command.Identity, PlanRevision: command.PlanRevision,
+		ImageSet: imageagent.CloneImageSetPlan(projection.Plan.Set),
+		RunID:    command.RunID, Identity: command.Identity, PlanRevision: command.PlanRevision,
 		TargetPlatform: projection.Run.TargetPlatform, ImagePolicyContext: policyContextPointer(projection.Run.ImagePolicyContext),
 		Slot: slot, Attempt: command.Attempt, ActionID: command.ActionID, AssetCatalog: projection.AssetCatalog,
 	})

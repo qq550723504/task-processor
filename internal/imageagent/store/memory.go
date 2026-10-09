@@ -441,6 +441,10 @@ func cloneSlot(slot imageagent.Slot) imageagent.Slot {
 }
 
 func cloneSlotResult(result imageagent.SlotResult) imageagent.SlotResult {
+	if result.Closure != nil {
+		copy := *result.Closure
+		result.Closure = &copy
+	}
 	result.CandidateAssetIDs = append([]string(nil), result.CandidateAssetIDs...)
 	return result
 }
