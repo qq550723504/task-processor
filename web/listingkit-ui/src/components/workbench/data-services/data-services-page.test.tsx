@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor, cleanup, within } from "@testing-library/react";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { DataServicesPage } from "./data-services-page";
+import { DataServicesPage, CustomDetails } from "./data-services-page";
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => ({ user: { id: "user" }, effectiveOrganization: { id: "org" }, registerOrganizationSwitchGuard: () => () => { } }) }));
 vi.mock("@/components/workbench/collections/collection-page", () => ({ CollectionDialog: ({ title, children, onClose }: {
         title: string;
@@ -13,6 +13,11 @@ const job = { id, commandKey: id, query: { site: "us", mode: "asin", asins: ["B0
 const json = (value: unknown, status = 200) => Response.json(value, { status });
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals(); });
 describe("data service product paths", () => {
+    it("shows the original customization criteria for the customer and specialist", () => {
+        render(<CustomDetails request={{ id, input: { name: "fixture", query: { site: "us", mode: "keyword", keyword: "cordless drill", categoryNode: "12345", asins: ["B000123456"], limit: 5, fields: ["title", "price"] }, purpose: "选品分析", timeRange: "最近三个月", format: "json", notes: "只需品牌官方店" }, state: "SUBMITTED", revision: 1, specRevision: 0, deliveredRows: 0, createdAt: "2026-10-10T00:00:00Z", events: [] }}/>);
+        for (const value of ["cordless drill", "12345", "B000123456", "title、price", "最近三个月", "只需品牌官方店"])
+            expect(screen.getByText(value)).toBeInTheDocument();
+    });
     it("reports invalid customization input before storing or dispatching a command", async () => {
         const fetcher = vi.fn(async (url: string, init?: RequestInit) => { void init; return json(url.endsWith("options") ? options : []); });
         vi.stubGlobal("fetch", fetcher);

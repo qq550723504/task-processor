@@ -15,12 +15,14 @@ import (
 )
 
 var (
-	ErrInvalid     = errors.New("invalid data acquisition request")
-	ErrForbidden   = errors.New("data acquisition forbidden")
-	ErrUnavailable = errors.New("data acquisition dependency unavailable")
-	ErrConflict    = errors.New("data acquisition command conflict")
-	ErrNotFound    = errors.New("data acquisition not found")
-	ErrUnknown     = errors.New("data acquisition outcome unknown")
+	ErrInvalid           = errors.New("invalid data acquisition request")
+	ErrForbidden         = errors.New("data acquisition forbidden")
+	ErrUnavailable       = errors.New("data acquisition dependency unavailable")
+	ErrConflict          = errors.New("data acquisition command conflict")
+	ErrNotFound          = errors.New("data acquisition not found")
+	ErrUnknown           = errors.New("data acquisition outcome unknown")
+	ErrSourceChallenge   = errors.New("source public page challenged")
+	ErrSourceUnsupported = errors.New("source page structure unsupported")
 )
 
 const PriceFen int64 = 5

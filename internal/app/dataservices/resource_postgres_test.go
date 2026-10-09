@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"task-processor/internal/dataservice"
+	"task-processor/internal/integration/acquisition/amazon"
 	resourceadapter "task-processor/internal/integration/orgresource"
 	keystore "task-processor/internal/integration/persistence/dataservice"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
@@ -59,6 +60,17 @@ func (f *executionFixture) Fetch(_ context.Context, site, asin string) (dataacqu
 type lostReserveAck struct {
 	*orgresource.ConsumerChargeService
 	lose bool
+}
+
+type terminalDiscoveryFixture struct {
+	*executionFixture
+	result error
+	calls  int
+}
+
+func (f *terminalDiscoveryFixture) Discover(context.Context, dataacquisition.Query) ([]string, error) {
+	f.calls++
+	return nil, f.result
 }
 
 func (c *lostReserveAck) Reserve(ctx context.Context, id orgresource.ConsumerChargeIdentity) (orgresource.ConsumerChargeReceipt, error) {
@@ -261,4 +273,51 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 		readBalance()
 		require.Equal(t, int64(2), bucket.Consumed, "custom delivery does not consume DATA_ROW")
 	})
+	for _, tc := range []struct {
+		name   string
+		result error
+		reason string
+	}{
+		{"challenge", amazon.ErrChallenge, "provider_challenged"},
+		{"unsupported", amazon.ErrUnsupported, "provider_unsupported"},
+	} {
+		t.Run("terminal discovery "+tc.name, func(t *testing.T) {
+			keyRepo, err := keystore.NewCredentialRepository(ctx, productDB)
+			require.NoError(t, err)
+			keys, err := dataservice.NewCredentialService(keyRepo, fixture)
+			require.NoError(t, err)
+			created, err := keys.Create(ctx, uuid.NewString(), dataservice.KeyInput{Name: tc.name, ExpiresAt: time.Now().UTC().Add(time.Hour), DailyRows: 2, MonthlyCostFen: 10, Permissions: []string{dataservice.PermissionAcquire, dataservice.PermissionResult}})
+			require.NoError(t, err)
+			provider := &terminalDiscoveryFixture{executionFixture: fixture, result: tc.result}
+			runner, err := dataacquisition.NewService(repo, fixture, provider, charges, fixture)
+			require.NoError(t, err)
+			principal := dataacquisition.Principal{Scope: scope, CredentialID: created.Key.ID, CredentialRevision: created.Key.Revision}
+			job, err := runner.Start(ctx, principal, uuid.NewString(), dataacquisition.Query{Site: "us", Mode: "keyword", Keyword: "fixture", Limit: 1}, orgresource.FundingEnterprise, 5)
+			require.NoError(t, err)
+			require.NoError(t, runner.Run(ctx, scope, job.ID))
+			require.NoError(t, runner.Run(ctx, scope, job.ID), "recovery must not repeat terminal discovery")
+			job, err = repo.Read(ctx, scope, job.ID)
+			require.NoError(t, err)
+			require.Equal(t, "FAILED", job.State)
+			require.Equal(t, tc.reason, job.Reason)
+			require.Equal(t, 1, provider.calls)
+			quotas, err := repo.KeyQuotas(ctx, scope)
+			require.NoError(t, err)
+			found := false
+			for _, quota := range quotas {
+				if quota.KeyID == created.Key.ID {
+					found = true
+					require.Zero(t, quota.DayReservedRows)
+					require.Zero(t, quota.MonthReservedFen)
+					require.Zero(t, quota.DayConsumedRows)
+					require.Zero(t, quota.MonthConsumedFen)
+				}
+			}
+			require.True(t, found)
+			readBalance()
+			require.Equal(t, int64(2), bucket.Consumed)
+			require.Zero(t, bucket.Reserved)
+			require.Equal(t, 2, fixture.fetches)
+		})
+	}
 }

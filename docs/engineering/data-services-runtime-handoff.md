@@ -36,7 +36,7 @@
 | ProductDB | 当前受限 Product pool；同 DB 当前 SRC/Catalog/Collection |
 | Access / Live / Specialist / Funding | 同一个 `dataserviceauth.Authorizer`，消费正式 IAM、用户 active 状态、native RoleModules 和企业 deny-only suspension |
 | Provider | `amazon.New(amazon.Options{ExecutablePath, DriverDirectory, EnabledSites})` |
-| Starter | `dataservicesapp.TemporalStarter{Client: currentTemporalClient}` |
+| Starter | `dataservicesruntime.TemporalStarter{Client: currentTemporalClient}`（`internal/app/runtime/dataservices`） |
 | Charges | 接收本 module 的 `ConsumerChargeOwner`，登记到当前 Resource `ConsumerChargeService`；返回带 Lookup 的该服务 |
 | TrustedProxyCIDRs | 空则用真实 socket/TLS；只有明确部署的单跳可信 TLS 代理可以配置 CIDR |
 
@@ -59,7 +59,7 @@
 
 企业资金仅当前 tenant-admin，其他成员固定原 member allocation；任务创建后不切换资金来源。密钥/任务冻结原创建者及 canonical member，grant 重建不能复活旧凭据。
 
-用当前 descriptor registrar 消费 `module.BuildRoutes()`，包括：
+feature-local `internal/dataservice/httpapi` 负责框架 adapter，app module 仅注入并转发；用当前 descriptor registrar 消费 `module.BuildRoutes()`，包括：
 
 - Console：`/api/v1/workbench/data-services`，现有 verified identity / live organization 边界。
 - Specialist：`/api/v1/platform/data-customization`，current identity with verified platform roles / org-none。
@@ -73,7 +73,7 @@ Amazon 复用现有 Playwright Go SDK，先安装匹配 SDK 的 driver 与 Chrom
 
 支持配置 `us uk de fr it es ca jp au mx br in ae sa`，界面/API options 只返回实际配置且本地路径就绪的站点。Ready 检查文件存在，**不是真实站点可抓取证明**。站点公开页面可能挑战或结构不支持，诚实返回失败/部分完成，不自动登录、换代理、绕过 CAPTCHA 或生成缺失数据。保留正常 DNS/公网 IP 固定、TLS 校验，匿名 context 禁用脚本/下载/子资源/ServiceWorker/WebSocket。
 
-复用当前 namespace/client/worker 生命周期：task queue `data-services-v1`，由 `RegisterWorker(worker, module.Runner())` 注册，再由 #619 原 runtime 启停。workflow `DataAcquisitionV1` 固定原 org/actor/job identity/hash/deadline，执行最长 30 分钟，原 memo 核对；创建重试/读取会修复原已提交未启动任务，worker 重启继续原任务，不建设新 scheduler。
+复用当前 namespace/client/worker 生命周期：task queue `data-services-v1`，由 `dataservicesruntime.RegisterWorker(worker, module.Runner())` 注册，再由 #619 原 runtime 启停。workflow `DataAcquisitionV1` 固定原 org/actor/job identity/hash/deadline，执行最长 30 分钟，原 memo 核对；创建重试/读取会修复原已提交未启动任务，worker 重启继续原任务，不建设新 scheduler。
 
 Resource owner map 在创建服务时增加 `orgresource.ConsumerAmazonData` (`amazon_data_v1`) → module factory 传入的 owner，同时保留原消费者。复用 `NewGormConsumerChargeRepository(resourceDB, currentTransactionConfig)` 及现有 `RecoverDue` 循环；不能另外创建 wallet 扣费路径。每成功保存商品 1 DATA_ROW，5 分预算计量；变体不额外扣条数。先 Lookup 原 reservation 再 reserve，未知响应保留原 operation；失败/撤权先 fence，再凭原 proof 释放；已保存待确认仅结算原 reservation，不再 fetch。
 

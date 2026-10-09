@@ -4,7 +4,6 @@
 package amazon
 
 import (
-	"errors"
 	"regexp"
 	"strconv"
 	"strings"
@@ -14,8 +13,8 @@ import (
 	"task-processor/internal/product/dataacquisition"
 )
 
-var ErrChallenge = errors.New("Amazon public page challenged")
-var ErrUnsupported = errors.New("Amazon page structure unsupported")
+var ErrChallenge = dataacquisition.ErrSourceChallenge
+var ErrUnsupported = dataacquisition.ErrSourceUnsupported
 
 const maxHTMLBytes = 4 << 20
 

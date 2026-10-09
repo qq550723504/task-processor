@@ -1,4 +1,4 @@
-package dataservicesapp
+package dataservicesruntime
 
 import (
 	"context"

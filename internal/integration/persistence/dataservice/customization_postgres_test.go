@@ -21,9 +21,10 @@ import (
 )
 
 type specialistFixture struct {
-	scope  collection.Scope
-	op     dataservice.Operator
-	denied bool
+	scope         collection.Scope
+	op            dataservice.Operator
+	denied        bool
+	calls, denyAt int
 }
 
 func (a *specialistFixture) Resolve(context.Context, string) (collection.Scope, error) {
@@ -31,7 +32,8 @@ func (a *specialistFixture) Resolve(context.Context, string) (collection.Scope, 
 }
 func (a *specialistFixture) Check(context.Context, collection.Scope, string) error { return nil }
 func (a *specialistFixture) Specialist(context.Context) (dataservice.Operator, error) {
-	if a.denied {
+	a.calls++
+	if a.denied || (a.denyAt > 0 && a.calls >= a.denyAt) {
 		return dataservice.Operator{}, dataservice.ErrForbidden
 	}
 	return a.op, nil
@@ -102,8 +104,14 @@ func TestPostgresCustomizationSpecDeliveryAtomicityAndScope(t *testing.T) {
 	foreign.ActorID = "other"
 	_, err = repo.Read(ctx, foreign, request.ID)
 	require.ErrorIs(t, err, dataservice.ErrNotFound)
-	request, err = service.Change(ctx, request.ID, uuid.NewString(), 1, dataservice.CustomPatch{State: "EVALUATING", Note: "正在评估"})
+	changeCommand := uuid.NewString()
+	access.calls, access.denyAt = 0, 4 // live denial only at post-commit response read
+	_, err = service.Change(ctx, request.ID, changeCommand, 1, dataservice.CustomPatch{State: "EVALUATING", Note: "正在评估"})
+	require.ErrorIs(t, err, dataservice.ErrUnknown)
+	access.denyAt = 0
+	request, err = service.Command(ctx, changeCommand)
 	require.NoError(t, err)
+	require.Equal(t, "EVALUATING", request.State)
 	spec := dataservice.CustomSpec{Description: "2 rows", QuoteNote: "线下单独报价", ConfirmationNote: "已线下确认规格", MaximumRows: 2, Format: "json"}
 	request, err = service.Change(ctx, request.ID, uuid.NewString(), request.Revision, dataservice.CustomPatch{State: "SPEC_CONFIRMED", Note: "确认规格", Spec: &spec})
 	require.NoError(t, err)
@@ -124,7 +132,11 @@ func TestPostgresCustomizationSpecDeliveryAtomicityAndScope(t *testing.T) {
 	require.Equal(t, "PREPARING", still.State)
 	require.Empty(t, still.BatchID)
 	fail = false
-	delivered, err := service.Deliver(ctx, request.ID, delivery, request.Revision, request.SpecRevision, rows)
+	access.calls, access.denyAt = 0, 5 // mutation committed, response authorization revoked
+	_, err = service.Deliver(ctx, request.ID, delivery, request.Revision, request.SpecRevision, rows)
+	require.ErrorIs(t, err, dataservice.ErrUnknown)
+	access.denyAt = 0
+	delivered, err := service.Command(ctx, delivery)
 	require.NoError(t, err)
 	require.Equal(t, "DELIVERED", delivered.State)
 	require.Equal(t, 2, delivered.DeliveredRows)

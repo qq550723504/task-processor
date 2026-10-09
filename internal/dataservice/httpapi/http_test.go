@@ -1,4 +1,4 @@
-package dataservicesapp
+package dataservicehttpapi
 
 import (
 	"crypto/tls"

@@ -1,4 +1,4 @@
-package dataservicesapp
+package dataservicehttpapi
 
 import (
 	"context"
@@ -40,7 +40,8 @@ type customChange struct {
 	Patch            dataservice.CustomPatch `json:"patch"`
 }
 
-func (m *Module) BuildRoutes() []httproute.Descriptor {
+func BuildRoutes(deps Dependencies) []httproute.Descriptor {
+	m := &handler{deps}
 	specs := []struct {
 		method, path, action, permission string
 		special, external                bool
@@ -87,12 +88,12 @@ func (m *Module) BuildRoutes() []httproute.Descriptor {
 	}
 	return routes
 }
-func (m *Module) handle(c *gin.Context, action, permission string, special, external bool) {
+func (m *handler) handle(c *gin.Context, action, permission string, special, external bool) {
 	c.Header("Cache-Control", "no-store")
 	c.Header("X-Content-Type-Options", "nosniff")
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
 	defer cancel()
-	if m == nil || m.access == nil {
+	if m == nil || m.Access == nil {
 		dataError(c, dataservice.ErrUnavailable)
 		return
 	}
@@ -104,7 +105,7 @@ func (m *Module) handle(c *gin.Context, action, permission string, special, exte
 	principal := dataacquisition.Principal{}
 	var err error
 	if external {
-		peer, e := externalPeer(c.Request, m.trustedProxyCIDRs)
+		peer, e := externalPeer(c.Request, m.TrustedProxyCIDRs)
 		if e != nil {
 			dataError(c, e)
 			return
@@ -117,14 +118,14 @@ func (m *Module) handle(c *gin.Context, action, permission string, special, exte
 			dataError(c, dataservice.ErrForbidden)
 			return
 		}
-		p, e := m.keys.Authenticate(ctx, c.GetHeader("Authorization"), peer, capability)
+		p, e := m.Keys.Authenticate(ctx, c.GetHeader("Authorization"), peer, capability)
 		if e != nil {
 			dataError(c, e)
 			return
 		}
 		principal = dataacquisition.Principal{Scope: p.Scope, CredentialID: p.KeyID, CredentialRevision: p.Revision}
 	} else if !special {
-		principal.Scope, err = m.access.Resolve(ctx, permission)
+		principal.Scope, err = m.Access.Resolve(ctx, permission)
 		if err != nil {
 			dataError(c, err)
 			return
@@ -148,22 +149,22 @@ func (m *Module) handle(c *gin.Context, action, permission string, special, exte
 	var value any
 	switch action {
 	case "options":
-		value = m.options(ctx)
+		value = m.Options(ctx)
 	case "overview":
-		err = m.live.CheckRead(ctx, principal)
+		err = m.Live.CheckRead(ctx, principal)
 		if err != nil {
 			break
 		}
 		var usage dataacquisition.Usage
-		usage, err = m.repo.Usage(ctx, principal.Scope)
+		usage, err = m.Repository.Usage(ctx, principal.Scope)
 		if err == nil {
 			var keys []dataservice.Credential
-			keys, err = m.keys.List(ctx)
+			keys, err = m.Keys.List(ctx)
 			if err == nil {
 				var jobs []dataacquisition.Job
-				jobs, err = m.repo.List(ctx, principal.Scope, 10)
+				jobs, err = m.Repository.List(ctx, principal.Scope, 10)
 				if err == nil {
-					quotas, e := m.repo.KeyQuotas(ctx, principal.Scope)
+					quotas, e := m.Repository.KeyQuotas(ctx, principal.Scope)
 					if e != nil {
 						err = e
 						break
@@ -172,34 +173,34 @@ func (m *Module) handle(c *gin.Context, action, permission string, special, exte
 						Usage     dataacquisition.Usage      `json:"usage"`
 						Keys      []dataservice.Credential   `json:"keys"`
 						Jobs      []dataacquisition.Job      `json:"jobs"`
-						Options   options                    `json:"options"`
+						Options   Options                    `json:"options"`
 						KeyQuotas []dataacquisition.KeyQuota `json:"keyQuotas"`
-					}{usage, keys, jobs, m.options(ctx), quotas}
+					}{usage, keys, jobs, m.Options(ctx), quotas}
 				}
 			}
 		}
 	case "keys":
-		value, err = m.keys.List(ctx)
+		value, err = m.Keys.List(ctx)
 	case "key-history":
-		value, err = m.keys.History(ctx, cursor, limit)
+		value, err = m.Keys.History(ctx, cursor, limit)
 	case "key-command":
-		value, err = m.keys.Creation(ctx, c.Param("command"))
+		value, err = m.Keys.Creation(ctx, c.Param("command"))
 	case "key-create":
 		var input dataservice.KeyInput
 		err = readJSON(c.Request, &input)
 		if err == nil {
-			value, err = m.keys.Create(ctx, command, input)
+			value, err = m.Keys.Create(ctx, command, input)
 		}
 	case "key-change":
 		var input keyChange
 		err = readJSON(c.Request, &input)
 		if err == nil {
-			value, err = m.keys.Change(ctx, c.Param("id"), command, input.ExpectedRevision, input.Patch)
+			value, err = m.Keys.Change(ctx, c.Param("id"), command, input.ExpectedRevision, input.Patch)
 		}
 	case "jobs":
-		err = m.live.CheckRead(ctx, principal)
+		err = m.Live.CheckRead(ctx, principal)
 		if err == nil {
-			value, err = m.repo.List(ctx, principal.Scope, limit)
+			value, err = m.Repository.List(ctx, principal.Scope, limit)
 		}
 	case "job-create":
 		var input createJob
@@ -208,63 +209,63 @@ func (m *Module) handle(c *gin.Context, action, permission string, special, exte
 			err = dataacquisition.ErrInvalid
 		}
 		if err == nil {
-			err = m.provider.Ready(ctx)
+			err = m.Provider.Ready(ctx)
 		}
 		if err == nil {
 			var fundingErr error
-			funding, fundingErr := m.funding.Funding(ctx, principal.Scope)
+			funding, fundingErr := m.Funding.Funding(ctx, principal.Scope)
 			err = fundingErr
 			if err == nil {
-				value, err = m.acquisition.Start(ctx, principal, command, input.Query, funding, input.MaximumCostFen)
+				value, err = m.Acquisition.Start(ctx, principal, command, input.Query, funding, input.MaximumCostFen)
 			}
 		}
 	case "job-command":
 		if !collection.ValidID(c.Param("command")) {
 			err = dataacquisition.ErrInvalid
 		} else {
-			value, err = m.acquisition.Read(ctx, principal, collection.StableID(principal.Scope.OrganizationID, principal.Scope.ActorID, "amazon-job", c.Param("command")))
+			value, err = m.Acquisition.Read(ctx, principal, collection.StableID(principal.Scope.OrganizationID, principal.Scope.ActorID, "amazon-job", c.Param("command")))
 		}
 	case "job-read":
-		value, err = m.acquisition.Read(ctx, principal, c.Param("id"))
+		value, err = m.Acquisition.Read(ctx, principal, c.Param("id"))
 	case "job-results":
-		value, err = m.acquisition.Results(ctx, principal, c.Param("id"), cursor, limit, m.results)
+		value, err = m.Acquisition.Results(ctx, principal, c.Param("id"), cursor, limit, m.Results)
 	case "job-cancel":
 		var input struct{}
 		err = readJSON(c.Request, &input)
 		if err == nil {
 			var job dataacquisition.Job
-			job, err = m.acquisition.Read(ctx, principal, c.Param("id"))
+			job, err = m.Acquisition.Read(ctx, principal, c.Param("id"))
 			if err == nil {
-				value, err = m.repo.Cancel(ctx, principal.Scope, job.ID, command)
+				value, err = m.Repository.Cancel(ctx, principal.Scope, job.ID, command)
 			}
 		}
 	case "custom-submit":
 		var input dataservice.CustomInput
 		err = readJSON(c.Request, &input)
 		if err == nil {
-			value, err = m.custom.Submit(ctx, command, input)
+			value, err = m.Custom.Submit(ctx, command, input)
 		}
 	case "custom-command":
 		if !collection.ValidID(c.Param("command")) {
 			err = dataservice.ErrInvalid
 		} else {
-			value, err = m.custom.Read(ctx, collection.StableID(principal.Scope.OrganizationID, principal.Scope.ActorID, "custom-request", c.Param("command")))
+			value, err = m.Custom.Read(ctx, collection.StableID(principal.Scope.OrganizationID, principal.Scope.ActorID, "custom-request", c.Param("command")))
 		}
 	case "custom-list":
-		value, err = m.custom.List(ctx)
+		value, err = m.Custom.List(ctx)
 	case "custom-read":
-		value, err = m.custom.Read(ctx, c.Param("id"))
+		value, err = m.Custom.Read(ctx, c.Param("id"))
 	case "admin-list":
-		value, err = m.custom.AdminList(ctx, state, cursor, limit)
+		value, err = m.Custom.AdminList(ctx, state, cursor, limit)
 	case "admin-read":
-		value, err = m.custom.AdminRead(ctx, c.Param("id"))
+		value, err = m.Custom.AdminRead(ctx, c.Param("id"))
 	case "admin-command":
-		value, err = m.custom.Command(ctx, c.Param("command"))
+		value, err = m.Custom.Command(ctx, c.Param("command"))
 	case "admin-change":
 		var input customChange
 		err = readJSON(c.Request, &input)
 		if err == nil {
-			value, err = m.custom.Change(ctx, c.Param("id"), command, input.ExpectedRevision, input.Patch)
+			value, err = m.Custom.Change(ctx, c.Param("id"), command, input.ExpectedRevision, input.Patch)
 		}
 	case "admin-deliver":
 		if c.Request.Body == nil || c.GetHeader("Content-Type") != "application/octet-stream" {
@@ -278,7 +279,7 @@ func (m *Module) handle(c *gin.Context, action, permission string, special, exte
 		}
 		if err == nil {
 			format := c.GetHeader("X-Data-Format")
-			request, e := m.custom.AdminRead(ctx, c.Param("id"))
+			request, e := m.Custom.AdminRead(ctx, c.Param("id"))
 			if e != nil {
 				err = e
 				break
@@ -293,7 +294,7 @@ func (m *Module) handle(c *gin.Context, action, permission string, special, exte
 				var rows []collection.OwnProduct
 				rows, err = customdata.ParseDelivery(ctx, format, raw)
 				if err == nil {
-					value, err = m.custom.Deliver(ctx, c.Param("id"), command, revision, spec, rows)
+					value, err = m.Custom.Deliver(ctx, c.Param("id"), command, revision, spec, rows)
 				}
 			}
 		}

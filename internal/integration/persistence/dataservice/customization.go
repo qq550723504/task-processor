@@ -250,7 +250,7 @@ func (r *CustomRepository) Submit(ctx context.Context, s collection.Scope, comma
 		}
 		return dataservice.CustomRequest{}, err
 	}
-	return r.Read(ctx, s, id)
+	return committedCustom(r.Read(ctx, s, id))
 }
 
 type customCommand struct {
@@ -376,7 +376,7 @@ func (r *CustomRepository) Change(ctx context.Context, op dataservice.Operator, 
 		}
 		return dataservice.CustomRequest{}, err
 	}
-	return r.AdminRead(ctx, op, id)
+	return committedCustom(r.AdminRead(ctx, op, id))
 }
 func (r *CustomRepository) Deliver(ctx context.Context, a dataservice.DeliveryAuthority, command string, products []collection.OwnProduct) (dataservice.CustomRequest, error) {
 	if !a.Valid() || !collection.ValidID(command) || len(products) < 1 || len(products) > 200 {
@@ -469,10 +469,19 @@ func (r *CustomRepository) Deliver(ctx context.Context, a dataservice.DeliveryAu
 		}
 		return dataservice.CustomRequest{}, err
 	}
-	return r.AdminRead(ctx, a.Operator(), a.RequestID())
+	return committedCustom(r.AdminRead(ctx, a.Operator(), a.RequestID()))
 }
 
 // The private authority includes the frozen request/spec revisions in its
 // digest, despite those fields deliberately being absent from JSON.
 
 var _ dataservice.CustomRepository = (*CustomRepository)(nil)
+
+// A failed response read cannot turn an already committed command into a known
+// rejection. The original durable command remains the recovery identity.
+func committedCustom(request dataservice.CustomRequest, err error) (dataservice.CustomRequest, error) {
+	if err != nil {
+		return dataservice.CustomRequest{}, dataservice.ErrUnknown
+	}
+	return request, nil
+}

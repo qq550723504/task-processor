@@ -269,12 +269,18 @@ func (s *Service) Run(ctx context.Context, scope collection.Scope, id string) er
 			discoveryCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 			ids, discoverErr := s.provider.Discover(discoveryCtx, job.Query)
 			cancel()
-			if discoverErr != nil {
+			switch {
+			case errors.Is(discoverErr, ErrSourceChallenge):
+				stop = "provider_challenged"
+			case errors.Is(discoverErr, ErrSourceUnsupported):
+				stop = "provider_unsupported"
+			case discoverErr != nil:
 				return discoverErr
-			}
-			job, err = s.repo.Discover(ctx, job, ids)
-			if err != nil {
-				return err
+			default:
+				job, err = s.repo.Discover(ctx, job, ids)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}

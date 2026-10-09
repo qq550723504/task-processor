@@ -517,7 +517,7 @@ func (r *Repository) Discover(ctx context.Context, job dataacquisition.Job, ids 
 	if err != nil {
 		return dataacquisition.Job{}, err
 	}
-	return r.Read(ctx, job.Scope, job.ID)
+	return committedJob(r.Read(ctx, job.Scope, job.ID))
 }
 func (r *Repository) Items(ctx context.Context, job dataacquisition.Job) ([]dataacquisition.Item, error) {
 	if _, err := r.Read(ctx, job.Scope, job.ID); err != nil {
@@ -540,7 +540,7 @@ func (r *Repository) Items(ctx context.Context, job dataacquisition.Job) ([]data
 
 func (r *Repository) FailDiscovery(ctx context.Context, job dataacquisition.Job, reason string) (dataacquisition.Job, error) {
 	switch reason {
-	case "provider_rejected", "deadline", "canceled", "access_revoked":
+	case "provider_rejected", "provider_challenged", "provider_unsupported", "deadline", "canceled", "access_revoked":
 	default:
 		return dataacquisition.Job{}, dataacquisition.ErrInvalid
 	}
@@ -556,7 +556,7 @@ func (r *Repository) FailDiscovery(ctx context.Context, job dataacquisition.Job,
 	if err != nil {
 		return dataacquisition.Job{}, err
 	}
-	return r.Read(ctx, job.Scope, job.ID)
+	return committedJob(r.Read(ctx, job.Scope, job.ID))
 }
 func (r *Repository) Claim(ctx context.Context, job dataacquisition.Job, id string) (dataacquisition.Item, error) {
 	var item dataacquisition.Item
@@ -791,7 +791,7 @@ func (r *Repository) Finish(ctx context.Context, job dataacquisition.Job) (dataa
 	if err != nil {
 		return dataacquisition.Job{}, err
 	}
-	return r.Read(ctx, job.Scope, job.ID)
+	return committedJob(r.Read(ctx, job.Scope, job.ID))
 }
 func (r *Repository) Cancel(ctx context.Context, s collection.Scope, id, command string) (dataacquisition.Job, error) {
 	if !collection.ValidID(command) {
@@ -831,7 +831,7 @@ func (r *Repository) Cancel(ctx context.Context, s collection.Scope, id, command
 	if err != nil {
 		return dataacquisition.Job{}, err
 	}
-	return r.Read(ctx, s, id)
+	return committedJob(r.Read(ctx, s, id))
 }
 func (r *Repository) original(ctx context.Context, id orgresource.ConsumerChargeIdentity) (dataacquisition.Job, itemRow, error) {
 	if !orgresource.ValidConsumerChargeIdentity(id) || id.Consumer != orgresource.ConsumerAmazonData || !collection.ValidID(id.OperationID) {
@@ -900,3 +900,10 @@ func (r *Repository) ChargeProof(ctx context.Context, receipt orgresource.Consum
 }
 
 var _ dataacquisition.Repository = (*Repository)(nil)
+
+func committedJob(job dataacquisition.Job, err error) (dataacquisition.Job, error) {
+	if err != nil {
+		return dataacquisition.Job{}, dataacquisition.ErrUnknown
+	}
+	return job, nil
+}

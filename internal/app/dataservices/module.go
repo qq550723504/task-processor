@@ -4,6 +4,8 @@ import (
 	"context"
 	"gorm.io/gorm"
 	"task-processor/internal/dataservice"
+	datahttp "task-processor/internal/dataservice/httpapi"
+	"task-processor/internal/httproute"
 	keystore "task-processor/internal/integration/persistence/dataservice"
 	jobstore "task-processor/internal/integration/persistence/product/dataacquisition"
 	sourcestore "task-processor/internal/integration/persistence/product/sourcing"
@@ -50,7 +52,7 @@ func NewModule(ctx context.Context, d Dependencies) (*Module, error) {
 	if d.ProductDB == nil || d.Access == nil || d.Live == nil || d.Specialist == nil || d.Funding == nil || d.Provider == nil || d.Starter == nil || d.Charges == nil {
 		return nil, dataservice.ErrUnavailable
 	}
-	if err := validateProxyCIDRs(d.TrustedProxyCIDRs); err != nil {
+	if err := datahttp.ValidateProxyCIDRs(d.TrustedProxyCIDRs); err != nil {
 		return nil, err
 	}
 	kr, err := keystore.NewCredentialRepository(ctx, d.ProductDB)
@@ -100,15 +102,16 @@ func (m *Module) ChargeOwner() orgresource.ConsumerChargeOwner {
 	return dataacquisition.ChargeOwner{Repository: m.repo}
 }
 
-type options struct {
-	Sites             []dataacquisition.Site `json:"sites"`
-	CustomSites       []dataacquisition.Site `json:"customSites"`
-	Fields            []string               `json:"fields"`
-	PriceFen          int64                  `json:"priceFen"`
-	MaximumRows       int                    `json:"maximumRows"`
-	Formats           []string               `json:"formats"`
-	AcquisitionReady  bool                   `json:"acquisitionReady"`
-	UnavailableReason string                 `json:"unavailableReason,omitempty"`
+const (
+	ConsoleBase    = datahttp.ConsoleBase
+	SpecialistBase = datahttp.SpecialistBase
+	APIBase        = datahttp.APIBase
+)
+
+type options = datahttp.Options
+
+func (m *Module) BuildRoutes() []httproute.Descriptor {
+	return datahttp.BuildRoutes(datahttp.Dependencies{Keys: m.keys, Custom: m.custom, Acquisition: m.acquisition, Access: m.access, Live: m.live, Funding: m.funding, Provider: m.provider, Results: m.results, Repository: m.repo, Options: m.options, TrustedProxyCIDRs: append([]string(nil), m.trustedProxyCIDRs...)})
 }
 
 func (m *Module) options(ctx context.Context) options {
