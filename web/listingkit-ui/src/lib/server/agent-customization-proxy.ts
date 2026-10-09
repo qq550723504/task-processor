@@ -23,6 +23,7 @@ function customizationEndpoint(url: URL, method: string) {
         if(p.length===0&&method==="GET") output=privatePage;
         else if(p.length===1&&customId.safeParse(p[0]).success&&method==="GET") output=privateDelivery;
         else if(p.length===2&&customId.safeParse(p[0]).success&&p[1]==="reports"&&method==="GET") output=qualityPage;
+        else if(p.length===3&&customId.safeParse(p[0]).success&&p[1]==="reports"&&customId.safeParse(p[2]).success&&method==="GET") output=qualityRun;
         else if(p.length===2&&customId.safeParse(p[0]).success&&p[1]==="reports"&&method==="POST") {input=qualityInput;output=qualityRun;}
         else return null;
     }
@@ -136,7 +137,7 @@ export async function proxyAgentCustomization(request: Request, token: string, u
             }
             else if (request.headers.has("If-Match"))
                 return customizationFailure(400, "CUSTOMIZATION_INVALID");
-            const payload = await readBoundedStrictJSON(new Response(request.body, { headers: { "Content-Type": request.headers.get("Content-Type") ?? "" } }), route.kind === "agents" ? 16 * 1024 : route.cas ? 64 * 1024 : 9 * 1024 * 1024, controller.signal);
+            const payload = await readBoundedStrictJSON(new Response(request.body, { headers: { "Content-Type": request.headers.get("Content-Type") ?? "" } }), route.kind === "agents" ? 1024 : route.cas ? 64 * 1024 : 9 * 1024 * 1024, controller.signal);
             const value = route.input!.safeParse(payload);
             if (!value.success)
                 return customizationFailure(400, "CUSTOMIZATION_INVALID");
@@ -179,8 +180,13 @@ export async function proxyAgentCustomization(request: Request, token: string, u
             throw new Error();
         if(route.output===privateDelivery) {const v=privateDelivery.parse(parsed.data);if(v.id!==route.path.slice(1)||v.organizationId!==org)throw new Error();}
         if(route.output===privatePage&&privatePage.parse(parsed.data).items.some(v=>v.organizationId!==org))throw new Error();
-        if(route.output===qualityRun) {const v=qualityRun.parse(parsed.data);if(v.organizationId!==org||v.actorId!==userId||v.deliveryId!==route.path.split("/")[1]||v.key!==request.headers.get("Idempotency-Key"))throw new Error();}
-        if(route.output===qualityPage&&qualityPage.parse(parsed.data).items.some(v=>v.organizationId!==org||v.deliveryId!==route.path.split("/")[1]))throw new Error();
+        if(route.output===qualityRun) {
+            const v=qualityRun.parse(parsed.data);
+            if(v.organizationId!==org||v.actorId!==userId||v.deliveryId!==route.path.split("/")[1])throw new Error();
+            if(write){const input=qualityInput.parse(JSON.parse(body!));if(v.key!==request.headers.get("Idempotency-Key")||v.version!=="2.0.0"||v.draft.recordId!==input.recordId||v.draft.revision!==input.expectedRevision)throw new Error();}
+            else if(v.id!==route.path.split("/")[3])throw new Error();
+        }
+        if(route.output===qualityPage&&qualityPage.parse(parsed.data).items.some(v=>v.organizationId!==org||v.actorId!==userId||v.deliveryId!==route.path.split("/")[1]))throw new Error();
         return Response.json(parsed.data, { headers: safe });
     }
     catch {

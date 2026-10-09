@@ -689,7 +689,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, m)
 	}
 	if supplied.agentCustomizations > 0 {
-		m, err := buildAgentCustomizationModule(ctx, supplied.agentCustomizationDB)
+		m, err := buildAgentCustomizationModule(ctx, supplied.agentCustomizationDB, privateDraftInspector(supplyRuntime))
 		if err != nil {
 			return nil, fmt.Errorf("build current agent customization: %w", err)
 		}

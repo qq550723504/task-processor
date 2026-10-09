@@ -235,9 +235,11 @@ PostgreSQL transaction repository is injected from
 `internal/integration/persistence/agentcustomization`. The subsequently approved
 [private delivery contract](./private-agent-delivery-v1.md) additionally owns
 fixed code-version deliveries bound to the original enterprise and immutable
-execution reports. `internal/product/quality` owns the pure deterministic check;
-it writes no canonical Product facts. This is a bounded compute consumer, not a
-second generic Agent runtime. Enterprise activation/templates, AI runs,
+execution reports. The current platform-draft check consumes the existing
+SupplyChain/Listing immutable TargetRecord and saved validation issues through
+an authorized read port; Listing retains draft and rule ownership. Reports are
+actor-private observations and recheck source access on every read/replay.
+The manual checker is retired. Enterprise activation/templates, AI runs,
 third-party orders and payment facts retain their existing owners. See also
 [the manual customization contract](./agent-customization-v1.md).
 

@@ -16,6 +16,7 @@ import (
 	"gorm.io/gorm"
 	"task-processor/internal/agent"
 	"task-processor/internal/agentconfig"
+	d "task-processor/internal/agentcustomization"
 	"task-processor/internal/app/productsourcing"
 	supplyapp "task-processor/internal/app/supplychain"
 	"task-processor/internal/authidentity"
@@ -29,6 +30,7 @@ import (
 	collectionstore "task-processor/internal/integration/persistence/product/collection"
 	"task-processor/internal/listing/preparation"
 	record "task-processor/internal/listing/record/target"
+	"task-processor/internal/listing/submission"
 	"task-processor/internal/marketplace/shein/goods"
 	sheinmodel "task-processor/internal/marketplace/shein/model"
 	"task-processor/internal/product/asset"
@@ -47,7 +49,7 @@ func TestSupplyProductAgentDurableExecutionUsesRealOwners(t *testing.T) {
 	port, err := container.MappedPort(ctx, "5432/tcp")
 	require.NoError(t, err)
 	t.Setenv("ISSUE398_TEST_DSN", fmt.Sprintf("host=127.0.0.1 port=%s user=issue398_owner password=isolated-supply-agent sslmode=disable", port.Port()))
-	for _, mode := range []string{"supply canonical", "supply member replaced", "supply first reconstruction"} {
+	for _, mode := range []string{"supply canonical", "supply member replaced", "supply first reconstruction", "supply private draft quality"} {
 		t.Run(mode, func(t *testing.T) { testProductAgentOwners(t, mode) })
 	}
 }
@@ -167,6 +169,39 @@ func testSupplyAgentOwners(t *testing.T, mode string, f *acquisitionHTTPFixture,
 	}
 	app := &supplyapp.Application{Preparations: preparations, Authorization: prepAuth, PublicationStores: rules, StageProjection: supplyapp.ReviewProjection{Facts: prepRepo, Reviews: core.store}, Sources: selector, Operations: operations, Records: records, Rules: rules, Products: effective, Execution: supplyapp.OperationApplication{}}
 	app.Execution.Repository = operationsRepo
+	var draftBefore d.DraftSnapshot
+	if mode == "supply private draft quality" {
+		app.Targets = targets
+		app.PublicationReceipts, err = officialstore.NewOfficialRepository(ctx, f.owner)
+		require.NoError(t, err)
+		inspector := supplyDraftInspector{app}
+		draftBefore, err = inspector.Inspect(actor, d.Scope{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID}, d.DraftSelection{RecordID: target.Record.ID, ExpectedRevision: target.Record.Revision}, true)
+		require.NoError(t, err)
+		require.Equal(t, collection.Digest(target.Record), draftBefore.RecordHash)
+		require.Len(t, draftBefore.Issues, len(target.Record.Result.Issues))
+		require.False(t, draftBefore.ReadyForUpload)
+		// The existing publication read port excludes a confirmed current record.
+		receipts := app.PublicationReceipts
+		subject, e := submission.ProductSubjectID(target.Record.Source.Source.ProductKey, "shein-us")
+		require.NoError(t, e)
+		attempt, e := uuid.NewV7()
+		require.NoError(t, e)
+		published := submission.OfficialReceipt{ID: attempt.String(), Owner: scope, Kind: "publish", RecordID: target.Record.ID, ProductKey: target.Record.Source.Source.ProductKey, Target: submission.ExecutionTarget{Platform: "shein", StoreID: storeID, SubjectID: subject}, IntentKey: uuid.NewString(), PayloadFingerprint: collection.Digest("payload"), ResponseHash: collection.Digest("response"), Binding: rules.merchant, Product: sheinmodel.PublishResult{SPUName: "fixture-spu", SKCs: []sheinmodel.PublishedSKC{{SKCName: "fixture-skc", SKUs: []sheinmodel.PublishedSKU{{SKUCode: "fixture-sku", SupplierSKU: "supplier-sku"}}}}}, ObservedAt: time.Now().UTC()}
+		require.NoError(t, submission.ValidateOfficialReceipt(published))
+		app.PublicationReceipts = privateUploadedReceipt{OfficialReceiptRepository: receipts, value: published}
+		_, err = inspector.Inspect(actor, d.Scope{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID}, d.DraftSelection{RecordID: target.Record.ID, ExpectedRevision: 1}, true)
+		require.ErrorIs(t, err, d.ErrRevision)
+		history, e := inspector.Inspect(actor, d.Scope{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID}, d.DraftSelection{RecordID: target.Record.ID, ExpectedRevision: 1}, false)
+		require.NoError(t, e)
+		require.Equal(t, draftBefore, history)
+		app.PublicationReceipts = receipts
+		_, err = inspector.Inspect(ctx, d.Scope{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID}, d.DraftSelection{RecordID: target.Record.ID, ExpectedRevision: 1}, true)
+		require.ErrorIs(t, err, d.ErrForbidden, "no fabricated identity")
+		_, err = inspector.Inspect(actor, d.Scope{OrganizationID: scope.OrganizationID, ActorID: "another-member"}, d.DraftSelection{RecordID: target.Record.ID, ExpectedRevision: 1}, true)
+		require.ErrorIs(t, err, d.ErrForbidden)
+		_, err = inspector.Inspect(actor, d.Scope{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID}, d.DraftSelection{RecordID: target.Record.ID, ExpectedRevision: 2}, true)
+		require.ErrorIs(t, err, d.ErrRevision)
+	}
 	bridge, err := connectSupplyProductAgent(ctx, f.owner, app, a, authority)
 	require.NoError(t, err)
 	template, err := a.configuration.Execute(actor, agentconfig.Command{Scope: agent.Scope{OrganizationID: "B", ActorID: "admin"}, Key: uuid.NewString(), AgentID: a.definition.ID, Operation: "create-template", Input: agentconfig.TemplateInput{Name: "SHEIN 标题", TargetPlatform: "shein"}})
@@ -177,6 +212,25 @@ func testSupplyAgentOwners(t *testing.T, mode string, f *acquisitionHTTPFixture,
 	require.NoError(t, err)
 	items, err := operations.ListItems(actor, operation.Operation.ID, collection.Query{Limit: 100})
 	require.NoError(t, err)
+	if mode == "supply private draft quality" {
+		inspector := supplyDraftInspector{app}
+		subject := d.Scope{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID}
+		selected := d.DraftSelection{RecordID: target.Record.ID, ExpectedRevision: 1}
+		_, err = inspector.Inspect(actor, subject, selected, true)
+		require.ErrorIs(t, err, d.ErrRevision, "pending optimization is not an eligible draft")
+		history, e := inspector.Inspect(actor, subject, selected, false)
+		require.NoError(t, e)
+		require.Equal(t, draftBefore, history)
+		_, err = targets.Create(actor, uuid.NewString(), record.TargetInput{SourceID: page.Items[0].ID, StoreID: storeID, EffectiveVersion: 1, ExpectedRevision: 1})
+		require.NoError(t, err)
+		_, err = inspector.Inspect(actor, subject, selected, true)
+		require.ErrorIs(t, err, d.ErrRevision, "new run cannot silently select a newer head")
+		history, e = inspector.Inspect(actor, subject, selected, false)
+		require.NoError(t, e)
+		require.Equal(t, draftBefore, history)
+		require.Zero(t, calls.Load(), "draft inspection never invokes the model")
+		return
+	}
 	if mode == "supply first reconstruction" {
 		require.Equal(t, preparation.ItemPending, items.Items[0].Status)
 		// Simulate a crash after the immutable Create commit but before pinning.
@@ -282,4 +336,13 @@ func testSupplyAgentOwners(t *testing.T, mode string, f *acquisitionHTTPFixture,
 	require.ErrorIs(t, err, review.ErrNotFound, "even administrators cannot widen the lineage owner")
 	_, authenticated := authidentity.AuthenticatedIdentityFromContext(ctx)
 	require.False(t, authenticated, "worker execution must never fabricate a JWT identity")
+}
+
+type privateUploadedReceipt struct {
+	submission.OfficialReceiptRepository
+	value submission.OfficialReceipt
+}
+
+func (r privateUploadedReceipt) FindOfficialTarget(context.Context, string, submission.ExecutionTarget) (submission.OfficialReceipt, error) {
+	return r.value, nil
 }

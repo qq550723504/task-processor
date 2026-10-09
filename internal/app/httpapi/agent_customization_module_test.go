@@ -91,11 +91,12 @@ func TestAgentCustomizationModulePostgresNormalMiddlewareFlow(t *testing.T) {
 	require.NoError(t, store.GrantRuntime(ctx, db, role))
 	_, err = db.Exec("SET ROLE " + role)
 	require.NoError(t, err)
-	m, err := buildAgentCustomizationModule(ctx, orm)
+	draftProbe := &customizationDraftProbe{record: uuid.NewString()}
+	m, err := buildAgentCustomizationModule(ctx, orm, draftProbe)
 	require.NoError(t, err)
 	registry := kernelmodule.NewRegistry()
 	require.NoError(t, m.Register(registry))
-	require.Len(t, registry.Routes(), 12)
+	require.Len(t, registry.Routes(), 13)
 	authorizer, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
 	identity := authidentity.AuthenticatedIdentity{UserID: "verified-user", Roles: []string{"platform_admin"}, TokenExpiresAt: time.Now().Add(time.Minute)}
@@ -156,20 +157,45 @@ func TestAgentCustomizationModulePostgresNormalMiddlewareFlow(t *testing.T) {
 	var deliveries d.DeliveryPage
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &deliveries))
 	require.Len(t, deliveries.Items, 1)
+	require.Equal(t, "2.0.0", deliveries.Items[0].Version, "new deliveries consume platform drafts rather than manual input")
 	reportKey := uuid.NewString()
 	reportPath := customhttp.PrivateBase + "/" + deliveries.Items[0].ID + "/reports"
 	w = request("POST", reportPath, `{"name":"收纳盒","material":"","dimensions":"20x10","description":"","specifications":[]}`, reportKey, "")
+	require.Equal(t, 400, w.Code, "manual execution is retired")
+	w = request("POST", reportPath, `{"recordId":"`+draftProbe.record+`","expectedRevision":1}`, reportKey, "")
 	require.Equal(t, 200, w.Code, w.Body.String())
 	var report d.QualityRun
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &report))
-	require.NotEmpty(t, report.Report.Findings)
+	require.NotEmpty(t, report.Draft.Issues)
 	w = request("GET", reportPath, "", "", "")
 	require.Equal(t, 200, w.Code, w.Body.String())
 	var reports d.QualityRunPage
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &reports))
 	require.Len(t, reports.Items, 1)
-	require.Equal(t, report, reports.Items[0])
+	require.Equal(t, report.ID, reports.Items[0].ID)
+	w = request("GET", reportPath+"/"+report.ID, "", "", "")
+	require.Equal(t, 200, w.Code, w.Body.String())
+	var readBack d.QualityRun
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &readBack))
+	require.Equal(t, report, readBack)
 	var count int
 	require.NoError(t, db.QueryRow("SELECT count(*) FROM agent_customization.requests").Scan(&count))
 	require.Equal(t, 1, count, "replay did not create another request")
+}
+
+type customizationDraftProbe struct{ record string }
+
+func (p *customizationDraftProbe) Inspect(ctx context.Context, scope d.Scope, in d.DraftSelection, _ bool) (d.DraftSnapshot, error) {
+	if _, ok := ctx.Value(productReviewCapabilityContextKey{}).(productReviewRequestCapability); !ok {
+		return d.DraftSnapshot{}, d.ErrForbidden
+	}
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+	if !ok || identity.UserID != scope.ActorID || identity.EffectiveOrganizationID != scope.OrganizationID {
+		return d.DraftSnapshot{}, d.ErrForbidden
+	}
+	if in.RecordID != p.record || in.ExpectedRevision != 1 {
+		return d.DraftSnapshot{}, d.ErrRevision
+	}
+	h := strings.Repeat("a", 64)
+	return d.DraftSnapshot{DraftBinding: d.DraftBinding{RecordID: p.record, Revision: 1, SourceID: p.record, PreparationID: p.record, StoreID: p.record, Platform: "shein", Site: "shein-us", ProductKey: "own:fixture", ProductVersion: "1", Title: "收纳盒", RecordHash: h, ProductHash: h, RulesHash: h, InventoryHash: h, SavedAt: time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)}, Issues: []d.DraftIssue{{Code: "missing", Field: "category_id", Message: "选择类目"}}}, nil
 }

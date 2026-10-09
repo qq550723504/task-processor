@@ -57,7 +57,7 @@ func (m agentCustomizationModule) Register(reg *kernelmodule.Registry) error {
 	reg.AddRoutes(customhttp.Routes(m.handler)...)
 	return nil
 }
-func buildAgentCustomizationModule(ctx context.Context, db *gorm.DB) (kernelmodule.Module, error) {
+func buildAgentCustomizationModule(ctx context.Context, db *gorm.DB, drafts ...d.DraftInspector) (kernelmodule.Module, error) {
 	if db == nil {
 		return nil, d.ErrUnavailable
 	}
@@ -76,9 +76,18 @@ func buildAgentCustomizationModule(ctx context.Context, db *gorm.DB) (kernelmodu
 	if err != nil {
 		return nil, err
 	}
+	if len(drafts) > 1 {
+		return nil, d.ErrUnavailable
+	}
+	if len(drafts) == 1 {
+		service.WithDrafts(drafts[0])
+	}
 	handler, err := customhttp.NewHandler(service)
 	if err != nil {
 		return nil, err
+	}
+	if len(drafts) == 1 && drafts[0] != nil {
+		handler.BindDraftContext = (productReviewCapabilityBinder{}).Bind
 	}
 	return agentCustomizationModule{handler: handler}, nil
 }

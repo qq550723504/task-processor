@@ -27,7 +27,10 @@ type ServicePort interface {
 	Read(context.Context, d.Scope, string, int64) (d.Detail, error)
 	Download(context.Context, d.Scope, string, string) (d.Attachment, []byte, error)
 }
-type Handler struct{ Service ServicePort }
+type Handler struct {
+	Service          ServicePort
+	BindDraftContext func(context.Context, string) (context.Context, error)
+}
 
 func NewHandler(s ServicePort) (*Handler, error) {
 	if s == nil {
@@ -66,7 +69,7 @@ func Routes(h *Handler) []httproute.Descriptor {
 			})})
 		}
 	}
-	for _, r := range []struct{ method, path, operation string }{{"GET", "", "deliveries"}, {"GET", "/:id", "delivery"}, {"GET", "/:id/reports", "reports"}, {"POST", "/:id/reports", "run"}} {
+	for _, r := range []struct{ method, path, operation string }{{"GET", "", "deliveries"}, {"GET", "/:id", "delivery"}, {"GET", "/:id/reports", "reports"}, {"GET", "/:id/reports/:report", "report"}, {"POST", "/:id/reports", "run"}} {
 		permission := authz.PermissionWorkbenchAgentRead
 		if r.operation == "run" {
 			permission = authz.PermissionWorkbenchAgentUse
@@ -132,7 +135,7 @@ func (h *Handler) serve(c *gin.Context, platform bool, operation string) {
 		failure(c, d.ErrForbidden)
 		return
 	}
-	if operation == "deliveries" || operation == "delivery" || operation == "reports" || operation == "run" {
+	if operation == "deliveries" || operation == "delivery" || operation == "reports" || operation == "report" || operation == "run" {
 		h.servePrivate(c, scope, operation)
 		return
 	}

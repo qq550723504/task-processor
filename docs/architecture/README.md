@@ -176,9 +176,10 @@ source of truth for long-lived rules.
     assembly and user acceptance remain separate from the owner implementation.
 
 - [`private-agent-delivery-v1.md`](./private-agent-delivery-v1.md)
-  - APPROVED / IMPLEMENTATION_READY #611: fixed-version product quality checks
+  - APPROVED / IMPLEMENTATION_READY #611: fixed-version platform draft checks
     privately delivered to the original request enterprise, atomic publication,
-    immutable reports and current authorization. Deterministic compute only;
+    actor-private immutable reports and current source authorization. Existing
+    Listing saved validation is reused;
     no model/provider, product mutation or second generic Agent runtime.
 
 - [`product-agent-text-provider-neutral-v1.md`](./product-agent-text-provider-neutral-v1.md)

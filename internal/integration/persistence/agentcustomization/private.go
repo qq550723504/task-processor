@@ -7,7 +7,6 @@ import (
 	"errors"
 	"github.com/google/uuid"
 	d "task-processor/internal/agentcustomization"
-	"task-processor/internal/product/quality"
 	"time"
 )
 
@@ -31,7 +30,7 @@ func readDelivery(ctx context.Context, db rowReader, scope d.Scope, id string) (
 	return v, nil
 }
 func validDelivery(v d.Delivery, scope d.Scope) bool {
-	return !scope.Platform && v.OrganizationID == scope.OrganizationID && v.Definition == d.QualityDefinition && v.Version == d.QualityVersion && d.UUID(v.ID) && d.UUID(v.RequestID)
+	return !scope.Platform && v.OrganizationID == scope.OrganizationID && v.Definition == d.QualityDefinition && (v.Version == d.QualityVersion || v.Version == "1.0.0") && d.UUID(v.ID) && d.UUID(v.RequestID)
 }
 func (s *Store) Delivery(ctx context.Context, scope d.Scope, id string) (d.Delivery, error) {
 	return readDelivery(ctx, s.db, scope, id)
@@ -63,7 +62,7 @@ func (s *Store) Deliveries(ctx context.Context, scope d.Scope, cursor string) (d
 	}
 	return out, nil
 }
-func (s *Store) RunQuality(ctx context.Context, c d.RunCommand) (d.QualityRun, error) {
+func (s *Store) RunQuality(ctx context.Context, c d.RunCommand, inspect d.DraftInspection) (d.QualityRun, error) {
 	var out d.QualityRun
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
@@ -79,6 +78,9 @@ func (s *Store) RunQuality(ctx context.Context, c d.RunCommand) (d.QualityRun, e
 	if e != nil {
 		return out, e
 	}
+	if delivery.Version != d.QualityVersion {
+		return out, d.ErrConflict
+	}
 	var raw []byte
 	var fingerprint string
 	e = tx.QueryRowContext(ctx, "SELECT fingerprint,payload FROM agent_customization.quality_runs WHERE organization_id=$1 AND actor_id=$2 AND key=$3", c.Scope.OrganizationID, c.Scope.ActorID, c.Key).Scan(&fingerprint, &raw)
@@ -86,19 +88,26 @@ func (s *Store) RunQuality(ctx context.Context, c d.RunCommand) (d.QualityRun, e
 		if fingerprint != c.Fingerprint {
 			return out, d.ErrConflict
 		}
-		if json.Unmarshal(raw, &out) != nil || out.OrganizationID != c.Scope.OrganizationID || out.ActorID != c.Scope.ActorID || out.Key != c.Key || out.DeliveryID != delivery.ID {
+		if json.Unmarshal(raw, &out) != nil || !validRun(out, c.Scope, delivery.ID) || out.Key != c.Key || out.Draft == nil {
 			return out, d.ErrUnavailable
+		}
+		current, err := inspect(ctx, false)
+		if err != nil {
+			return d.QualityRun{}, err
+		}
+		if current.DraftBinding != out.Draft.DraftBinding {
+			return d.QualityRun{}, d.ErrUnavailable
 		}
 		return out, nil
 	}
 	if !errors.Is(e, sql.ErrNoRows) {
 		return out, e
 	}
-	report, e := quality.Check(c.Input)
+	draft, e := inspect(ctx, true)
 	if e != nil {
-		return out, d.ErrInvalid
+		return out, e
 	}
-	out = d.QualityRun{ID: uuid.NewSHA1(uuid.NameSpaceOID, append([]byte("private-quality-run:"), identity...)).String(), DeliveryID: delivery.ID, OrganizationID: c.Scope.OrganizationID, ActorID: c.Scope.ActorID, Key: c.Key, Definition: delivery.Definition, Version: delivery.Version, Input: c.Input, Report: report, CreatedAt: time.Now().UTC()}
+	out = d.QualityRun{ID: uuid.NewSHA1(uuid.NameSpaceOID, append([]byte("private-quality-run:"), identity...)).String(), DeliveryID: delivery.ID, OrganizationID: c.Scope.OrganizationID, ActorID: c.Scope.ActorID, Key: c.Key, Definition: delivery.Definition, Version: delivery.Version, Draft: &draft, CreatedAt: time.Now().UTC()}
 	raw, e = json.Marshal(out)
 	if e != nil {
 		return out, e
@@ -111,12 +120,12 @@ func (s *Store) RunQuality(ctx context.Context, c d.RunCommand) (d.QualityRun, e
 	}
 	return out, nil
 }
-func (s *Store) QualityRuns(ctx context.Context, scope d.Scope, id, cursor string) (d.QualityRunPage, error) {
-	out := d.QualityRunPage{Items: []d.QualityRun{}}
+func (s *Store) QualityRuns(ctx context.Context, scope d.Scope, id, cursor string) (d.SavedQualityPage, error) {
+	out := d.SavedQualityPage{Items: []d.QualityRun{}}
 	if _, e := s.Delivery(ctx, scope, id); e != nil {
 		return out, e
 	}
-	rows, e := s.db.QueryContext(ctx, "SELECT payload FROM agent_customization.quality_runs WHERE organization_id=$1 AND delivery_id=$2 AND ($3='' OR id<NULLIF($3,'')::uuid) ORDER BY id DESC LIMIT 21", scope.OrganizationID, id, cursor)
+	rows, e := s.db.QueryContext(ctx, "SELECT payload FROM agent_customization.quality_runs WHERE organization_id=$1 AND delivery_id=$2 AND ($3='' OR id<NULLIF($3,'')::uuid) AND actor_id=$4 ORDER BY id DESC LIMIT 21", scope.OrganizationID, id, cursor, scope.ActorID)
 	if e != nil {
 		return out, e
 	}
@@ -127,7 +136,7 @@ func (s *Store) QualityRuns(ctx context.Context, scope d.Scope, id, cursor strin
 		if e = rows.Scan(&raw); e != nil {
 			return out, e
 		}
-		if json.Unmarshal(raw, &v) != nil || v.OrganizationID != scope.OrganizationID || v.DeliveryID != id || v.Definition != d.QualityDefinition || v.Version != d.QualityVersion {
+		if json.Unmarshal(raw, &v) != nil || !validRun(v, scope, id) {
 			return out, d.ErrUnavailable
 		}
 		out.Items = append(out.Items, v)
@@ -138,6 +147,34 @@ func (s *Store) QualityRuns(ctx context.Context, scope d.Scope, id, cursor strin
 	if len(out.Items) > 20 {
 		out.Items = out.Items[:20]
 		out.NextCursor = out.Items[19].ID
+	}
+	return out, nil
+}
+
+func validRun(v d.QualityRun, scope d.Scope, delivery string) bool {
+	if scope.Platform || v.OrganizationID != scope.OrganizationID || v.ActorID != scope.ActorID || v.DeliveryID != delivery || v.Definition != d.QualityDefinition || !d.UUID(v.ID) || !d.UUID(v.Key) {
+		return false
+	}
+	if v.Version == "1.0.0" {
+		return v.Input != nil && v.Report != nil && v.Draft == nil
+	}
+	return v.Version == d.QualityVersion && v.Input == nil && v.Report == nil && v.Draft != nil && d.ValidDraft(*v.Draft)
+}
+func (s *Store) QualityRun(ctx context.Context, scope d.Scope, delivery, id string) (d.QualityRun, error) {
+	var out d.QualityRun
+	if _, e := s.Delivery(ctx, scope, delivery); e != nil {
+		return out, e
+	}
+	var raw []byte
+	e := s.db.QueryRowContext(ctx, "SELECT payload FROM agent_customization.quality_runs WHERE id=$1 AND delivery_id=$2 AND organization_id=$3 AND actor_id=$4", id, delivery, scope.OrganizationID, scope.ActorID).Scan(&raw)
+	if errors.Is(e, sql.ErrNoRows) {
+		return out, d.ErrNotFound
+	}
+	if e != nil {
+		return out, e
+	}
+	if json.Unmarshal(raw, &out) != nil || out.ID != id || !validRun(out, scope, delivery) {
+		return d.QualityRun{}, d.ErrUnavailable
 	}
 	return out, nil
 }

@@ -17,6 +17,7 @@ type privatePort interface {
 	Delivery(context.Context, d.Scope, string) (d.Delivery, error)
 	RunQuality(context.Context, d.RunCommand) (d.QualityRun, error)
 	QualityRuns(context.Context, d.Scope, string, string) (d.QualityRunPage, error)
+	QualityRun(context.Context, d.Scope, string, string) (d.QualityRun, error)
 }
 
 func (h *Handler) servePrivate(c *gin.Context, scope d.Scope, operation string) {
@@ -24,6 +25,14 @@ func (h *Handler) servePrivate(c *gin.Context, scope d.Scope, operation string) 
 	if !ok {
 		failure(c, d.ErrUnavailable)
 		return
+	}
+	if h.BindDraftContext != nil && (operation == "reports" || operation == "report" || operation == "run") {
+		ctx, err := h.BindDraftContext(c.Request.Context(), c.GetHeader("Authorization"))
+		if err != nil {
+			failure(c, d.ErrForbidden)
+			return
+		}
+		c.Request = c.Request.WithContext(ctx)
 	}
 	query, e := url.ParseQuery(c.Request.URL.RawQuery)
 	if e != nil || len(c.Request.URL.RawQuery) > 256 || c.Request.URL.ForceQuery {
@@ -46,6 +55,8 @@ func (h *Handler) servePrivate(c *gin.Context, scope d.Scope, operation string) 
 		out, e = service.Delivery(c.Request.Context(), scope, c.Param("id"))
 	case "reports":
 		out, e = service.QualityRuns(c.Request.Context(), scope, c.Param("id"), cursor)
+	case "report":
+		out, e = service.QualityRun(c.Request.Context(), scope, c.Param("id"), c.Param("report"))
 	case "run":
 		if len(query) > 0 || c.GetHeader("Content-Encoding") != "" || len(c.Request.Header.Values("Content-Type")) != 1 || len(c.Request.Header.Values("If-Match")) > 0 || len(c.Request.Header.Values("If-None-Match")) > 0 {
 			failure(c, d.ErrInvalid)
@@ -62,8 +73,8 @@ func (h *Handler) servePrivate(c *gin.Context, scope d.Scope, operation string) 
 			return
 		}
 		command := d.RunCommand{Scope: scope, Key: keys[0], DeliveryID: c.Param("id")}
-		raw, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, 16<<10))
-		if err != nil || !strings.HasPrefix(strings.TrimSpace(string(raw)), "{") || httproute.DecodeJSON(raw, &command.Input, 16<<10, true) != nil {
+		raw, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, 1<<10))
+		if err != nil || !strings.HasPrefix(strings.TrimSpace(string(raw)), "{") || httproute.DecodeJSON(raw, &command.Input, 1<<10, true) != nil {
 			failure(c, d.ErrInvalid)
 			return
 		}

@@ -121,7 +121,10 @@ type Repository interface {
 	Read(context.Context, Scope, string, int64) (Detail, error)
 	Download(context.Context, Scope, string, string) (Attachment, []byte, error)
 }
-type Service struct{ repo Repository }
+type Service struct {
+	repo   Repository
+	drafts DraftInspector
+}
 
 func NewService(repo Repository) (*Service, error) {
 	if repo == nil {
