@@ -129,7 +129,7 @@ func (r *CustomRepository) List(ctx context.Context, s collection.Scope, limit i
 	}
 	out := []dataservice.CustomRequest{}
 	for _, row := range rows {
-		request, err := customDetails(r.db.WithContext(ctx), row)
+		request, err := row.request()
 		if err != nil {
 			return nil, err
 		}
@@ -196,7 +196,7 @@ func (r *CustomRepository) AdminList(ctx context.Context, op dataservice.Operato
 		rows = rows[:limit]
 	}
 	for _, row := range rows {
-		request, err := customDetails(r.db.WithContext(ctx), row)
+		request, err := row.request()
 		if err != nil {
 			return dataservice.CustomPage{}, err
 		}
@@ -256,6 +256,28 @@ func (r *CustomRepository) Submit(ctx context.Context, s collection.Scope, comma
 type customCommand struct {
 	RequestID, InputHash, Action string
 	Revision                     int64
+}
+
+func (r *CustomRepository) Command(ctx context.Context, op dataservice.Operator, command string) (dataservice.CustomRequest, error) {
+	if !collection.ValidID(command) {
+		return dataservice.CustomRequest{}, dataservice.ErrInvalid
+	}
+	current, err := r.special.Specialist(ctx)
+	if err != nil {
+		return dataservice.CustomRequest{}, err
+	}
+	if current != op {
+		return dataservice.CustomRequest{}, dataservice.ErrForbidden
+	}
+	var id string
+	found := r.db.WithContext(ctx).Raw("SELECT request_id FROM data_service_custom_commands WHERE operator_id=? AND command_key=?", op.ID, command).Scan(&id)
+	if found.Error != nil {
+		return dataservice.CustomRequest{}, found.Error
+	}
+	if found.RowsAffected != 1 {
+		return dataservice.CustomRequest{}, dataservice.ErrNotFound
+	}
+	return r.AdminRead(ctx, op, id)
 }
 
 func readCustomCommand(tx *gorm.DB, op dataservice.Operator, id, command, hash, action string) (bool, error) {

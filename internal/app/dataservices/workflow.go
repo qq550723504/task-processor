@@ -43,6 +43,10 @@ func verifyMemo(described *workflowservice.DescribeWorkflowExecutionResponse, in
 	if described == nil || described.WorkflowExecutionInfo == nil || described.WorkflowExecutionInfo.Memo == nil {
 		return dataacquisition.ErrConflict
 	}
+	info := described.WorkflowExecutionInfo
+	if info.Execution == nil || info.Execution.WorkflowId != "data-v1-"+collection.StableID(input.Scope.OrganizationID, input.Scope.ActorID, input.JobID) || info.Type == nil || info.Type.Name != DataWorkflowName {
+		return dataacquisition.ErrConflict
+	}
 	var original Execution
 	if converter.GetDefaultDataConverter().FromPayload(described.WorkflowExecutionInfo.Memo.Fields["dataExecution"], &original) != nil || !original.same(input) {
 		return dataacquisition.ErrConflict

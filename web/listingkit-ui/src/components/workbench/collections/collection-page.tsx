@@ -23,22 +23,22 @@ import { ConsolePage, ConsoleState } from "../console/console-page";
 const kindLabels = { acquisition: "在线采集", own: "自有商品", manual: "手动分组", amazon_data: "Amazon数据", custom_dataset: "定制数据集" };
 const failureText: Record<string, string> = { OUTCOME_UNKNOWN: "结果待核实", INTENT_STORAGE_UNAVAILABLE: "无法保存原请求，请恢复浏览器存储后重试。", REVISION_CONFLICT: "资料已发生变化，请刷新后重试。", PERMISSION_DENIED: "当前权限不足。", NOT_FOUND: "未找到当前身份下的记录。", ORGANIZATION_CONTEXT_CHANGED: "企业上下文已变化。", IDENTITY_CONTEXT_CHANGED: "登录身份已变化。", INVALID_REQUEST: "请检查填写内容。" };
 
-export function CollectionPage({supplyAvailable=false}:{supplyAvailable?:boolean}) {
+export function CollectionPage({supplyAvailable=false,initialBatchId}:{supplyAvailable?:boolean;initialBatchId?:string}) {
   const context = useWorkbenchContext();
   const userId = context.user?.id;
   const organizationId = context.effectiveOrganization?.id;
   const scope = useMemo(() => userId && organizationId ? { userId, organizationId } : null, [userId, organizationId]);
   if (context.isLoading || context.isSwitching) return <ConsoleState kind="loading" title="正在确认当前企业" />;
   if (!scope || context.selectionRequired || context.error || context.blockingError) return <ConsoleState kind="error" title="请先确认登录身份与当前企业" />;
-  return <ScopedCollectionPage key={`${scope.userId}:${scope.organizationId}`} scope={scope} supplyAvailable={supplyAvailable} />;
+  return <ScopedCollectionPage key={`${scope.userId}:${scope.organizationId}`} scope={scope} supplyAvailable={supplyAvailable} initialBatchId={initialBatchId} />;
 }
 
-function ScopedCollectionPage({ scope,supplyAvailable }: { scope: CollectionScope;supplyAvailable:boolean }) {
+function ScopedCollectionPage({ scope,supplyAvailable,initialBatchId }: { scope: CollectionScope;supplyAvailable:boolean;initialBatchId?:string }) {
   const context = useWorkbenchContext();
   const [tab, setTab] = useState<"batches" | "own">("batches");
   const [batches, setBatches] = useState<CollectionBatch[]>([]);
   const [items, setItems] = useState<CollectionItem[]>([]);
-  const [batchId, setBatchId] = useState<string | null>(null);
+  const [batchId, setBatchId] = useState<string | null>(initialBatchId??null);
   const [total, setTotal] = useState(0);
   const [next, setNext] = useState<string>();
   const [after, setAfter] = useState<string>();

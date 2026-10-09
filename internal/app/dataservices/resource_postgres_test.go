@@ -1,0 +1,264 @@
+package dataservicesapp
+
+import (
+	"context"
+	"crypto/tls"
+	"encoding/json"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
+	"strings"
+	"task-processor/internal/dataservice"
+	resourceadapter "task-processor/internal/integration/orgresource"
+	keystore "task-processor/internal/integration/persistence/dataservice"
+	catalogstore "task-processor/internal/integration/persistence/product/catalog"
+	collectionstore "task-processor/internal/integration/persistence/product/collection"
+	jobstore "task-processor/internal/integration/persistence/product/dataacquisition"
+	sourcestore "task-processor/internal/integration/persistence/product/sourcing"
+	"task-processor/internal/ledger/orgresource"
+	"task-processor/internal/product/collection"
+	"task-processor/internal/product/dataacquisition"
+	"testing"
+	"time"
+)
+
+type executionFixture struct {
+	authorizedFixture
+	denied  bool
+	fetches int
+}
+
+func (f *executionFixture) CheckExecution(context.Context, dataacquisition.Principal, orgresource.ResourceFunding) error {
+	if f.denied {
+		return dataacquisition.ErrForbidden
+	}
+	return nil
+}
+func (f *executionFixture) EnsureExecution(context.Context, dataacquisition.Job) error { return nil }
+func (f *executionFixture) Funding(context.Context, collection.Scope) (orgresource.ResourceFunding, error) {
+	return orgresource.FundingEnterprise, nil
+}
+func (f *executionFixture) Ready(context.Context) error   { return nil }
+func (f *executionFixture) Sites() []dataacquisition.Site { return dataacquisition.Sites() }
+func (f *executionFixture) Discover(_ context.Context, q dataacquisition.Query) ([]string, error) {
+	return q.ASINs, nil
+}
+func (f *executionFixture) Fetch(_ context.Context, site, asin string) (dataacquisition.Evidence, error) {
+	f.fetches++
+	return dataacquisition.Evidence{Site: site, ASIN: asin, Title: "controlled fixture", MainImage: "https://m.media-amazon.com/images/I/fixture.jpg", Availability: "available", Price: 10, Currency: "USD", CapturedAt: time.Now().UTC().Format(time.RFC3339Nano), ParserVersion: "amazon-v1"}, nil
+}
+
+type lostReserveAck struct {
+	*orgresource.ConsumerChargeService
+	lose bool
+}
+
+func (c *lostReserveAck) Reserve(ctx context.Context, id orgresource.ConsumerChargeIdentity) (orgresource.ConsumerChargeReceipt, error) {
+	receipt, err := c.ConsumerChargeService.Reserve(ctx, id)
+	if err == nil && c.lose {
+		c.lose = false
+		return orgresource.ConsumerChargeReceipt{}, dataacquisition.ErrUnknown
+	}
+	return receipt, err
+}
+
+func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	c, err := tcpostgres.Run(ctx, "postgres:16-alpine", tcpostgres.WithDatabase("product621"), tcpostgres.WithUsername("test_owner"), tcpostgres.WithPassword("isolated-data621"), tcpostgres.BasicWaitStrategies())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, c.Terminate(context.Background())) })
+	dsn, err := c.ConnectionString(ctx, "sslmode=disable")
+	require.NoError(t, err)
+	open := func(dsn string) *gorm.DB {
+		db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+		require.NoError(t, err)
+		pool, err := db.DB()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, pool.Close()) })
+		return db
+	}
+	productDB := open(dsn)
+	require.NoError(t, productDB.Exec("CREATE DATABASE resource621").Error)
+	address, err := url.Parse(dsn)
+	require.NoError(t, err)
+	address.Path = "/resource621"
+	resourceDB := open(address.String())
+	require.NoError(t, keystore.InstallSchema(productDB))
+	require.NoError(t, catalogstore.AutoMigrate(productDB))
+	require.NoError(t, sourcestore.InstallSchema(productDB))
+	require.NoError(t, collectionstore.InstallSchema(productDB))
+	require.NoError(t, jobstore.InstallSchema(productDB))
+	require.NoError(t, resourceadapter.AutoMigrate(resourceDB))
+	require.NoError(t, resourceDB.Exec("INSERT INTO saas_organization_resource_buckets(organization_id,resource_type,available,allocated,reserved,consumed,created_at,updated_at) VALUES('org','data_row',10,0,0,0,now(),now())").Error)
+	fixture := &executionFixture{}
+	publisher, err := NewProductPublisher(fixture)
+	require.NoError(t, err)
+	repo, err := jobstore.NewRepository(ctx, productDB, fixture, publisher)
+	require.NoError(t, err)
+	resourceRepo, err := resourceadapter.NewGormConsumerChargeRepository(resourceDB, resourceadapter.TransactionConfig{})
+	require.NoError(t, err)
+	charges, err := orgresource.NewConsumerChargeService(resourceRepo, map[orgresource.ResourceConsumer]orgresource.ConsumerChargeOwner{orgresource.ConsumerAmazonData: dataacquisition.ChargeOwner{Repository: repo}})
+	require.NoError(t, err)
+	ack := &lostReserveAck{ConsumerChargeService: charges, lose: true}
+	service, err := dataacquisition.NewService(repo, fixture, fixture, ack, fixture)
+	require.NoError(t, err)
+	scope := collection.Scope{OrganizationID: "org", ActorID: "creator", MemberID: "member"}
+	q := dataacquisition.Query{Site: "us", Mode: "asin", ASINs: []string{"B000123456"}, Limit: 1, Fields: []string{"asin", "title"}}
+	job, err := service.Start(ctx, dataacquisition.Principal{Scope: scope}, uuid.NewString(), q, orgresource.FundingEnterprise, 5)
+	require.NoError(t, err)
+	job, err = repo.Discover(ctx, job, q.ASINs)
+	require.NoError(t, err)
+	items, err := repo.Items(ctx, job)
+	require.NoError(t, err)
+	require.ErrorIs(t, service.ProcessItem(ctx, job, items[0], ""), dataacquisition.ErrUnknown)
+	chargeID := orgresource.ConsumerChargeIdentity{OrganizationID: "org", Consumer: orgresource.ConsumerAmazonData, OperationID: items[0].ID}
+	original, err := charges.Lookup(ctx, chargeID)
+	require.NoError(t, err)
+	require.Equal(t, orgresource.ReservationReserved, original.State)
+	fixture.denied = true
+	require.NoError(t, service.ProcessItem(ctx, job, items[0], ""))
+	released, err := charges.Lookup(ctx, chargeID)
+	require.NoError(t, err)
+	require.Equal(t, original.ReservationID, released.ReservationID)
+	require.Equal(t, orgresource.ReservationReleased, released.State)
+	require.Zero(t, fixture.fetches)
+	var bucket struct{ Available, Reserved, Consumed int64 }
+	readBalance := func() {
+		require.NoError(t, resourceDB.Raw("SELECT available,reserved,consumed FROM saas_organization_resource_buckets WHERE organization_id='org' AND resource_type='data_row'").Scan(&bucket).Error)
+	}
+	readBalance()
+	require.Equal(t, int64(10), bucket.Available)
+	require.Zero(t, bucket.Reserved)
+	fixture.denied = false
+	job, err = service.Start(ctx, dataacquisition.Principal{Scope: scope}, uuid.NewString(), q, orgresource.FundingEnterprise, 5)
+	require.NoError(t, err)
+	require.NoError(t, service.Run(ctx, scope, job.ID))
+	require.NoError(t, service.Run(ctx, scope, job.ID))
+	require.Equal(t, 1, fixture.fetches)
+	job, err = service.Read(ctx, dataacquisition.Principal{Scope: scope}, job.ID)
+	require.NoError(t, err)
+	require.Equal(t, "SUCCEEDED", job.State)
+	require.Equal(t, int64(5), job.ConfirmedFen)
+	require.Zero(t, job.PendingFen)
+	readBalance()
+	require.Equal(t, int64(9), bucket.Available)
+	require.Equal(t, int64(1), bucket.Consumed)
+	require.Zero(t, bucket.Reserved)
+	store, err := sourcestore.NewRepository(productDB, newCatalogBridge)
+	require.NoError(t, err)
+	page, err := service.Results(ctx, dataacquisition.Principal{Scope: scope}, job.ID, "", 100, capturedResultReader{store})
+	require.NoError(t, err)
+	require.Len(t, page.Items, 1)
+	require.Len(t, page.Items[0].Data, 2)
+	require.Equal(t, "B000123456", page.Items[0].Data["asin"])
+	foreign := scope
+	foreign.ActorID = "another"
+	_, err = service.Results(ctx, dataacquisition.Principal{Scope: foreign}, job.ID, "", 100, capturedResultReader{store})
+	require.ErrorIs(t, err, dataacquisition.ErrNotFound)
+	savedItems, err := repo.Items(ctx, job)
+	require.NoError(t, err)
+	bad := *savedItems[0].Evidence
+	bad.Title = "changed"
+	require.ErrorIs(t, capturedResultReader{store}.Verify(ctx, scope, *savedItems[0].Source, bad), dataacquisition.ErrUnavailable)
+	t.Run("bounded console and DataKey routes use original owner", func(t *testing.T) {
+		require.NoError(t, keystore.InstallCustomSchema(productDB))
+		module, err := NewModule(ctx, Dependencies{ProductDB: productDB, Access: fixture, Live: fixture, Specialist: fixture, Funding: fixture, Provider: fixture, Starter: fixture, Charges: func(owner orgresource.ConsumerChargeOwner) (dataacquisition.Charges, error) {
+			return orgresource.NewConsumerChargeService(resourceRepo, map[orgresource.ResourceConsumer]orgresource.ConsumerChargeOwner{orgresource.ConsumerAmazonData: owner})
+		}})
+		require.NoError(t, err)
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		for _, route := range module.BuildRoutes() {
+			router.Handle(route.Method, route.Path, route.Handler)
+		}
+		send := func(method, path, body, authorization, command string) *httptest.ResponseRecorder {
+			request := httptest.NewRequest(method, path, strings.NewReader(body))
+			request.TLS = &tls.ConnectionState{}
+			request.RemoteAddr = "198.51.100.2:4567"
+			request.Header.Set("Content-Type", "application/json")
+			if authorization != "" {
+				request.Header.Set("Authorization", authorization)
+			}
+			if command != "" {
+				request.Header.Set("Idempotency-Key", command)
+			}
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, request)
+			return w
+		}
+		command := uuid.NewString()
+		w := send("POST", ConsoleBase+"/keys", `{"name":"fixture","expiresAt":"`+time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)+`","dailyRows":2,"monthlyCostFen":10,"permissions":["amazon.acquire","amazon.result.read"]}`, "", command)
+		require.Equal(t, 200, w.Code)
+		var created dataservice.KeyCreated
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &created))
+		require.Len(t, created.Secret, 43)
+		keyHeader := "DataKey " + created.Key.ID + "." + created.Secret
+		jobCommand := uuid.NewString()
+		w = send("POST", APIBase, `{"query":{"site":"us","mode":"asin","asins":["B000123456"],"limit":1},"maximumRows":1,"maximumCostFen":5}`, keyHeader, jobCommand)
+		require.Equal(t, http.StatusAccepted, w.Code)
+		var externalJob dataacquisition.Job
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &externalJob))
+		require.NoError(t, module.Runner().Run(ctx, scope, externalJob.ID))
+		w = send("GET", APIBase+"/"+externalJob.ID+"/results", "", keyHeader, "")
+		require.Equal(t, 200, w.Code)
+		require.Contains(t, w.Body.String(), "controlled fixture")
+		_, err = module.keys.Change(ctx, created.Key.ID, uuid.NewString(), 1, dataservice.KeyPatch{State: "REVOKED"})
+		require.NoError(t, err)
+		w = send("GET", APIBase+"/"+externalJob.ID, "", keyHeader, "")
+		require.Equal(t, 403, w.Code)
+		w = send("GET", ConsoleBase+"/amazon/jobs/"+externalJob.ID, "", "", "")
+		require.Equal(t, 200, w.Code)
+		w = send("GET", ConsoleBase+"/keys/by-command/"+command, "", "", "")
+		require.Equal(t, 200, w.Code)
+		require.NotContains(t, w.Body.String(), "secret")
+		w = send("GET", ConsoleBase+"/overview", "", "", "")
+		require.Equal(t, 200, w.Code)
+		require.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+		w = send("POST", ConsoleBase+"/custom", `{"name":"HTTP fixture","query":{"site":"us","mode":"asin","asins":["B000123456"],"limit":1},"purpose":"controlled fixture","format":"json"}`, "", uuid.NewString())
+		require.Equal(t, 200, w.Code)
+		var custom dataservice.CustomRequest
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &custom))
+		change := func(patch string) {
+			w = send("POST", SpecialistBase+"/"+custom.ID+"/changes", `{"expectedRevision":`+strconv.FormatInt(custom.Revision, 10)+`,"patch":`+patch+`}`, "", uuid.NewString())
+			require.Equal(t, 200, w.Code)
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &custom))
+		}
+		change(`{"state":"EVALUATING","note":"评估"}`)
+		change(`{"state":"SPEC_CONFIRMED","note":"确认","spec":{"description":"one row","quoteNote":"线下报价","confirmationNote":"线下确认","format":"json","maximumRows":1}}`)
+		change(`{"state":"PREPARING","note":"制作"}`)
+		change(`{"state":"PREPARING","note":"制作进度更新"}`)
+		deliveryCommand := uuid.NewString()
+		request := httptest.NewRequest("POST", SpecialistBase+"/"+custom.ID+"/delivery", strings.NewReader(`[{"title":"declared HTTP fixture"}]`))
+		request.Header.Set("Content-Type", "application/octet-stream")
+		request.Header.Set("Idempotency-Key", deliveryCommand)
+		request.Header.Set("X-Expected-Revision", strconv.FormatInt(custom.Revision, 10))
+		request.Header.Set("X-Spec-Revision", strconv.FormatInt(custom.SpecRevision, 10))
+		request.Header.Set("X-Data-Format", "json")
+		w = httptest.NewRecorder()
+		router.ServeHTTP(w, request)
+		require.Equal(t, 200, w.Code)
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &custom))
+		require.Equal(t, "DELIVERED", custom.State)
+		require.Equal(t, 1, custom.DeliveredRows)
+		require.NotEmpty(t, custom.BatchID)
+		w = send("GET", SpecialistBase+"/by-command/"+deliveryCommand, "", "", "")
+		require.Equal(t, 200, w.Code)
+		require.Contains(t, w.Body.String(), `"actorId":"creator"`)
+		w = send("GET", ConsoleBase+"/custom", "", "", "")
+		require.Equal(t, 200, w.Code)
+		require.NotContains(t, w.Body.String(), "applicant")
+		require.NotContains(t, w.Body.String(), "events")
+		require.Contains(t, w.Body.String(), "HTTP fixture")
+		readBalance()
+		require.Equal(t, int64(2), bucket.Consumed, "custom delivery does not consume DATA_ROW")
+	})
+}

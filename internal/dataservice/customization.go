@@ -101,6 +101,7 @@ type CustomRepository interface {
 	List(context.Context, collection.Scope, int) ([]CustomRequest, error)
 	AdminRead(context.Context, Operator, string) (CustomRequest, error)
 	AdminList(context.Context, Operator, string, string, int) (CustomPage, error)
+	Command(context.Context, Operator, string) (CustomRequest, error)
 	Change(context.Context, Operator, string, string, int64, CustomPatch) (CustomRequest, error)
 	Deliver(context.Context, DeliveryAuthority, string, []collection.OwnProduct) (CustomRequest, error)
 }
@@ -155,7 +156,7 @@ func ValidateCustomChange(request CustomRequest, patch CustomPatch) error {
 	}
 	switch patch.State {
 	case "EVALUATING":
-		if request.State != "SUBMITTED" {
+		if request.State != "SUBMITTED" && request.State != "EVALUATING" {
 			return ErrConflict
 		}
 	case "SPEC_CONFIRMED":
@@ -166,7 +167,7 @@ func ValidateCustomChange(request CustomRequest, patch CustomPatch) error {
 			return ErrInvalid
 		}
 	case "PREPARING":
-		if request.State != "SPEC_CONFIRMED" || request.Spec == nil || request.SpecRevision < 1 {
+		if (request.State != "SPEC_CONFIRMED" && request.State != "PREPARING") || request.Spec == nil || request.SpecRevision < 1 {
 			return ErrConflict
 		}
 	case "CLOSED":
@@ -224,6 +225,13 @@ func (s *CustomService) AdminRead(ctx context.Context, id string) (CustomRequest
 		return CustomRequest{}, err
 	}
 	return s.repo.AdminRead(ctx, op, id)
+}
+func (s *CustomService) Command(ctx context.Context, command string) (CustomRequest, error) {
+	op, err := s.special.Specialist(ctx)
+	if err != nil {
+		return CustomRequest{}, err
+	}
+	return s.repo.Command(ctx, op, command)
 }
 func (s *CustomService) AdminList(ctx context.Context, state, cursor string, limit int) (CustomPage, error) {
 	op, err := s.special.Specialist(ctx)

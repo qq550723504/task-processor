@@ -35,10 +35,10 @@ CREATE TABLE IF NOT EXISTS data_acquisition_items (
  claim_token uuid,lease_until timestamptz,evidence_json bytea CHECK(octet_length(evidence_json)<=2097152),
  source_json jsonb CHECK(octet_length(source_json::text)<=8192),terminal_evidence uuid,
  reservation_id uuid,charge_state varchar(32) NOT NULL DEFAULT '' CHECK(charge_state IN ('','reserved','committed','released','reconciliation_required')),
- reason varchar(64) NOT NULL DEFAULT '',created_at timestamptz NOT NULL,
+ reason varchar(64) NOT NULL DEFAULT '',created_at timestamptz NOT NULL,saved_at timestamptz,
  PRIMARY KEY(organization_id,actor_id,job_id,id),UNIQUE(organization_id,actor_id,job_id,asin),UNIQUE(organization_id,id),
  FOREIGN KEY(organization_id,actor_id,job_id) REFERENCES data_acquisition_jobs(organization_id,actor_id,id),
- CHECK((state='SAVED' AND source_json IS NOT NULL AND terminal_evidence IS NOT NULL AND reservation_id IS NOT NULL) OR (state<>'SAVED' AND source_json IS NULL)),
+ CHECK((state='SAVED' AND source_json IS NOT NULL AND terminal_evidence IS NOT NULL AND reservation_id IS NOT NULL AND saved_at IS NOT NULL) OR (state<>'SAVED' AND source_json IS NULL AND saved_at IS NULL)),
  CHECK(state<>'FAILED' OR terminal_evidence IS NOT NULL));
 CREATE INDEX IF NOT EXISTS data_acquisition_active_org ON data_acquisition_jobs(organization_id,deadline) WHERE state IN ('ADMITTED','RUNNING');
 CREATE INDEX IF NOT EXISTS data_acquisition_recent_actor ON data_acquisition_jobs(organization_id,actor_id,created_at DESC,id);
@@ -51,7 +51,7 @@ func VerifySchema(ctx context.Context, db *gorm.DB) error {
 	}
 	for _, q := range []string{
 		"SELECT organization_id,actor_id,member_id,id,command_key,input_hash,credential_id,credential_revision,query_json,funding,state,reason,discovered,canceled,quota_reserved,day_window,month_window,created_at,deadline FROM data_acquisition_jobs LIMIT 0",
-		"SELECT organization_id,actor_id,job_id,id,asin,state,intent_json,claim_token,lease_until,evidence_json,source_json,terminal_evidence,reservation_id,charge_state,reason,created_at FROM data_acquisition_items LIMIT 0",
+		"SELECT organization_id,actor_id,job_id,id,asin,state,intent_json,claim_token,lease_until,evidence_json,source_json,terminal_evidence,reservation_id,charge_state,reason,created_at,saved_at FROM data_acquisition_items LIMIT 0",
 	} {
 		if db.WithContext(ctx).Exec(q).Error != nil {
 			return dataacquisition.ErrUnavailable

@@ -3,6 +3,7 @@ package dataacquisitionpersistence
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -96,6 +97,18 @@ func TestPostgresJobQuotaFencingPublicationAndOriginalChargeProof(t *testing.T) 
 	replay, err := repo.Admit(ctx, principal, command, q, orgresource.FundingEnterprise)
 	require.NoError(t, err)
 	require.Equal(t, job.ID, replay.ID)
+	// A command binds the effective key permission set, independently of mutable quotas.
+	onePermission := key.Input
+	onePermission.Permissions = []string{dataservice.PermissionAcquire}
+	changedKey, err := keys.Change(ctx, scope, key.ID, uuid.NewString(), collection.Digest(onePermission), 1, dataservice.KeyPatch{State: "ACTIVE", Limits: &onePermission})
+	require.NoError(t, err)
+	_, err = repo.Admit(ctx, dataacquisition.Principal{Scope: scope, CredentialID: key.ID, CredentialRevision: changedKey.Revision}, command, q, orgresource.FundingEnterprise)
+	require.ErrorIs(t, err, dataacquisition.ErrConflict, "permission changes cannot replay a different admission contract")
+	_, err = keys.Change(ctx, scope, key.ID, uuid.NewString(), collection.Digest(key.Input), changedKey.Revision, dataservice.KeyPatch{State: "ACTIVE", Limits: &key.Input})
+	require.NoError(t, err)
+	replay, err = repo.Admit(ctx, principal, command, q, orgresource.FundingEnterprise)
+	require.NoError(t, err)
+	require.Equal(t, job.ID, replay.ID)
 	changed := q
 	changed.Limit = 1
 	_, err = repo.Admit(ctx, principal, command, changed, orgresource.FundingEnterprise)
@@ -178,6 +191,59 @@ func TestPostgresJobQuotaFencingPublicationAndOriginalChargeProof(t *testing.T) 
 	require.NoError(t, db.Raw("SELECT consumed_rows,reserved_rows FROM data_service_quota WHERE key_id=? AND window_kind='day'", key.ID).Scan(&usage).Error)
 	require.Equal(t, int64(1), usage.ConsumedRows)
 	require.Zero(t, usage.ReservedRows)
+	quotas, err := repo.KeyQuotas(ctx, scope)
+	require.NoError(t, err)
+	require.Len(t, quotas, 1)
+	require.Equal(t, int64(1), quotas[0].DayConsumedRows)
+	require.Zero(t, quotas[0].DayReservedRows)
+	require.Equal(t, int64(5), quotas[0].MonthConsumedFen)
+	stats, err := repo.Usage(ctx, scope)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), stats.DayRows)
+	require.Equal(t, int64(5), stats.MonthConfirmedFen)
+	foreignStats, err := repo.Usage(ctx, other)
+	require.NoError(t, err)
+	require.Zero(t, foreignStats.DayRows)
+	t.Run("concurrent admissions cannot over-reserve quota", func(t *testing.T) {
+		access.denied = false
+		concurrentScope := collection.Scope{OrganizationID: "quota-org", ActorID: "creator", MemberID: "member"}
+		concurrentKey := key
+		concurrentKey.ID = uuid.NewString()
+		concurrentKey.Scope = concurrentScope
+		concurrentKey.Input.DailyRows = 3
+		concurrentKey.Input.MonthlyCostFen = 15
+		_, _, err := keys.Create(ctx, concurrentKey, uuid.NewString(), collection.Digest(concurrentKey.Input))
+		require.NoError(t, err)
+		p := dataacquisition.Principal{Scope: concurrentScope, CredentialID: concurrentKey.ID, CredentialRevision: 1}
+		one := changed
+		one.Limit = 1
+		var wg sync.WaitGroup
+		out := make(chan error, 8)
+		for range 8 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, e := repo.Admit(ctx, p, uuid.NewString(), one, orgresource.FundingMember)
+				out <- e
+			}()
+		}
+		wg.Wait()
+		close(out)
+		admitted := 0
+		for e := range out {
+			if e == nil {
+				admitted++
+			} else {
+				require.ErrorIs(t, e, dataacquisition.ErrConflict)
+			}
+		}
+		require.Equal(t, 3, admitted)
+		quota, err := repo.KeyQuotas(ctx, concurrentScope)
+		require.NoError(t, err)
+		require.Len(t, quota, 1)
+		require.Equal(t, int64(3), quota[0].DayReservedRows)
+		require.Equal(t, int64(15), quota[0].MonthReservedFen)
+	})
 	t.Run("stopped discovery is a failure rather than an empty success", func(t *testing.T) {
 		access.denied = false
 		console := dataacquisition.Principal{Scope: scope}
@@ -190,5 +256,33 @@ func TestPostgresJobQuotaFencingPublicationAndOriginalChargeProof(t *testing.T) 
 		require.Equal(t, "FAILED", stopped.State)
 		require.Equal(t, "provider_rejected", stopped.Reason)
 		require.Zero(t, stopped.Saved)
+	})
+	t.Run("cancel after UTC rollover releases only original persisted windows", func(t *testing.T) {
+		access.denied = false
+		s := collection.Scope{OrganizationID: "rollover-org", ActorID: "creator", MemberID: "member"}
+		k := key
+		k.ID = uuid.NewString()
+		k.Scope = s
+		k.Input.DailyRows = 3
+		k.Input.MonthlyCostFen = 15
+		_, _, err := keys.Create(ctx, k, uuid.NewString(), collection.Digest(k.Input))
+		require.NoError(t, err)
+		p := dataacquisition.Principal{Scope: s, CredentialID: k.ID, CredentialRevision: 1}
+		old, err := repo.Admit(ctx, p, uuid.NewString(), changed, orgresource.FundingMember)
+		require.NoError(t, err)
+		require.NoError(t, db.Exec("UPDATE data_service_quota SET window_start=CASE WHEN window_kind='day' THEN (date_trunc('day',now() AT TIME ZONE 'UTC')-interval '1 day')::date ELSE (date_trunc('month',now() AT TIME ZONE 'UTC')-interval '1 month')::date END WHERE key_id=?", k.ID).Error)
+		require.NoError(t, db.Exec("UPDATE data_acquisition_jobs SET day_window=(date_trunc('day',now() AT TIME ZONE 'UTC')-interval '1 day')::date,month_window=(date_trunc('month',now() AT TIME ZONE 'UTC')-interval '1 month')::date,created_at=now()-interval '1 day',deadline=now()-interval '23 hours 30 minutes' WHERE id=?", old.ID).Error)
+		fresh, err := repo.Admit(ctx, p, uuid.NewString(), changed, orgresource.FundingMember)
+		require.NoError(t, err)
+		require.NotEqual(t, old.ID, fresh.ID)
+		_, err = repo.Cancel(ctx, s, old.ID, uuid.NewString())
+		require.NoError(t, err)
+		current, err := repo.KeyQuotas(ctx, s)
+		require.NoError(t, err)
+		require.Equal(t, int64(1), current[0].DayReservedRows)
+		require.Equal(t, int64(5), current[0].MonthReservedFen)
+		var remaining int64
+		require.NoError(t, db.Raw("SELECT sum(reserved_rows) FROM data_service_quota WHERE key_id=? AND window_start<date_trunc(window_kind,now() AT TIME ZONE 'UTC')::date", k.ID).Scan(&remaining).Error)
+		require.Zero(t, remaining)
 	})
 }

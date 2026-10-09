@@ -148,6 +148,9 @@ func (r *GormConsumerChargeRepository) Read(ctx context.Context, identity orgres
 	var receipt orgresource.ConsumerChargeReceipt
 	err := r.runner.runRead(ctx, func(readContext context.Context) error {
 		row, err := readConsumerReservation(r.db.WithContext(readContext), identity, false)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return orgresource.ErrReservationNotFound
+		}
 		if err != nil {
 			return err
 		}

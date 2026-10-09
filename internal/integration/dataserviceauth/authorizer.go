@@ -84,6 +84,8 @@ func permissions(p string) ([]string, error) {
 		return []string{dataservice.PermissionManage, dataservice.PermissionMarket, collection.PermissionManage}, nil
 	case dataservice.PermissionResult:
 		return []string{dataservice.PermissionManage, collection.PermissionRead}, nil
+	case collection.PermissionRead:
+		return []string{collection.PermissionRead}, nil
 	default:
 		return nil, dataservice.ErrForbidden
 	}

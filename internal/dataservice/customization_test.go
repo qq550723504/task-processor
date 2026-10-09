@@ -22,4 +22,6 @@ func TestCustomizationTransitionsRequireConfirmedSpecAndDeliveryReceipt(t *testi
 	require.ErrorIs(t, ValidateCustomChange(CustomRequest{State: "DELIVERED"}, CustomPatch{State: "CLOSED", Note: "overwrite"}), ErrConflict)
 	require.ErrorIs(t, ValidateCustomChange(CustomRequest{State: "SUBMITTED"}, CustomPatch{State: "PREPARING", Note: "skip confirmation"}), ErrConflict)
 	require.False(t, (DeliveryAuthority{}).Valid(), "a caller cannot manufacture delivery authority")
+	require.NoError(t, ValidateCustomChange(CustomRequest{State: "EVALUATING"}, CustomPatch{State: "EVALUATING", Note: "补充评估进度"}))
+	require.NoError(t, ValidateCustomChange(CustomRequest{State: "PREPARING", Spec: &CustomSpec{}, SpecRevision: 1}, CustomPatch{State: "PREPARING", Note: "补充制作进度"}))
 }

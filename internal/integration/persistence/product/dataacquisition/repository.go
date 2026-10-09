@@ -284,11 +284,6 @@ func (r *Repository) Admit(ctx context.Context, p dataacquisition.Principal, com
 	if err != nil || p.Scope.Validate() != nil || !collection.ValidID(command) || (p.CredentialID != "" && (!collection.ValidID(p.CredentialID) || p.CredentialRevision < 1)) || (funding != orgresource.FundingEnterprise && funding != orgresource.FundingMember) {
 		return dataacquisition.Job{}, dataacquisition.ErrInvalid
 	}
-	hash := collection.Digest(struct {
-		Query       dataacquisition.Query
-		Member, Key string
-		Funding     orgresource.ResourceFunding
-	}{q, p.Scope.MemberID, p.CredentialID, funding})
 	var out dataacquisition.Job
 	finished := false
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -298,6 +293,14 @@ func (r *Repository) Admit(ctx context.Context, p dataacquisition.Principal, com
 		if err != nil {
 			return err
 		}
+		// The locked canonical key supplies the effective bounded permission set.
+		// Quota/revision changes do not alter an original command, permissions do.
+		hash := collection.Digest(struct {
+			Query       dataacquisition.Query
+			Member, Key string
+			Funding     orgresource.ResourceFunding
+			Permissions []string
+		}{q, p.Scope.MemberID, p.CredentialID, funding, key.Input.Permissions})
 		// Original command replay never reserves quota or another job.
 		var existing jobRow
 		found := tx.Raw("SELECT "+jobColumns+" FROM data_acquisition_jobs WHERE organization_id=? AND actor_id=? AND command_key=?", p.Scope.OrganizationID, p.Scope.ActorID, command).Scan(&existing)
@@ -703,7 +706,7 @@ func (r *Repository) Publish(ctx context.Context, job dataacquisition.Job, prepa
 		if err != nil {
 			return err
 		}
-		if err = tx.Exec("UPDATE data_acquisition_items SET source_json=?,state='SAVED',terminal_evidence=?,claim_token=NULL,lease_until=NULL WHERE organization_id=? AND actor_id=? AND job_id=? AND id=?", string(raw), uuid.NewString(), locked.OrganizationID, locked.ActorID, locked.JobID, locked.ID).Error; err != nil {
+		if err = tx.Exec("UPDATE data_acquisition_items SET source_json=?,state='SAVED',saved_at=now(),terminal_evidence=?,claim_token=NULL,lease_until=NULL WHERE organization_id=? AND actor_id=? AND job_id=? AND id=?", string(raw), uuid.NewString(), locked.OrganizationID, locked.ActorID, locked.JobID, locked.ID).Error; err != nil {
 			return err
 		}
 		locked.SourceJSON = raw

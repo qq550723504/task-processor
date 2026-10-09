@@ -180,7 +180,7 @@ func (s *Service) ProcessItem(ctx context.Context, job Job, item Item, stopReaso
 		var err error
 		receipt, err = s.charges.Reserve(ctx, chargeID)
 		if err != nil {
-			if errors.Is(err, orgresource.ErrInsufficientBalance) {
+			if errors.Is(err, orgresource.ErrInsufficientBalance) || errors.Is(err, orgresource.ErrResourceDebtOutstanding) {
 				fenced, fenceErr := s.repo.Fence(ctx, job, item, "resource_unavailable")
 				if fenceErr != nil {
 					return fenceErr

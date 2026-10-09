@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,6 +54,34 @@ func (c *Client) Sites() []dataacquisition.Site {
 		sites = append(sites, s)
 	}
 	return sites
+}
+
+// Ready checks the explicit installed runtime without downloads or provider calls.
+// Actual browser/page health is verified when a task fetches its public document.
+func (c *Client) Ready(ctx context.Context) error {
+	if c == nil || ctx.Err() != nil {
+		return dataacquisition.ErrUnavailable
+	}
+	node := "node"
+	if runtime.GOOS == "windows" {
+		node = "node.exe"
+	}
+	for name, expected := range map[string]string{"PLAYWRIGHT_NODEJS_PATH": filepath.Join(c.options.DriverDirectory, node), "PLAYWRIGHT_CLI_PATH": filepath.Join(c.options.DriverDirectory, "package", "cli.js")} {
+		if configured := os.Getenv(name); configured != "" {
+			actual, err := filepath.Abs(configured)
+			wanted, expectedErr := filepath.Abs(expected)
+			if err != nil || expectedErr != nil || actual != wanted {
+				return dataacquisition.ErrUnavailable
+			}
+		}
+	}
+	for _, path := range []string{c.options.ExecutablePath, filepath.Join(c.options.DriverDirectory, node), filepath.Join(c.options.DriverDirectory, "package", "cli.js")} {
+		info, err := os.Stat(path)
+		if err != nil || info.IsDir() || info.Size() == 0 {
+			return dataacquisition.ErrUnavailable
+		}
+	}
+	return nil
 }
 func (c *Client) enabled(code string) bool {
 	for _, s := range c.options.EnabledSites {
@@ -193,6 +224,9 @@ func (c *Client) page(parent context.Context, site dataacquisition.Site, address
 	}
 	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
+	if err := c.Ready(ctx); err != nil {
+		return "", err
+	}
 	select {
 	case c.slots <- struct{}{}:
 		defer func() { <-c.slots }()
