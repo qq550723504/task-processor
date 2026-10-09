@@ -58,7 +58,9 @@ Console key包括user/org/permission，在切换/撤权时abort且卸载，迟�
 
 页面：`/workbench/agents/custom` 介绍；`/workbench/agents/custom/new` 提交；`/workbench/agents/custom/progress` 列表与需求详情；`/workbench/admin/agent-customization` 专员列表与处理。Figma介绍/表单用现有shell、左右主体栏及可响应式表单；主要场景允许用户文字说明，不从原型空下拉猜业务枚举。方向为Figma四项。实际进度用五阶段、记录时间/文字和附件，平台页面是用户明确后台处理决定的最小投影。
 
-唯一runtime Writer为会话 `01a11f74-2565-78e0-9118-4fe1ff53e726`。本片提供feature-local Routes与Service构造、schema installer API、前端路由/BFF；不改公共启动装配、shared navigation或全局workbench proxy分发。Issue列出需要runtime owner合入的Routes、数据库配置、schema初始化及custom/new/progress导航；依赖未接入返回unavailable，不回退fixture。正式用户组合交接等待该owner正常启动接线。
+用户于2026-10-09明确同意由本执行会话串行接手智能体定制接线，替代此前交给 `01a11f74-2565-78e0-9118-4fe1ff53e726` 的本功能接线责任；其他模块仍按各自owner维护。本片在同一主要PR接入当前native启动装配、shared navigation及module catalog，不改变全局workbench proxy分发。
+
+私有manifest可选 `agentCustomizationDatabase` 使用既有DatabaseConfig与受限 `agent_customization_runtime` serving role，最多4个连接，与其他事实owner保持独立数据库/pool。未配置不挂载本模块；配置错误或依赖缺失拒绝启动。显式 `cmd/agent-customization-schema-init` 消费已有InstallSchema/GrantRuntime，凭据由私有环境提供；构造函数和Serving不执行DDL。current application仅构造本域SQL适配器、Service和Handler，消费批准Routes并按精确descriptor检查企业/平台权限，不能裸挂或弱化授权。
 
 Legacy decision: EXTRACT 合格Console与当前身份/传输/事务行为；RETIRE 占位与旧AI团队管理示例。无legacy wrapper/fallback/第二事实源。
 
@@ -72,4 +74,4 @@ Legacy decision: EXTRACT 合格Console与当前身份/传输/事务行为；RETI
 
 第1轮独立只读 Architecture Review（`/root/architecture_review`，草案commit `29e7e3b17`）：IMPLEMENTATION_READY，无架构BLOCKER。以下为IMPLEMENTATION_TEST，当前Must未满足时阻止本片合并：首次不存在命令行的并发幂等需事务内准确身份串行化+唯一键（不能修改不可变回执）；实际middleware/BFF验证企业管理员不能跨企业，平台scope组织字段明确非NULL；现有WithRequestBodyReadTimeout终止慢速读体，UNKNOWN冻结原意图并refetch。共同scope的advisory锁仅用于串行化，不作为事实身份，唯一键仍包含完整scope/actor/key。
 
-runtime owner同时负责`module_catalog`中agent-custom可用性和权限投影；本Writer仅交付依赖清单，不并发修改共享合同。已批准设计冻结，非Blocker不重开设计。评审未执行测试，运行/产品验收仍按上述边界。
+本Writer负责`module_catalog`中agent-custom已实现标识、既有read/use权限投影及custom/new/progress导航；真实权限和依赖失败仍由当前middleware/BFF/owner判定。已批准业务设计冻结，本轮仅消费既有合同与正常runtime，不重开全局设计。运行/产品验收仍按上述边界。
