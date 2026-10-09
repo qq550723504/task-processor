@@ -1,6 +1,50 @@
 # 指定企业私有智能体交付 V1
 
-Status: APPROVED / IMPLEMENTATION_READY (2026-10-09). Design Basis: Independent Architecture. Execution: #611, primary PR #617.
+Status: 原手工输入基线 APPROVED / IMPLEMENTATION_READY；下述平台草稿范围修订 DRAFT / PENDING_ARCHITECTURE_REVIEW (2026-10-09). Design Basis: Independent Architecture. Execution: #611, primary PR #617. 修订准入前不修改正式生产路径。
+
+## 当前产品决定：上传前的平台草稿质检
+
+用户于本会话 2026-10-09 指出应选择草稿产品，随后明确选择“上传前的平台草稿：检查待补全／已适配的商品资料”。本节替代下方原手工输入范围；下方保留为已发生的设计、实现及隔离试用历史，不恢复为当前要求。
+
+### 用户结果和范围
+
+当前企业获授权运营人员进入指定企业的私有智能体，选择自己的供应链批次、SHEIN 美国站店铺及待补全/已适配草稿，直接取得可保存、可追溯的资料质检报告。用户不用重新填写名称、材质、尺寸或规格。报告记录草稿 ID/revision、source/store、商品版本、草稿内容/规则/资产 hash、草稿保存时间和检查时间，以及保存时确定性校验的问题；修改后的草稿不能把旧报告当作新版本结果。
+
+只复用当前唯一支持的平台 SHEIN 美国站。报告投影 `TargetRecord.Result.Issues` 与 `ReadyForUpload`，不另造必填/规格/图片规则；明确“基于该草稿保存时规则”，不宣称重新查询了最新官方规则、验证了图片当前可访问性或取得平台发布许可。原上传 owner 的实时授权/规则/资产/fence/UNKNOWN 核对保持独立，报告零问题不替代上传批准。确定性固定代码能力仍不调用模型、不计费、不发布、不改商品，也不调用新的外部 API。
+
+Out of Scope：批量执行、自动补全/Apply、图片处理、模型/provider、实时官方规则重新查询、上传门禁新依赖、其他平台、通用 Agent runtime、通用报告平台、交付版本升级/转移/撤销、旧系统兼容或数据迁移。使用者从现有供应链页补全和保存，再选新 revision 检查；不增加新的人工审批流程。
+
+UI/Product Authority：上述用户明确决定；`docs/product/final-ui-ia-authority.md`，Figma `31:463` 当前智能市场企业 My Agents `4703:429` 与 `docs/architecture/my-supply-chain-shein-v1.md` §2/§6 的待补全/已适配投影。沿用现有 private detail、Console、供应链选择 API/组件与正常入口，不新增顶层菜单或旧商品中心。
+
+### Owner、合同与注入
+
+复用已批准 `my-supply-chain-shein-v1.md` §4/§5.1：Catalog 拥有商品；collection/preparation 保存当前 Organization + OwnerActor + Member 的来源授权；`internal/listing/record/target.TargetRecord` 拥有不可变平台草稿、revision、精确输入、保存时 goods 校验和 hash。待补全/已适配是 item+store 投影，不能给 Product 增加全局 draft 状态。专员和企业管理员均不能绕过来源 owner 读取另一操作人的草稿。
+
+新增有界的只读 app Port：`DraftInspector.Inspect(ctx, scope, recordID, expectedRevision, requireHead)` 返回报告需要的引用/摘要/问题。实际 adapter 只消费现有 `supplychain.Application.ReadRecord`、`ReadTarget`，检查当前 authenticated identity、live supply.read、来源 owner、exact record/revision/target/source/store/hash 一致性。没有 SupplyChain runtime 时执行明确 unavailable，私有交付列表及历史读取不依赖其启动。`agentcustomization` 不注入 Product/Store/Asset SQL pool，不直接读其他 owner 表。
+
+contract → implementation → injection → consumer：私有执行 command `{recordId, expectedRevision}` → customization Service/Repository 的有界 inspector callback → 当前 supplychain app 的授权精确草稿读取 → 保存时 goods 校验结果的报告投影 → customization 同库 immutable run → 既有 HTTP/BFF/private detail。当前 `current_application` 在 SupplyChain 建成后注入窄 Port，不增加第二个 SupplyChain constructor、Temporal worker、store 授权体系或 rule engine。
+
+### 权限和持久化
+
+私有 delivery 继续企业共享：agent.read 读取、agent.use 执行、原需求企业唯一目标。**草稿执行结果改为当前 Organization + Actor 私有读取**，即使企业内另一成员可使用同一 delivery，也不会获得他人的 draft/report。读取草稿报告还须经 inspector 当前 supply.read/来源授权；报告不是获得来源访问的替代凭证。撤权/切企业时前端清空草稿和报告，服务端不信任客户端发送的商品正文、校验结果、organization/actor。
+
+继续使用现有 `quality_runs` 和唯一 `(organization_id,actor_id,key)`；不新增表、schema、Product 写事实或跨库事务。run 只保存窄的不可变草稿引用、草稿标题摘要、保存时 issue 列表和 ReadyForUpload，不复制整份 Product/平台 payload、凭据、图片内容或规则正文。引用与报告是观察结果，不成为 Listing 第二事实源。记录/问题总大小受当前 Target 2 MiB 上限及私有响应 2 MiB 上限约束；报告列表每页至多20，若完整投影超响应上限明确失败，不静默截断检查项。请求只含两个引用字段，最多1 KiB；问题最多4096条，字段/消息沿当前合同有界。
+
+同 key 锁与完整指纹由 customization DB 唯一负责；指纹包括原 delivery、recordID、expectedRevision、固定定义/版本。原 key 同意图先查已保存结果，重新核对其原 record 的当前读取授权后返回原报告；不得因草稿 head 改变用同 key 改写报告。同 key 不同 record/revision 冲突。首次执行才要求所选 record 等于当前 head、revision 一致；不一致返回需重新选择/核实，不能自动读最新草稿。跨库只读不产生副作用：读失败/超时/撤权不写成功报告；计算/INSERT/COMMIT 任一步失败事务回滚或保留 UNKNOWN，客户端冻结原两个引用和 key 后核实。head 在检查中变化，报告依旧准确指向检查时的不可变 record，并明确不承担上传锁或授权。
+
+报告读取只返回当前 actor 的候选；逐条读取原 record 授权，任一来源 unavailable/denied 时整页不返回受保护内容，不用缓存旧授权放行。当前身份 token、成员权限及来源归档按现有读取合同处理；报告不是永久访问授权。幂等回放同样须 current delivery 与源记录授权，cannot replay bypass。
+
+### 未发布版本切换与 Legacy decision
+
+本批尚未合并/上线；新发布固定代码版本 `product.quality.check/2.0.0` 表示平台草稿执行，客户端不能选择定义/版本。已发生的隔离试用 `1.0.0` delivery/report 保持 immutable，只作历史只读，不接受新的手工执行或把原交付静默改为2.0.0。新试用通过正常定制需求/专员交付发布2.0.0，不重写旧 delivery，不迁移或清理已有事实；仍每需求至多一个固定交付，不增加升级机制。
+
+Legacy decision: RETIRE 手工表单和手工执行/checker生产路径；EXTRACT 当前私有交付、冻结命令、normal authorization、持久报告及既有 SupplyChain/Listing 平台校验。历史手工报告只保留不可变读取 DTO，不暴露旧执行入口、fallback 或双写。旧 ListingKit/Workspace/DRAFT-S1 constructor 不参与当前调用链。
+
+### 必要验证和准入
+
+Independent Architecture 的新增高风险边界仅为 source/report 授权及跨 owner 只读观察。本次复核只检查本节实际增量，原人工定制/单库发布有效证据继续复用。必须先获得明确 IMPLEMENTATION_READY，再修改正式代码。
+
+TDD：原手工 payload 拒绝；客户端伪造正文/issue拒绝；当前 source/actor/org隔离与撤权；陈旧 record/revision 新执行拒绝、原 key 回放仍返回原报告；同 key 不同绑定冲突、并发一个结果、失败无成功报告；source unavailable 不泄露报告；不依赖实时外部规则且不写 Product/Store/Asset；正常装配与 BFF/选择/冻结 command。复用已有真实隔离 PG 与供应链 fixture/测试，不新增 runner/验收平台。当前独立本地实例没有 SupplyChain runtime，须如实保留无法选草稿的限制；仅在现有获准隔离范围内复用正式 native supply wiring 与受控 fixture，无真实平台、provider或生产授权。开发自检不签发用户验收。
 
 ## 产品结果与权威
 
