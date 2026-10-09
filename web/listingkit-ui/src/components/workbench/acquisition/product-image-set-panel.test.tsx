@@ -106,8 +106,11 @@ for (const status of ["awaiting_plan_approval","executing"]) {
 }
 it("prepares the displayed immutable default content version even after the template head advances",async()=>{
  const real=fetch.getMockImplementation()!;
- fetch.mockImplementation((url,init)=>String(url).includes("/revisions/")?Promise.resolve(Response.json({...template,revision:"2",version:"1"})):real(url,init));
+ fetch.mockImplementation((url,init)=>String(url).includes("/revisions/")?Promise.resolve(Response.json({...template,revision:"2",version:"1"})):String(url).includes("/templates?")?Promise.resolve(Response.json({items:[{...template,revision:"2",version:"2"}],nextCursor:""})):real(url,init));
  render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);await prepare();
+ await screen.findByRole("button",{name:"确认点数并生成"});
+ const select=screen.getByLabelText("图片模板") as HTMLSelectElement;
+ expect(select.selectedOptions[0].textContent).toBe("Two groups v1");
  await screen.findByRole("button",{name:"确认点数并生成"});
  const request=fetch.mock.calls.find(([url])=>String(url).endsWith("/prepare"))!;
  expect(JSON.parse(String(request[1]!.body)).template).toEqual({templateId,revision:"1"});
