@@ -179,6 +179,7 @@ func TestFinancialProjectionStillVersionsRealChanges(t *testing.T) {
 			case "close":
 				r.State, r.PaymentReceiptID = "CANCEL_REQUESTED", ""
 				r.FinancialState, result.State, result.PaymentReceiptID = "CLOSED_UNPAID", "CLOSED_UNPAID", ""
+				result.ReceiptID = "channel-closed:original"
 			}
 			version := r.Version
 			now := time.Now().UTC()

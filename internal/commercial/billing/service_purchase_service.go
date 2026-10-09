@@ -67,9 +67,13 @@ func (s *ServicePurchases) acceptPayment(ctx context.Context, o *ServicePurchase
 	if err != nil {
 		return err
 	}
+	closedBeforePayment := o.State == "CLOSED_UNPAID" && o.PaymentReceiptID == ""
 	for _, p := range observations {
 		if !p.Matches(*o) {
 			return ErrConflict
+		}
+		if p.State == "CLOSED" && o.PaymentReceiptID == "" {
+			closedBeforePayment = true
 		}
 		if p.State != "PAID" && p.State != "PAID_REFUND_UNKNOWN" {
 			continue
@@ -101,6 +105,11 @@ func (s *ServicePurchases) acceptPayment(ctx context.Context, o *ServicePurchase
 			}
 			o.State = "RECONCILIATION_REQUIRED"
 			o.Reason = "CHANNEL_REFUND_REQUIRES_RECONCILIATION"
+		} else if !o.CancelRequested && closedBeforePayment {
+			// Natural channel closure did not authorize a cancellation/refund.
+			// Retain a verified late payment without reopening fulfillment.
+			o.State = "RECONCILIATION_REQUIRED"
+			o.Reason = "PAYMENT_AFTER_UNPAID_CLOSE"
 		} else if !o.CancelRequested && o.ActiveCommand == nil {
 			o.State = "PAID"
 			o.Reason = ""
@@ -116,6 +125,28 @@ func (s *ServicePurchases) acceptPayment(ctx context.Context, o *ServicePurchase
 	}
 	return nil
 }
+
+// A durable verified close can finish the original CREATE even if the prior
+// projection save failed. Local expiry alone is never a channel close proof.
+func (s *ServicePurchases) unpaidCloseReceipt(ctx context.Context, o ServicePurchaseOrder) (string, error) {
+	if o.CancelRequested || o.PaymentReceiptID != "" {
+		return "", nil
+	}
+	observations, err := s.store.ServicePaymentObservations(ctx, o.Source.OrderID)
+	if err != nil {
+		return "", err
+	}
+	for _, p := range observations {
+		if !p.Matches(o) {
+			return "", ErrConflict
+		}
+		if p.State == "CLOSED" {
+			return "channel-closed:" + p.EventID, nil
+		}
+	}
+	return "", nil
+}
+
 func (s *ServicePurchases) refreshPayment(ctx context.Context, o *ServicePurchaseOrder) error {
 	if err := s.acceptPayment(ctx, o); err != nil {
 		return err
@@ -167,7 +198,7 @@ func (s *ServicePurchases) Execute(ctx context.Context, c ServicePurchaseCommand
 		}
 		return serviceResult(o), nil
 	}
-	if r, ok := o.CompletedCommands[c.ID]; ok && !(c.Kind == "CANCEL" && r.State == "CLOSED_UNPAID" && o.PaymentReceiptID != "") {
+	if r, ok := o.CompletedCommands[c.ID]; ok && !(r.State == "CLOSED_UNPAID" && o.PaymentReceiptID != "" && (c.Kind == "CANCEL" || c.Kind == "CREATE_PURCHASE")) {
 		if c.Kind == "CREATE_PURCHASE" {
 			if o.Operation != nil && o.Operation.Dispatched {
 				return serviceResult(o), nil
@@ -180,6 +211,11 @@ func (s *ServicePurchases) Execute(ctx context.Context, c ServicePurchaseCommand
 		return r, nil
 	}
 	if c.Kind == "CREATE_PURCHASE" {
+		if receipt, err := s.unpaidCloseReceipt(ctx, o); err != nil {
+			return serviceResult(o), err
+		} else if receipt != "" {
+			return s.complete(ctx, &o, c, "CLOSED_UNPAID", receipt, false)
+		}
 		if err := s.refreshPayment(ctx, &o); err != nil {
 			return serviceResult(o), err
 		}
@@ -188,6 +224,11 @@ func (s *ServicePurchases) Execute(ctx context.Context, c ServicePurchaseCommand
 		}
 		if o.PaymentReceiptID != "" {
 			return s.complete(ctx, &o, c, o.State, o.PaymentReceiptID, false)
+		}
+		if receipt, err := s.unpaidCloseReceipt(ctx, o); err != nil {
+			return serviceResult(o), err
+		} else if receipt != "" {
+			return s.complete(ctx, &o, c, "CLOSED_UNPAID", receipt, false)
 		}
 		return serviceResult(o), nil
 	}
@@ -564,6 +605,14 @@ func (s *ServicePurchases) Checkout(ctx context.Context, org, actor, order strin
 		return "", err
 	}
 	defer s.store.ReleaseServicePurchase(context.WithoutCancel(ctx), order, token)
+	if err := s.acceptPayment(ctx, &o); err != nil {
+		return "", err
+	}
+	if receipt, err := s.unpaidCloseReceipt(ctx, o); err != nil {
+		return "", err
+	} else if receipt != "" {
+		return "", ErrOrderCancelled
+	}
 	if o.CancelRequested || o.PaymentReceiptID != "" || !s.provider.NewPaymentsEnabled() || !s.now().Before(o.ExpiresAt) {
 		return "", ErrOrderCancelled
 	}
@@ -634,6 +683,14 @@ func (s *ServicePurchases) Checkout(ctx context.Context, org, actor, order strin
 }
 
 func (s *ServicePurchases) checkoutAdmission(ctx context.Context, org, actor string, original ServicePurchaseCommand, o ServicePurchaseOrder) error {
+	if err := s.acceptPayment(ctx, &o); err != nil {
+		return err
+	}
+	if receipt, err := s.unpaidCloseReceipt(ctx, o); err != nil {
+		return err
+	} else if receipt != "" {
+		return ErrOrderCancelled
+	}
 	if o.CancelRequested || o.PaymentReceiptID != "" || !s.provider.NewPaymentsEnabled() || !s.now().Before(o.ExpiresAt) {
 		return ErrOrderCancelled
 	}

@@ -213,7 +213,7 @@ func ApplyFinancialResult(r *Request, result FinancialResult, now time.Time) err
 		r.FinancialFence = true
 	}
 	r.FundsExpireAt = result.FundsExpireAt
-	if result.State == "CLOSED_UNPAID" && r.State == "CANCEL_REQUESTED" {
+	if result.State == "CLOSED_UNPAID" && result.ReceiptID != "" && r.PaymentReceiptID == "" && (r.State == "ORDER_PENDING" || r.State == "CANCEL_REQUESTED") {
 		r.State = "CANCELLED"
 	}
 	if result.State == "REFUNDED" {
