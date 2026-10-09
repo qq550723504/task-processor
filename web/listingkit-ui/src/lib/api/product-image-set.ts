@@ -1,11 +1,11 @@
 import {z} from "zod";
 import {readBoundedStrictJSON} from "./strict-json-response";
 import {isAcquisitionUUID} from "../contracts/product-acquisition";
-import {imageSetMethods,imageSetResponseSchema,imageSetRequestSchema,imageSetSuccessStatus,imageSetResponseMatches,type ImageSetRoute} from "../contracts/product-image-set";
+import {imageSetMethods,imageSetRequestSchema,imageSetSuccessStatus,imageSetResponseMatches,type ImageSetRoute} from "../contracts/product-image-set";
 
 export type ImageSetScope={userId:string;organizationId:string;kind:"acquisition"|"supply";contextId:string};
 export class ImageSetError extends Error { constructor(public code:string,public status=500){super(code)} }
-export function imageSetBase(scope:ImageSetScope){
+function imageSetBase(scope:ImageSetScope){
  if(!isAcquisitionUUID(scope.contextId)||!scope.userId||!scope.organizationId)throw new ImageSetError("INVALID_IMAGE_REQUEST",400);
  return scope.kind==="acquisition"?`/api/workbench/sourcing/1688/acquisitions/${scope.contextId}/images`:`/api/workbench/supply-preparations/sources/${scope.contextId}/images`;
 }
@@ -47,4 +47,3 @@ export async function imageSetRequest<T>(scope:ImageSetScope,action:ImageSetRout
  }catch(error){if(error instanceof ImageSetError)throw error;throw new ImageSetError(mutation?"OUTCOME_UNKNOWN":"IMAGE_UNAVAILABLE",mutation?503:502)}
  finally{clearTimeout(deadline);options.signal?.removeEventListener("abort",abort)}
 }
-export const imageSetSchemaFor=imageSetResponseSchema;

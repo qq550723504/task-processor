@@ -23,7 +23,7 @@ export const detailTasks = [
   {purpose:"packaging_accessories",label:"包装配件",description:"仅展示真实包装和随附配件",evidence:"accessories"},
 ] as const;
 const text = (maximumBytes:number) => z.string().refine(value=>new TextEncoder().encode(value).length<=maximumBytes&&!/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(value));
-export const imageContentTaskSchema=z.strictObject({id:z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/),purpose:z.string().min(1).max(64),brief:text(2048).optional()});
+const imageContentTaskSchema=z.strictObject({id:z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/),purpose:z.string().min(1).max(64),brief:text(2048).optional()});
 export const imageSetTemplateSchema = z.strictObject({
   schema:z.literal("image-config-v1"),mode:z.enum(["standard","custom"]),shareOriginals:z.boolean(),
   background:text(1024).refine(value=>value.trim().length>0),language:z.enum(["en","zh","es","fr","de","ja"]),

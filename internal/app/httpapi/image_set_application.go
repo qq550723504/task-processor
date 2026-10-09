@@ -3,13 +3,11 @@ package httpapi
 import (
 	"context"
 	"github.com/sirupsen/logrus"
-	"go.temporal.io/sdk/client"
 	"gorm.io/gorm"
 	"math"
 	"reflect"
 	"task-processor/internal/agentconfig"
 	imageapp "task-processor/internal/app/imageagent"
-	"task-processor/internal/app/productsourcing"
 	appruntime "task-processor/internal/app/runtime"
 	supplyapp "task-processor/internal/app/supplychain"
 	imageworker "task-processor/internal/app/worker/imageagent"
@@ -45,12 +43,7 @@ type fullImageApplication struct {
 	manualAvailable bool
 }
 
-type FullImageSetDependencies struct {
-	WorkerDB     *gorm.DB
-	WorkerConfig *config.Config
-	Client       client.Client
-	Worker       *appruntime.ImageAgentWorker
-}
+type FullImageSetDependencies = appruntime.FullImageSetDependencies
 
 type imageMediaScopeAuthority struct {
 	current supplyapp.OrganizationExecutionAuthorizer
@@ -93,9 +86,9 @@ func (a imageSourceScopeAuthority) AuthorizeImageExecution(ctx context.Context, 
 
 // The caller owns the API/worker, configuration, source, resource and Asset
 // pools. This assembly installs no schema and starts no provider or worker.
-func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB, configurationDB, resourceDB, assetDB *gorm.DB, workflows imageagent.WorkflowClient, supply supplyChainModule, current, workerConfig *config.Config, logger *logrus.Logger, mediaStorage ...productsourcing.SourceMediaStorage) (*fullImageApplication, appruntime.ImageAgentTemporalDependencies, error) {
+func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB, configurationDB, resourceDB, assetDB *gorm.DB, workflows imageagent.WorkflowClient, supply supplyChainModule, current, workerConfig *config.Config, logger *logrus.Logger, mediaReaders ...asset.ManualImageReader) (*fullImageApplication, appruntime.ImageAgentTemporalDependencies, error) {
 	var empty appruntime.ImageAgentTemporalDependencies
-	if len(mediaStorage) > 1 {
+	if len(mediaReaders) > 1 {
 		return nil, empty, imageagent.ErrValidation
 	}
 	var manual asset.ManualImageReader
@@ -132,13 +125,13 @@ func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB
 		return nil, empty, imageagent.ErrCommandBlocked
 	}
 	live := supply.executionAuthorization
-	if len(mediaStorage) == 1 && mediaStorage[0] != nil {
-		manual = imageapp.ImageSetManualMedia{Media: productsourcing.SourceMedia{Storage: mediaStorage[0], Authorization: imageMediaScopeAuthority{current: live}}}
+	if len(mediaReaders) == 1 {
+		manual = mediaReaders[0]
 	}
 	sourceLive := imageSourceScopeAuthority{current: live}
 	imageAuth := imageapp.ScopedImageAuthorizer{Live: live}
 	sourceAuth := imageapp.ScopedImageAuthorizer{Live: sourceLive}
-	receipts, err := productsourcing.NewScopedPublishedAcquisitionReader(startup, productDB, imageapp.ImagePublicationScopeAuthorizer{Live: sourceLive})
+	receipts, err := newImageSetAcquisitionReceipts(startup, productDB, imageapp.ImagePublicationScopeAuthorizer{Live: sourceLive})
 	if err != nil {
 		return nil, empty, err
 	}
@@ -147,7 +140,7 @@ func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB
 	readSources.Supply = supplyapp.ImageSetSources{Permission: preparation.PermissionRead, ExecutionSources: supply.app.Sources, ExecutionAuthorization: live, Products: supply.app.Products}
 	sourceSelections := imageapp.ImageSetSourceSelectionReader{Sources: sources}
 	rules := supplyapp.ImageSetTargetRules{Records: supply.app.Records, Sources: sourceSelections, Rules: supply.app.Rules}
-	contexts, err := imageapp.NewImageSetContextReader(sources, rules, nil, productimage.MaxInlineArtifactBytes)
+	contexts, err := imageapp.NewImageSetContextReader(sources, rules, newImageSetSourceByteReader(), productimage.MaxInlineArtifactBytes)
 	if err != nil {
 		return nil, empty, err
 	}

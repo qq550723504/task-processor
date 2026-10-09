@@ -17,6 +17,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	sigjson "sigs.k8s.io/json"
+	imageapp "task-processor/internal/app/imageagent"
 	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
@@ -432,4 +433,10 @@ func collectionAcquisitionOptions(enabled []bool) (acquisitionstore.RuntimeCapab
 		options = append(options, productsourcing.WithCollectionPublication())
 	}
 	return capability, options, nil
+}
+
+// The image consumer reads current acquisition receipts through the admitted
+// Product sourcing composition. It receives no producer or publication writes.
+func newImageSetAcquisitionReceipts(ctx context.Context, db *gorm.DB, auth imageapp.ImagePublicationScopeAuthorizer) (sourcing.PublishedAcquisitionReader, error) {
+	return productsourcing.NewScopedPublishedAcquisitionReader(ctx, db, auth)
 }

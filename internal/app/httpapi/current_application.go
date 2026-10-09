@@ -15,7 +15,6 @@ import (
 	"gorm.io/gorm"
 
 	confighttp "task-processor/internal/agentconfig/httpapi"
-	"task-processor/internal/app/productsourcing"
 	registration "task-processor/internal/app/referralregistration"
 	appruntime "task-processor/internal/app/runtime"
 	storeapp "task-processor/internal/app/storecenter"
@@ -34,6 +33,7 @@ import (
 	knowledgehttp "task-processor/internal/knowledge/httpapi"
 	"task-processor/internal/ledger/orgresource"
 	notificationhttp "task-processor/internal/notificationcenter/httpapi"
+	"task-processor/internal/product/asset"
 	collectionhttp "task-processor/internal/product/collection/httpapi"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
 	tm "task-processor/internal/toolmarket"
@@ -687,9 +687,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 			if supplyRuntime == nil || supplied.supplyChain == nil || supplied.fullImages.Worker == nil || supplied.fullImages.Client == nil {
 				return nil, imageagent.ErrCommandBlocked
 			}
-			var sourceMedia productsourcing.SourceMediaStorage
+			var sourceMedia asset.ManualImageReader
 			if supplied.collectionSourceMedia != nil && cfg.ProductCollectionSourceMedia.Enabled {
-				sourceMedia = supplied.collectionSourceMedia.Storage
+				sourceMedia = newImageSetManualMedia(supplied.collectionSourceMedia, imageMediaScopeAuthority{current: supplyRuntime.executionAuthorization})
 			}
 			full, dependencies, e := buildFullImageApplication(ctx, supplied.productAcquisitionDB, supplied.imageAgentDB, supplied.fullImages.WorkerDB, supplied.agentConfigurationDB, supplied.commercialOwnerDB, supplied.supplyChain.AssetDB, supplied.imageAgentWorkflows, *supplyRuntime, cfg, supplied.fullImages.WorkerConfig, logger, sourceMedia)
 			if e != nil {

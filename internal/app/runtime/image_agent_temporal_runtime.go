@@ -11,6 +11,8 @@ import (
 	"github.com/sirupsen/logrus"
 	sdkclient "go.temporal.io/sdk/client"
 
+	"gorm.io/gorm"
+	"task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
 	imageagenttemporal "task-processor/internal/imageagent/temporal"
 	platformtemporal "task-processor/internal/platform/temporal"
@@ -21,6 +23,14 @@ const (
 	envImageAgentTemporalAddress   = "IMAGE_AGENT_TEMPORAL_ADDRESS"
 	envImageAgentTemporalNamespace = "IMAGE_AGENT_TEMPORAL_NAMESPACE"
 )
+
+// FullImageSetDependencies keeps the SDK client at the runtime assembly boundary.
+type FullImageSetDependencies struct {
+	WorkerDB     *gorm.DB
+	WorkerConfig *config.Config
+	Client       sdkclient.Client
+	Worker       *ImageAgentWorker
+}
 
 type ImageAgentTemporalDependencies struct {
 	ImageSetPublisher        imageagent.ApprovedImageSetPublisher

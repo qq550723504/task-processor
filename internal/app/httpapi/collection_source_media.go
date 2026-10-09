@@ -3,10 +3,12 @@ package httpapi
 import (
 	"context"
 	"gorm.io/gorm"
+	imageapp "task-processor/internal/app/imageagent"
 	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	kernelmodule "task-processor/internal/kernel/module"
+	"task-processor/internal/product/asset"
 	"task-processor/internal/product/collection"
 	collectionhttp "task-processor/internal/product/collection/httpapi"
 	"time"
@@ -41,4 +43,8 @@ func WithCollectionSourceMedia(storage productsourcing.SourceMediaStorage) Curre
 		o.collectionSourceMedias++
 		o.collectionSourceMedia = &collectionSourceMediaDependencies{Storage: storage}
 	}
+}
+
+func newImageSetManualMedia(media *collectionSourceMediaDependencies, authority imageMediaScopeAuthority) asset.ManualImageReader {
+	return imageapp.ImageSetManualMedia{Media: productsourcing.SourceMedia{Storage: media.Storage, Authorization: authority}}
 }

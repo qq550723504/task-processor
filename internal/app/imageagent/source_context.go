@@ -11,7 +11,6 @@ import (
 	"task-processor/internal/agentconfig"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
-	"task-processor/internal/integration/httpimage"
 	productimage "task-processor/internal/product/image"
 	"time"
 )
@@ -34,15 +33,10 @@ type ImageSetContextReader struct {
 }
 
 func NewImageSetContextReader(sources ImageSetSourceReader, targets ImageSetTargetReader, readBytes SourceByteReader, maximumBytes int64) (*ImageSetContextReader, error) {
-	if sources == nil || maximumBytes <= 0 || maximumBytes > productimage.MaxInlineArtifactBytes {
+	if sources == nil || readBytes == nil || maximumBytes <= 0 || maximumBytes > productimage.MaxInlineArtifactBytes {
 		return nil, imageagent.ErrValidation
 	}
-	if readBytes == nil {
-		client := httpimage.NewPublicImageHTTPClient()
-		readBytes = func(ctx context.Context, asset imageagent.AuthorizedAsset, maximum int64) ([]byte, error) {
-			return httpimage.Download(ctx, client, asset.URL, maximum)
-		}
-	}
+
 	return &ImageSetContextReader{sources, targets, readBytes, maximumBytes}, nil
 }
 
@@ -99,7 +93,7 @@ func (r *ImageSetContextReader) ResolveImageSet(ctx context.Context, identity im
 		if !ok || asset.Type != imageagent.AuthorizedAssetSource {
 			return imageagent.ImageSetPreparation{}, imageagent.ErrValidation
 		}
-		if _, err = httpimage.ValidatePublicHTTPSURL(asset.URL); err != nil {
+		if _, err = imageagent.ValidateSafeImageURL(asset.URL); err != nil {
 			return imageagent.ImageSetPreparation{}, imageagent.ErrValidation
 		}
 	}
@@ -116,8 +110,10 @@ func (r *ImageSetContextReader) ResolveImageSet(ctx context.Context, identity im
 		if len(content) == 0 || int64(len(content)) > r.maximumBytes || total > agentconfig.MaxSetSourceAggregateBytes {
 			return imageagent.ImageSetPreparation{}, imageagent.ErrValidation
 		}
-		mediaType, width, height, inspectErr := httpimage.InspectGeneratedArtifact(content)
-		if inspectErr != nil || width > 10000 || height > 10000 || int64(width)*int64(height) > 20_000_000 {
+		decoded, format, inspectErr := image.DecodeConfig(bytes.NewReader(content))
+		mediaType := map[string]string{"jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}[format]
+		width, height := decoded.Width, decoded.Height
+		if inspectErr != nil || mediaType == "" || width <= 0 || height <= 0 || width > 10000 || height > 10000 || int64(width)*int64(height) > 20_000_000 {
 			return imageagent.ImageSetPreparation{}, imageagent.ErrValidation
 		}
 		if _, _, err = image.Decode(bytes.NewReader(content)); err != nil {
