@@ -71,8 +71,6 @@ Use these as the main source of truth for structural work:
   - canonical money/wallet, commercial offer/quote/order, and purchased-resource ownership contract for #457
 - `ecosystem-services-v1.md`
   - #603 frozen IMPLEMENTATION_READY third-party onboarding, original service purchase, exact customer acceptance and channel settlement contract; real channel qualification and product acceptance remain separate gates
-- `tool-market-v1.md`
-  - #613 frozen IMPLEMENTATION_READY enterprise-shared enablement and manual customization progress contract; existing capture permissions and offline quote/payment owners remain unchanged
 - `self-service-subscription-purchase-contract.md`
   - tenant self-service subscription offer/quote/order, source-bound subscription activation, settlement and recovery contract for #478/#479
 - `store-center-current-application-v1.md`
@@ -126,6 +124,8 @@ source of truth for long-lived rules.
 
 ## Supporting Context
 
+- [`tool-market-v1.md`](./tool-market-v1.md)
+  - #613 frozen IMPLEMENTATION_READY feature Design Basis for enterprise-shared enablement and manual customization progress; existing capture permissions and offline quote/payment owners remain unchanged. This feature contract does not introduce repository-wide structural rules.
 - [`my-supply-chain-shein-v1.md`](./my-supply-chain-shein-v1.md): #605 的已评审冻结 Design Basis，Collection → Preparation → Target → Submission 完整交付及三种官方应用类型；运行说明见 [operations](../operations/my-supply-chain-shein-v1.md)。
 - [`notification-center-v1.md`](./notification-center-v1.md)
   - #608 notification-center design and current-business source mapping. Admission
