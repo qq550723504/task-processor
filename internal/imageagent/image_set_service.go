@@ -492,19 +492,21 @@ func (s *Service) ConfirmImagePlan(ctx context.Context, input ConfirmImagePlanIn
 	if err = s.imageSets.Contexts.RevalidateImageSet(ctx, identity, current); err != nil {
 		return RunProjection{}, err
 	}
-	quote, err := s.imageSets.Quotes.ReadImageGenerationQuote(ctx, identity)
-	if err != nil {
-		return RunProjection{}, err
-	}
-	for _, slot := range current.Plan.Slots {
-		if slot.Recipe == nil || slot.Recipe.Quote != quote {
-			return RunProjection{}, ErrRevisionConflict
-		}
-	}
 	limits := agentconfig.ImageRunLimits{Images: len(current.Plan.Slots), Points: current.Plan.Set.MaxPoints, ElapsedSeconds: int64(current.Run.Budget.MaxElapsed / time.Second)}
 	command := agentconfig.ImageRunAdmissionCommand{Scope: agent.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, Snapshot: current.Plan.Set.Configuration, MemberID: identity.MemberID, RunID: input.RunID, ConfirmActionID: input.ActionID, SourceDigest: ImageSetSourceDigest(current.Plan.Set.Source, current.Plan), InputDigest: current.Plan.Set.InputDigest, PlanDigest: input.PlanDigest, QuoteDigest: input.QuoteDigest, Limits: limits}
 	receipt, err := s.imageSets.Configuration.ReadImageRunAdmission(ctx, command.Scope, command.Snapshot)
 	if errors.Is(err, agentconfig.ErrNotFound) {
+		// Only a new admission consumes the current quote. A durable original
+		// receipt remains authoritative after ImageDB persistence/ACK loss.
+		quote, err := s.imageSets.Quotes.ReadImageGenerationQuote(ctx, identity)
+		if err != nil {
+			return RunProjection{}, err
+		}
+		for _, slot := range current.Plan.Slots {
+			if slot.Recipe == nil || slot.Recipe.Quote != quote {
+				return RunProjection{}, ErrRevisionConflict
+			}
+		}
 		receipt, err = s.imageSets.Configuration.AdmitImageRun(ctx, command, s.imageSets.HardLimits)
 		if err != nil {
 			originalErr := err
