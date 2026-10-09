@@ -23,6 +23,7 @@ type Job struct {
 	Query        Query                       `json:"query"`
 	Funding      orgresource.ResourceFunding `json:"-"`
 	State        string                      `json:"state"`
+	Reason       string                      `json:"reason,omitempty"`
 	Discovered   bool                        `json:"discovered"`
 	Canceled     bool                        `json:"canceled"`
 	Saved        int                         `json:"saved"`
@@ -50,7 +51,8 @@ type Provider interface {
 	Fetch(context.Context, string, string) (Evidence, error)
 }
 type LiveAccess interface {
-	CheckExecution(context.Context, collection.Scope, orgresource.ResourceFunding) error
+	CheckExecution(context.Context, Principal, orgresource.ResourceFunding) error
+	CheckRead(context.Context, Principal) error
 }
 type ExecutionStarter interface {
 	EnsureExecution(context.Context, Job) error
@@ -65,12 +67,13 @@ type Repository interface {
 	List(context.Context, collection.Scope, int) ([]Job, error)
 	CheckActive(context.Context, Job) error
 	Discover(context.Context, Job, []string) (Job, error)
+	FailDiscovery(context.Context, Job, string) (Job, error)
 	Items(context.Context, Job) ([]Item, error)
 	Claim(context.Context, Job, string) (Item, error)
 	BindReservation(context.Context, Job, string, orgresource.ConsumerChargeReceipt) (Item, error)
 	PrepareEvidence(context.Context, Job, Item, Evidence) (Item, error)
 	Publish(context.Context, Job, Item) (Item, error)
-	Fence(context.Context, Job, string, string) (Item, error)
+	Fence(context.Context, Job, Item, string) (Item, error)
 	RecordCharge(context.Context, Job, string, orgresource.ConsumerChargeReceipt) error
 	Finish(context.Context, Job) (Job, error)
 	Cancel(context.Context, collection.Scope, string, string) (Job, error)
@@ -97,7 +100,7 @@ func (s *Service) Start(ctx context.Context, p Principal, command string, q Quer
 	if err != nil || !collection.ValidID(command) || p.Scope.Validate() != nil || maximumCostFen != int64(q.Limit)*PriceFen {
 		return Job{}, ErrInvalid
 	}
-	if err = s.live.CheckExecution(ctx, p.Scope, funding); err != nil {
+	if err = s.live.CheckExecution(ctx, p, funding); err != nil {
 		return Job{}, err
 	}
 	job, err := s.repo.Admit(ctx, p, command, q, funding)
@@ -112,6 +115,9 @@ func (s *Service) Start(ctx context.Context, p Principal, command string, q Quer
 func (s *Service) Read(ctx context.Context, p Principal, id string) (Job, error) {
 	if p.Scope.Validate() != nil || !collection.ValidID(id) {
 		return Job{}, ErrInvalid
+	}
+	if err := s.live.CheckRead(ctx, p); err != nil {
+		return Job{}, err
 	}
 	job, err := s.repo.Read(ctx, p.Scope, id)
 	if err != nil {
@@ -129,7 +135,7 @@ func identity(job Job, item Item) orgresource.ConsumerChargeIdentity {
 	return orgresource.ConsumerChargeIdentity{OrganizationID: job.Scope.OrganizationID, Consumer: orgresource.ConsumerAmazonData, OperationID: item.ID}
 }
 func (s *Service) check(ctx context.Context, job Job) error {
-	if err := s.live.CheckExecution(ctx, job.Scope, job.Funding); err != nil {
+	if err := s.live.CheckExecution(ctx, Principal{Scope: job.Scope, CredentialID: job.CredentialID}, job.Funding); err != nil {
 		return err
 	}
 	return s.repo.CheckActive(ctx, job)
@@ -164,7 +170,7 @@ func (s *Service) ProcessItem(ctx context.Context, job Job, item Item, stopReaso
 		}
 	}
 	if stopReason != "" {
-		fenced, err := s.repo.Fence(ctx, job, item.ID, stopReason)
+		fenced, err := s.repo.Fence(ctx, job, item, stopReason)
 		if err != nil {
 			return err
 		}
@@ -174,6 +180,13 @@ func (s *Service) ProcessItem(ctx context.Context, job Job, item Item, stopReaso
 		var err error
 		receipt, err = s.charges.Reserve(ctx, chargeID)
 		if err != nil {
+			if errors.Is(err, orgresource.ErrInsufficientBalance) {
+				fenced, fenceErr := s.repo.Fence(ctx, job, item, "resource_unavailable")
+				if fenceErr != nil {
+					return fenceErr
+				}
+				return s.settle(ctx, job, fenced)
+			}
 			return err
 		}
 		item, err = s.repo.BindReservation(ctx, job, item.ID, receipt)
@@ -196,7 +209,7 @@ func (s *Service) ProcessItem(ctx context.Context, job Job, item Item, stopReaso
 		evidence, fetchErr := s.provider.Fetch(fetchContext, job.Query.Site, item.ASIN)
 		cancel()
 		if fetchErr != nil || evidence.Site != job.Query.Site || evidence.ASIN != item.ASIN || evidence.Validate() != nil {
-			fenced, err := s.repo.Fence(ctx, job, item.ID, "provider_rejected")
+			fenced, err := s.repo.Fence(ctx, job, claimed, "provider_rejected")
 			if err != nil {
 				return err
 			}
@@ -234,6 +247,9 @@ func (s *Service) Run(ctx context.Context, scope collection.Scope, id string) er
 	if err != nil {
 		return err
 	}
+	if job.Scope != scope {
+		return ErrForbidden
+	}
 	stop := ""
 	if job.Canceled {
 		stop = "canceled"
@@ -263,7 +279,7 @@ func (s *Service) Run(ctx context.Context, scope collection.Scope, id string) er
 		}
 	}
 	if !job.Discovered && stop != "" {
-		job, err = s.repo.Discover(ctx, job, nil)
+		job, err = s.repo.FailDiscovery(ctx, job, stop)
 		if err != nil {
 			return err
 		}

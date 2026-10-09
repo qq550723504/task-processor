@@ -23,7 +23,7 @@ func (r *itemRepo) BindReservation(_ context.Context, _ Job, _ string, c orgreso
 	r.item.ChargeState = c.State
 	return r.item, nil
 }
-func (r *itemRepo) Fence(_ context.Context, _ Job, _ string, _ string) (Item, error) {
+func (r *itemRepo) Fence(_ context.Context, _ Job, _ Item, _ string) (Item, error) {
 	r.item.State = "FAILED"
 	r.fenced++
 	return r.item, nil
@@ -56,7 +56,14 @@ func (c *lostCharges) Reconcile(context.Context, orgresource.ConsumerChargeIdent
 
 type revokedAccess struct{ denied bool }
 
-func (a *revokedAccess) CheckExecution(context.Context, collection.Scope, orgresource.ResourceFunding) error {
+func (a *revokedAccess) CheckRead(context.Context, Principal) error {
+	if a.denied {
+		return ErrForbidden
+	}
+	return nil
+}
+
+func (a *revokedAccess) CheckExecution(context.Context, Principal, orgresource.ResourceFunding) error {
 	if a.denied {
 		return ErrForbidden
 	}
