@@ -53,7 +53,7 @@ func TestSetExecutionRejectsProjectionWithNoWholeRunAdmission(t *testing.T) {
 }
 
 func TestLateOriginalImageSetWorkflowClosesExpiredSlotsWithoutDispatch(t *testing.T) {
-	for _, mode := range []string{"known_unstarted", "original_claimed"} {
+	for _, mode := range []string{"known_unstarted", "original_claimed", "failed_unstarted", "failed_claimed"} {
 		t.Run(mode, func(t *testing.T) {
 			a, repo, input := imageSetPersistenceFixture(t)
 			ctx := context.Background()
@@ -62,11 +62,18 @@ func TestLateOriginalImageSetWorkflowClosesExpiredSlotsWithoutDispatch(t *testin
 			require.NoError(t, err)
 			reservation := slotEffectReservationV3(slotExecutionInputV3(input))
 			var originalEffect imageagent.SlotEffectV3Attempt
-			if mode == "original_claimed" {
+			claimed := mode == "original_claimed" || mode == "failed_claimed"
+			if claimed {
 				var won bool
 				originalEffect, won, err = repo.(imageagent.SlotExternalEffectV3Repository).ReserveSlotProviderV3(ctx, reservation)
 				require.NoError(t, err)
 				require.True(t, won)
+			}
+			if mode == "failed_unstarted" || mode == "failed_claimed" {
+				require.NoError(t, a.PersistWorkflowFailureV2(ctx, PersistWorkflowFailureV2ActivityInput{RunID: input.RunID, Identity: input.Identity, FailureCode: "workflow_failed", FailureMessage: "unexpected original interruption", CommitID: "original-execution-failure"}))
+				current, err = repo.GetProjection(ctx, scope)
+				require.NoError(t, err)
+				require.Equal(t, imageagent.RunStatusFailed, current.Run.Status)
 			}
 			raw := &recordingSDKClient{}
 			require.NoError(t, NewOrganizationClient(raw).StartManual(ctx, imageagent.WorkflowStart{Run: current.Run, Plan: current.Plan, Identity: input.Identity, AssetCatalog: current.AssetCatalog, MaxConcurrentSlots: 1}))
@@ -86,7 +93,7 @@ func TestLateOriginalImageSetWorkflowClosesExpiredSlotsWithoutDispatch(t *testin
 			var readErr error
 			env.RegisterDelayedCallback(func() {
 				observed, readErr = repo.GetProjection(ctx, scope)
-				if mode == "known_unstarted" {
+				if !claimed {
 					env.SignalWorkflow(signalCancel, CancelSignal{RunID: input.RunID, PlanRevision: 1, ActorID: input.Identity.UserID, ActionID: "8d272ce6-0833-4f67-9479-d18708a8cb59"})
 				}
 			}, time.Second)
@@ -104,7 +111,7 @@ func TestLateOriginalImageSetWorkflowClosesExpiredSlotsWithoutDispatch(t *testin
 			require.ErrorIs(t, err, imageagent.ErrRunNotFound, "expiration cannot reserve points or dispatch a new generation intent")
 			stored, err := repo.GetProjection(ctx, scope)
 			require.NoError(t, err)
-			if mode == "known_unstarted" {
+			if !claimed {
 				require.Equal(t, imageagent.BudgetElapsedCode, observed.Run.Block.Code)
 				require.Equal(t, imageagent.BudgetElapsedCode, observed.Slots[0].ErrorCode)
 				require.Equal(t, &imageagent.ImageSlotClosure{Kind: "not_dispatched"}, observed.Slots[0].Closure)

@@ -29,9 +29,9 @@ export type ImageSetInventory=z.infer<typeof imageSetInventorySchema>;
 export const imageSetPreviewSchema=z.object({digest:hash,head:imageSetHeadSchema,assets:z.array(approved).min(1).max(40)});
 export const imageSetRecentSchema=z.object({items:z.array(z.object({runId:uuid,contextKind:z.enum(["acquisition","supply"]),contextId:uuid,status,targetPlatform:id,createdAt:z.string().datetime({offset:true})})).max(40),nextCursor:z.string().max(192)});
 export const imageSetAcceptedSchema=z.strictObject({runId:uuid,status:z.literal("accepted")});
-export const imageSetRoutes=["sources","recent","requirements","verify-prepare","prepare","read","inventory","approval","confirm","regenerate","preview","approve","cancel","recover","resume"] as const;
+export const imageSetRoutes=["sources","recent","requirements","verify-prepare","prepare","read","inventory","approval","confirm","regenerate","preview","approve","cancel","recover","resume","restart"] as const;
 export type ImageSetRoute=typeof imageSetRoutes[number];
-export const imageSetMethods:Record<ImageSetRoute,"GET"|"POST">={sources:"GET",recent:"GET",requirements:"POST","verify-prepare":"GET",prepare:"POST",read:"GET",inventory:"GET",approval:"GET",confirm:"POST",regenerate:"POST",preview:"POST",approve:"POST",cancel:"POST",recover:"POST",resume:"POST"};
+export const imageSetMethods:Record<ImageSetRoute,"GET"|"POST">={sources:"GET",recent:"GET",requirements:"POST","verify-prepare":"GET",prepare:"POST",read:"GET",inventory:"GET",approval:"GET",confirm:"POST",regenerate:"POST",preview:"POST",approve:"POST",cancel:"POST",recover:"POST",resume:"POST",restart:"POST"};
 export function imageSetPath(path:string[],action:ImageSetRoute):string|null {
  let rest:string[];
  if(path[0]==="sourcing"&&path[1]==="1688"&&path[2]==="acquisitions"&&isAcquisitionUUID(path[3]??"")&&path[4]==="images")rest=path.slice(5);
@@ -44,6 +44,7 @@ export function imageSetRequestSchema(action:ImageSetRoute):z.ZodType {
  if(action==="prepare"||action==="regenerate"||action==="requirements")return imageSetPrepareSchema;
  if(action==="preview"||action==="approve")return imageSetSelectionSchema;
  if(action==="confirm")return z.strictObject({actionId:uuid,planRevision:positive,planDigest:hash,quoteDigest:hash});
+ if(action==="restart")return z.strictObject({planRevision:positive,planDigest:hash,quoteDigest:hash});
  if(action==="recover")return z.strictObject({actionId:uuid,planRevision:positive,slotId:id,attempt:positive});
  if(action==="resume")return z.strictObject({actionId:uuid});
  if(action==="cancel")return z.strictObject({actionId:uuid,planRevision:positive});

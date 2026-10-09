@@ -34,3 +34,14 @@ it("verifies the immutable approval action instead of inferring it from a curren
  expect((await buildWorkbenchBrowserResponse(Response.json(payload),"image-set-approval",binding)).status).toBe(502);
  expect((await buildWorkbenchBrowserResponse(Response.json({...payload,actionId:action}),"image-set-approval",binding)).status).toBe(200);
 });
+
+it("binds failed-run restart to the original run and strict plan while retaining ambiguous acknowledgement",async()=>{
+ const body=JSON.stringify({planRevision:1,planDigest:"a".repeat(64),quoteDigest:"b".repeat(64)});
+ const upstream=await buildWorkbenchUpstreamRequest(request("POST",`/runs/${run}/restart`,body),[...path,"runs",run,"restart"],"token","actor");
+ expect(upstream).not.toBeInstanceOf(Response);if(upstream instanceof Response)return;
+ expect(upstream.sourceMutation).toBe(true);expect(upstream.expectedStoreId).toBe(expected);
+ expect(await buildWorkbenchUpstreamRequest(request("POST",`/runs/${run}/restart`,body.slice(0,-1)+',"deadline":"later"}'),[...path,"runs",run,"restart"],"token","actor")).toBeInstanceOf(Response);
+ const bad=await buildWorkbenchBrowserResponse(Response.json({runId:context,status:"accepted"},{status:202}),"image-set-restart",expected,{sourceMutation:true});
+ expect(bad.status).toBe(503);expect((await bad.json()).code).toBe("OUTCOME_UNKNOWN");
+ expect((await buildWorkbenchBrowserResponse(Response.json({runId:run,status:"accepted"},{status:202}),"image-set-restart",expected,{sourceMutation:true})).status).toBe(202);
+});

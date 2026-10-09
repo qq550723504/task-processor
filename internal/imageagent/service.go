@@ -403,6 +403,27 @@ func (s *Service) RestartFailed(ctx context.Context, runID string) error {
 		return fmt.Errorf("%w: only a failed image agent run can be restarted", ErrCommandBlocked)
 	}
 	identity.BusinessTaskID = projection.Run.BusinessTaskID
+	if projection.Plan.Set != nil {
+		// Restore the original whole-run admission. Current new-start gates must
+		// not replace its budget or deadline; source/member access remains live.
+		identity, err = s.identityForRun(identity, projection.Run)
+		if err != nil {
+			return err
+		}
+		if s.imageSets == nil || projection.PendingCommand != nil {
+			return ErrCommandBlocked
+		}
+		if err := ValidateImageSetAdmission(projection.Run, projection.Plan); err != nil {
+			return err
+		}
+		if _, err := ImageSetClosedEffectsDigest(projection.Plan, projection.Slots, projection.RecoverableEffects); err == nil {
+			return ErrCommandBlocked
+		}
+		if err := s.imageSets.Contexts.RevalidateImageSet(ctx, identity, projection); err != nil {
+			return err
+		}
+		return s.workflows.StartManual(ctx, WorkflowStart{Run: projection.Run, Plan: projection.Plan, Identity: identity, MaxConcurrentSlots: projection.Run.MaxConcurrentSlots, AssetCatalog: projection.AssetCatalog})
+	}
 	return s.startExistingProjection(ctx, projection, identity)
 }
 

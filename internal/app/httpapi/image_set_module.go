@@ -78,6 +78,7 @@ func (m fullImageModule) routes() []httproute.Descriptor {
 			{http.MethodGet, "/runs/:run_id", "read"}, {http.MethodGet, "/runs/:run_id/inventory", "inventory"},
 			{http.MethodGet, "/runs/:run_id/approvals/:approval_id", "approval"},
 			{http.MethodPost, "/runs/:run_id/confirm", "confirm"}, {http.MethodPost, "/runs/:run_id/regenerate", "regenerate"},
+			{http.MethodPost, "/runs/:run_id/restart", "restart"},
 			{http.MethodPost, "/runs/:run_id/preview", "preview"}, {http.MethodPost, "/runs/:run_id/approve", "approve"},
 			{http.MethodPost, "/runs/:run_id/cancel", "cancel"}, {http.MethodPost, "/runs/:run_id/recover", "recover"}, {http.MethodPost, "/runs/:run_id/resume", "resume"},
 		} {
@@ -396,6 +397,21 @@ func (m fullImageModule) handle(c *gin.Context, kind imageagent.ImageSourceConte
 			break
 		}
 		err = a.service.ApproveImageSet(ctx, runID, body.PlanRevision, body.ResultDigest, body.ActionID, command)
+	case "restart":
+		var body struct {
+			PlanRevision int64  `json:"planRevision"`
+			PlanDigest   string `json:"planDigest"`
+			QuoteDigest  string `json:"quoteDigest"`
+		}
+		if err = readFullImageJSON(c.Request, &body); err != nil {
+			break
+		}
+		digest, e := imageagent.ImageSetPlanDigest(p.Plan)
+		if e != nil || body.PlanRevision != p.Plan.Revision || body.PlanDigest != digest || body.QuoteDigest != p.Plan.Set.QuoteDigest {
+			err = imageagent.ErrRevisionConflict
+			break
+		}
+		err = a.service.RestartFailed(ctx, runID)
 	case "cancel":
 		var body struct {
 			ActionID     string `json:"actionId"`

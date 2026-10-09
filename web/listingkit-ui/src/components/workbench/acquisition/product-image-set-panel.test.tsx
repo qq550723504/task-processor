@@ -134,6 +134,8 @@ it(`can combine new subset output with successful ${parentStatus} parent outputs
  expect(choices.map((v:{run_id:string,slot_id:string})=>[v.run_id,v.slot_id])).toEqual([[runId,"main"],[parentId,"detail"]]);
  expect(fetch.mock.calls.some(([url])=>/\/(prepare|regenerate|confirm)$/.test(String(url)))).toBe(false);
 });
+
+
 }
 it("loads both legal near-limit templates through bounded pages",async()=>{
  const image={schema:"image-config-v1",mode:"custom",shareOriginals:true,background:"",language:"en",carousel:Array.from({length:32},(_,i)=>({id:`task-${i}`,purpose:"custom",brief:"x".repeat(1990)})),detail:[]};
@@ -364,5 +366,71 @@ it("unlocks original effect recovery once the exact confirmation produced durabl
  fireEvent.click(await screen.findByRole("button",{name:"核实原请求"}));
  await waitFor(()=>expect(localStorage.getItem(`product-image-set:actor:org:acquisition:${operation}:intent`)).toBeNull());
  expect(screen.getByRole("button",{name:"核实原调用"})).toBeEnabled();
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+});
+
+it("restores an unfinished failed run through its original workflow without a new preparation or confirmation",async()=>{
+ state=projection("failed",operation);state.slots[1]={...state.slots[1],status:"pending",attempt:0,candidates:[],closure:null};
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:run`,runId);
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation(async(url,init)=>{
+  if(String(url).endsWith("/restart")){state=projection("awaiting_final_approval",operation);return Response.json({runId,status:"accepted"},{status:202})}
+  return real(url,init);
+ });
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"恢复原失败任务"}));
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/restart"))).toBe(true));
+ await screen.findByText("等待人工选择");
+ const requests=fetch.mock.calls.filter(([,init])=>init?.method==="POST");
+ expect(requests).toHaveLength(1);expect(String(requests[0][0])).toContain(`/runs/${runId}/restart`);
+ expect(JSON.parse(String(requests[0][1]!.body))).toEqual({planRevision:1,planDigest:sha,quoteDigest:digest});
+});
+
+it("keeps a lost restart acknowledgement across reload and explicitly replays only its original plan",async()=>{
+ state=projection("failed",operation);
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:run`,runId);
+ const real=fetch.getMockImplementation()!;let attempts=0;
+ fetch.mockImplementation(async(url,init)=>{
+  if(String(url).endsWith("/restart")){
+   if(++attempts===1)throw new Error("lost acknowledgement");
+   state=projection("blocked",operation);return Response.json({runId,status:"accepted"},{status:202});
+  }
+  return real(url,init);
+ });
+ const view=render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"恢复原失败任务"}));
+ await screen.findByRole("button",{name:"核实原请求"});
+ const key=`product-image-set:actor:org:acquisition:${operation}:intent`,frozen=localStorage.getItem(key);
+ expect(JSON.parse(frozen!)).toEqual({action:"restart",runId,body:{planRevision:1,planDigest:sha,quoteDigest:digest}});
+ view.unmount();render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"核实原请求"}));
+ await screen.findByText("原操作尚未得到明确回执，请继续核实同一编号。");
+ expect(attempts).toBe(1);expect(localStorage.getItem(key)).toBe(frozen);
+ fireEvent.click(screen.getByRole("button",{name:"继续原操作"}));
+ await waitFor(()=>expect(localStorage.getItem(key)).toBeNull());
+ const posts=fetch.mock.calls.filter(([,init])=>init?.method==="POST");
+ expect(posts).toHaveLength(2);expect(posts[1][0]).toBe(posts[0][0]);expect(posts[1][1]!.body).toBe(posts[0][1]!.body);
+});
+
+it("requires the original plan before read-only progress can verify a failed-run restart",async()=>{
+ const key=`product-image-set:actor:org:acquisition:${operation}:intent`;
+ localStorage.setItem(key,JSON.stringify({action:"restart",runId,body:{planRevision:1,planDigest:sha,quoteDigest:digest}}));
+ state={...projection("executing",operation),planDigest:"c".repeat(64)};
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"核实原请求"}));
+ await screen.findByText("原操作尚未得到明确回执，请继续核实同一编号。");
+ expect(localStorage.getItem(key)).not.toBeNull();
+ state=projection("executing",operation);
+ fireEvent.click(screen.getByRole("button",{name:"核实原请求"}));
+ await waitFor(()=>expect(localStorage.getItem(key)).toBeNull());
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+});
+
+it("keeps a known closed failed run on the result-review and regeneration path",async()=>{
+ state={...projection("failed",operation),regenerationAvailable:true};
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:run`,runId);
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ await screen.findByRole("button",{name:"准备所选 0 项的新计划"});
+ expect(screen.queryByRole("button",{name:"恢复原失败任务"})).not.toBeInTheDocument();
  expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
 });

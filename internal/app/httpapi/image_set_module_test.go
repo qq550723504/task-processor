@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"task-processor/internal/agent"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/httproute"
 	"task-processor/internal/imageagent"
@@ -119,3 +120,52 @@ func TestFullImageRoutesHaveExactLiveOrganizationAdmission(t *testing.T) {
 }
 
 type imageSetHTTPWorkflow struct{ imageagent.WorkflowClient }
+
+func TestFullImageRestartRejectsChangedPlanSourceAndMemberBeforeWorkflowStart(t *testing.T) {
+	const sourceID = "d1abe8da-b381-4924-8d15-d79bdbfacf70"
+	const runID = "30d26689-30b6-4358-b0f5-c310d7ab2e58"
+	hash := strings.Repeat("a", 64)
+	binding := imageagent.ImageSourceBinding{ContextKind: imageagent.ImageSourceAcquisition, ProductID: "product", OperationID: sourceID, OriginalPublicationID: "publication", OriginalVersion: 1, EffectiveVersion: 1, CatalogHash: "catalog-v2:" + hash}
+	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "original-plan", SourceAssetIDs: []string{"source-1"}, CreatedBy: "actor", Set: &imageagent.ImageSetPlan{Schema: imageagent.ImageSetSchema, Source: binding, Target: imageagent.ImageTarget{Platform: "product"}, Configuration: agent.ConfigurationSnapshotRef{Kind: "agent-configuration-v1", ID: sourceID, Digest: hash}, ConfigurationEpoch: "1", ParametersDigest: hash, InputDigest: hash, MaxPoints: 20}, Slots: []imageagent.Slot{{ID: "overview", Role: imageagent.SlotRoleDetail, Status: imageagent.SlotStatusPending, IdempotencyKey: "original-overview", SourceAssetIDs: []string{"source-1"}, Recipe: &imageagent.ImageSlotRecipe{Purpose: "product_overview", Background: "white", Language: "en", Placement: imageagent.ImagePlacement{Group: "detail", Order: 1}, PromptVersion: imageagent.ImageSetSchema, Prompt: "Use the original product image", References: []imageagent.ImageSourceObservation{{AssetID: "source-1", SHA256: hash, MediaType: "image/png", Bytes: 10, Width: 1024, Height: 1024}}, Quote: imageagent.ImageGenerationQuote{Provider: "grsai", Model: "gpt-image-2.5", Protocol: "grsai-json-sync-v1", Resolution: "1024x1024", Quality: "auto", PriceVersion: "price", Points: 20, RouteReference: "route", CredentialReference: "credential", ConfigurationVersion: "config"}}}}}
+	var err error
+	plan.Set.QuoteDigest, err = imageagent.ImageSetQuoteDigest(plan)
+	require.NoError(t, err)
+	digest, err := imageagent.ImageSetPlanDigest(plan)
+	require.NoError(t, err)
+	projection := imageagent.RunProjection{Run: imageagent.Run{ID: runID, TenantID: "org", UserID: "actor", MemberID: "member", BusinessTaskID: sourceID, ScopeProtocol: imageagent.OrganizationScopeProtocol, Status: imageagent.RunStatusFailed}, Plan: plan}
+	service, err := imageagent.NewService(imageSetHTTPRepository{projection: projection}, imageSetHTTPWorkflow{}, closedImageSetCatalog{}, imageagent.WithOrganizationScope())
+	require.NoError(t, err)
+	sources := &imageSetHTTPSource{binding: binding}
+	module := fullImageModule{application: &fullImageApplication{service: service, readSources: sources}, bind: func(ctx context.Context, _ string) (context.Context, error) { return ctx, nil }}
+	router := gin.New()
+	for _, route := range module.routes() {
+		router.Handle(route.Method, route.Path, route.Handler)
+	}
+	for _, kind := range []string{"changed_revision", "unknown_field", "changed_source", "changed_member", "other_organization"} {
+		t.Run(kind, func(t *testing.T) {
+			id := authidentity.AuthenticatedIdentity{TenantID: "org", EffectiveOrganizationID: "org", UserID: "actor", EffectiveMemberID: "member"}
+			sources.binding = binding
+			body := `{"planRevision":2,"planDigest":"` + digest + `","quoteDigest":"` + plan.Set.QuoteDigest + `"}`
+			status := http.StatusConflict
+			switch kind {
+			case "unknown_field":
+				body = strings.TrimSuffix(body, "}") + `,"deadline":"later"}`
+				status = http.StatusBadRequest
+			case "changed_source":
+				sources.binding.OriginalVersion++
+			case "changed_member":
+				id.EffectiveMemberID = "replacement"
+				status = http.StatusForbidden
+			case "other_organization":
+				id.EffectiveOrganizationID = "other"
+				status = http.StatusForbidden
+			}
+			r := httptest.NewRequest(http.MethodPost, "/api/v1/workbench/sourcing/1688/acquisitions/"+sourceID+"/images/runs/"+runID+"/restart", strings.NewReader(body))
+			r.Header.Set("Content-Type", "application/json")
+			r = r.WithContext(authidentity.WithAuthenticatedIdentity(r.Context(), id))
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, r)
+			require.Equal(t, status, w.Code, w.Body.String())
+		})
+	}
+}

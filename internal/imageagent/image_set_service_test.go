@@ -347,6 +347,45 @@ func TestExpiredImageSetConfirmationDoesNotReviveClosedWorkflowProgress(t *testi
 	}
 }
 
+func TestRestartFailedImageSetKeepsOriginalAdmissionAndRevalidatesSource(t *testing.T) {
+	for _, revoked := range []bool{false, true} {
+		t.Run(map[bool]string{false: "original_after_deadline", true: "source_revoked"}[revoked], func(t *testing.T) {
+			service, repo, workflows, config, contexts, quotes, ctx, input := imageSetServiceFixture(t)
+			prepared, err := service.PrepareImageSet(ctx, input)
+			require.NoError(t, err)
+			current, err := service.ConfirmImagePlan(ctx, confirmSetInput(prepared))
+			require.NoError(t, err)
+			next := current
+			next.Run.Status, next.Run.CurrentNode, next.Run.Version = imageagent.RunStatusFailed, "workflow_failed", current.Run.Version+1
+			original, err := repo.CommitProjection(ctx, imageagent.ProjectionCommit{Scope: imageagent.ScopeForRun(current.Run), CommitID: "workflow-failed", ExpectedProjectionVersion: current.ProjectionVersion, ExpectedRunVersion: current.Run.Version, Snapshot: next, RunMutation: &imageagent.RunMutation{Status: next.Run.Status, CurrentNode: next.Run.CurrentNode, ActivePlanRevision: next.Plan.Revision}, EventType: "run.failed", EventPayload: []byte(`{}`)})
+			require.NoError(t, err)
+			config.enabled = false
+			quotes.quote.PriceVersion = "current-price-changed"
+			if revoked {
+				contexts.revalidationErr = imageagent.ErrRevisionConflict
+			}
+			restarted, err := imageagent.NewService(repo, workflows, staticCatalogResolver{catalog: contexts.preparation.Catalog}, imageagent.WithOrganizationScope(), imageagent.WithTenantStartGate(imageagent.TenantAllowlistStartGate{Enabled: true, AllowedTenantIDs: []string{"another-org"}}), imageagent.WithImageSetDependencies(imageagent.ImageSetDependencies{Configuration: config, Contexts: contexts, Quotes: quotes, HardLimits: agentconfig.ImageRunLimits{Images: 32, Points: 10000, ElapsedSeconds: 3600}, Now: func() time.Time { return config.receipt.Deadline.Add(time.Second) }}))
+			require.NoError(t, err)
+			err = restarted.RestartFailed(ctx, original.Run.ID)
+			if revoked {
+				require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+				require.Len(t, workflows.starts, 1)
+			} else {
+				require.NoError(t, err)
+				require.Len(t, workflows.starts, 2)
+				require.Equal(t, original.Run, workflows.starts[1].Run)
+				require.Equal(t, original.Plan, workflows.starts[1].Plan)
+				require.Equal(t, original.AssetCatalog, workflows.starts[1].AssetCatalog)
+				require.Equal(t, workflows.starts[0].Identity, workflows.starts[1].Identity)
+			}
+			require.Equal(t, 1, config.admissions)
+			stored, err := repo.GetProjection(ctx, imageagent.ScopeForRun(original.Run))
+			require.NoError(t, err)
+			require.Equal(t, original, stored, "restart only restores the original workflow; its owner controls projection transitions")
+		})
+	}
+}
+
 func TestPrepareImageSetMissingSpecificationsBlocksBeforeGeneration(t *testing.T) {
 	s, _, workflows, config, _, _, ctx, input := imageSetServiceFixture(t)
 	config.template.Detail = []agentconfig.ContentTask{{ID: "dimensions", Purpose: "specification_dimensions"}}
