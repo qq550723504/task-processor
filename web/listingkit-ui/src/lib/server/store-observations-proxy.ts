@@ -40,7 +40,7 @@ type Endpoint = {
   record?: string;
   command?: string;
 };
-export function observationEndpoint(url: URL, method: string): Endpoint | null {
+function observationEndpoint(url: URL, method: string): Endpoint | null {
   const prefix = "/api/workbench/store-observations/";
   if (!url.pathname.startsWith(prefix) || url.pathname.length > 2048)
     return null;

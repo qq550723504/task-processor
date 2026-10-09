@@ -26,7 +26,7 @@ const image = text(2048).refine((v) => {
     return false;
   }
 });
-export const observationPriceSchema = z
+const observationPriceSchema = z
   .object({
     currency: z.string().regex(/^(?:[A-Z]{3})?$/),
     value: z.string().regex(/^(?:[0-9]{1,20}(?:\.[0-9]{1,8})?)?$/),
@@ -234,7 +234,6 @@ export const observationCapabilitiesSchema = z
   .refine((v) => !v.canSync || v.available);
 export type ObservationRecord = z.infer<typeof observationRecordSchema>;
 export type ObservationSync = z.infer<typeof observationSyncSchema>;
-export type ObservationCommand = z.infer<typeof observationCommandSchema>;
 export type ObservationPrice = z.infer<typeof observationPriceSchema>;
 export type ObservationOrder = NonNullable<ObservationRecord["order"]>;
 export type ObservationScope = { organizationId: string; userId: string };
