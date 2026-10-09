@@ -191,6 +191,10 @@ func ApplyFinancialResult(r *Request, result FinancialResult, now time.Time) err
 	if result.Revision > 0 && result.Revision < r.FinancialRevision {
 		return nil
 	}
+	// FinancialRevision is internal ordering metadata (json:"-"). A lease
+	// claim can advance it without changing the user's request projection.
+	beforeProjection := Fingerprint(*r)
+	beforePaymentReceipt := r.PaymentReceiptID
 	if result.Revision > 0 {
 		r.FinancialRevision = result.Revision
 	}
@@ -223,6 +227,9 @@ func ApplyFinancialResult(r *Request, result FinancialResult, now time.Time) err
 	}
 	if result.State == "CHANNEL_OPERATION_FAILED" && r.Refund != nil && r.Refund.State == "APPROVED" {
 		r.Refund.State = "FAILED"
+	}
+	if beforeProjection != "" && Fingerprint(*r) == beforeProjection && r.PaymentReceiptID == beforePaymentReceipt {
+		return nil
 	}
 	r.Version++
 	r.UpdatedAt = now

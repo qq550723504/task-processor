@@ -136,3 +136,61 @@ func TestFullApprovedRefundStopsFurtherServiceAndRetainsAcceptance(t *testing.T)
 		t.Fatalf("fully refunded service remained operable or erased acceptance: %+v", r)
 	}
 }
+
+func TestFinancialProjectionVersionOnlyChangesForBusinessFacts(t *testing.T) {
+	r := serviceRequest()
+	r.State = "PAID_READY"
+	r.PaymentReceiptID = "original-payment"
+	r.FinancialState = "PAID"
+	r.FinancialRevision = 10
+	r.UpdatedAt = time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC)
+	version, updated := r.Version, r.UpdatedAt
+	if err := ApplyFinancialResult(&r, FinancialResult{OrderID: r.OrderID, PaymentReceiptID: r.PaymentReceiptID, State: "PAID", Revision: 20}, updated.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if r.Version != version || !r.UpdatedAt.Equal(updated) || r.FinancialRevision != 20 {
+		t.Fatalf("revision-only result changed visible request or lost floor: %+v", r)
+	}
+}
+
+func TestFinancialProjectionStillVersionsRealChanges(t *testing.T) {
+	for _, change := range []string{"reconciliation", "reason", "expiry", "refund-state", "payment", "hidden-payment", "close"} {
+		t.Run(change, func(t *testing.T) {
+			r := serviceRequest()
+			r.State, r.PaymentReceiptID, r.FinancialState = "PAID_READY", "original-payment", "PAID"
+			r.FinancialRevision = 10
+			result := FinancialResult{OrderID: r.OrderID, PaymentReceiptID: r.PaymentReceiptID, State: r.FinancialState, Revision: 20}
+			switch change {
+			case "reconciliation":
+				result.State = "RECONCILIATION_REQUIRED"
+			case "reason":
+				result.Reason = "verified-original-channel-reason"
+			case "expiry":
+				expires := time.Now().UTC().Add(time.Hour)
+				result.FundsExpireAt = &expires
+			case "refund-state":
+				r.FinancialState, result.State = "REFUNDED", "REFUNDED"
+				r.Refund = &RefundAgreement{State: "APPROVED", AmountMinor: 1}
+			case "payment":
+				r.State, r.PaymentReceiptID = "ORDER_PENDING", ""
+			case "hidden-payment":
+				r.State, r.PaymentReceiptID = "CANCEL_REQUESTED", ""
+				r.FinancialState, result.State = "CANCELLATION_PENDING", "CANCELLATION_PENDING"
+			case "close":
+				r.State, r.PaymentReceiptID = "CANCEL_REQUESTED", ""
+				r.FinancialState, result.State, result.PaymentReceiptID = "CLOSED_UNPAID", "CLOSED_UNPAID", ""
+			}
+			version := r.Version
+			now := time.Now().UTC()
+			if err := ApplyFinancialResult(&r, result, now); err != nil {
+				t.Fatal(err)
+			}
+			if r.Version != version+1 || !r.UpdatedAt.Equal(now) {
+				t.Fatalf("real %s change did not advance user version: %+v", change, r)
+			}
+			if change == "refund-state" && r.Refund.State != "REFUNDED" {
+				t.Fatal("refund completion not projected")
+			}
+		})
+	}
+}

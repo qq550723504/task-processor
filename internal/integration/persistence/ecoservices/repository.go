@@ -892,8 +892,18 @@ func (r *Repository) CompleteFinancialCommand(ctx context.Context, in e.Financia
 		if err := e.ApplyFinancialResult(&req, result, time.Now().UTC()); err != nil {
 			return err
 		}
-		if err := tx.Save(requestRecord(req)).Error; err != nil {
-			return err
+		if req.Version == request.Version {
+			// Keep the newer stale-result floor in this same transaction without
+			// GORM Save changing the user's UpdatedAt for a metadata-only poll.
+			if req.FinancialRevision != request.FinancialRevision {
+				if err := tx.Model(&request).UpdateColumn("financial_revision", req.FinancialRevision).Error; err != nil {
+					return err
+				}
+			}
+		} else {
+			if err := tx.Save(requestRecord(req)).Error; err != nil {
+				return err
+			}
 		}
 		return tx.Model(&row).Updates(map[string]any{"state": state, "result": data}).Error
 	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
