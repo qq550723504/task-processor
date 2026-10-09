@@ -29,3 +29,41 @@ func TestProjectCenterLifecycleDoesNotNeedAgentOrModel(t *testing.T) {
 	cfg.ProjectCenter.Database.User = "source_account_runtime"
 	require.Error(t, cfg.validate())
 }
+
+func TestProjectCenterRejectsEveryLogicalOwnerDatabaseEvenWithDifferentRoles(t *testing.T) {
+	for name, configure := range map[string]func(*Config, DatabaseConfig){
+		"source":        func(c *Config, d DatabaseConfig) { c.SourceAccountDatabase = d },
+		"commercial":    func(c *Config, d DatabaseConfig) { c.CommercialOwnerDatabase = &d },
+		"money":         func(c *Config, d DatabaseConfig) { c.MoneyOwnerDatabase = &d },
+		"notification":  func(c *Config, d DatabaseConfig) { c.NotificationCenterDatabase = &d },
+		"acquisition":   func(c *Config, d DatabaseConfig) { c.ProductAcquisitionDatabase = &d },
+		"store":         func(c *Config, d DatabaseConfig) { c.StoreCenter = &StoreCenterConfig{Database: d} },
+		"knowledge":     func(c *Config, d DatabaseConfig) { c.Knowledge = &KnowledgeConfig{Database: d} },
+		"membership":    func(c *Config, d DatabaseConfig) { c.Membership = &MembershipConfig{Database: d} },
+		"ecoservices":   func(c *Config, d DatabaseConfig) { c.Ecoservices = &EcoservicesConfig{Database: d} },
+		"tool":          func(c *Config, d DatabaseConfig) { c.ToolMarket = &ToolMarketConfig{Database: d} },
+		"chat":          func(c *Config, d DatabaseConfig) { c.AIWorkbench = &AIWorkbenchConfig{Database: d} },
+		"product":       func(c *Config, d DatabaseConfig) { c.ProductAgent = &ProductAgentConfig{Database: d} },
+		"review":        func(c *Config, d DatabaseConfig) { c.ProductAgent = &ProductAgentConfig{ReviewDatabase: d} },
+		"asset":         func(c *Config, d DatabaseConfig) { c.ProductAgent = &ProductAgentConfig{AssetDatabase: d} },
+		"image":         func(c *Config, d DatabaseConfig) { c.ImageAgent = &ImageAgentConfig{Database: d} },
+		"supply":        func(c *Config, d DatabaseConfig) { c.SupplyChain = &SupplyChainConfig{AssetDatabase: d} },
+		"referrals":     func(c *Config, d DatabaseConfig) { c.Referrals.Enabled = true; c.Referrals.Database = d },
+		"trial":         func(c *Config, d DatabaseConfig) { c.LocalTrial = &LocalTrialConfig{Enabled: true, Database: d} },
+		"audit-image":   func(c *Config, d DatabaseConfig) { c.AccountAuditUsage = &AccountAuditUsageConfig{Image: d} },
+		"audit-product": func(c *Config, d DatabaseConfig) { c.AccountAuditUsage = &AccountAuditUsageConfig{Product: d} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := runtimeTestConfig()
+			d := DatabaseConfig{Host: "127.0.0.1", Port: 15432, User: "ai_projects_runtime", Password: "fixture-only", Database: "projects", MaxConnections: 4}
+			cfg.ProjectCenter = &ProjectCenterConfig{Database: d}
+			other := d
+			other.User = "other_runtime"
+			other.Password = "different-fixture"
+			configure(cfg, other)
+			require.ErrorContains(t, cfg.validateProjectCenter(), "dedicated database")
+			cfg.ProjectCenter.Database.Database = "separate_projects"
+			require.NoError(t, cfg.validateProjectCenter())
+		})
+	}
+}

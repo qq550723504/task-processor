@@ -99,6 +99,8 @@ Project and Template facts, visits and operation receipts live in the feature's
 `ai_projects_runtime`. This is a subdivision of the current aiworkbench domain, not a
 replacement Conversation/Task owner. Other owner pools are borrowed by reference adapters
 with their current restricted identities. Runtime never installs/migrates schema.
+The configured project logical database must differ from every configured owner by
+host/port/database, independently of login role or connection-pool object identity.
 
 ## 5. Transactions, versions and idempotency
 
@@ -127,6 +129,8 @@ Revocation during read validation cannot grant access or copy protected data: th
 persisted value is a non-authoritative reference, and future reads fail closed.
 Unknown DB commit results retain the same key and reconcile by receipt; never mint a fresh
 key automatically. All effects are local, repeat-safe references; no remote recovery/Saga.
+Browser recovery storage encodes actor/organization as an unambiguous JSON tuple;
+identifier delimiters cannot merge two private scopes.
 
 ## 6. Authorization and bounded data
 
