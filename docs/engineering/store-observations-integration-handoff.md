@@ -10,19 +10,19 @@ Issue #614 / PR #615；Design Basis 为 `store-center-platform-observations-v1.m
 4. `storeobservationsapp.Authorization` 注入当前 exact ZITADEL client、service token supplier、ProjectID、`*authz.ListingKitAuthorizer` 和组织状态 checker。原 MemberID 始终来自 verified request 或持久命令，worker 只复核当前 exact grant。
 5. 从当前 Store member-scoped repository 和已配置三类 official application registry 调用 `storecenterapp.NewOfficialObservationAccess(storeRepo, authorization, registry)`。同一 `OfficialClient` 实现独立 `OfficialObservationProvider`；不要求或借用 Publish/Transform 授权。
 6. 构造 `observations.Service{Repository:repo, Access:storeobservationsapp.Access{Authorization:authorization, Official:officialAccess}, Directory:storeobservationsapp.Directory{Stores:currentMemberScopedStoreRepo}}`。注入 `storeobservationsruntime.Starter{Client:existingTemporalClient}`；Temporal client 的 dial 仍归现有 platform owner。
-7. `storeobservationsruntime.NewWorker(existingTemporalClient, service)` 注册模块本地 workflow 和逐页活动。启动成功后 readiness callback 才为 true；关闭时停止 worker。task queue `store-observations-current`；workflow `StoreObservationsV1`，固定 ID `store-observations/<org>/<syncId>`。不另建 runner、scheduler 或恢复平台。
+7. 正常命令通过 `storeobservationsruntime.WorkerFactory(existingTemporalClient, lifecycle)` 注入 worker 工厂；工厂调用 `NewWorker(existingTemporalClient, service, lifecycle.Unavailable)`，注册模块本地 workflow 和逐页活动。启动成功后 readiness callback 才为 true，fatal 清除 readiness；关闭时停止 worker。task queue `store-observations-current`；workflow `StoreObservationsV1`，固定 ID `store-observations/<org>/<syncId>`。不另建 runner、scheduler 或恢复平台。
 8. `storeobservationsapp.Application{Service:service, Ready:workerReadyCallback}`；`storeobservationshttp.Routes(application, currentIdentityBinder)` 合入正常 current HTTP descriptors。binder 使用当前 effective org / user / member；客户端不能提交 scope。`Available()` 同时要求 repository、access、directory、starter、ready callback。
 
 ## 权限与 Console
 
-公共 authz owner 把 `store-products` / `store-orders` 模块与四项权限纳入当前模块目录、role policies、Workbench display permissions。read 同时需要 `workbench.store.read`；sync 再需要对应独立权限，不能用 supply/publish 权限代替。
+本Writer已把 `store-products` / `store-orders` 模块与四项权限纳入当前模块目录、role policies、Workbench display permissions。read 同时需要 `workbench.store.read`；sync 再需要对应独立权限，不能用 supply/publish 权限代替。
 
 - `workbench.store.products.read`
 - `workbench.store.products.sync`
 - `workbench.store.orders.read`
 - `workbench.store.orders.sync`
 
-Console 导航正常入口为 `/workbench/store-products` 和 `/workbench/store-orders`。页面及独立 BFF 已在此分支；导航 owner 只在模块 readiness 与权限配置完成后将入口由 pending 接通。根布局的现有 Console shell 不需要另建。BFF 使用当前 `LISTINGKIT_SERVICE_API_BASE`、服务端 session token、所选企业 cookie、Expected Organization/User headers，以及现有同源保护；没有新的平台 URL 或密钥配置。
+Console 导航正常入口为 `/workbench/store-products` 和 `/workbench/store-orders`。页面及独立 BFF 已在此分支；导航已消费当前企业 context，只有 worker readiness 与所选企业的 Store/对应模块 read 权限同时成立才接通。根布局的现有 Console shell 不需要另建。BFF 使用当前 `LISTINGKIT_SERVICE_API_BASE`、服务端 session token、所选企业 cookie、Expected Organization/User headers，以及现有同源保护；没有新的平台 URL 或密钥配置。
 
 HTTP 基础路径 `/api/v1/workbench/store-observations`，products / orders 各有 capabilities、列表、POST syncs、commands/:key、syncs/:id、POST syncs/:id/ensure 和 scope-qualified detail；订单另有 packages/:packageId/track。服务端只允许 SHEIN 官方已确认的商品/订单/物流读取 endpoint，没有发货、售后、资金或商品写接口。
 

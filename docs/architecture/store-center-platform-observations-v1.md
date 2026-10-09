@@ -128,8 +128,8 @@ Console正常入口 `/workbench/store-products`、`/workbench/store-orders`，�
 
 | 共享边界 | 所需最小变更 / owner |
 | --- | --- |
-| Store private material与registry | 独立只读Port，共同material不变量/保护；不改变Supply purpose；待协调Store合同owner |
-| 官方transport allowlist | 为新增只读endpoint放行POST/GET精确方法；待协调integration owner，不修改Publish实现 |
+| Store private material与registry | 本Writer已实现独立只读Port，复用共同material不变量/保护；不改变Supply purpose |
+| 官方transport allowlist | 本Writer已为新增只读endpoint登记POST/GET精确方法；不修改Publish实现 |
 | authz module与permission默认策略 | 两module及四permission；本Writer沿当前角色合同接线 |
 | Console导航 | 两个正常入口由pending改为connected；本Writer接线 |
 | Store显式schema/readiness与runtime/Temporal | 新观察schema/最小privilege/module注入/workflow注册；本Writer统一接线；原Store、Supply、resource构造的Store preflight均须消费一致enabled清单，固定public search_path；新repo使用schema-qualified表；平台Temporal client不以无关Supply业务启用为前置 |
