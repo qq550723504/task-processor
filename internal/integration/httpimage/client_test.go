@@ -84,6 +84,9 @@ func TestDownloadRejectsDeclaredBodyOverLimit(t *testing.T) {
 	})}
 
 	data, err := Download(context.Background(), client, "https://example.com/image", 10)
+	if !errors.Is(err, ErrBodyTooLarge) {
+		t.Fatalf("Download() error = %v, want typed definite body-limit failure", err)
+	}
 	if err == nil || !strings.Contains(err.Error(), "exceeds limit") {
 		t.Fatalf("Download() error = %v, want body limit error", err)
 	}
@@ -107,6 +110,9 @@ func TestDownloadRejectsStreamedBodyOverLimit(t *testing.T) {
 	})}
 
 	data, err := Download(context.Background(), client, "https://example.com/image", 10)
+	if !errors.Is(err, ErrBodyTooLarge) {
+		t.Fatalf("Download() error = %v, want typed definite body-limit failure", err)
+	}
 	if err == nil || !strings.Contains(err.Error(), "exceeds limit") {
 		t.Fatalf("Download() error = %v, want body limit error", err)
 	}

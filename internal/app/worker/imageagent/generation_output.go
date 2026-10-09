@@ -2,8 +2,10 @@ package imageagentworker
 
 import (
 	"context"
+	"errors"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/integration/httpimage"
+	"task-processor/internal/pkg/imagex"
 	productimage "task-processor/internal/product/image"
 )
 
@@ -50,6 +52,9 @@ func generationOutputRecovery(fetch func(context.Context, string) ([]byte, error
 		}
 		data, err := fetch(ctx, fact.Success.ResultURL)
 		if err != nil {
+			if errors.Is(err, httpimage.ErrBodyTooLarge) {
+				return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
+			}
 			return bad()
 		}
 		if len(data) == 0 || len(data) > productimage.MaxInlineArtifactBytes {
@@ -60,6 +65,10 @@ func generationOutputRecovery(fetch func(context.Context, string) ([]byte, error
 			return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
 		}
 		if input.ImageSet != nil && (width != 1024 || height != 1024) {
+			return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
+		}
+		info, err := imagex.Inspect(data)
+		if err != nil || info.Width != width || info.Height != height {
 			return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
 		}
 		return imageagent.SlotGeneratedOutput{SlotID: input.Slot.ID, Attempt: input.Attempt, SourceAssetID: input.Slot.SourceAssetIDs[0], Assets: []imageagent.GeneratedAsset{{Bytes: append([]byte(nil), data...), ContentType: contentType, Width: width, Height: height, SourceURL: sourceURL, Operations: []string{operation}, ProviderReceiptID: fact.Success.RequestID}}}, nil
