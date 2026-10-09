@@ -207,6 +207,61 @@ it("keeps the saved key when receipt lookup has a transient dependency failure",
   const post = fetch.mock.calls.find((c) => c[1]?.method === "POST")!;
   expect(new Headers(post[1].headers).get("Idempotency-Key")).toBe(id);
 });
+it.each([
+  ["NOT_FOUND", 404],
+  ["PERMISSION_DENIED", 403],
+  ["DEPENDENCY_UNAVAILABLE", 503],
+])("handles a failed refetch of an already cached pending receipt (%s)", async (code, status) => {
+  const storageKey = "store-observations:org-a:actor-a:products";
+  const saved = JSON.stringify({ key: id, input: { kind: "products", stores: [] } });
+  sessionStorage.setItem(storageKey, saved);
+  const receipt = {
+    id,
+    input: { kind: "products", stores: [id] },
+    createdAt: "2026-10-09T01:00:00Z",
+    syncs: [{
+      id,
+      commandId: id,
+      storeId: id,
+      kind: "products",
+      status: "pending",
+      progress: { page: 1, windows: [], expectedTotal: null, seen: 0, pages: 0, incomplete: false, notes: [] },
+      range: null,
+      createdAt: "2026-10-09T01:00:00Z",
+      observedAt: null,
+      errorCode: "",
+    }],
+  };
+  let failed = false;
+  const fetch = baseFetch();
+  const original = fetch.getMockImplementation()!;
+  fetch.mockImplementation((path: string, init?: RequestInit) =>
+    path.includes("/commands/")
+      ? Promise.resolve(failed
+        ? Response.json({ code }, { status })
+        : Response.json({ organizationId: "org-a", userId: "actor-a", data: receipt }))
+      : original(path, init),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const view = renderPage();
+  await screen.findByRole("button", { name: "继续同步" });
+  failed = true;
+  await view.client.refetchQueries({ queryKey: ["store-observations", "org-a", "actor-a", "products", "command", id] });
+  expect(view.client.getQueryData(["store-observations", "org-a", "actor-a", "products", "command", id])).toEqual(receipt);
+  if (status === 503) {
+    expect(screen.getByRole("button", { name: "继续同步" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "清除此页同步记录" })).not.toBeInTheDocument();
+    expect(sessionStorage.getItem(storageKey)).toBe(saved);
+  } else {
+    const discard = await screen.findByRole("button", { name: "清除此页同步记录" });
+    expect(screen.queryByRole("button", { name: "继续同步" })).not.toBeInTheDocument();
+    expect(sessionStorage.getItem(storageKey)).toBe(saved);
+    await userEvent.click(discard);
+    expect(screen.queryByRole("button", { name: "继续同步" })).not.toBeInTheDocument();
+    expect(sessionStorage.getItem(storageKey)).toBeNull();
+    expect(screen.getByRole("button", { name: "同步商品" })).toBeEnabled();
+  }
+});
 it.each([false, true])(
   "keeps orders with unknown package numbers visible and tracks only actual packages (valid=%s)",
   async (valid) => {

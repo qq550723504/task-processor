@@ -233,10 +233,11 @@ function ScopedPage({
     },
     retry: false,
   });
-  const isActive = command.data?.syncs.some((s) => !terminal(s)) ?? false;
+  const receipt = inaccessibleReceipt(command.error) ? undefined : command.data;
+  const isActive = receipt?.syncs.some((s) => !terminal(s)) ?? false;
   const canDiscardIntent =
     intent !== null &&
-    !command.data &&
+    !receipt &&
     !command.isFetching &&
     inaccessibleReceipt(command.error) &&
     !sync.isPending &&
@@ -256,7 +257,7 @@ function ScopedPage({
     queryClient.removeQueries({ queryKey: commandKey, exact: true });
   };
   const begin = () => {
-    if (intent && !command.data) return;
+    if (intent && !receipt) return;
     if (isActive) return;
     const captured: Intent = {
       key: crypto.randomUUID(),
@@ -284,7 +285,7 @@ function ScopedPage({
     hydrated &&
     !sync.isPending &&
     !isActive &&
-    (!intent || Boolean(command.data));
+    (!intent || Boolean(receipt));
   const known = Boolean(data?.syncs.length);
   const metric = (n: number | undefined) =>
     known ? `${n ?? 0}${data?.complete ? "" : " 已取得"}` : "—";
@@ -432,11 +433,11 @@ function ScopedPage({
       ) : null}
       {intent && caps.data?.available ? (
         <Card className={styles.progress}>
-          {command.data ? (
+          {receipt ? (
             <>
               <h2>本次同步</h2>
               <ul>
-                {command.data.syncs.map((s) => (
+                {receipt.syncs.map((s) => (
                   <li key={s.id}>
                     <span>
                       {names.get(s.storeId) ?? s.storeId} ·{" "}
@@ -484,7 +485,7 @@ function ScopedPage({
                   : "同步结果待核实。保留原操作，可查询回执或重试原同步。"}
             </p>
           )}
-          {!command.data && !sync.isPending ? (
+          {!receipt && !sync.isPending ? (
             <div className={styles.actions}>
               <Button
                 variant="outline"
