@@ -24,6 +24,7 @@ func (s *ServicePurchases) ReadServiceRefundableAmount(ctx context.Context, orde
 type ServiceFinancialView struct {
 	GrossMinor           int64  `json:"grossMinor,string"`
 	RefundedMinor        int64  `json:"refundedMinor,string"`
+	ChargedBackMinor     int64  `json:"chargedBackMinor,string"`
 	PlatformMinor        int64  `json:"platformMinor,string"`
 	ProviderMinor        int64  `json:"providerMinor,string"`
 	SharedMinor          int64  `json:"sharedMinor,string"`
@@ -36,7 +37,7 @@ type ServiceFinancialView struct {
 
 func (s *ServicePurchases) ReadFinancialFacts(ctx context.Context, orderID string) (ServiceFinancialView, error) {
 	f, err := s.funds.ReadServiceFunds(ctx, orderID)
-	return ServiceFinancialView{GrossMinor: f.GrossMinor, RefundedMinor: f.RefundedMinor, PlatformMinor: f.PlatformMinor, ProviderMinor: f.ProviderMinor, SharedMinor: f.SharedMinor, ReturnedMinor: f.ReturnedMinor, ReleasedMinor: f.ReleasedMinor, ChannelFeeMinor: f.ChannelFeeMinor, ChannelFeeObserved: f.ChannelFeeObserved, ReconciliationReason: f.ReconciliationReason}, err
+	return ServiceFinancialView{GrossMinor: f.GrossMinor, RefundedMinor: f.RefundedMinor, ChargedBackMinor: f.ChargedBackMinor, PlatformMinor: f.PlatformMinor, ProviderMinor: f.ProviderMinor, SharedMinor: f.SharedMinor, ReturnedMinor: f.ReturnedMinor, ReleasedMinor: f.ReleasedMinor, ChannelFeeMinor: f.ChannelFeeMinor, ChannelFeeObserved: f.ChannelFeeObserved, ReconciliationReason: f.ReconciliationReason}, err
 }
 
 // The platform consumer supplies a bounded statement date, never an amount,

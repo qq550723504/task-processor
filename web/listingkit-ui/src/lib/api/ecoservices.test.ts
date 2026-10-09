@@ -1,5 +1,19 @@
 import {describe,it,expect} from "vitest";
-import {ecoCheckoutSchema} from "./ecoservices";
+import {ecoCheckoutSchema,ecoFinancialSchema,ecoInputs} from "./ecoservices";
+
+it("requires exact canonical chargeback facts and never invents zero for missing data",()=>{
+ const facts={grossMinor:"101",refundedMinor:"2",platformMinor:"7",providerMinor:"72",sharedMinor:"10",returnedMinor:"3",releasedMinor:"91",channelFeeMinor:"0",channelFeeObserved:false,reconciliationReason:""};
+ for(const chargedBackMinor of ["0","20","101","9007199254740993","9223372036854775807"]){const result=ecoFinancialSchema.safeParse({...facts,chargedBackMinor});expect(result.success).toBe(true);if(result.success)expect(result.data).toMatchObject({chargedBackMinor,refundedMinor:"2"})}
+ expect(ecoFinancialSchema.safeParse(facts).success).toBe(false);
+ for(const chargedBackMinor of [-1,20,null,"-1","020","2.0","9223372036854775808"])
+  expect(ecoFinancialSchema.safeParse({...facts,chargedBackMinor}).success).toBe(false);
+});
+
+it("rejects malformed sibling version strings without throwing or changing the positive int64 contract",()=>{
+ for(const deliveryVersion of ["2.0","n/a","","-1","01","0","9223372036854775808"])
+  expect(ecoInputs.accept.safeParse({deliveryVersion}).success).toBe(false);
+ expect(ecoInputs.accept.parse({deliveryVersion:"9223372036854775807"})).toEqual({deliveryVersion:"9223372036854775807"});
+});
 
 describe("service checkout QR contract",()=>{
  it("accepts both original Native URL variants and rejects other destinations",()=>{

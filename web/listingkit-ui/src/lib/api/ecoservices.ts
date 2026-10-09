@@ -2,9 +2,9 @@ import { z } from "zod";
 import { readBoundedStrictJSON } from "./strict-json-response";
 
 export const ecoId=z.string().uuid().refine(v=>v===v.toLowerCase()&&v!=="00000000-0000-0000-0000-000000000000");
-const ecoMinor=z.string().regex(/^(0|[1-9][0-9]{0,18})$/).refine(v=>BigInt(v)<=BigInt("9223372036854775807"));
-const ecoVersion=ecoMinor.refine(v=>BigInt(v)>BigInt(0));
-export const ecoFinancialSchema=z.object({grossMinor:ecoMinor,refundedMinor:ecoMinor,platformMinor:ecoMinor,providerMinor:ecoMinor,sharedMinor:ecoMinor,returnedMinor:ecoMinor,releasedMinor:ecoMinor,channelFeeMinor:ecoMinor,channelFeeObserved:z.boolean(),reconciliationReason:z.string().max(128)}).strict();
+const ecoMinor=z.string().regex(/^(0|[1-9][0-9]{0,18})$/).pipe(z.string().refine(v=>BigInt(v)<=BigInt("9223372036854775807")));
+const ecoVersion=ecoMinor.pipe(z.string().refine(v=>BigInt(v)>BigInt(0)));
+export const ecoFinancialSchema=z.object({grossMinor:ecoMinor,refundedMinor:ecoMinor,chargedBackMinor:ecoMinor,platformMinor:ecoMinor,providerMinor:ecoMinor,sharedMinor:ecoMinor,returnedMinor:ecoMinor,releasedMinor:ecoMinor,channelFeeMinor:ecoMinor,channelFeeObserved:z.boolean(),reconciliationReason:z.string().max(128)}).strict();
 const ecoCategory=z.enum(["COMPANY_REGISTRATION","TRADEMARK_REGISTRATION","STORE_OPENING","STORE_OPERATION"]);
 const timestamp=z.string().datetime({offset:true});
 export const ecoPolicy="ecoservices-v1-10-platform-fee-manual-expiry";

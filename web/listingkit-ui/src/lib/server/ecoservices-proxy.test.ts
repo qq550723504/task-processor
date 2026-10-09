@@ -1,7 +1,7 @@
 import {afterEach,expect,it,vi} from "vitest";
 import {proxyEcoservices} from "./ecoservices-proxy";
 import {WORKBENCH_COOKIE_NAME} from "./workbench-proxy";
-import {ecoMerchantSchema,ecoCheckoutSchema} from "@/lib/api/ecoservices";
+import {ecoMerchantSchema,ecoCheckoutSchema,ecoFinancialSchema} from "@/lib/api/ecoservices";
 import {ecoservicesEndpoint} from "./ecoservices-proxy";
 afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs()});
 const id="4841d296-ef14-4c16-8d25-a7667e534feb";
@@ -18,6 +18,18 @@ it("bounds original merchant resume and never exposes arbitrary channel fields o
 });
 const headers={"X-Expected-User-ID":"actor","X-Expected-Organization-ID":"org",cookie:WORKBENCH_COOKIE_NAME+"=org",Origin:"http://localhost:3000"};
 function configure(){vi.stubEnv("LISTINGKIT_SERVICE_API_BASE","http://127.0.0.1:9000/api/v1");vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL","http://localhost:3000")}
+it("preserves canonical chargebacks through platform financial read and fee refresh",async()=>{
+ configure();const facts={grossMinor:"101",refundedMinor:"2",chargedBackMinor:"20",platformMinor:"7",providerMinor:"72",sharedMinor:"10",returnedMinor:"3",releasedMinor:"91",channelFeeMinor:"0",channelFeeObserved:false,reconciliationReason:""};
+ const fetch=vi.fn().mockImplementation(()=>Promise.resolve(Response.json(facts)));vi.stubGlobal("fetch",fetch);
+ for(const refresh of [false,true]){
+  const url="http://localhost:3000/api/admin/ecoservices/requests/"+id+(refresh?"/fees":"/financial");
+  const init:RequestInit=refresh?{method:"POST",headers:{"X-Expected-User-ID":"actor",Origin:"http://localhost:3000","Content-Type":"application/json","Idempotency-Key":id},body:JSON.stringify({date:"2026-10-08"})}:{headers:{"X-Expected-User-ID":"actor"}};
+  const response=await proxyEcoservices(new Request(url,init),"server-token","actor");expect(response.status).toBe(200);expect(ecoFinancialSchema.parse(await response.json())).toEqual(facts);
+ }
+ expect(fetch).toHaveBeenCalledTimes(2);for(const call of fetch.mock.calls){expect(new Headers(call[1].headers).has("X-Requested-Organization-ID")).toBe(false)}
+ const missing={...facts} as Partial<typeof facts>;delete missing.chargedBackMinor;fetch.mockResolvedValueOnce(Response.json(missing));
+ expect((await proxyEcoservices(new Request("http://localhost:3000/api/admin/ecoservices/requests/"+id+"/financial",{headers:{"X-Expected-User-ID":"actor"}}),"server-token","actor")).status).toBe(502);
+});
 it("delivers the original supported Native up QR through the BFF and browser contract",async()=>{
  configure();const codeUrl="weixin://wxpay/bizpayurl/up?pr=original";
  const fetch=vi.fn().mockResolvedValue(Response.json({orderId:id,codeUrl}));vi.stubGlobal("fetch",fetch);
