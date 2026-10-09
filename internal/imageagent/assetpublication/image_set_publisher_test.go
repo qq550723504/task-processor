@@ -21,7 +21,7 @@ func (f *selectedSetFixture) Select(_ context.Context, command productasset.Imag
 func TestImageSetPublisherConsumesExactSelectionAfterOriginalPublicationBoundary(t *testing.T) {
 	projection, _, source, choice := imageSetCandidateFixture(t)
 	action := "1b912e40-d50a-48f5-a12b-62c73a42e4b8"
-	selection := productasset.ImageSetCommand{ActionID: action, SelectionDigest: strings.Repeat("b", 64), Source: productasset.SourceSelectionRequest{ContextKind: "acquisition", ItemID: source.ItemID, OriginalPublicationID: source.OriginalPublicationID, OriginalSnapshotVersion: source.OriginalSnapshotVersion, EffectiveCatalogVersion: source.EffectiveCatalogVersion, TargetPlatform: source.TargetPlatform}, Choices: []productasset.ImageSetChoice{choice}}
+	selection := productasset.ImageSetCommand{ApprovingResult: candidateApprovalBinding(projection), ActionID: action, SelectionDigest: strings.Repeat("b", 64), Source: productasset.SourceSelectionRequest{ContextKind: "acquisition", ItemID: source.ItemID, OriginalPublicationID: source.OriginalPublicationID, OriginalSnapshotVersion: source.OriginalSnapshotVersion, EffectiveCatalogVersion: source.EffectiveCatalogVersion, TargetPlatform: source.TargetPlatform}, Choices: []productasset.ImageSetChoice{choice}}
 	projection.PendingCommand = &imageagent.PendingCommandReceipt{ActionID: action, Kind: "approve_results", Phase: imageagent.ImageSetApprovalPublicationStarted, PlanRevision: 1, SelectionDigest: selection.SelectionDigest, ResultDigest: projection.ResultDigest}
 	selector := &selectedSetFixture{}
 	publisher, err := NewImageSetPublisher(staticProjectionSource{projection: projection}, selector)
@@ -33,6 +33,23 @@ func TestImageSetPublisherConsumesExactSelectionAfterOriginalPublicationBoundary
 	require.Equal(t, []string{"selected-image"}, ack.AssetIDs)
 	require.Equal(t, selection, selector.commands[0])
 	require.Equal(t, projection.ResultDigest, ack.ResultDigest)
+	for _, kind := range []string{"run", "revision", "result"} {
+		t.Run("approving_"+kind, func(t *testing.T) {
+			changed := input
+			switch kind {
+			case "run":
+				changed.Selection.ApprovingResult.RunID = "another-run"
+			case "revision":
+				changed.Selection.ApprovingResult.PlanRevision++
+			case "result":
+				changed.Selection.ApprovingResult.ResultDigest = strings.Repeat("c", 64)
+			}
+			before := len(selector.commands)
+			_, err := publisher.PublishApprovedImageSet(context.Background(), changed)
+			require.Error(t, err)
+			require.Len(t, selector.commands, before)
+		})
+	}
 	for _, kind := range []string{"no_boundary", "changed_selection", "changed_result", "completed", "failed", "blocked", "cancelled"} {
 		t.Run(kind, func(t *testing.T) {
 			changed := projection

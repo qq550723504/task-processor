@@ -112,6 +112,15 @@ func canonicalImageValue(value string) bool {
 	return value != "" && value == strings.TrimSpace(value) && len(value) <= 192 && agentconfig.ValidSetText(value, 192)
 }
 
+// Regeneration can select different original references and refresh official
+// rules. Its product provenance and all other target dimensions stay fixed.
+func SameImageSetRegenerationContext(original, current ImageSourceBinding, oldTarget, newTarget ImageTarget) bool {
+	original.CatalogHash, current.CatalogHash = "", ""
+	oldTarget.RequirementDigest, newTarget.RequirementDigest = "", ""
+	oldTarget.RequirementVersion, newTarget.RequirementVersion = "", ""
+	return original == current && oldTarget == newTarget
+}
+
 func SlotRoleForImagePurpose(purpose string) SlotRole {
 	switch purpose {
 	case "product_identity":

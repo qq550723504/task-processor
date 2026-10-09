@@ -20,9 +20,11 @@ import (
 type originalSetFactFixture struct {
 	fact   imageagent.GenerationFact
 	effect imageagent.SlotEffectV3Attempt
+	reads  int
 }
 
 func (f *originalSetFactFixture) ReadGenerationFact(context.Context, imageagent.SlotExternalEffectIdentity) (imageagent.GenerationFact, error) {
+	f.reads++
 	return f.fact, nil
 }
 func (f *originalSetFactFixture) GetSlotExternalEffectV3(context.Context, imageagent.SlotExternalEffectIdentity) (imageagent.SlotEffectV3Attempt, error) {
@@ -33,6 +35,144 @@ func fixtureDigest(value any) string {
 	raw, _ := json.Marshal(value)
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
+}
+
+func candidateApprovalBinding(p imageagent.RunProjection) productasset.ImageSetResultBinding {
+	return productasset.ImageSetResultBinding{RunID: p.Run.ID, PlanRevision: p.Plan.Revision, ResultDigest: p.ResultDigest}
+}
+
+func rebindLineageAdmission(t *testing.T, p *imageagent.RunProjection) {
+	t.Helper()
+	receipt := *p.Run.ImageAdmission
+	receipt.Command.RunID = p.Run.ID
+	receipt.Command.SourceDigest = imageagent.ImageSetSourceDigest(p.Plan.Set.Source, p.Plan)
+	var err error
+	receipt.Command.PlanDigest, err = imageagent.ImageSetPlanDigest(p.Plan)
+	require.NoError(t, err)
+	receipt.Digest = ""
+	receipt.Digest = fixtureDigest(receipt)
+	p.Run.ImageAdmission = &receipt
+	require.NoError(t, imageagent.ValidateImageSetAdmission(p.Run, p.Plan))
+}
+
+func imageSetApprovalFixture(t *testing.T, parent imageagent.RunProjection) (imageagent.RunProjection, lineageProjectionSource) {
+	t.Helper()
+	raw, err := json.Marshal(parent)
+	require.NoError(t, err)
+	var current imageagent.RunProjection
+	require.NoError(t, json.Unmarshal(raw, &current))
+	current.Run.ID = "3b9ef503-8c6c-4a76-8eb8-047213c565cf"
+	if parent.Run.ID == current.Run.ID {
+		current.Run.ID = "74e01be8-f4e6-461f-8acb-18fe37329f1c"
+	}
+	current.Run.Status = imageagent.RunStatusAwaitingFinalApproval
+	closed, err := imageagent.ImageSetClosedEffectsDigest(parent.Plan, parent.Slots, parent.RecoverableEffects)
+	require.NoError(t, err)
+	current.Plan.Set.Regeneration = &imageagent.ImageSetRegeneration{RunID: parent.Run.ID, ClosedEffectsDigest: closed, ResultDigest: parent.ResultDigest}
+	current.ResultDigest, err = imageagent.ImageSetResultDigest(current.Plan, current.Slots, nil)
+	require.NoError(t, err)
+	rebindLineageAdmission(t, &current)
+	return current, lineageProjectionSource{parent.Run.ID: parent, current.Run.ID: current}
+}
+
+type lineageProjectionSource map[string]imageagent.RunProjection
+
+func (s lineageProjectionSource) GetProjection(_ context.Context, scope imageagent.RunScope) (imageagent.RunProjection, error) {
+	p, ok := s[scope.RunID]
+	if !ok || imageagent.ScopeForRun(p.Run) != scope {
+		return imageagent.RunProjection{}, imageagent.ErrRunNotFound
+	}
+	return p, nil
+}
+
+func TestImageSetCandidateReaderRejectsUnrelatedRunBeforeOriginalFactRead(t *testing.T) {
+	parent, facts, source, choice := imageSetCandidateFixture(t)
+	current, _, _, _ := imageSetCandidateFixture(t)
+	current.Run.ID = "3b9ef503-8c6c-4a76-8eb8-047213c565cf"
+	rebindLineageAdmission(t, &current)
+	reader, err := NewImageSetCandidateReader(lineageProjectionSource{parent.Run.ID: parent, current.Run.ID: current}, facts, facts, staticPublicURLResolver{})
+	require.NoError(t, err)
+	_, err = reader.ReadImageSetCandidate(context.Background(), source, candidateApprovalBinding(current), choice)
+	require.ErrorIs(t, err, imageagent.ErrRevisionConflict, "same actor/source/platform does not make an unrelated run an ancestor")
+	require.Zero(t, facts.reads)
+}
+
+func TestImageSetCandidateReaderTraversesOnlyRecordedRegenerationAncestors(t *testing.T) {
+	parent, facts, source, choice := imageSetCandidateFixture(t)
+	parent.Run.Status = imageagent.RunStatusCompleted
+	middle, _ := imageSetApprovalFixture(t, parent)
+	current, lineage := imageSetApprovalFixture(t, middle)
+	lineage[parent.Run.ID] = parent
+	reader, err := NewImageSetCandidateReader(lineage, facts, facts, staticPublicURLResolver{})
+	require.NoError(t, err)
+	selected, err := reader.ReadImageSetCandidate(context.Background(), source, candidateApprovalBinding(current), choice)
+	require.NoError(t, err)
+	require.Equal(t, choice.RunID, selected.Asset.RunID)
+	require.Equal(t, facts.fact.IntentID, selected.Asset.GenerationEvidence.IntentID)
+	require.Equal(t, facts.fact.TerminalProofDigest(), selected.Asset.GenerationEvidence.SettlementProofDigest)
+
+	middle.Plan.Set.Regeneration.ClosedEffectsDigest = strings.Repeat("c", 64)
+	rebindLineageAdmission(t, &middle)
+	lineage[middle.Run.ID] = middle
+	before := facts.reads
+	_, err = reader.ReadImageSetCandidate(context.Background(), source, candidateApprovalBinding(current), choice)
+	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+	require.Equal(t, before, facts.reads)
+}
+
+func TestImageSetCandidateLineageBindsAllStoreCategoryAndSourceDimensions(t *testing.T) {
+	parent, facts, source, choice := imageSetCandidateFixture(t)
+	parent.Plan.Set.Target = imageagent.ImageTarget{Platform: "shein", StoreID: "store", Site: "shein-us", RecordID: "record", ApplicationID: "application", ApplicationMode: "self_operated", CategoryID: 1, ProductTypeID: 2, AttributesDigest: strings.Repeat("a", 64), VariantsDigest: strings.Repeat("b", 64), RequirementDigest: strings.Repeat("c", 64), RequirementVersion: "v1"}
+	parent.Run.TargetPlatform, source.TargetPlatform = "shein", "shein"
+	for i := range parent.Plan.Slots {
+		parent.Plan.Slots[i].Recipe.OfficialPlacement = &imageagent.OfficialImagePlacement{Group: "skc", Type: 1, Sort: i + 1, Site: "shein-us"}
+	}
+	rebindLineageAdmission(t, &parent)
+	var err error
+	parent.ResultDigest, err = imageagent.ImageSetResultDigest(parent.Plan, parent.Slots, nil)
+	require.NoError(t, err)
+	current, lineage := imageSetApprovalFixture(t, parent)
+	// Refreshing official rules is already permitted by the preparation owner.
+	current.Plan.Set.Target.RequirementVersion = "v2"
+	current.Plan.Set.Target.RequirementDigest = strings.Repeat("d", 64)
+	rebindLineageAdmission(t, &current)
+	current.ResultDigest, err = imageagent.ImageSetResultDigest(current.Plan, current.Slots, nil)
+	require.NoError(t, err)
+	lineage[current.Run.ID] = current
+	reader, err := NewImageSetCandidateReader(lineage, facts, facts, staticPublicURLResolver{})
+	require.NoError(t, err)
+	_, err = reader.readApprovingLineage(context.Background(), source, candidateApprovalBinding(current), choice)
+	require.NoError(t, err)
+	for _, dimension := range []string{"store", "category", "site", "attributes", "variants", "record", "application"} {
+		t.Run(dimension, func(t *testing.T) {
+			changed := current
+			set := *current.Plan.Set
+			changed.Plan.Set = &set
+			switch dimension {
+			case "store":
+				changed.Plan.Set.Target.StoreID = "other-store"
+			case "category":
+				changed.Plan.Set.Target.CategoryID++
+			case "site":
+				changed.Plan.Set.Target.Site = "shein-ca"
+			case "attributes":
+				changed.Plan.Set.Target.AttributesDigest = strings.Repeat("e", 64)
+			case "variants":
+				changed.Plan.Set.Target.VariantsDigest = strings.Repeat("e", 64)
+			case "record":
+				changed.Plan.Set.Target.RecordID = "other-record"
+			case "application":
+				changed.Plan.Set.Target.ApplicationID = "other-application"
+			}
+			rebindLineageAdmission(t, &changed)
+			changed.ResultDigest, err = imageagent.ImageSetResultDigest(changed.Plan, changed.Slots, nil)
+			require.NoError(t, err)
+			lineage[changed.Run.ID] = changed
+			_, err = reader.readApprovingLineage(context.Background(), source, candidateApprovalBinding(changed), choice)
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+		})
+	}
+	require.Zero(t, facts.reads)
 }
 
 func imageSetCandidateFixture(t *testing.T) (imageagent.RunProjection, *originalSetFactFixture, productasset.SourceSelection, productasset.ImageSetChoice) {
@@ -110,7 +250,7 @@ func TestImageSetCandidateReaderBindsOriginalFactsInKnownPartialRun(t *testing.T
 	projection, facts, source, choice := imageSetCandidateFixture(t)
 	reader, err := NewImageSetCandidateReader(staticProjectionSource{projection: projection}, facts, facts, staticPublicURLResolver{})
 	require.NoError(t, err)
-	result, err := reader.ReadImageSetCandidate(context.Background(), source, choice)
+	result, err := reader.ReadImageSetCandidate(context.Background(), source, candidateApprovalBinding(projection), choice)
 	require.NoError(t, err)
 	require.Equal(t, choice.AssetID, result.Asset.ID)
 	require.Equal(t, facts.fact.IntentID, result.Asset.GenerationEvidence.IntentID)
@@ -127,9 +267,10 @@ func TestImageSetCandidateReaderReusesSettledCandidatesFromClosedParentRuns(t *t
 				if !storedDigest {
 					projection.ResultDigest = "" // Cancellation can close before final approval.
 				}
-				reader, err := NewImageSetCandidateReader(staticProjectionSource{projection: projection}, facts, facts, staticPublicURLResolver{})
+				current, lineage := imageSetApprovalFixture(t, projection)
+				reader, err := NewImageSetCandidateReader(lineage, facts, facts, staticPublicURLResolver{})
 				require.NoError(t, err)
-				result, err := reader.ReadImageSetCandidate(context.Background(), source, choice)
+				result, err := reader.ReadImageSetCandidate(context.Background(), source, candidateApprovalBinding(current), choice)
 				require.NoError(t, err)
 				require.Equal(t, choice.RunID, result.Asset.RunID)
 				require.Equal(t, choice.AssetID, result.Asset.ID)
@@ -145,9 +286,10 @@ func TestImageSetCandidateReaderRejectsParentsStillExecuting(t *testing.T) {
 		t.Run(string(status), func(t *testing.T) {
 			projection, facts, source, choice := imageSetCandidateFixture(t)
 			projection.Run.Status = status
-			reader, err := NewImageSetCandidateReader(staticProjectionSource{projection: projection}, facts, facts, staticPublicURLResolver{})
+			current, lineage := imageSetApprovalFixture(t, projection)
+			reader, err := NewImageSetCandidateReader(lineage, facts, facts, staticPublicURLResolver{})
 			require.NoError(t, err)
-			_, err = reader.ReadImageSetCandidate(context.Background(), source, choice)
+			_, err = reader.ReadImageSetCandidate(context.Background(), source, candidateApprovalBinding(current), choice)
 			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
 		})
 	}
@@ -160,6 +302,7 @@ func TestImageSetCandidateReaderRejectsDriftAndUnsettledOriginalFacts(t *testing
 				t.Run(kind, func(t *testing.T) {
 					projection, facts, source, choice := imageSetCandidateFixture(t)
 					projection.Run.Status = status
+					current, lineage := imageSetApprovalFixture(t, projection)
 					switch kind {
 					case "member":
 						source.MemberID = "other"
@@ -188,9 +331,10 @@ func TestImageSetCandidateReaderRejectsDriftAndUnsettledOriginalFacts(t *testing
 					case "active_revision":
 						projection.Run.ActivePlanRevision++
 					}
-					reader, err := NewImageSetCandidateReader(staticProjectionSource{projection: projection}, facts, facts, staticPublicURLResolver{})
+					lineage[projection.Run.ID] = projection
+					reader, err := NewImageSetCandidateReader(lineage, facts, facts, staticPublicURLResolver{})
 					require.NoError(t, err)
-					_, err = reader.ReadImageSetCandidate(context.Background(), source, choice)
+					_, err = reader.ReadImageSetCandidate(context.Background(), source, candidateApprovalBinding(current), choice)
 					require.Error(t, err)
 				})
 			}

@@ -38,7 +38,7 @@ func (p *ImageSetPublisher) PublishApprovedImageSet(ctx context.Context, input i
 	if run.ID != input.RunID || run.TenantID != input.TenantID || run.UserID != input.UserID || run.Status != imageagent.RunStatusAwaitingFinalApproval || run.ActivePlanRevision != input.PlanRevision || projection.Plan.Revision != input.PlanRevision || imageagent.ValidateImageSetAdmission(run, projection.Plan) != nil {
 		return imageagent.PublicationAcknowledgement{}, imageagent.ErrCommandBlocked
 	}
-	if err := imageagent.ValidateImageSetSelectionIntent(projection.Plan, input.Selection.ActionID, &input.Selection); err != nil {
+	if err := imageagent.ValidateImageSetSelectionIntent(run.ID, projection.Plan, projection.ResultDigest, input.Selection.ActionID, &input.Selection); err != nil {
 		return imageagent.PublicationAcknowledgement{}, err
 	}
 	digest, err := imageagent.ImageSetResultDigest(projection.Plan, projection.Slots, projection.RecoverableEffects)

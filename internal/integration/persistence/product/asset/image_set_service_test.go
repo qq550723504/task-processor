@@ -57,7 +57,7 @@ func TestImageSetManualReplacementReadsExistingMediaOwnerAndRecordsItsOrigin(t *
 	require.ErrorIs(t, err, productasset.ErrSourceApprovalForbidden)
 }
 
-func (r *setCandidateReader) ReadImageSetCandidate(_ context.Context, source productasset.SourceSelection, choice productasset.ImageSetChoice) (productasset.ImageSetCandidate, error) {
+func (r *setCandidateReader) ReadImageSetCandidate(_ context.Context, source productasset.SourceSelection, _ productasset.ImageSetResultBinding, choice productasset.ImageSetChoice) (productasset.ImageSetCandidate, error) {
 	r.calls++
 	if r.deny != nil {
 		return productasset.ImageSetCandidate{}, r.deny
@@ -73,7 +73,7 @@ func (r *setCandidateReader) ReadImageSetCandidate(_ context.Context, source pro
 func setSelectionFixture() (*setSourceReader, productasset.ImageSetCommand) {
 	imageURL := "https://images.example.org/source.png"
 	source := &setSourceReader{selection: productasset.SourceSelection{TenantID: "org", ActorID: "actor", MemberID: "member", ItemID: "item", ProductKey: "product", OriginalPublicationID: "original", TargetPlatform: "product", OriginalSnapshotVersion: 1, EffectiveCatalogVersion: 1, Images: []productasset.SourceImage{{ID: "source-1", URL: imageURL, ReferenceHash: productasset.ReferenceHash("source-1", imageURL), Width: 1024, Height: 1024}}}}
-	input := productasset.ImageSetCommand{ActionID: "select-1", Source: productasset.SourceSelectionRequest{ItemID: "item", OriginalPublicationID: "original", OriginalSnapshotVersion: 1, EffectiveCatalogVersion: 1, TargetPlatform: "product"}, Choices: []productasset.ImageSetChoice{{Kind: "source", SourceID: "source-1", Presentation: productasset.ImagePresentation{Group: "carousel", Order: 1}}, {Kind: "generated", AssetID: "candidate-1", RunID: "run", PlanRevision: 1, SlotID: "first", Attempt: 1, ResultDigest: strings.Repeat("a", 64), Presentation: productasset.ImagePresentation{Group: "detail", Order: 1}}}}
+	input := productasset.ImageSetCommand{ApprovingResult: productasset.ImageSetResultBinding{RunID: "run", PlanRevision: 1, ResultDigest: strings.Repeat("a", 64)}, ActionID: "select-1", Source: productasset.SourceSelectionRequest{ItemID: "item", OriginalPublicationID: "original", OriginalSnapshotVersion: 1, EffectiveCatalogVersion: 1, TargetPlatform: "product"}, Choices: []productasset.ImageSetChoice{{Kind: "source", SourceID: "source-1", Presentation: productasset.ImagePresentation{Group: "carousel", Order: 1}}, {Kind: "generated", AssetID: "candidate-1", RunID: "run", PlanRevision: 1, SlotID: "first", Attempt: 1, ResultDigest: strings.Repeat("a", 64), Presentation: productasset.ImagePresentation{Group: "detail", Order: 1}}}}
 	return source, input
 }
 

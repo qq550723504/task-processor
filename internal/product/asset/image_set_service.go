@@ -37,6 +37,7 @@ type ManualImageReader interface {
 }
 
 type ImageSetCommand struct {
+	ApprovingResult ImageSetResultBinding  `json:"approving_result"`
 	ActionID        string                 `json:"action_id"`
 	Source          SourceSelectionRequest `json:"source"`
 	Target          *ImageSetTarget        `json:"target,omitempty"`
@@ -50,7 +51,7 @@ type ImageSetCandidate struct {
 	Result ImageSetResultBinding
 }
 type ImageCandidateSelectionReader interface {
-	ReadImageSetCandidate(context.Context, SourceSelection, ImageSetChoice) (ImageSetCandidate, error)
+	ReadImageSetCandidate(context.Context, SourceSelection, ImageSetResultBinding, ImageSetChoice) (ImageSetCandidate, error)
 }
 
 type ImageSetTargetResolution struct {
@@ -154,7 +155,7 @@ func (s *ImageSetService) prepare(ctx context.Context, input ImageSetCommand) (A
 	commit := ApprovalCommit{TenantID: source.TenantID, ProductKey: source.ProductKey, TargetPlatform: source.TargetPlatform, ActionID: input.ActionID, SourceSnapshotVersion: source.EffectiveCatalogVersion, ImageSet: &ImageSetSelection{Schema: ImageSetSelectionSchema, Source: input.Source, ExpectedHead: input.ExpectedHead, RequestDigest: requestDigest}}
 	seenResults := map[string]string{}
 	for index, choice := range input.Choices {
-		asset, result, err := s.resolveChoice(ctx, source, inventory, choice)
+		asset, result, err := s.resolveChoice(ctx, source, inventory, input.ApprovingResult, choice)
 		if err != nil {
 			return ApprovalCommit{}, err
 		}
@@ -216,7 +217,7 @@ func (s *ImageSetService) prepare(ctx context.Context, input ImageSetCommand) (A
 	return commit, nil
 }
 
-func (s *ImageSetService) resolveChoice(ctx context.Context, source SourceSelection, inventory ImageSetInventory, choice ImageSetChoice) (ApprovedAsset, ImageSetResultBinding, error) {
+func (s *ImageSetService) resolveChoice(ctx context.Context, source SourceSelection, inventory ImageSetInventory, approving ImageSetResultBinding, choice ImageSetChoice) (ApprovedAsset, ImageSetResultBinding, error) {
 	bad := func() (ApprovedAsset, ImageSetResultBinding, error) {
 		return ApprovedAsset{}, ImageSetResultBinding{}, ErrInvalidApproval
 	}
@@ -301,7 +302,10 @@ func (s *ImageSetService) resolveChoice(ctx context.Context, source SourceSelect
 	if choice.Kind != "generated" || choice.SourceID != "" || choice.ApprovalActionID != "" || !validIdentityPart(choice.AssetID) || !validIdentityPart(choice.RunID) || !validIdentityPart(choice.SlotID) || choice.PlanRevision < 1 || choice.Attempt < 1 || !imageSetDigest(choice.ResultDigest) {
 		return bad()
 	}
-	resolved, err := s.candidates.ReadImageSetCandidate(ctx, source, choice)
+	if !validIdentityPart(approving.RunID) || approving.PlanRevision < 1 || !imageSetDigest(approving.ResultDigest) {
+		return bad()
+	}
+	resolved, err := s.candidates.ReadImageSetCandidate(ctx, source, approving, choice)
 	if err != nil {
 		return ApprovedAsset{}, ImageSetResultBinding{}, err
 	}

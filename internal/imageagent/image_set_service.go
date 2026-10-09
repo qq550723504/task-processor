@@ -412,12 +412,7 @@ func (s *Service) validateImageSetRegeneration(ctx context.Context, identity Exe
 	if err != nil || digest == "" || parent.ResultDigest != "" && digest != parent.ResultDigest {
 		return nil, ErrCommandBlocked
 	}
-	original, current := parent.Plan.Set.Source, resolved.Source
-	original.CatalogHash, current.CatalogHash = "", ""
-	oldTarget, newTarget := parent.Plan.Set.Target, resolved.Target
-	oldTarget.RequirementDigest, newTarget.RequirementDigest = "", ""
-	oldTarget.RequirementVersion, newTarget.RequirementVersion = "", ""
-	if original != current || oldTarget != newTarget {
+	if !SameImageSetRegenerationContext(parent.Plan.Set.Source, resolved.Source, parent.Plan.Set.Target, resolved.Target) {
 		return nil, ErrRevisionConflict
 	}
 	tasks := map[string]bool{}

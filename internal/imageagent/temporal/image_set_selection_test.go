@@ -24,8 +24,23 @@ func TestSetApprovalRequiresExplicitCompleteSelection(t *testing.T) {
 	signal := ApproveResultsSignal{RunID: input.RunID, PlanRevision: 1, ResultDigest: projection.ResultDigest, ActorID: input.Identity.UserID, ActionID: "1b912e40-d50a-48f5-a12b-62c73a42e4b8"}
 	require.Error(t, state.validateApproveResultsBusiness(signal), "set approval cannot silently approve all generated images")
 	source := current.Plan.Set.Source
-	signal.Selection = &productasset.ImageSetCommand{ActionID: signal.ActionID, Source: productasset.SourceSelectionRequest{ContextKind: "acquisition", ItemID: source.OperationID, OriginalPublicationID: source.OriginalPublicationID, OriginalSnapshotVersion: source.OriginalVersion, EffectiveCatalogVersion: source.EffectiveVersion, TargetPlatform: "product"}, SelectionDigest: strings.Repeat("b", 64), Choices: []productasset.ImageSetChoice{{Kind: "source", SourceID: "source-1", Presentation: productasset.ImagePresentation{Group: "detail", Order: 1}}}}
+	signal.Selection = &productasset.ImageSetCommand{ApprovingResult: productasset.ImageSetResultBinding{RunID: input.RunID, PlanRevision: input.Plan.Revision, ResultDigest: projection.ResultDigest}, ActionID: signal.ActionID, Source: productasset.SourceSelectionRequest{ContextKind: "acquisition", ItemID: source.OperationID, OriginalPublicationID: source.OriginalPublicationID, OriginalSnapshotVersion: source.OriginalVersion, EffectiveCatalogVersion: source.EffectiveVersion, TargetPlatform: "product"}, SelectionDigest: strings.Repeat("b", 64), Choices: []productasset.ImageSetChoice{{Kind: "source", SourceID: "source-1", Presentation: productasset.ImagePresentation{Group: "detail", Order: 1}}}}
 	require.NoError(t, state.validateApproveResultsBusiness(signal))
+	for _, kind := range []string{"run", "revision", "result"} {
+		t.Run(kind, func(t *testing.T) {
+			changed := signal
+			changed.Selection = imageagent.CloneImageSetCommand(signal.Selection)
+			switch kind {
+			case "run":
+				changed.Selection.ApprovingResult.RunID = "another-run"
+			case "revision":
+				changed.Selection.ApprovingResult.PlanRevision++
+			case "result":
+				changed.Selection.ApprovingResult.ResultDigest = strings.Repeat("c", 64)
+			}
+			require.Error(t, state.validateApproveResultsBusiness(changed), "a caller cannot substitute a different approving result")
+		})
+	}
 	signal.Selection.Source.EffectiveCatalogVersion++
 	require.Error(t, state.validateApproveResultsBusiness(signal), "a different source version cannot enter the original approval saga")
 }
@@ -63,7 +78,7 @@ func TestImageSetLostApprovalACKResumesExactOrderedSelection(t *testing.T) {
 	input := WorkflowInput{RunID: current.Run.ID, Identity: slotInput.Identity, Plan: current.Plan}
 	source := current.Plan.Set.Source
 	command := ApproveResultsSignal{RunID: input.RunID, PlanRevision: 1, ResultDigest: strings.Repeat("a", 64), ActorID: input.Identity.UserID, ActionID: "1b912e40-d50a-48f5-a12b-62c73a42e4b8"}
-	command.Selection = &productasset.ImageSetCommand{ActionID: command.ActionID, Source: productasset.SourceSelectionRequest{ContextKind: "acquisition", ItemID: source.OperationID, OriginalPublicationID: source.OriginalPublicationID, OriginalSnapshotVersion: source.OriginalVersion, EffectiveCatalogVersion: source.EffectiveVersion, TargetPlatform: "product"}, SelectionDigest: strings.Repeat("b", 64), Choices: []productasset.ImageSetChoice{{Kind: "source", SourceID: "source-1", Presentation: productasset.ImagePresentation{Group: "detail", Order: 1}}}}
+	command.Selection = &productasset.ImageSetCommand{ApprovingResult: productasset.ImageSetResultBinding{RunID: input.RunID, PlanRevision: input.Plan.Revision, ResultDigest: command.ResultDigest}, ActionID: command.ActionID, Source: productasset.SourceSelectionRequest{ContextKind: "acquisition", ItemID: source.OperationID, OriginalPublicationID: source.OriginalPublicationID, OriginalSnapshotVersion: source.OriginalVersion, EffectiveCatalogVersion: source.EffectiveVersion, TargetPlatform: "product"}, SelectionDigest: strings.Repeat("b", 64), Choices: []productasset.ImageSetChoice{{Kind: "source", SourceID: "source-1", Presentation: productasset.ImagePresentation{Group: "detail", Order: 1}}}}
 	env := newWorkflowEnv(t)
 	env.RegisterWorkflow(selectedSetApprovalWorkflow)
 	env.RegisterActivityWithOptions(func(context.Context, PublishImageSetActivityInput) error { return nil }, sdkactivity.RegisterOptions{Name: activityPublishApprovedImageSet})

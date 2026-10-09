@@ -22,7 +22,7 @@ func (s *Service) ApproveImageSet(ctx context.Context, runID string, revision in
 	if !s.organizationScope || current.Plan.Set == nil || current.Plan.Revision != revision {
 		return ErrCommandBlocked
 	}
-	if err = ValidateImageSetSelectionIntent(current.Plan, actionID, &selection); err != nil {
+	if err = ValidateImageSetSelectionIntent(current.Run.ID, current.Plan, current.ResultDigest, actionID, &selection); err != nil {
 		return err
 	}
 	if resultDigest != current.ResultDigest {
@@ -58,8 +58,8 @@ func CloneImageSetCommand(command *productasset.ImageSetCommand) *productasset.I
 	return &copy
 }
 
-func ValidateImageSetSelectionIntent(plan Plan, actionID string, selection *productasset.ImageSetCommand) error {
-	if plan.Set == nil || selection == nil || selection.ActionID != actionID || !agentconfig.UUID(actionID) || !agentconfig.ImageDigest(selection.SelectionDigest) || !selection.ExpectedHead.Valid() || len(selection.Choices) < 1 || len(selection.Choices) > 40 {
+func ValidateImageSetSelectionIntent(runID string, plan Plan, resultDigest, actionID string, selection *productasset.ImageSetCommand) error {
+	if plan.Set == nil || selection == nil || selection.ApprovingResult != (productasset.ImageSetResultBinding{RunID: runID, PlanRevision: plan.Revision, ResultDigest: resultDigest}) || selection.ActionID != actionID || !agentconfig.UUID(actionID) || !agentconfig.ImageDigest(selection.SelectionDigest) || !selection.ExpectedHead.Valid() || len(selection.Choices) < 1 || len(selection.Choices) > 40 {
 		return ErrCommandBlocked
 	}
 	source := plan.Set.Source

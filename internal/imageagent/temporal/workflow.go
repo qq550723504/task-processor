@@ -1380,7 +1380,7 @@ func (s *workflowUpdateState) validateApproveResultsBusiness(signal ApproveResul
 		return updateBlockedError("approval result digest does not match the current projection")
 	}
 	if s.input.Plan.Set != nil {
-		if err := imageagent.ValidateImageSetSelectionIntent(s.input.Plan, signal.ActionID, signal.Selection); err != nil {
+		if err := imageagent.ValidateImageSetSelectionIntent(s.input.RunID, s.input.Plan, s.projection.ResultDigest, signal.ActionID, signal.Selection); err != nil {
 			return updateBlockedError("image set selection does not match the original product/target and explicit selected set")
 		}
 	} else if signal.Selection != nil {

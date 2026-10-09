@@ -3,6 +3,7 @@ package assetpublication
 import (
 	"context"
 	"reflect"
+	"task-processor/internal/agentconfig"
 	"task-processor/internal/imageagent"
 	productasset "task-processor/internal/product/asset"
 )
@@ -33,14 +34,14 @@ func NewImageSetCandidateReader(projections ProjectionSource, generations ImageG
 	return reader, nil
 }
 
-func (r *ImageSetCandidateReader) ReadImageSetCandidate(ctx context.Context, source productasset.SourceSelection, choice productasset.ImageSetChoice) (productasset.ImageSetCandidate, error) {
+func (r *ImageSetCandidateReader) ReadImageSetCandidate(ctx context.Context, source productasset.SourceSelection, approving productasset.ImageSetResultBinding, choice productasset.ImageSetChoice) (productasset.ImageSetCandidate, error) {
 	bad := func() (productasset.ImageSetCandidate, error) {
 		return productasset.ImageSetCandidate{}, imageagent.ErrRevisionConflict
 	}
 	if r == nil || ctx == nil || choice.Kind != "generated" || choice.PlanRevision <= 0 || choice.Attempt <= 0 || !canonical(choice.RunID) || !canonical(choice.SlotID) || !canonical(choice.AssetID) || !canonical(source.TenantID) || !canonical(source.ActorID) || !canonical(source.MemberID) {
 		return bad()
 	}
-	projection, err := r.projections.GetProjection(ctx, imageagent.RunScope{TenantID: source.TenantID, OwnerUserID: source.ActorID, RunID: choice.RunID})
+	projection, err := r.readApprovingLineage(ctx, source, approving, choice)
 	if err != nil {
 		return productasset.ImageSetCandidate{}, err
 	}
@@ -113,6 +114,54 @@ func (r *ImageSetCandidateReader) ReadImageSetCandidate(ctx context.Context, sou
 		return productasset.ImageSetCandidate{Asset: asset, Result: productasset.ImageSetResultBinding{RunID: choice.RunID, PlanRevision: choice.PlanRevision, ResultDigest: digest}}, nil
 	}
 	return bad()
+}
+
+func (r *ImageSetCandidateReader) readApprovingLineage(ctx context.Context, source productasset.SourceSelection, approving productasset.ImageSetResultBinding, choice productasset.ImageSetChoice) (imageagent.RunProjection, error) {
+	bad := func() (imageagent.RunProjection, error) {
+		return imageagent.RunProjection{}, imageagent.ErrRevisionConflict
+	}
+	if !agentconfig.UUID(approving.RunID) || approving.PlanRevision <= 0 || !agentconfig.ImageDigest(approving.ResultDigest) {
+		return bad()
+	}
+	current, err := r.projections.GetProjection(ctx, imageagent.RunScope{TenantID: source.TenantID, OwnerUserID: source.ActorID, RunID: approving.RunID})
+	if err != nil {
+		return imageagent.RunProjection{}, err
+	}
+	if current.Plan.Set == nil || current.Run.Status != imageagent.RunStatusAwaitingFinalApproval || current.Run.ID != approving.RunID || current.Plan.Revision != approving.PlanRevision || current.ResultDigest != approving.ResultDigest {
+		return bad()
+	}
+	digest, err := imageagent.ImageSetCandidateResultDigest(current)
+	if err != nil || digest != approving.ResultDigest {
+		return bad()
+	}
+	origin := *current.Plan.Set
+	visited := map[string]bool{}
+	for {
+		if err := ctx.Err(); err != nil {
+			return imageagent.RunProjection{}, err
+		}
+		run, plan := current.Run, current.Plan
+		if visited[run.ID] || plan.Set == nil || run.TenantID != source.TenantID || run.UserID != source.ActorID || run.MemberID != source.MemberID || run.BusinessTaskID != source.ItemID || run.TargetPlatform != source.TargetPlatform || run.ActivePlanRevision != plan.Revision || imageagent.ValidateImageSetAdmission(run, plan) != nil || !imageagent.SameImageSetRegenerationContext(origin.Source, plan.Set.Source, origin.Target, plan.Set.Target) {
+			return bad()
+		}
+		visited[run.ID] = true
+		if run.ID == choice.RunID {
+			return current, nil
+		}
+		edge := plan.Set.Regeneration
+		if edge == nil {
+			return bad()
+		}
+		parent, err := r.projections.GetProjection(ctx, imageagent.RunScope{TenantID: source.TenantID, OwnerUserID: source.ActorID, RunID: edge.RunID})
+		if err != nil {
+			return imageagent.RunProjection{}, err
+		}
+		closed, err := imageagent.ImageSetClosedEffectsDigest(parent.Plan, parent.Slots, parent.RecoverableEffects)
+		if err != nil || parent.Run.ID != edge.RunID || !imageagent.ImageSetClosedRunStatus(parent.Run.Status) || closed != edge.ClosedEffectsDigest || edge.ResultDigest != "" && edge.ResultDigest != closed {
+			return bad()
+		}
+		current = parent
+	}
 }
 
 var _ productasset.ImageCandidateSelectionReader = (*ImageSetCandidateReader)(nil)

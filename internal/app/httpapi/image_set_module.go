@@ -483,7 +483,7 @@ func fullImageSelection(p imageagent.RunProjection, body fullImageSelectionBody)
 		return asset.ImageSetCommand{}, imageagent.ErrCommandBlocked
 	}
 	source, target := p.Plan.Set.Source, p.Plan.Set.Target
-	command := asset.ImageSetCommand{ActionID: body.ActionID, Source: asset.SourceSelectionRequest{ContextKind: string(source.ContextKind), ItemID: source.OperationID, OriginalPublicationID: source.OriginalPublicationID, OriginalSnapshotVersion: source.OriginalVersion, EffectiveCatalogVersion: source.EffectiveVersion, ApplyReceiptID: source.ApplyReceiptID, TargetPlatform: target.Platform}, ExpectedHead: body.ExpectedHead, Choices: body.Choices, SelectionDigest: body.SelectionDigest}
+	command := asset.ImageSetCommand{ApprovingResult: asset.ImageSetResultBinding{RunID: p.Run.ID, PlanRevision: p.Plan.Revision, ResultDigest: p.ResultDigest}, ActionID: body.ActionID, Source: asset.SourceSelectionRequest{ContextKind: string(source.ContextKind), ItemID: source.OperationID, OriginalPublicationID: source.OriginalPublicationID, OriginalSnapshotVersion: source.OriginalVersion, EffectiveCatalogVersion: source.EffectiveVersion, ApplyReceiptID: source.ApplyReceiptID, TargetPlatform: target.Platform}, ExpectedHead: body.ExpectedHead, Choices: body.Choices, SelectionDigest: body.SelectionDigest}
 	if target.Platform != "product" {
 		command.Target = &asset.ImageSetTarget{RecordID: target.RecordID, StoreID: target.StoreID, Site: target.Site, ApplicationID: target.ApplicationID, ApplicationMode: target.ApplicationMode, CategoryID: target.CategoryID, ProductTypeID: target.ProductTypeID, AttributesDigest: target.AttributesDigest, VariantsDigest: target.VariantsDigest}
 	}
