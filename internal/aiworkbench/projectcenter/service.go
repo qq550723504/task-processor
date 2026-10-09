@@ -211,14 +211,54 @@ func (s *Service) List(ctx context.Context, scope Scope, q Query) (Page, error) 
 		return Page{}, ErrUnavailable
 	}
 	out := Page{Projects: []View{}, Next: next}
+	// A list is a bounded best-effort card projection, not twenty detail reads.
+	// Preserve time for the local list even when a source owner is unavailable.
+	projectionContext, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	remaining := 20
+	resolve := func(r Reference) ReferenceView {
+		if remaining == 0 || projectionContext.Err() != nil {
+			return ReferenceView{SlotID: r.SlotID, Kind: r.Kind}
+		}
+		remaining--
+		return s.resolve(projectionContext, scope, r)
+	}
 	for _, p := range projects {
-		v, e := s.Get(ctx, scope, p.ID)
+		if p.Scope != scope || !ValidID(p.ID) {
+			return Page{}, ErrUnavailable
+		}
+		current, refs, e := s.Store.Get(ctx, scope, p.ID)
 		if e != nil {
 			return Page{}, e
 		}
-		// Cards consume only the authorized aggregate. Detailed links belong to
-		// the single-project view, keeping a full page within the response budget.
-		v.References = []ReferenceView{}
+		if current.Scope != scope || current.ID != p.ID || len(refs) > 100 {
+			return Page{}, ErrUnavailable
+		}
+		v := View{Project: current, StoreScope: current.StoreID != "", References: []ReferenceView{}, TaskSummaryAvailable: true}
+		for _, r := range refs {
+			if r.Kind != "BUSINESS_TASK" {
+				continue
+			}
+			v.TaskTotal++
+			resolved := resolve(r)
+			if !resolved.Available || resolved.TaskState == "" {
+				v.TaskSummaryAvailable = false
+			}
+			if resolved.TaskState == "COMPLETED" {
+				v.TaskCompleted++
+			}
+			if resolved.TaskState == "WAITING_CONFIRMATION" {
+				v.TaskPending++
+			}
+		}
+		if !v.TaskSummaryAvailable {
+			v.TaskCompleted = 0
+			v.TaskPending = 0
+		}
+		if current.StoreID != "" {
+			store := resolve(Reference{Kind: "STORE", TargetID: current.StoreID})
+			v.Store = &store
+		}
 		out.Projects = append(out.Projects, v)
 	}
 	return out, nil

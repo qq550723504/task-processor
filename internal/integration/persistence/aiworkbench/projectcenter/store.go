@@ -190,12 +190,12 @@ func mutate(tx *gorm.DB, s pc.Scope, c pc.Command, now time.Time) (string, uint6
 	if r.Revision != c.Expected {
 		return "", 0, pc.ErrRevision
 	}
+	if r.Archived && c.Operation != "restore" {
+		return "", 0, pc.ErrArchived
+	}
 	if c.Operation == "template_save" {
 		t := templateRow{ID: uuid.NewString(), OrganizationID: s.OrganizationID, ActorID: s.ActorID, Name: c.Name, Title: r.Title, Goal: r.Goal, Kind: r.Kind, Revision: 1, CreatedAt: now}
 		return t.ID, 1, tx.Create(&t).Error
-	}
-	if r.Archived && c.Operation != "restore" {
-		return "", 0, pc.ErrArchived
 	}
 	changes := map[string]any{"revision": r.Revision + 1, "updated_at": now}
 	switch c.Operation {

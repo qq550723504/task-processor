@@ -148,6 +148,10 @@ trusted model/system instructions. UI renders plain text.
 Requests have bounded deadline, JSON bytes (16 KiB), strict unknown/duplicate field rejection,
 UTF-8, identifiers, strings and list bounds. GET rejects unread bodies before parsing.
 List projections cap resource resolution and do not fetch full transcripts/reports.
+Cards read local reference membership, resolve only task/store summaries with a page-wide
+limit of 20 source reads and a two-second projection deadline, and keep an unavailable
+summary when the budget or source availability prevents a complete aggregate. Detailed
+non-task references are resolved only by the single-project view.
 Runtime role has no schema ownership/CREATE, role inheritance, cross-owner privileges,
 TRUNCATE or target-object writes. Only required table/column mutations are granted and
 verified at startup. New-empty-instance initialization is explicit; no legacy migration.

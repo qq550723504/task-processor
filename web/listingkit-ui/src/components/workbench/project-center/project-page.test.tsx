@@ -10,6 +10,17 @@ const id="550e8400-e29b-41d4-a716-446655440000";
 const p={id,title:"原企业项目",goal:"长期目标",kind:"OTHER",dueDate:"",revision:1,archived:false,createdAt:"2026-10-09T00:00:00Z",updatedAt:"2026-10-09T00:00:00Z",storeScope:false,references:[],taskTotal:0,taskCompleted:0,taskPending:0,taskSummaryAvailable:true};
 beforeEach(()=>{f.context.effectiveOrganization={id:"org-a"};f.context.isSwitching=false;f.context.projectCenterAvailable=true;f.context.permissions=["workbench.project.read","workbench.project.manage"];f.request.mockReset();f.push.mockReset();sessionStorage.clear();f.request.mockResolvedValue({projects:[],next:""});HTMLDialogElement.prototype.showModal=vi.fn();HTMLDialogElement.prototype.close=vi.fn();});
 afterEach(()=>{cleanup();sessionStorage.clear();});
+it("releases a recovered operation after definitive revision rejection so fresh editing is possible",async()=>{
+ const intent={path:"/"+id+"/archive",method:"POST",body:{},key:id,revision:1};
+ sessionStorage.setItem("project-center:intent:user-a:org-a",JSON.stringify(intent));
+ f.request.mockImplementation(async(_scope,path,_schema,_signal,command)=>command && !path.endsWith("visit")?Promise.reject(new ProjectError("REVISION_MISMATCH")):path.endsWith("visit")?{id,revision:2,replayed:false}:{...p,revision:2});
+ render(<ProjectPage projectId={id}/>);await screen.findByRole("button",{name:"重试原操作"});fireEvent.click(screen.getByRole("button",{name:"重试原操作"}));
+ await screen.findByText("项目已更新，请刷新后重新操作。");await waitFor(()=>expect(sessionStorage.getItem("project-center:intent:user-a:org-a")).toBeNull());
+ expect(screen.queryByRole("button",{name:"重试原操作"})).toBeNull();expect(screen.getByRole("button",{name:"编辑项目"})).toBeEnabled();
+});
+it("requires restoration before saving a template from an archived project",async()=>{
+ f.request.mockImplementation(async(_scope,path)=>path.endsWith("visit")?{id,revision:2,replayed:false}:{...p,revision:2,archived:true});render(<ProjectPage projectId={id}/>);await screen.findByRole("button",{name:"恢复项目"});expect(screen.queryByLabelText("模板名称")).toBeNull();
+});
 it("does not require AI Workbench or a model to create a personal project",async()=>{
  render(<ProjectPage/>);await screen.findByRole("button",{name:"＋ 新建项目"});await waitFor(()=>expect(screen.getByRole("button",{name:"＋ 新建项目"})).toBeEnabled());fireEvent.click(screen.getByRole("button",{name:"＋ 新建项目"}));fireEvent.change(screen.getByLabelText("项目名称"),{target:{value:"目标项目"}});fireEvent.change(screen.getByLabelText("项目目标"),{target:{value:"实际目标"}});
  f.request.mockResolvedValueOnce({id,revision:1,replayed:false});fireEvent.submit(screen.getByLabelText("项目名称").closest("form")!);await waitFor(()=>expect(f.push).toHaveBeenCalledWith("/workbench/ai/projects/"+id));const call=f.request.mock.calls.find(c=>c[4]?.method==="POST");expect(call?.[4].body).toEqual({title:"目标项目",goal:"实际目标",kind:"OTHER",dueDate:"",storeId:""});
