@@ -33,6 +33,7 @@ var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
 	Ecoservices                *EcoservicesConfig            `json:"ecoservices,omitempty"`
+	NotificationCenterDatabase *DatabaseConfig               `json:"notificationCenterDatabase,omitempty"`
 	Knowledge                  *KnowledgeConfig              `json:"knowledge,omitempty"`
 	StoreCenter                *StoreCenterConfig            `json:"storeCenter,omitempty"`
 	LocalTrial                 *LocalTrialConfig             `json:"localTrial,omitempty"`
@@ -86,7 +87,7 @@ type ImageAgentConfig struct {
 }
 
 // AccountAuditUsageConfig supplies bounded, read-only pools for the existing
-// image and product invocation owners without enabling either Agent runtime.
+// invocation owners not already supplied by their enabled Agent runtime.
 type AccountAuditUsageConfig struct {
 	Image   DatabaseConfig `json:"image"`
 	Product DatabaseConfig `json:"product"`
@@ -99,10 +100,26 @@ func (a *AccountAuditUsageConfig) validate(cfg *Config) error {
 	for _, target := range []struct {
 		name, database, user string
 		value                DatabaseConfig
+		execution            *DatabaseConfig
 	}{
-		{"image", "image_agent", "account_audit_image_reader", a.Image},
-		{"product", "product_agent", "account_audit_product_reader", a.Product},
+		{"image", "image_agent", "account_audit_image_reader", a.Image, nil},
+		{"product", "product_agent", "account_audit_product_reader", a.Product, nil},
 	} {
+		if target.name == "image" && cfg.ImageAgent != nil {
+			target.execution = &cfg.ImageAgent.Database
+		}
+		if target.name == "product" && cfg.ProductAgent != nil && cfg.ProductAgent.Enabled {
+			target.execution = &cfg.ProductAgent.Database
+		}
+		if target.execution != nil {
+			if target.value != (DatabaseConfig{}) {
+				return fmt.Errorf("account audit %s cannot duplicate its Agent execution source", target.name)
+			}
+			if target.execution.Database != target.database || target.execution.Host != cfg.SourceAccountDatabase.Host || target.execution.Port != cfg.SourceAccountDatabase.Port {
+				return fmt.Errorf("account audit %s execution source must use its current local owner", target.name)
+			}
+			continue
+		}
 		if err := target.value.validate("accountAuditUsage." + target.name); err != nil {
 			return err
 		}
@@ -110,8 +127,8 @@ func (a *AccountAuditUsageConfig) validate(cfg *Config) error {
 			return fmt.Errorf("account audit %s requires its dedicated local read-only owner", target.name)
 		}
 	}
-	if cfg.ImageAgent != nil || cfg.ProductAgent != nil && cfg.ProductAgent.Enabled {
-		return errors.New("account audit read-only sources cannot overlap Agent execution sources")
+	if a.Image == (DatabaseConfig{}) && a.Product == (DatabaseConfig{}) {
+		return errors.New("account audit read-only sources must declare at least one owner")
 	}
 	return nil
 }
@@ -269,6 +286,45 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 func (cfg *Config) validate() error {
 	if cfg == nil || cfg.SchemaVersion != manifestSchemaVersion {
 		return fmt.Errorf("unsupported current application manifest schema version")
+	}
+	if cfg.NotificationCenterDatabase != nil {
+		if err := cfg.NotificationCenterDatabase.validate("notificationCenterDatabase"); err != nil {
+			return err
+		}
+		if cfg.NotificationCenterDatabase.User != "notification_center_runtime" || cfg.NotificationCenterDatabase.MaxConnections > 4 {
+			return errors.New("notification center requires its restricted role and at most four connections")
+		}
+		other := []*DatabaseConfig{&cfg.SourceAccountDatabase, cfg.CommercialOwnerDatabase, cfg.MoneyOwnerDatabase, cfg.ProductAcquisitionDatabase}
+		if cfg.Ecoservices != nil {
+			other = append(other, &cfg.Ecoservices.Database)
+		}
+		if cfg.StoreCenter != nil {
+			other = append(other, &cfg.StoreCenter.Database)
+		}
+		if cfg.Knowledge != nil {
+			other = append(other, &cfg.Knowledge.Database)
+		}
+		if cfg.Membership != nil {
+			other = append(other, &cfg.Membership.Database)
+		}
+		if cfg.Referrals.Enabled {
+			other = append(other, &cfg.Referrals.Database)
+		}
+		if cfg.AIWorkbench != nil {
+			other = append(other, &cfg.AIWorkbench.Database)
+		}
+		if cfg.ProductAgent != nil {
+			other = append(other, &cfg.ProductAgent.Database, &cfg.ProductAgent.ReviewDatabase, &cfg.ProductAgent.AssetDatabase)
+		}
+		if cfg.ImageAgent != nil {
+			other = append(other, &cfg.ImageAgent.Database)
+		}
+		for _, db := range other {
+			n := cfg.NotificationCenterDatabase
+			if db != nil && db.Host == n.Host && db.Port == n.Port && db.Database == n.Database {
+				return errors.New("notification center requires a dedicated database")
+			}
+		}
 	}
 	if cfg.Listen.Host != "127.0.0.1" || cfg.Listen.Port < 1 || cfg.Listen.Port > 65535 {
 		return errors.New("current application listener must use 127.0.0.1 and a valid explicit port")

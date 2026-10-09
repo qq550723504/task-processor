@@ -102,6 +102,7 @@ consider the applicable guards, including:
 - `TestMembershipHTTPBoundaryRegistration` — permits only the membership HTTP subtree; rejects the domain root, siblings, other organizations and similar prefixes.
 - `TestSubjectVerificationHTTPBoundaryRegistration` — permits only the approved subject verification HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `TestEcoservicesHTTPBoundaryRegistration` — permits only the approved ecosystem HTTP subtree; rejects the domain root, siblings and similar prefixes.
+- `TestNotificationCenterHTTPBoundaryRegistration` — permits only the approved notification center HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `depguard: source_handoff_legacy_http`
 - `TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets`
 - `TestAlibaba1688CrawlerDoesNotImportListingKitRoot`

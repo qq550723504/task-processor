@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"strings"
 	b "task-processor/internal/commercial/billing"
 	core "task-processor/internal/core/config"
 	"task-processor/internal/knowledge"
@@ -26,6 +27,61 @@ func ecoservicesTestConfig() *Config {
 	c.MoneyOwnerDatabase = &money
 	c.Ecoservices = &EcoservicesConfig{Enabled: true, Database: eco, PayloadKey: base64.StdEncoding.EncodeToString(make([]byte, 32)), Storage: KnowledgeStorageConfig{Region: "local", Bucket: "eco", AccessKeyID: "fixture", SecretAccessKey: "fixture", Mode: "aws"}, Payments: EcoservicesPaymentsConfig{Profile: b.ServiceMerchantProfile{Version: "original", Environment: "PRODUCTION", PlatformMerchantID: "platform", AppID: "app", FreezeDays: 180}, PrivateKey: "fixture", SerialNumber: "fixture", APIv3Key: "0123456789abcdef0123456789abcdef", PublicKeyID: "PUB_KEY_ID_fixture", PublicKey: "fixture", NotifyURL: "https://platform.example/api/v1/payments/ecoservices/wechat/notify"}}
 	return c
+}
+
+func TestEcoservicesAndNotificationRuntimePoolsStayIndependent(t *testing.T) {
+	for _, alias := range []bool{false, true} {
+		t.Run(map[bool]string{false: "both features", true: "shared injected pool"}[alias], func(t *testing.T) {
+			cfg := ecoservicesTestConfig()
+			noticeConfig := cfg.SourceAccountDatabase
+			noticeConfig.Database = "notification_center"
+			noticeConfig.User = "notification_center_runtime"
+			cfg.NotificationCenterDatabase = &noticeConfig
+			source, commercial, money, eco, notice := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
+			if alias {
+				eco = notice
+			}
+			constructed, assembled := 0, 0
+			var closed []*gorm.DB
+			stop := errors.New("bounded listener stop")
+			deps := runtimeDependencies{
+				IdentityPreflight:      func(context.Context, IdentityConfig) error { return nil },
+				OpenSourceAccount:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+				OpenCommercialOwner:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
+				OpenMoneyOwner:         func(context.Context, DatabaseConfig) (*gorm.DB, error) { return money, nil },
+				OpenNotificationCenter: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return notice, nil },
+				OpenEcoservices:        func(context.Context, DatabaseConfig) (*gorm.DB, error) { return eco, nil },
+				NewEcoservices: func(context.Context, *gorm.DB, *EcoservicesConfig, *logrus.Logger) (*EcoservicesRuntime, error) {
+					constructed++
+					return &EcoservicesRuntime{DB: eco}, nil
+				},
+				NewApplicationWithFeatures: func(_ context.Context, _ *gorm.DB, features ApplicationFeatures, _ *core.Config, _ *logrus.Logger) (*http.Server, error) {
+					assembled++
+					if features.Ecoservices == nil || features.Ecoservices.DB != eco || features.NotificationCenterDB != notice {
+						t.Fatal("composition lost a separately enabled feature")
+					}
+					return &http.Server{}, nil
+				},
+				Listen:        func(string, string) (net.Listener, error) { return nil, stop },
+				CloseDatabase: func(db *gorm.DB) error { closed = append(closed, db); return nil },
+			}
+			err := run(context.Background(), cfg, logrus.New(), deps)
+			want := []*gorm.DB{notice, money, commercial, source}
+			if alias {
+				if err == nil || !strings.Contains(err.Error(), "ecoservices requires an independent owner pool") || constructed != 0 || assembled != 0 {
+					t.Fatalf("aliased pool reached consumer: err=%v constructed=%d assembled=%d", err, constructed, assembled)
+				}
+			} else {
+				want = append([]*gorm.DB{eco}, want...)
+				if !errors.Is(err, stop) || constructed != 1 || assembled != 1 {
+					t.Fatalf("valid composition failed before listener: %v", err)
+				}
+			}
+			if !reflect.DeepEqual(closed, want) {
+				t.Fatal("owner pools were leaked or closed twice")
+			}
+		})
+	}
 }
 
 func TestEcoservicesOpeningRequiresDedicatedOwnersAndExplicitQualification(t *testing.T) {

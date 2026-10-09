@@ -24,6 +24,8 @@ Out of Scope：修改原 22444 实例或迁移其历史；启用 Product/Image A
 2. 当前应用运行时从私有清单打开两个有界只读连接，验证目标 schema/SELECT 可用，构造 Account Audit 用量源映射 `{image, product}`。现有 Agent 执行配置不存在时，仅这两个读 pool 进入 Audit；Agent 执行配置存在时沿原各 Agent pool。为避免来源歧义，显式同时配置同一 namespace 的执行 pool 与审计专用 pool 必须拒绝启动，除非后续单独设计同池绑定；本轮不增加猜测或 fallback。
 3. `aiUsageAuditReader.Complete()` 仍要求 image/product 均存在；`ReadFiltered`、HTTP、BFF、client、页面保持 #581 合同。`ReadSummary` 仍排除 observed-only usage。
 
+每个 namespace 独立选择上述已批准来源。例如启用 ProductAgent、未启用 ImageAgent 时，保留 `accountAuditUsage.image` 专用只读配置，省略 `accountAuditUsage.product`，product 用量由当前 ProductAgent owner pool 提供。只打开显式声明的专用 reader；同 namespace 同时声明执行与专用 reader、错误 owner、缺少任一来源仍拒绝启动。这是既有唯一来源合同的组合接线，不开放新的权限或 provider。
+
 读连接失败、配置缺一个、表或 SELECT 不可用时不得进入“空历史成功”。配置不完整的通用应用可以照原行为启动，但筛选返回 503；明确声明全源的隔离项目必须在启动前验证两个 pool，任一失败则当前应用不监听。数据库不可用后的请求失败按原 `DEPENDENCY_UNAVAILABLE` 或 deadline 表达，不返回已扫描的部分页。身份、组织权限仍由原 HTTP 与各 owner 查询限定；新的 pool 不接收跨组织任意搜索入口。
 
 ## 全新隔离安装与持久化边界

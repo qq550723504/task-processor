@@ -24,6 +24,7 @@ func maintainedOperationalCommands() map[string]struct{} {
 		"ecoservices-schema-init":             {},
 		"fingerprint-browser-installer":       {},
 		"knowledge-schema-init":               {},
+		"notification-center-schema-init":     {},
 		"issue36-local-trial-init":            {},
 		"listing-scheduler":                   {},
 		"listingkit-identity-preflight":       {},

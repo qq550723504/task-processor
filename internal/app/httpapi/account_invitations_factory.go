@@ -37,7 +37,13 @@ func buildInvitationFactory(deps MembershipDependencies, project string, auth ro
 		token := parts[1]
 		fresh := func(ctx context.Context) (authidentity.AuthenticatedIdentity, error) {
 			verified, err := auth.workbenchVerifier.Verify(ctx, token)
-			if err != nil || verified.UserID != initial.UserID {
+			if err != nil {
+				if zitadel.IsVerificationInvalid(err) {
+					return verified, domain.ErrAuthentication
+				}
+				return verified, domain.ErrUnavailable
+			}
+			if verified.UserID != initial.UserID {
 				return verified, domain.ErrAuthentication
 			}
 			return verified, nil
@@ -48,7 +54,13 @@ func buildInvitationFactory(deps MembershipDependencies, project string, auth ro
 				return nil, err
 			}
 			resolved, err := auth.organizationResolver.Resolve(ctx, httproute.OrganizationAccessPolicyLiveWrite, workbenchcontext.ResolveInput{Identity: verified, BearerToken: token, RequestedOrganizationID: initial.EffectiveOrganizationID})
-			if err != nil || resolved.EffectiveOrganizationID != initial.EffectiveOrganizationID {
+			if err != nil {
+				if workbenchIdentityRejected(err) {
+					return nil, domain.ErrPermission
+				}
+				return nil, domain.ErrUnavailable
+			}
+			if resolved.EffectiveOrganizationID != initial.EffectiveOrganizationID {
 				return nil, domain.ErrPermission
 			}
 			return authidentity.WithAuthenticatedIdentity(ctx, resolved), nil

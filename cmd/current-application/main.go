@@ -94,6 +94,9 @@ func execute() error {
 		OpenAIWorkbench: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
+		OpenNotificationCenter: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
 		DialImageAgentWorkflow: func(ctx context.Context, address, namespace string) (imageagent.WorkflowClient, func() error, error) {
 			return appruntime.DialOrganizationImageAgentTemporalWorkflowClient(ctx, address, namespace)
 		},
@@ -108,6 +111,9 @@ func execute() error {
 			if features.Ecoservices != nil {
 				e := features.Ecoservices
 				options = append(options, httpapi.WithEcoservices(httpapi.EcoservicesDependencies{DB: e.DB, Objects: e.Objects, Channel: e.Channel, Protection: e.Protection, MerchantProtection: e.MerchantProtection}))
+			}
+			if features.NotificationCenterDB != nil {
+				options = append(options, httpapi.WithNotificationCenter(features.NotificationCenterDB))
 			}
 			if features.Knowledge != nil {
 				options = append(options, httpapi.WithKnowledge(features.Knowledge))

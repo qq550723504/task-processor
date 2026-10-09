@@ -29,6 +29,7 @@ import (
 	"task-processor/internal/knowledge"
 	knowledgehttp "task-processor/internal/knowledge/httpapi"
 	"task-processor/internal/ledger/orgresource"
+	notificationhttp "task-processor/internal/notificationcenter/httpapi"
 	"task-processor/internal/storecenter"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
 	"task-processor/internal/workbenchcontext"
@@ -113,6 +114,8 @@ type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
 	ecoservicesConfigs      int
 	ecoservices             *EcoservicesDependencies
+	notifications           int
+	notificationDB          *gorm.DB
 	agentConfigurationDB    *gorm.DB
 	knowledgeServices       int
 	knowledge               *knowledge.Service
@@ -190,14 +193,44 @@ func WithAcquisitionImageAgent(db *gorm.DB, workflows imageagent.WorkflowClient)
 	}
 }
 
-// WithAccountAuditUsageSources supplies the existing image and product ledger
-// owners for audit reads only. It does not enable an Agent route or provider.
+// WithAccountAuditUsageSources supplies audit-only ledger pools for namespaces
+// without an enabled Agent. A nil pool must be supplied by that namespace's Agent.
 func WithAccountAuditUsageSources(image, product *gorm.DB) CurrentApplicationOption {
 	return func(options *currentApplicationOptions) {
 		options.accountAuditSources++
 		options.accountAuditImageDB = image
 		options.accountAuditProductDB = product
 	}
+}
+
+func currentInvocationAuditSources(options currentApplicationOptions) (invocationAuditSources, error) {
+	sources := invocationAuditSources{}
+	if options.imageAgentDB != nil {
+		sources["image"] = options.imageAgentDB
+	}
+	if options.productAgent != nil && options.productAgent.RunDB != nil {
+		sources["product"] = options.productAgent.RunDB
+	}
+	if options.accountAuditSources == 0 {
+		return sources, nil
+	}
+	if options.accountAuditImageDB == nil && options.accountAuditProductDB == nil {
+		return nil, errors.New("account audit read-only sources require at least one owner pool")
+	}
+	readers := invocationAuditSources{"image": options.accountAuditImageDB, "product": options.accountAuditProductDB}
+	for namespace, pool := range readers {
+		if pool == nil {
+			continue
+		}
+		if sources[namespace] != nil {
+			return nil, fmt.Errorf("account audit %s source supplied by both Agent and reader", namespace)
+		}
+		sources[namespace] = pool
+	}
+	if sources["image"] == nil || sources["product"] == nil || sources["image"] == sources["product"] {
+		return nil, errors.New("account audit requires two independent invocation owners")
+	}
+	return sources, nil
 }
 
 // WithMembership supplies the independently owned membership receipt pool and provider credentials.
@@ -291,8 +324,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 			}
 		}
 	}
-	if supplied.accountAuditSources > 0 && (supplied.accountAuditImageDB == nil || supplied.accountAuditProductDB == nil || supplied.accountAuditImageDB == supplied.accountAuditProductDB || supplied.imageAgentDB != nil || supplied.productAgent != nil) {
-		return nil, errors.New("account audit requires two independent read-only sources without Agent execution")
+	auditSources, auditSourceErr := currentInvocationAuditSources(supplied)
+	if auditSourceErr != nil {
+		return nil, auditSourceErr
 	}
 	if supplied.knowledgeServices > 1 || supplied.knowledgeServices > 0 && supplied.knowledge == nil {
 		return nil, errors.New("knowledge service unavailable or supplied more than once")
@@ -301,7 +335,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, errors.New("ecoservices dependencies unavailable or supplied more than once")
 	}
 	if supplied.ecoservices != nil {
-		for _, existing := range []*gorm.DB{sourceAccountDB, supplied.commercialOwnerDB, supplied.moneyOwnerDB, supplied.referralDB, supplied.productAcquisitionDB, supplied.imageAgentDB, supplied.storeCenterDB, supplied.localTrialDB, supplied.agentConfigurationDB} {
+		for _, existing := range []*gorm.DB{sourceAccountDB, supplied.commercialOwnerDB, supplied.moneyOwnerDB, supplied.referralDB, supplied.productAcquisitionDB, supplied.imageAgentDB, supplied.storeCenterDB, supplied.localTrialDB, supplied.agentConfigurationDB, supplied.notificationDB} {
 			if supplied.ecoservices.DB == existing {
 				return nil, errors.New("ecoservices requires its independent owner pool")
 			}
@@ -639,18 +673,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		if supplied.membership != nil {
 			membershipDB = supplied.membership.ReceiptDB
 		}
-		sources := invocationAuditSources{}
-		if supplied.imageAgentDB != nil {
-			sources["image"] = supplied.imageAgentDB
-		}
-		if supplied.productAgent != nil && supplied.productAgent.RunDB != nil {
-			sources["product"] = supplied.productAgent.RunDB
-		}
-		if supplied.accountAuditSources > 0 {
-			sources["image"] = supplied.accountAuditImageDB
-			sources["product"] = supplied.accountAuditProductDB
-		}
-		audit, auditErr = factories.buildAccountAudit(sourceAccountDB, membershipDB, supplied.commercialOwnerDB, sources, authorizer)
+		audit, auditErr = factories.buildAccountAudit(sourceAccountDB, membershipDB, supplied.commercialOwnerDB, auditSources, authorizer)
 
 		if auditErr != nil {
 			return nil, fmt.Errorf("build current account audit module: %w", auditErr)
@@ -693,12 +716,20 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		modules = append(modules, resources)
 	}
+	if supplied.notifications > 0 {
+		notifications, err := buildNotificationModule(ctx, supplied.notificationDB, cfg, authorizer, modules, supplied)
+		if err != nil {
+			return nil, err
+		}
+		modules = append(modules, notifications)
+	}
 	bundle, err := buildRuntimeBundleFromModules(cfg, modules)
 	if err != nil {
 		return nil, err
 	}
 	routeFeatures := currentApplicationOptionalRoutes{
 		Ecoservices:         supplied.ecoservices != nil,
+		NotificationCenter:  supplied.notifications > 0,
 		ZitadelSMS:          true,
 		StoreCenter:         supplied.storeCenters > 0,
 		LocalTrial:          supplied.localTrials > 0,
@@ -795,6 +826,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 
 type currentApplicationOptionalRoutes struct {
 	Ecoservices         bool
+	NotificationCenter  bool
 	AgentConfiguration  bool
 	Knowledge           bool
 	StoreCenter         bool
@@ -813,6 +845,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
 	if optional.Ecoservices {
 		for _, r := range ehttp.Routes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
+	if optional.NotificationCenter {
+		for _, r := range notificationhttp.Routes(nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
 		}
 	}
@@ -946,6 +983,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 				return errors.New("ecoservices feature not admitted")
 			}
 			if err := validateEcoservicesDescriptor(descriptor); err != nil {
+				return err
+			}
+		}
+		if strings.HasPrefix(descriptor.Path, "/api/v1/notifications/") || strings.HasPrefix(descriptor.Path, "/api/v1/workbench/notifications") || strings.HasPrefix(descriptor.Path, "/api/v1/platform/notifications/") {
+			if !optional.NotificationCenter {
+				return errors.New("notification center not admitted")
+			}
+			if err := notificationhttp.ValidateDescriptor(descriptor); err != nil {
 				return err
 			}
 		}
