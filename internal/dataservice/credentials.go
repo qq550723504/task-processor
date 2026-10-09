@@ -67,10 +67,15 @@ type Principal struct {
 	KeyID    string
 	Revision int64
 }
+type CredentialHistoryPage struct {
+	Items      []Credential `json:"items"`
+	NextCursor string       `json:"nextCursor,omitempty"`
+}
 type CredentialRepository interface {
 	Create(context.Context, Credential, string, string) (Credential, bool, error)
 	Read(context.Context, string) (Credential, error)
 	List(context.Context, collection.Scope) ([]Credential, error)
+	History(context.Context, collection.Scope, string, int) (CredentialHistoryPage, error)
 	Change(context.Context, collection.Scope, string, string, string, int64, KeyPatch) (Credential, error)
 	Creation(context.Context, collection.Scope, string) (Credential, error)
 }
@@ -170,6 +175,21 @@ func (s *CredentialService) List(ctx context.Context) ([]Credential, error) {
 		return nil, err
 	}
 	return s.store.List(ctx, scope)
+}
+
+// List contains every unexpired, non-revoked credential, including disabled
+// credentials. Revoked and expired metadata has a separate bounded history.
+func (s *CredentialService) History(ctx context.Context, cursor string, limit int) (CredentialHistoryPage, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	scope, err := s.access.Resolve(ctx, PermissionManage)
+	if err != nil {
+		return CredentialHistoryPage{}, err
+	}
+	if (cursor != "" && !collection.ValidID(cursor)) || limit < 1 || limit > 100 {
+		return CredentialHistoryPage{}, ErrInvalid
+	}
+	return s.store.History(ctx, scope, cursor, limit)
 }
 
 // Creation verifies a committed create command after acknowledgement loss.

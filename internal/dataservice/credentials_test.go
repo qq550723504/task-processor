@@ -46,6 +46,9 @@ func (m *credentialMemory) Read(_ context.Context, id string) (Credential, error
 func (m *credentialMemory) List(context.Context, collection.Scope) ([]Credential, error) {
 	return []Credential{m.key}, nil
 }
+func (m *credentialMemory) History(context.Context, collection.Scope, string, int) (CredentialHistoryPage, error) {
+	return CredentialHistoryPage{Items: []Credential{m.key}}, nil
+}
 func (m *credentialMemory) Change(_ context.Context, s collection.Scope, id, command, hash string, revision int64, patch KeyPatch) (Credential, error) {
 	if s != m.key.Scope || revision != m.key.Revision {
 		return Credential{}, ErrConflict

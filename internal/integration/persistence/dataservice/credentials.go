@@ -84,7 +84,7 @@ func (r *CredentialRepository) List(ctx context.Context, s collection.Scope) ([]
 		return nil, dataservice.ErrForbidden
 	}
 	var rows []keyRow
-	if err := r.db.WithContext(ctx).Raw("SELECT "+keyColumns+" FROM data_service_credentials WHERE organization_id=? AND actor_id=? ORDER BY created_at DESC LIMIT 100", s.OrganizationID, s.ActorID).Scan(&rows).Error; err != nil {
+	if err := r.db.WithContext(ctx).Raw("SELECT "+keyColumns+" FROM data_service_credentials WHERE organization_id=? AND actor_id=? AND state<>'REVOKED' AND expires_at>now() ORDER BY created_at DESC,id", s.OrganizationID, s.ActorID).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	keys := []dataservice.Credential{}
@@ -96,6 +96,40 @@ func (r *CredentialRepository) List(ctx context.Context, s collection.Scope) ([]
 		keys = append(keys, k)
 	}
 	return keys, nil
+}
+
+func (r *CredentialRepository) History(ctx context.Context, s collection.Scope, cursor string, limit int) (dataservice.CredentialHistoryPage, error) {
+	if s.Validate() != nil {
+		return dataservice.CredentialHistoryPage{}, dataservice.ErrForbidden
+	}
+	if (cursor != "" && !collection.ValidID(cursor)) || limit < 1 || limit > 100 {
+		return dataservice.CredentialHistoryPage{}, dataservice.ErrInvalid
+	}
+	query := "SELECT " + keyColumns + " FROM data_service_credentials WHERE organization_id=? AND actor_id=? AND (state='REVOKED' OR expires_at<=now())"
+	args := []any{s.OrganizationID, s.ActorID}
+	if cursor != "" {
+		query += " AND id>?"
+		args = append(args, cursor)
+	}
+	query += " ORDER BY id LIMIT ?"
+	args = append(args, limit+1)
+	var rows []keyRow
+	if err := r.db.WithContext(ctx).Raw(query, args...).Scan(&rows).Error; err != nil {
+		return dataservice.CredentialHistoryPage{}, err
+	}
+	page := dataservice.CredentialHistoryPage{Items: []dataservice.Credential{}}
+	if len(rows) > limit {
+		page.NextCursor = rows[limit-1].ID
+		rows = rows[:limit]
+	}
+	for _, row := range rows {
+		key, err := row.credential()
+		if err != nil {
+			return dataservice.CredentialHistoryPage{}, err
+		}
+		page.Items = append(page.Items, key)
+	}
+	return page, nil
 }
 
 type commandRow struct {
@@ -230,6 +264,17 @@ func (r *CredentialRepository) Change(ctx context.Context, s collection.Scope, i
 			key.Input = *patch.Limits
 		}
 		key.State = patch.State
+		if key.State != "REVOKED" {
+			// Creation and expiry extension use the same actor lock. Disabled
+			// credentials also occupy a slot because they can be enabled again.
+			var exceeds bool
+			if err := tx.Raw("SELECT ?::timestamptz>now() AND (SELECT count(*) FROM data_service_credentials WHERE organization_id=? AND actor_id=? AND id<>? AND state<>'REVOKED' AND expires_at>now())>=20", key.Input.ExpiresAt, s.OrganizationID, s.ActorID, id).Scan(&exceeds).Error; err != nil {
+				return err
+			}
+			if exceeds {
+				return dataservice.ErrConflict
+			}
+		}
 		key.Revision++
 		raw, err := json.Marshal(key.Input)
 		if err != nil {
