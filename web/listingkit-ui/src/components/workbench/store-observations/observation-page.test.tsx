@@ -405,6 +405,9 @@ it.each([
       staleDetail = false;
       await userEvent.click(screen.getByRole("button", { name: "重试平台详情" }));
     }
+    expect(
+      await screen.findByText(/平台省略的状态和更新时间沿用同来源已保存观察/),
+    ).toBeInTheDocument();
     if (valid) {
       expect(
         await screen.findByText("平台尚未提供物流轨迹。"),
