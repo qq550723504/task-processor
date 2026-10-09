@@ -43,7 +43,7 @@ go run ./cmd/current-application -config C:\private\image-set-current-applicatio
 # 前端：沿用正常 Auth.js/ZITADEL 登录配置与真实 service API base。
 Set-Location web/listingkit-ui
 pnpm.cmd build
-pnpm.cmd start -- --hostname 127.0.0.1 --port 3000
+pnpm.cmd exec next start --hostname 127.0.0.1 --port 3000
 ```
 
 不需要新增 worker 命令：current-application 装配完整 Set 专用 worker，监听成功后启动，停止服务时先停 worker，再关闭原 DB/Temporal 连接。同一 organization task queue 只能由本完整装配的 worker 消费；不要再启动旧单图独立 worker。Docker 部署需把 workerConfigFile 指向的私有文件只读挂载到 current-application；不把 storage credential 放入浏览器或仓库。
