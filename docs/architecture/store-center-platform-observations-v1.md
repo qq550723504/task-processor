@@ -71,7 +71,7 @@ Threat Model 的 Must：当前 Effective Organization、真实原成员/module g
 
 每个短活动取得最长10秒、受request/activity deadline约束的非序列化handle。每次平台调用重新检查当前成员/module、Store member grant、active记录、active且未过期服务、verified connected attempt、应用模式/版本及私密凭据hash。校验不成功拒绝；已有 Supply 目的在其原 authorizer 下保持原权限。凭据只在当前调用前解密，不进入工作流、DB观察、API、日志或错误。
 
-permission使用当前authz，最小四项 `workbench:store-products:read/sync`、`workbench:store-orders:read/sync`；sync同时须read和Store read，普通read也须Store read及当前store grant。两个module独立可授予；订单不依赖Supply/Agent权限。原请求绑定 verified org/actor/member；worker从原持久命令取同scope，用当前 exact IAM重新查原成员，不制造JWT或延长request proof。平台管理员必须具有当前企业授权，既有tenant admin仅沿Store owner允许的admin规则。
+permission沿当前authz点分命名，最小四项 `workbench.store-products.read/sync`、`workbench.store-orders.read/sync`；sync同时须read和Store read，普通read也须Store read及当前store grant。两个module独立可授予；订单不依赖Supply/Agent权限。原请求绑定 verified org/actor/member；worker从原持久命令取同scope，用当前 exact IAM重新查原成员，不制造JWT或延长request proof。平台管理员必须具有当前企业授权，既有tenant admin仅沿Store owner允许的admin规则。
 
 ## 5. 最小持久化与事务
 
