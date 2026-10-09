@@ -403,7 +403,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if err != nil || supplyAssetDB == nil {
 			return errors.New("open supply Asset runtime owner failed")
 		}
-		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, imageDB, storeDB} {
+		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, imageDB, storeDB, notificationDB} {
 			if supplyAssetDB == existing {
 				return errors.New("supply requires its narrow independently opened Asset pool")
 			}

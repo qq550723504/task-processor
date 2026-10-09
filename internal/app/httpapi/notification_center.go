@@ -35,6 +35,9 @@ func buildNotificationModule(ctx context.Context, db *gorm.DB, cfg *config.Confi
 	if cfg == nil || db == nil || options.notifications != 1 {
 		return nil, errors.New("notification center requires one independent owner pool")
 	}
+	if options.supplyChain != nil && db == options.supplyChain.AssetDB {
+		return nil, errors.New("notification center cannot share an owner pool")
+	}
 	for _, other := range []*gorm.DB{options.commercialOwnerDB, options.moneyOwnerDB, options.referralDB, options.productAcquisitionDB, options.imageAgentDB, options.storeCenterDB, options.agentConfigurationDB} {
 		if other != nil && db == other {
 			return nil, errors.New("notification center cannot share an owner pool")

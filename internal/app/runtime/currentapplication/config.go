@@ -318,6 +318,9 @@ func (cfg *Config) validate() error {
 		if cfg.ImageAgent != nil {
 			other = append(other, &cfg.ImageAgent.Database)
 		}
+		if cfg.SupplyChain != nil {
+			other = append(other, &cfg.SupplyChain.AssetDatabase)
+		}
 		for _, db := range other {
 			n := cfg.NotificationCenterDatabase
 			if db != nil && db.Host == n.Host && db.Port == n.Port && db.Database == n.Database {

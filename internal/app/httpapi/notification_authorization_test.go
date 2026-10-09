@@ -8,13 +8,25 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 	"task-processor/internal/authidentity"
+	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	memberstore "task-processor/internal/integration/persistence/organization/membership"
 	n "task-processor/internal/notificationcenter"
 	"task-processor/internal/organization/membership"
 	"task-processor/internal/workbenchcontext"
 )
+
+func TestNotificationModuleRejectsSupplyAssetPoolBeforeSchemaAccess(t *testing.T) {
+	db := &gorm.DB{Config: &gorm.Config{Dialector: sqlite.Open(":memory:")}}
+	_, err := buildNotificationModule(context.Background(), db, &config.Config{}, nil, nil, currentApplicationOptions{
+		notifications: 1,
+		supplyChain:   &SupplyChainDependencies{AssetDB: db},
+	})
+	require.ErrorContains(t, err, "notification center cannot share an owner pool")
+}
 
 type notificationResolverFailure struct{ err error }
 
