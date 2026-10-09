@@ -16,6 +16,15 @@ go run ./cmd/notification-center-schema-init --runtime-role notification_center_
 Remove-Item Env:NOTIFICATION_CENTER_SCHEMA_DSN
 ```
 
+Docker 部署复用现有 `Dockerfile.account-compose` 的 `runtime` 和 `schema-init` 镜像；后者包含相同的通知初始化命令。它不随 account-bootstrap 或应用启动自动执行。获准初始化专用空库、且已准备受限角色后，使用私有 env 文件传入 `NOTIFICATION_CENTER_SCHEMA_DSN`，显式运行：
+
+```powershell
+docker build -f deployments/docker/Dockerfile.account-compose --target schema-init -t listingkit-notification-schema-init .
+docker run --rm --network '<approved database network>' --env-file C:\private\notification-schema.env --entrypoint /usr/local/bin/notification-center-schema-init listingkit-notification-schema-init --runtime-role notification_center_runtime
+```
+
+env 文件与 DSN 只保存在私有位置；数据库网络及连接地址使用本次获准实例的实际配置。应用使用 `runtime` 镜像，Console 使用现有 `Dockerfile.listingkit-ui`；继续沿用原实例的身份、业务 owner 和持久化配置，并设置下方通知库字段及前端启用标志。
+
 在现有完整私有 manifest 中增加以下字段；这是配置片段，不是可独立启动的完整 manifest：
 
 ```json
