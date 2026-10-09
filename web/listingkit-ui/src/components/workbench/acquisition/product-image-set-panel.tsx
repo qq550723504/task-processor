@@ -35,12 +35,15 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
  const storageKey=`product-image-set:${scope.userId}:${scope.organizationId}:${scope.kind}:${scope.contextId}`;
  const active=useRef(true),flight=useRef(false),abort=useRef<AbortController|null>(null);
  const savedCallback=useRef(onSaved),notified=useRef("");
+ const restoredRun=useRef(""),rulesBinding=useRef(""),readVersion=useRef(0);
  useEffect(()=>{savedCallback.current=onSaved},[onSaved]);
  const [entry,setEntry]=useState<z.infer<typeof catalogEntrySchema>>(),[templates,setTemplates]=useState<ImageAgentTemplate[]>([]),[cursor,setCursor]=useState("");
  const [template,setTemplate]=useState<ImageAgentTemplate>(),[sources,setSources]=useState<z.infer<typeof imageSetSourcesSchema>>(),[run,setRun]=useState<ImageSetRun>();
  const [priorRuns,setPriorRuns]=useState<ImageSetRun[]>([]);
  const [recent,setRecent]=useState<z.infer<typeof imageSetRecentSchema>["items"]>([]),[inventory,setInventory]=useState<ImageSetInventory>();
  const [requirements,setRequirements]=useState<ImageSetRequirements>(),[platform,setPlatform]=useState<"product"|"shein">("product");
+ const [restoredTarget,setRestoredTarget]=useState<ImageSetPrepare["target"]>();
+ const editorTarget=restoredTarget??target;
  const [shared,setShared]=useState<string[]>([]),[carousel,setCarousel]=useState<string[]>([]),[detail,setDetail]=useState<string[]>([]),[tasks,setTasks]=useState<string[]>([]);
  const [positions,setPositions]=useState<NonNullable<ImageSetPrepare["officialPlacements"]>>({});
  const [selected,setSelected]=useState<ChoiceView[]>([]),[regenerate,setRegenerate]=useState<string[]>([]);
@@ -60,10 +63,22 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
   setTemplate(t);setPreview(null);setTasks([...t.image.carousel,...t.image.detail].filter(task=>{const definition=[...carouselTasks,...detailTasks].find(v=>v.purpose===task.purpose);return !definition||!("evidence" in definition)||!!evidence?.[definition.evidence]}).map(task=>task.id));
  }
  const readRun=useCallback(async(id:string,signal?:AbortSignal)=>{
-  const p=await imageSetRequest(stableScope,"read",imageSetRunSchema,{runId:id,signal});if(!active.current||signal?.aborted)return;remember(p);
-  const current=await imageSetRequest(stableScope,"inventory",imageSetInventorySchema,{runId:id,signal});if(!active.current||signal?.aborted)return;setInventory(current);
+  const version=++readVersion.current,isCurrent=()=>active.current&&!signal?.aborted&&version===readVersion.current;
+  const p=await imageSetRequest(stableScope,"read",imageSetRunSchema,{runId:id,signal});if(!isCurrent())return;remember(p);
+  if(restoredRun.current!==p.runId){
+   restoredRun.current=p.runId;rulesBinding.current="";setRequirements(undefined);setInventory(undefined);setPriorRuns([]);setPreview(null);setSelected([]);setRegenerate([]);
+   setPlatform(p.plan.Target.Platform);setRestoredTarget(p.plan.Target.Platform==="shein"?p.plan.Target:undefined);
+   setPositions(Object.fromEntries(p.slots.flatMap(slot=>slot.recipe.OfficialPlacement?[[slot.slotId,slot.recipe.OfficialPlacement]]:[])));
+  }
+  const current=await imageSetRequest(stableScope,"inventory",imageSetInventorySchema,{runId:id,signal});if(!isCurrent())return;setInventory(current);
+  const binding=JSON.stringify([p.runId,p.plan.Target,p.plan.Source]);
+  if(p.plan.Target.Platform==="shein"&&(rulesBinding.current!==binding||!["executing","evaluating","repairing"].includes(p.status))){
+   setRequirements(undefined);setPreview(null);
+   const value=await imageSetRequest(stableScope,"requirements",imageSetRequirementsSchema,{body:{target:p.plan.Target,effectiveCatalogVersion:p.plan.Source.EffectiveVersion,...p.plan.Source.ApplyReceiptID?{applyReceiptId:p.plan.Source.ApplyReceiptID}:{}},signal});if(!isCurrent())return;
+   rulesBinding.current=binding;setRequirements(value);
+  }
   if(p.plan.Regeneration){
-   const parent=await imageSetRequest(stableScope,"read",imageSetRunSchema,{runId:p.plan.Regeneration.RunID,signal});if(!active.current||signal?.aborted)return;
+   const parent=await imageSetRequest(stableScope,"read",imageSetRunSchema,{runId:p.plan.Regeneration.RunID,signal});if(!isCurrent())return;
    setPriorRuns(old=>old[0]?.runId===parent.runId?[parent,...old.slice(1)]:[parent]);
   }else setPriorRuns([]);
   if(p.status==="completed"){setMessage("本次批准已保存为正式商品素材。");if(notified.current!==p.runId){notified.current=p.runId;savedCallback.current?.()}}
@@ -134,7 +149,9 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
   if(locked||!template||!sources||!tasks.length)return;
   const selectedTasks=parent?regenerate:tasks;
   const groups=parent?{carousel:template.image.carousel.filter(t=>selectedTasks.includes(t.id)).length,detail:template.image.detail.filter(t=>selectedTasks.includes(t.id)).length}:null;
-  const body:ImageSetPrepare={template:{templateId:template.templateId,revision:template.version},target:platform==="shein"&&target?target:{Platform:"product"},selectedTaskIds:selectedTasks,effectiveCatalogVersion:sources.source.EffectiveVersion,...sources.source.ApplyReceiptID?{applyReceiptId:sources.source.ApplyReceiptID}:{},...template.image.shareOriginals?{sharedOriginalIds:shared}:{carouselOriginalIds:groups&&!groups.carousel?[]:carousel,detailOriginalIds:groups&&!groups.detail?[]:detail},...platform==="shein"?{officialPlacements:Object.fromEntries(selectedTasks.flatMap(id=>positions[id]?[[id,positions[id]]]:[]))}:{}};
+  const selectedTarget=parent?parent.plan.Target.Platform==="shein"?parent.plan.Target:{Platform:"product" as const}:platform==="shein"&&editorTarget?editorTarget:{Platform:"product" as const};
+  const selectedSource=parent?.plan.Source??sources.source;
+  const body:ImageSetPrepare={template:{templateId:template.templateId,revision:template.version},target:selectedTarget,selectedTaskIds:selectedTasks,effectiveCatalogVersion:selectedSource.EffectiveVersion,...selectedSource.ApplyReceiptID?{applyReceiptId:selectedSource.ApplyReceiptID}:{},...template.image.shareOriginals?{sharedOriginalIds:shared}:{carouselOriginalIds:groups&&!groups.carousel?[]:carousel,detailOriginalIds:groups&&!groups.detail?[]:detail},...selectedTarget.Platform==="shein"?{officialPlacements:Object.fromEntries(selectedTasks.flatMap(id=>positions[id]?[[id,positions[id]]]:[]))}:{}};
   void send({action:parent?"regenerate":"prepare",runId:parent?.runId,requestKey:crypto.randomUUID(),body});
  }
  function choose(value:ChoiceView){if(locked)return;setPreview(null);setSelected(old=>old.some(v=>v.key===value.key)?old.filter(v=>v.key!==value.key):old.length<40?[...old,value]:old)}
@@ -155,9 +172,10 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
   try{const result=await imageSetRequest(stableScope,"preview",imageSetPreviewSchema,{runId:run.runId,body:command,signal:controller.signal});if(!controller.signal.aborted)setPreview({command,digest:result.digest})}catch(e){if(!controller.signal.aborted)fail(e)}finally{flight.current=false;if(!controller.signal.aborted)setBusy(false)}
  }
  async function loadRules(){
-  if(locked||!target||!sources)return;setBusy(true);setError("");const controller=new AbortController();abort.current=controller;
+  if(locked||!editorTarget||!sources)return;setBusy(true);setError("");setRequirements(undefined);setPreview(null);const controller=new AbortController();abort.current=controller;
+  const source=run?.plan.Target.Platform==="shein"?run.plan.Source:sources.source;
   try{
-   const value=await imageSetRequest(stableScope,"requirements",imageSetRequirementsSchema,{body:{target,effectiveCatalogVersion:sources.source.EffectiveVersion,...sources.source.ApplyReceiptID?{applyReceiptId:sources.source.ApplyReceiptID}:{}},signal:controller.signal});if(!controller.signal.aborted){setRequirements(value);setPositions({});setPreview(null)}
+   const value=await imageSetRequest(stableScope,"requirements",imageSetRequirementsSchema,{body:{target:editorTarget,effectiveCatalogVersion:source.EffectiveVersion,...source.ApplyReceiptID?{applyReceiptId:source.ApplyReceiptID}:{}},signal:controller.signal});if(!controller.signal.aborted){setRequirements(value);setPositions({});setPreview(null)}
   }catch(e){if(!controller.signal.aborted)fail(e)}finally{if(!controller.signal.aborted)setBusy(false)}
  }
  const available=entry?.agent.activation==="ENABLED"&&entry.canUse&&entry.capabilities.some(c=>c.id==="image.generate"&&c.readiness==="AVAILABLE");
@@ -171,9 +189,9 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
   {loading?<p className="text-sm text-slate-500">正在读取企业配置与真实商品素材…</p>:!available?<p className="text-sm text-slate-600">{entry?.agent.activation==="DISABLED"?"智能体已停用，已有任务仍可核实与审核。":entry?.capabilities.find(c=>c.id==="image.generate")?.reason||"当前完整图片流程不可用。"}</p>:null}
   {intent?<div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm"><p>保留原请求：{intent.requestKey??(intent.body as {actionId:string}).actionId}</p><p className="mt-1 text-xs">继续操作沿用原编号与参数；暂未找到不能视为未执行。</p><Button className="mt-3" variant="outline" disabled={busy} onClick={()=>void verify()}>核实原请求</Button>{intent.action==="confirm"&&run&&run.runId===intent.runId&&(!run.confirmationActionId||run.confirmationActionId===(intent.body as {actionId:string}).actionId)&&run.status!=="completed"&&run.status!=="cancelled"?<Button className="ml-2" variant="outline" disabled={busy} onClick={()=>void send(intent,true)}>继续原确认</Button>:null}{intent.action!=="confirm"?<Button className="ml-2" variant="outline" disabled={busy} onClick={()=>void send(intent,true)}>继续原操作</Button>:null}</div>:null}
   {available&&sources?<>
-   <div className="grid gap-4 sm:grid-cols-2"><label className="space-y-2 text-sm">图片模板<Select disabled={locked} value={template?`${template.templateId}:${template.version}`:""} onChange={e=>{const t=templates.find(v=>`${v.templateId}:${v.version}`===e.target.value);if(t)installTemplate(t,sources.evidence)}}><option value="">选择模板</option>{template&&!templates.some(t=>t.templateId===template.templateId&&t.version===template.version)?<option value={`${template.templateId}:${template.version}`}>{template.name} v{template.version}</option>:null}{templates.filter(t=>t.lifecycle==="ACTIVE").map(t=><option key={`${t.templateId}:${t.version}`} value={`${t.templateId}:${t.version}`}>{t.name} v{t.version}</option>)}</Select></label><label className="space-y-2 text-sm">素材目标<Select disabled={locked} value={platform} onChange={e=>{setPlatform(e.target.value as typeof platform);setRequirements(undefined);setPositions({});setPreview(null)}}><option value="product">通用商品素材</option>{target?<option value="shein">当前 SHEIN 店铺与类目</option>:null}</Select></label></div>
+   <div className="grid gap-4 sm:grid-cols-2"><label className="space-y-2 text-sm">图片模板<Select disabled={locked} value={template?`${template.templateId}:${template.version}`:""} onChange={e=>{const t=templates.find(v=>`${v.templateId}:${v.version}`===e.target.value);if(t)installTemplate(t,sources.evidence)}}><option value="">选择模板</option>{template&&!templates.some(t=>t.templateId===template.templateId&&t.version===template.version)?<option value={`${template.templateId}:${template.version}`}>{template.name} v{template.version}</option>:null}{templates.filter(t=>t.lifecycle==="ACTIVE").map(t=><option key={`${t.templateId}:${t.version}`} value={`${t.templateId}:${t.version}`}>{t.name} v{t.version}</option>)}</Select></label><label className="space-y-2 text-sm">素材目标<Select disabled={locked} value={platform} onChange={e=>{setPlatform(e.target.value as typeof platform);setRequirements(undefined);setPositions({});setPreview(null)}}><option value="product">通用商品素材</option>{editorTarget?<option value="shein">当前 SHEIN 店铺与类目</option>:null}</Select></label></div>
    {cursor?<Button size="sm" variant="outline" disabled={locked} onClick={()=>{void configurationRequest(stableScope,`product.image.agent/templates?pageSize=100&cursor=${encodeURIComponent(cursor)}`,imageTemplatesPageSchema).then(page=>{if(active.current){setTemplates(old=>[...old,...page.items.filter(t=>!old.some(v=>v.templateId===t.templateId))]);setCursor(page.nextCursor)}}).catch(fail)}}>读取更多模板</Button>:null}
-   {platform==="shein"?<section className="rounded-lg bg-slate-50 p-4 text-sm"><p>店铺 {target?.StoreID} · 站点 {target?.Site} · 类目 {target?.CategoryID}</p><Button variant="outline" size="sm" className="mt-2" disabled={locked} onClick={()=>void loadRules()}>读取当前图片规则</Button>{requirements?<><p className="mt-2">规则 {requirements.version} · 当前生成尺寸 {requirements.nativeWidth} × {requirements.nativeHeight}</p>{requirements.groups.map(g=><p key={`${g.group}:${g.skc}:${g.sku}`} className="mt-1 text-xs">{g.group} / SKC {g.skc+1}{g.group==="sku"?` / SKU ${g.sku+1}`:""}：{g.types.map(t=>`类型 ${t.type}，${t.minimum}–${t.maximum} 张${t.nativeCompatible?"":"（当前生成尺寸不适用）"}`).join("；")}</p>)}</>:null}</section>:null}
+   {platform==="shein"?<section className="rounded-lg bg-slate-50 p-4 text-sm"><p>店铺 {editorTarget?.StoreID} · 站点 {editorTarget?.Site} · 类目 {editorTarget?.CategoryID}</p><Button variant="outline" size="sm" className="mt-2" disabled={locked} onClick={()=>void loadRules()}>读取当前图片规则</Button>{requirements?<><p className="mt-2">规则 {requirements.version} · 当前生成尺寸 {requirements.nativeWidth} × {requirements.nativeHeight}</p>{requirements.groups.map(g=><p key={`${g.group}:${g.skc}:${g.sku}`} className="mt-1 text-xs">{g.group} / SKC {g.skc+1}{g.group==="sku"?` / SKU ${g.sku+1}`:""}：{g.types.map(t=>`类型 ${t.type}，${t.minimum}–${t.maximum} 张${t.nativeCompatible?"":"（当前生成尺寸不适用）"}`).join("；")}</p>)}</>:null}</section>:null}
    {template?<><div className="grid gap-4 md:grid-cols-2">{(["carousel","detail"] as const).map(group=><section key={group} className="space-y-3 rounded-xl border border-slate-200 p-4"><h3 className="font-semibold">{group==="carousel"?"主图 / 轮播图":"详情图"}</h3>{allTasks.filter(t=>t.group===group).map(task=>{
     const definition=[...carouselTasks,...detailTasks].find(v=>v.purpose===task.purpose),missing=definition&&"evidence" in definition&&!sources.evidence[definition.evidence];
     return <div key={task.id} className="space-y-2"><label className="flex items-start gap-2 text-sm"><input type="checkbox" disabled={locked||!!missing} checked={tasks.includes(task.id)} onChange={e=>setTasks(old=>e.target.checked?[...old,task.id]:old.filter(id=>id!==task.id))}/><span>{labels.get(task.purpose)??task.brief??"自定义任务"}{missing?<small className="block text-amber-700">缺少真实依据，请补充商品资料或取消该项</small>:null}</span></label>{platform==="shein"&&tasks.includes(task.id)?<OfficialPosition value={positions[task.id]} requirements={requirements} disabled={locked} generated onChange={value=>setPositions(old=>({...old,[task.id]:value}))}/>:null}</div>

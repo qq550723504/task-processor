@@ -172,6 +172,53 @@ func confirmSetInput(prepared imageagent.PreparedImageSet) imageagent.ConfirmIma
 	return imageagent.ConfirmImagePlanInput{RunID: prepared.Projection.Run.ID, ActionID: "b912e7d4-df80-44a5-8510-3cdf91d5b8dd", ExpectedRevision: 1, PlanDigest: prepared.PlanDigest, QuoteDigest: prepared.QuoteDigest}
 }
 
+func TestConfirmImageSetRechecksTenantAdmissionButRecoversOriginalReceipts(t *testing.T) {
+	for _, stage := range []string{"new", "run_receipt", "configuration_receipt"} {
+		t.Run(stage, func(t *testing.T) {
+			var wrap func(imageagent.Repository) imageagent.Repository
+			if stage == "configuration_receipt" {
+				wrap = func(r imageagent.Repository) imageagent.Repository {
+					return &confirmCommitFailure{Repository: r, fail: true}
+				}
+			}
+			service, repo, workflows, config, contexts, quotes, ctx, input := imageSetServiceFixtureWithRepository(t, wrap)
+			prepared, err := service.PrepareImageSet(ctx, input)
+			require.NoError(t, err)
+			command := confirmSetInput(prepared)
+			if stage != "new" {
+				_, err = service.ConfirmImagePlan(ctx, command)
+				if stage == "configuration_receipt" {
+					require.ErrorContains(t, err, "confirm persistence unavailable")
+				} else {
+					require.NoError(t, err)
+				}
+			}
+			starts := len(workflows.starts)
+			restarted, err := imageagent.NewService(repo, workflows, staticCatalogResolver{catalog: contexts.preparation.Catalog},
+				imageagent.WithOrganizationScope(),
+				imageagent.WithTenantStartGate(imageagent.TenantAllowlistStartGate{Enabled: true, AllowedTenantIDs: []string{"another-org"}}),
+				imageagent.WithImageSetDependencies(imageagent.ImageSetDependencies{Configuration: config, Contexts: contexts, Quotes: quotes, HardLimits: agentconfig.ImageRunLimits{Images: 32, Points: 10000, ElapsedSeconds: 3600}}))
+			require.NoError(t, err)
+			resumed, err := restarted.ConfirmImagePlan(ctx, command)
+			if stage == "new" {
+				require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
+				require.Zero(t, config.admissions)
+				require.Empty(t, workflows.starts)
+				stored, readErr := repo.GetProjection(ctx, imageagent.ScopeForRun(prepared.Projection.Run))
+				require.NoError(t, readErr)
+				require.Equal(t, imageagent.RunStatusAwaitingPlanApproval, stored.Run.Status)
+				require.Nil(t, stored.Run.ImageAdmission)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, *config.receipt, *resumed.Run.ImageAdmission)
+			require.Equal(t, 1, config.admissions)
+			require.Len(t, workflows.starts, starts+1)
+			require.Equal(t, command.ActionID, workflows.starts[starts].Run.ImageAdmission.Command.ConfirmActionID)
+		})
+	}
+}
+
 func TestPrepareFullImageSetSharesOnlyOriginalsAndRequiresConfirmation(t *testing.T) {
 	s, _, workflows, config, _, _, ctx, input := imageSetServiceFixture(t)
 	prepared, err := s.PrepareImageSet(ctx, input)

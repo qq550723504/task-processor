@@ -494,6 +494,9 @@ func (s *Service) ConfirmImagePlan(ctx context.Context, input ConfirmImagePlanIn
 	command := agentconfig.ImageRunAdmissionCommand{Scope: agent.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, Snapshot: current.Plan.Set.Configuration, MemberID: identity.MemberID, RunID: input.RunID, ConfirmActionID: input.ActionID, SourceDigest: ImageSetSourceDigest(current.Plan.Set.Source, current.Plan), InputDigest: current.Plan.Set.InputDigest, PlanDigest: input.PlanDigest, QuoteDigest: input.QuoteDigest, Limits: limits}
 	receipt, err := s.imageSets.Configuration.ReadImageRunAdmission(ctx, command.Scope, command.Snapshot)
 	if errors.Is(err, agentconfig.ErrNotFound) {
+		if !s.tenantStartAllowed(ctx, identity.TenantID) {
+			return RunProjection{}, ErrCommandBlocked
+		}
 		// Only a new admission consumes the current quote. A durable original
 		// receipt remains authoritative after ImageDB persistence/ACK loss.
 		quote, err := s.imageSets.Quotes.ReadImageGenerationQuote(ctx, identity)
