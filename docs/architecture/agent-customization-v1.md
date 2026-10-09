@@ -1,6 +1,6 @@
 # 智能体定制需求与人工进度 V1
 
-Status: DRAFT / NOT_READY. Design Basis: Independent Architecture. Execution: #611, parent #137.
+Status: APPROVED / IMPLEMENTATION_READY (2026-10-09). Design Basis: Independent Architecture. Execution: #611, parent #137.
 
 ## 产品结果与依据
 
@@ -68,4 +68,6 @@ Legacy decision: EXTRACT 合格Console与当前身份/传输/事务行为；RETI
 
 ## Architecture Review
 
-尚未评审；在明确 IMPLEMENTATION_READY 前不修改正式生产业务路径或schema。最多两轮正常设计检查，按AGENTS先分类finding；非Blocker不扩建通用机制。
+第1轮独立只读 Architecture Review（`/root/architecture_review`，草案commit `29e7e3b17`）：IMPLEMENTATION_READY，无架构BLOCKER。以下为IMPLEMENTATION_TEST，当前Must未满足时阻止本片合并：首次不存在命令行的并发幂等需事务内准确身份串行化+唯一键（不能修改不可变回执）；实际middleware/BFF验证企业管理员不能跨企业，平台scope组织字段明确非NULL；现有WithRequestBodyReadTimeout终止慢速读体，UNKNOWN冻结原意图并refetch。共同scope的advisory锁仅用于串行化，不作为事实身份，唯一键仍包含完整scope/actor/key。
+
+runtime owner同时负责`module_catalog`中agent-custom可用性和权限投影；本Writer仅交付依赖清单，不并发修改共享合同。已批准设计冻结，非Blocker不重开设计。评审未执行测试，运行/产品验收仍按上述边界。
