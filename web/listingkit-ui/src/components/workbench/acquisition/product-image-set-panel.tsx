@@ -95,29 +95,37 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
   const controller=new AbortController();const timer=setTimeout(()=>{void readRun(run.runId,controller.signal).catch(e=>{if(!controller.signal.aborted)fail(e)})},5000);
   return()=>{clearTimeout(timer);controller.abort()};
  },[run,locked,running,readRun]);
- async function send(command:Intent){
+ function acceptPreparation(p:ImageSetRun){remember(p);clearIntent();setInventory(undefined);setSelected([]);setPreview(null);setRegenerate([])}
+ async function send(command:Intent,replay=false){
   if(flight.current||!active.current)return;
   const controller=new AbortController();abort.current=controller;flight.current=true;setBusy(true);setError("");setMessage("");
   try{
    localStorage.setItem(storageKey+":intent",JSON.stringify(command));setIntent(command);
    if(command.action==="prepare"||command.action==="regenerate"){
-    const p=await imageSetRequest(stableScope,command.action,imageSetRunSchema,{...command,signal:controller.signal});if(controller.signal.aborted)return;remember(p);clearIntent();setInventory(undefined);setSelected([]);setPreview(null);setRegenerate([]);
+    const p=await imageSetRequest(stableScope,command.action,imageSetRunSchema,{...command,signal:controller.signal});if(controller.signal.aborted)return;acceptPreparation(p);
    }else{
     await imageSetRequest(stableScope,command.action,imageSetAcceptedSchema,{...command,signal:controller.signal});if(controller.signal.aborted)return;clearIntent();setPreview(null);await readRun(command.runId!,controller.signal);
    }
-  }catch(e){if(!controller.signal.aborted){fail(e);if(e instanceof ImageSetError&&e.code!=="OUTCOME_UNKNOWN")clearIntent()}}
+  }catch(e){if(!controller.signal.aborted){fail(e);if(!replay&&e instanceof ImageSetError&&e.code!=="OUTCOME_UNKNOWN")clearIntent()}}
   finally{flight.current=false;if(!controller.signal.aborted)setBusy(false)}
  }
  async function verify(){
   if(!intent||flight.current)return;flight.current=true;setBusy(true);setError("");const controller=new AbortController();abort.current=controller;
   try{
    if(intent.action==="prepare"||intent.action==="regenerate"){
-    const p=await imageSetRequest(stableScope,"verify-prepare",imageSetRunSchema,{requestKey:intent.requestKey,signal:controller.signal});if(controller.signal.aborted)return;remember(p);clearIntent();
+    const p=await imageSetRequest(stableScope,"verify-prepare",imageSetRunSchema,{requestKey:intent.requestKey,signal:controller.signal});if(controller.signal.aborted)return;acceptPreparation(p);
    }else{
     if(intent.action==="approve"){const body=intent.body as ImageSetSelection;const receipt=await imageSetRequest(stableScope,"approval",imageSetApprovalSchema,{runId:intent.runId,approvalId:body.actionId,signal:controller.signal});if(controller.signal.aborted)return;if(receipt.selectionDigest!==body.selectionDigest)throw new ImageSetError("IMAGE_SELECTION_CHANGED",409);clearIntent();setMessage("原批准已核实，正在读取任务状态。");await readRun(intent.runId!,controller.signal);return}
     const p=await readRun(intent.runId!,controller.signal);if(!p||controller.signal.aborted)return;
-    const body=intent.body as {actionId:string};
-    if(p.pendingCommand?.ActionID===body.actionId||intent.action==="cancel"&&p.status==="cancelled")clearIntent();
+    const body=intent.body as {actionId:string;planRevision?:number;slotId?:string;attempt?:number;planDigest?:string;quoteDigest?:string};
+    if(intent.action==="resume"&&p.status==="completed"){
+     await imageSetRequest(stableScope,"approval",imageSetApprovalSchema,{runId:intent.runId,approvalId:body.actionId,signal:controller.signal});if(controller.signal.aborted)return;clearIntent();setMessage("原保存动作已由不可变批准回执核实。");return;
+    }
+    const slot=p.slots.find(value=>value.slotId===body.slotId&&value.attempt===body.attempt);
+    const recovered=intent.action==="recover"&&p.planRevision===body.planRevision&&slot&&["accepted","blocked","rejected"].includes(slot.status)&&slot.closure&&["settled","no_generation"].includes(slot.closure.Kind)&&!p.recoverableEffects?.some(effect=>effect.SlotID===body.slotId&&effect.Attempt===body.attempt);
+    const confirmationObserved=["awaiting_final_approval","completed","cancelled"].includes(p.status)||["blocked","failed"].includes(p.status)&&(p.regenerationAvailable||!!p.recoverableEffects?.length);
+    const confirmed=intent.action==="confirm"&&p.generationAdmitted&&p.confirmationActionId===body.actionId&&p.planRevision===body.planRevision&&p.planDigest===body.planDigest&&p.quoteDigest===body.quoteDigest&&confirmationObserved;
+    if(recovered||confirmed||(intent.action==="resume"||intent.action==="cancel")&&(p.pendingCommand?.ActionID===body.actionId||p.status==="cancelled"))clearIntent();
     else setMessage(intent.action==="confirm"?"读取任务状态不能确认工作流已启动，请继续原确认；请求编号、计划和点数均沿用原值。":"原操作尚未得到明确回执，请继续核实同一编号。");
    }
   }catch(e){if(!controller.signal.aborted)fail(e)}finally{flight.current=false;if(!controller.signal.aborted)setBusy(false)}
@@ -161,7 +169,7 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
   <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">商品图片智能体</h2><p className="mt-1 text-sm text-slate-500">整套主图与详情图 · 真实素材 · 逐图人工审核</p></div><Button asChild variant="outline" size="sm"><Link href="/workbench/agents/mine/product.image.agent">配置与模板</Link></Button></div>
   {error?<p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm">{reasons[error]??error}</p>:null}{message?<p role="status" className="text-sm text-emerald-700">{message}</p>:null}
   {loading?<p className="text-sm text-slate-500">正在读取企业配置与真实商品素材…</p>:!available?<p className="text-sm text-slate-600">{entry?.agent.activation==="DISABLED"?"智能体已停用，已有任务仍可核实与审核。":entry?.capabilities.find(c=>c.id==="image.generate")?.reason||"当前完整图片流程不可用。"}</p>:null}
-  {intent?<div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm"><p>保留原请求：{intent.requestKey??(intent.body as {actionId:string}).actionId}</p><Button className="mt-3" variant="outline" disabled={busy} onClick={()=>void verify()}>核实原请求</Button>{intent.action==="confirm"&&run&&run.runId===intent.runId&&(!run.confirmationActionId||run.confirmationActionId===(intent.body as {actionId:string}).actionId)&&run.status!=="completed"&&run.status!=="cancelled"?<Button className="ml-2" variant="outline" disabled={busy} onClick={()=>void send(intent)}>继续原确认</Button>:null}</div>:null}
+  {intent?<div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm"><p>保留原请求：{intent.requestKey??(intent.body as {actionId:string}).actionId}</p><p className="mt-1 text-xs">继续操作沿用原编号与参数；暂未找到不能视为未执行。</p><Button className="mt-3" variant="outline" disabled={busy} onClick={()=>void verify()}>核实原请求</Button>{intent.action==="confirm"&&run&&run.runId===intent.runId&&(!run.confirmationActionId||run.confirmationActionId===(intent.body as {actionId:string}).actionId)&&run.status!=="completed"&&run.status!=="cancelled"?<Button className="ml-2" variant="outline" disabled={busy} onClick={()=>void send(intent,true)}>继续原确认</Button>:null}{intent.action!=="confirm"?<Button className="ml-2" variant="outline" disabled={busy} onClick={()=>void send(intent,true)}>继续原操作</Button>:null}</div>:null}
   {available&&sources?<>
    <div className="grid gap-4 sm:grid-cols-2"><label className="space-y-2 text-sm">图片模板<Select disabled={locked} value={template?`${template.templateId}:${template.version}`:""} onChange={e=>{const t=templates.find(v=>`${v.templateId}:${v.version}`===e.target.value);if(t)installTemplate(t,sources.evidence)}}><option value="">选择模板</option>{template&&!templates.some(t=>t.templateId===template.templateId&&t.version===template.version)?<option value={`${template.templateId}:${template.version}`}>{template.name} v{template.version}</option>:null}{templates.filter(t=>t.lifecycle==="ACTIVE").map(t=><option key={`${t.templateId}:${t.version}`} value={`${t.templateId}:${t.version}`}>{t.name} v{t.version}</option>)}</Select></label><label className="space-y-2 text-sm">素材目标<Select disabled={locked} value={platform} onChange={e=>{setPlatform(e.target.value as typeof platform);setRequirements(undefined);setPositions({});setPreview(null)}}><option value="product">通用商品素材</option>{target?<option value="shein">当前 SHEIN 店铺与类目</option>:null}</Select></label></div>
    {cursor?<Button size="sm" variant="outline" disabled={locked} onClick={()=>{void configurationRequest(stableScope,`product.image.agent/templates?pageSize=100&cursor=${encodeURIComponent(cursor)}`,imageTemplatesPageSchema).then(page=>{if(active.current){setTemplates(old=>[...old,...page.items.filter(t=>!old.some(v=>v.templateId===t.templateId))]);setCursor(page.nextCursor)}}).catch(fail)}}>读取更多模板</Button>:null}

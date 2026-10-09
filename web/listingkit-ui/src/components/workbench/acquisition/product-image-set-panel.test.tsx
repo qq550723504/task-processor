@@ -146,3 +146,100 @@ it("keeps an UNKNOWN parent's successful-looking candidates unavailable for reus
  choices.forEach(button=>expect(button).toBeDisabled());
  expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
 });
+
+for (const action of ["prepare","regenerate"]) {
+it(`can replay an unresolved ${action} with its original key and frozen body after not-found`,async()=>{
+ const requestKey=templateId,body={target:{Platform:"product"},sharedOriginalIds:["original"],selectedTaskIds:["main","detail"],template:{templateId,revision:"1"}};
+ const intent={action,...action==="regenerate"?{runId:operation}:{},requestKey,body};
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:intent`,JSON.stringify(intent));
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation((url,init)=>String(url).includes("/by-key/")?Promise.resolve(Response.json({code:"IMAGE_NOT_FOUND"},{status:404})):String(url).endsWith(`/${action}`)?Promise.resolve(Response.json(state,{status:201})):real(url,init));
+ const view=render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"核实原请求"}));await screen.findByRole("alert");
+ expect(localStorage.getItem(`product-image-set:actor:org:acquisition:${operation}:intent`)).not.toBeNull();
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+ view.unmount();render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"继续原操作"}));
+ await screen.findByRole("button",{name:"确认点数并生成"});
+ const requests=fetch.mock.calls.filter(([url])=>String(url).endsWith(`/${action}`));expect(requests).toHaveLength(1);
+ expect(new Headers(requests[0][1]!.headers).get("Idempotency-Key")).toBe(requestKey);
+ expect(JSON.parse(String(requests[0][1]!.body))).toEqual(body);
+ expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/confirm"))).toBe(false);
+ expect(localStorage.getItem(`product-image-set:actor:org:acquisition:${operation}:intent`)).toBeNull();
+});
+}
+
+it("clears lost recovery intent only when its exact original effect has a known closed result",async()=>{
+ state=projection("awaiting_final_approval",templateId);state.slots[0].closure={Kind:"settled",Points:10};
+ const body={actionId:operation,planRevision:1,slotId:"main",attempt:1};
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:run`,runId);
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:intent`,JSON.stringify({action:"recover",runId,body}));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"核实原请求"}));
+ await waitFor(()=>expect(localStorage.getItem(`product-image-set:actor:org:acquisition:${operation}:intent`)).toBeNull());
+ expect(screen.getAllByRole("button",{name:"选择采用"})[0]).toBeEnabled();
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+});
+
+for(const mismatch of ["unknown","attempt","revision","closure"]){
+it(`keeps a recovery intent with ${mismatch} unresolved and replays its exact action`,async()=>{
+ const body={actionId:operation,planRevision:1,slotId:"main",attempt:1};
+ state=projection("blocked",templateId);state.slots[0].closure={Kind:"settled",Points:10};
+ const raw={...state,recoverableEffects:mismatch==="unknown"?[{SlotID:"main",Attempt:1,Code:"provider_outcome_unknown"}]:null};
+ if(mismatch==="attempt")raw.slots[0].attempt=2;
+ if(mismatch==="revision")raw.planRevision=2;
+ if(mismatch==="closure")raw.slots[0].closure=null;
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:run`,runId);
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:intent`,JSON.stringify({action:"recover",runId,body}));
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation((url,init)=>String(url).endsWith(`/runs/${runId}`)?Promise.resolve(Response.json(raw)):String(url).endsWith("/recover")?Promise.resolve(Response.json({code:"IMAGE_BLOCKED"},{status:409})):real(url,init));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"核实原请求"}));
+ await waitFor(()=>expect(screen.getByRole("button",{name:"核实原请求"})).toBeEnabled());
+ expect(localStorage.getItem(`product-image-set:actor:org:acquisition:${operation}:intent`)).not.toBeNull();
+ fireEvent.click(screen.getByRole("button",{name:"继续原操作"}));await screen.findByRole("alert");
+ const requests=fetch.mock.calls.filter(([url])=>String(url).endsWith("/recover"));expect(requests).toHaveLength(1);
+ expect(JSON.parse(String(requests[0][1]!.body))).toEqual(body);
+ expect(localStorage.getItem(`product-image-set:actor:org:acquisition:${operation}:intent`)).not.toBeNull();
+});
+}
+
+for (const receiptFound of [true,false]) {
+it(`verifies a lost resume response using its original immutable approval receipt (found=${receiptFound})`,async()=>{
+ state=projection("completed",templateId);
+ const body={actionId:operation};
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:run`,runId);
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:intent`,JSON.stringify({action:"resume",runId,body}));
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation((url,init)=>String(url).endsWith(`/approvals/${operation}`)?Promise.resolve(receiptFound?Response.json({actionId:operation,selectionDigest:digest,assets:[{id:"image",role:"main",url:"https://images.test/result.png"}]}):Response.json({code:"IMAGE_NOT_FOUND"},{status:404})):real(url,init));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"核实原请求"}));
+ if(receiptFound)await waitFor(()=>expect(localStorage.getItem(`product-image-set:actor:org:acquisition:${operation}:intent`)).toBeNull());
+ else {await screen.findByRole("alert");expect(localStorage.getItem(`product-image-set:actor:org:acquisition:${operation}:intent`)).not.toBeNull()}
+ expect(fetch.mock.calls.some(([url])=>String(url).endsWith(`/approvals/${operation}`))).toBe(true);
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+});
+}
+
+it("clears a lost original confirmation after exact admitted terminal evidence",async()=>{
+ state=projection("completed",operation);
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:run`,runId);
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:intent`,JSON.stringify({action:"confirm",runId,body:{actionId:operation,planRevision:1,planDigest:sha,quoteDigest:digest}}));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"核实原请求"}));
+ await waitFor(()=>expect(localStorage.getItem(`product-image-set:actor:org:acquisition:${operation}:intent`)).toBeNull());
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+});
+
+it("unlocks original effect recovery once the exact confirmation produced durable blocked effects",async()=>{
+ const blocked={...projection("blocked",operation),recoverableEffects:[{SlotID:"main",Attempt:1,Code:"provider_outcome_unknown"}]};
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:run`,runId);
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:intent`,JSON.stringify({action:"confirm",runId,body:{actionId:operation,planRevision:1,planDigest:sha,quoteDigest:digest}}));
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation((url,init)=>String(url).endsWith(`/runs/${runId}`)?Promise.resolve(Response.json(blocked)):real(url,init));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"核实原请求"}));
+ await waitFor(()=>expect(localStorage.getItem(`product-image-set:actor:org:acquisition:${operation}:intent`)).toBeNull());
+ expect(screen.getByRole("button",{name:"核实原调用"})).toBeEnabled();
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+});
