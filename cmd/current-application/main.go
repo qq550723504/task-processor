@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	observationruntime "task-processor/internal/app/runtime/storeobservations"
 	supplyruntime "task-processor/internal/app/runtime/supplychain"
 	"time"
 
@@ -90,13 +91,8 @@ func execute() error {
 		OpenSupplyAssets: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
-		DialSupplyWorkflow: func(ctx context.Context, address, namespace string) (client.Client, func() error, error) {
-			current, err := client.DialContext(ctx, client.Options{HostPort: address, Namespace: namespace})
-			if err != nil {
-				return nil, nil, err
-			}
-			return current, func() error { current.Close(); return nil }, nil
-		},
+		DialSupplyWorkflow:            dialCurrentWorkflow,
+		DialStoreObservationsWorkflow: dialCurrentWorkflow,
 		OpenAccountAuditUsage: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingReadOnlyContext(ctx, databaseConfig(cfg))
 		},
@@ -153,6 +149,9 @@ func execute() error {
 					options = append(options, httpapi.WithStoreOfficialApplications(features.OfficialStoreApplications))
 				}
 			}
+			if features.StoreObservationsWorkflow != nil {
+				options = append(options, httpapi.WithStoreObservations(httpapi.StoreObservationsDependencies{Starter: observationruntime.Starter{Client: features.StoreObservationsWorkflow}, Lifecycle: features.StoreObservationsLifecycle, NewWorker: observationruntime.WorkerFactory(features.StoreObservationsWorkflow, features.StoreObservationsLifecycle)}))
+			}
 			if features.LocalTrialDB != nil {
 				options = append(options, httpapi.WithIssue36Trial(features.LocalTrialDB))
 			}
@@ -205,4 +204,12 @@ func databaseConfig(cfg currentapplication.DatabaseConfig) *platformdatabase.Con
 		Host: cfg.Host, Port: cfg.Port, User: cfg.User, Password: cfg.Password, Database: cfg.Database,
 		MaxConnections: cfg.MaxConnections, MaxIdleConnections: cfg.MaxConnections, ConnectionMaxLifetime: time.Hour,
 	}
+}
+
+func dialCurrentWorkflow(ctx context.Context, address, namespace string) (client.Client, func() error, error) {
+	current, err := client.DialContext(ctx, client.Options{HostPort: address, Namespace: namespace})
+	if err != nil {
+		return nil, nil, err
+	}
+	return current, func() error { current.Close(); return nil }, nil
 }

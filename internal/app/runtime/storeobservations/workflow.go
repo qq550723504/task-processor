@@ -83,14 +83,23 @@ func (s Starter) Ensure(ctx context.Context, org, id string) error {
 	}
 	return nil
 }
-func NewWorker(c client.Client, service *o.Service) (worker.Worker, error) {
+func NewWorker(c client.Client, service *o.Service, onFatal func(error)) (worker.Worker, error) {
 	if c == nil || service == nil || service.Access == nil || service.Repository == nil {
 		return nil, o.ErrUnavailable
 	}
-	w := worker.New(c, TaskQueue, worker.Options{MaxConcurrentActivityExecutionSize: 1})
+	w := worker.New(c, TaskQueue, worker.Options{MaxConcurrentActivityExecutionSize: 1, OnFatalError: onFatal})
 	a := &Activities{service}
 	w.RegisterWorkflowWithOptions(ObservationWorkflow, workflow.RegisterOptions{Name: WorkflowName})
 	w.RegisterActivityWithOptions(a.Step, activity.RegisterOptions{Name: stepActivity})
 	w.RegisterActivityWithOptions(a.Fail, activity.RegisterOptions{Name: failActivity})
 	return w, nil
+}
+
+func WorkerFactory(c client.Client, lifecycle *Lifecycle) func(*o.Service) (Worker, error) {
+	return func(service *o.Service) (Worker, error) {
+		if lifecycle == nil {
+			return nil, o.ErrUnavailable
+		}
+		return NewWorker(c, service, lifecycle.Unavailable)
+	}
 }

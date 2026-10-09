@@ -124,15 +124,15 @@ Console正常入口 `/workbench/store-products`、`/workbench/store-orders`，�
 
 ## 9. 共享Writer与接线交付
 
-本Writer只修改独立新增domain/repository/adapter/App/HTTP/UI文件及获协调的窄Store合同。以下共享文件必须由协调方明确单owner后修改；未协调前只读：
+2026-10-09 用户明确指示本线程继续推进，以下公共接线改由本会话`01a11f6e-956c-73f1-9f8a-f025734c58d1`统一写入，在原主要PR #615内完成；替代原启动线程分工。只调整Writer归属，不改变冻结的产品/领域/权限/持久化设计，也不写其他线程worktree。
 
 | 共享边界 | 所需最小变更 / owner |
 | --- | --- |
 | Store private material与registry | 独立只读Port，共同material不变量/保护；不改变Supply purpose；待协调Store合同owner |
 | 官方transport allowlist | 为新增只读endpoint放行POST/GET精确方法；待协调integration owner，不修改Publish实现 |
-| authz module与permission默认策略 | 两module及四permission；待协调authz owner |
-| Console导航 | 两个正常入口由pending改为connected；待协调导航owner |
-| Store显式schema/readiness与runtime/Temporal | 新观察schema/最小privilege/module注入/workflow注册；唯一启动Writer会话`01a11f74-2565-78e0-9118-4fe1ff53e726`；原Store、Supply、resource构造的Store preflight均须消费一致enabled清单，固定public search_path；新repo使用schema-qualified表 |
+| authz module与permission默认策略 | 两module及四permission；本Writer沿当前角色合同接线 |
+| Console导航 | 两个正常入口由pending改为connected；本Writer接线 |
+| Store显式schema/readiness与runtime/Temporal | 新观察schema/最小privilege/module注入/workflow注册；本Writer统一接线；原Store、Supply、resource构造的Store preflight均须消费一致enabled清单，固定public search_path；新repo使用schema-qualified表；平台Temporal client不以无关Supply业务启用为前置 |
 
 运行组合依赖Storepool、member directory/authorizer、三类OfficialApplicationRegistry、observerrepo与Temporalclient。schema只用于已授权新空实例；缺观察表/配置/worker时capability unavailable，不回退legacy或用fixture作生产值。后续真实试用保留volume，stop/restart与destroy分离。此文档不授予真实schema执行、读取商家数据或部署。
 
