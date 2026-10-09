@@ -49,7 +49,7 @@ func (r *ImageSetCandidateReader) ReadImageSetCandidate(ctx context.Context, sou
 		return bad()
 	}
 	bound := projection.Plan.Set.Source
-	if bound.ProductID != source.ProductKey || bound.OperationID != source.ItemID || bound.OriginalPublicationID != source.OriginalPublicationID || bound.OriginalVersion != source.OriginalSnapshotVersion || bound.EffectiveVersion != source.EffectiveCatalogVersion || bound.CatalogHash != projection.AssetCatalog.Manifest.Hash || projection.AssetCatalog.ProductContext.ProductID != source.ProductKey {
+	if bound.ProductID != source.ProductKey || bound.OperationID != source.ItemID || bound.OriginalPublicationID != source.OriginalPublicationID || bound.OriginalVersion != source.OriginalSnapshotVersion || bound.EffectiveVersion != source.EffectiveCatalogVersion || bound.ApplyReceiptID != source.ApplyReceiptID || bound.CatalogHash != projection.AssetCatalog.Manifest.Hash || projection.AssetCatalog.ProductContext.ProductID != source.ProductKey {
 		return bad()
 	}
 	digest, err := imageagent.ImageSetResultDigest(projection.Plan, projection.Slots, projection.RecoverableEffects)

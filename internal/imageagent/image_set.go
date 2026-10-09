@@ -16,6 +16,7 @@ type ImageSourceBinding struct {
 	ProductID, OperationID, OriginalPublicationID string
 	OriginalVersion, EffectiveVersion             uint64
 	CatalogHash                                   string
+	ApplyReceiptID                                string `json:",omitempty"`
 }
 
 // Target is an exact context, not a declaration that the generated image is
@@ -114,6 +115,9 @@ func ValidateImageSetPlan(plan Plan) error {
 	}
 	if !canonicalImageValue(s.Source.ProductID) || !canonicalImageValue(s.Source.OperationID) || !canonicalImageValue(s.Source.OriginalPublicationID) || s.Source.OriginalVersion == 0 || s.Source.EffectiveVersion == 0 || !validGenerationCatalogHash(s.Source.CatalogHash) {
 		return fmt.Errorf("%w: incomplete image source binding", ErrValidation)
+	}
+	if s.Source.OriginalVersion > math.MaxInt64 || s.Source.EffectiveVersion > math.MaxInt64 || s.Source.EffectiveVersion < s.Source.OriginalVersion || (s.Source.EffectiveVersion > s.Source.OriginalVersion) != (s.Source.ApplyReceiptID != "") || s.Source.ApplyReceiptID != "" && !agentconfig.UUID(s.Source.ApplyReceiptID) {
+		return fmt.Errorf("%w: effective image product requires its exact applied title receipt", ErrValidation)
 	}
 	if s.Configuration.Kind != agentconfig.SnapshotKind || !agentconfig.UUID(s.Configuration.ID) || !agentconfig.ImageDigest(s.Configuration.Digest) || !canonicalImageValue(s.ConfigurationEpoch) || !agentconfig.ImageDigest(s.ParametersDigest) || !agentconfig.ImageDigest(s.InputDigest) {
 		return fmt.Errorf("%w: incomplete image configuration binding", ErrValidation)

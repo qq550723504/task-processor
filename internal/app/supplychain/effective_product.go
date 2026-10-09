@@ -54,7 +54,7 @@ type SourceImageReader struct {
 }
 
 func (r SourceImageReader) ReadSourceSelection(ctx context.Context, input asset.SourceSelectionRequest) (asset.SourceSelection, error) {
-	if ctx == nil || r.Sources == nil || r.Products == nil || r.Authorization == nil || input.TargetPlatform != "shein" {
+	if ctx == nil || r.Sources == nil || r.Products == nil || r.Authorization == nil || input.TargetPlatform != "shein" && input.TargetPlatform != "product" {
 		return asset.SourceSelection{}, asset.ErrSourceApprovalForbidden
 	}
 	scope, err := r.Authorization.Authorize(ctx, preparation.PermissionManage)
@@ -73,6 +73,7 @@ func (r SourceImageReader) ReadSourceSelection(ctx context.Context, input asset.
 		return asset.SourceSelection{}, asset.ErrApprovalConflict
 	}
 	result := asset.SourceSelection{TenantID: scope.OrganizationID, ActorID: scope.ActorID, MemberID: scope.MemberID, ItemID: source.ID, ProductKey: source.Source.ProductKey, OriginalPublicationID: original.PublicationID, OriginalSnapshotVersion: original.Version, EffectiveCatalogVersion: input.EffectiveCatalogVersion, TargetPlatform: input.TargetPlatform, Images: SourceImages(original)}
+	result.ApplyReceiptID = input.ApplyReceiptID
 	return result, nil
 }
 func SourceImages(snapshot catalog.PublishedSnapshot) []asset.SourceImage {

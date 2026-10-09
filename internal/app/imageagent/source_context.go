@@ -152,6 +152,7 @@ func (r *ImageSetContextReader) RevalidateImageSet(ctx context.Context, identity
 	}
 	target := projection.Plan.Set.Target
 	input := imageagent.PrepareImageSetInput{ContextID: identity.BusinessTaskID, Target: imageagent.ImageTargetSelection{Platform: target.Platform, StoreID: target.StoreID, Site: target.Site, CategoryID: target.CategoryID}, CarouselOriginalIDs: projection.Plan.SourceAssetIDs, OfficialPlacements: map[string]imageagent.OfficialImagePlacement{}}
+	input.EffectiveCatalogVersion, input.ApplyReceiptID = projection.Plan.Set.Source.EffectiveVersion, projection.Plan.Set.Source.ApplyReceiptID
 	// Reconstruct the two bounded reference groups from immutable slot recipes.
 	input.CarouselOriginalIDs = nil
 	seen := map[string]bool{}

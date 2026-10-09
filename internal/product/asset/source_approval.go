@@ -66,6 +66,7 @@ type SourceImage struct {
 }
 type SourceSelection struct {
 	TenantID, ActorID, MemberID, ItemID, ProductKey, OriginalPublicationID, TargetPlatform string
+	ApplyReceiptID                                                                         string `json:",omitempty"`
 	OriginalSnapshotVersion, EffectiveCatalogVersion                                       uint64
 	Images                                                                                 []SourceImage
 }

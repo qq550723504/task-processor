@@ -40,6 +40,18 @@ func TestSetPlanPermitsDetailOnlyWithoutWeakeningSingleImagePlan(t *testing.T) {
 	require.Error(t, ValidateInitialSubmittedPlan(original))
 }
 
+func TestSetPlanBindsEffectiveProductToItsExplicitAppliedTitleReceipt(t *testing.T) {
+	plan := setPlanFixture(t)
+	plan.Set.Source.EffectiveVersion = 2
+	require.Error(t, ValidateImageSetPlan(plan), "a newer product version requires the exact Review.Apply receipt")
+	plan.Set.Source.ApplyReceiptID = "8fc227bb-b572-4138-8e2a-5f1a0be98617"
+	require.NoError(t, ValidateImageSetPlan(plan))
+	plan.Set.Source.EffectiveVersion = 1
+	require.Error(t, ValidateImageSetPlan(plan), "original selection cannot claim an applied title")
+	plan.Set.Source.EffectiveVersion = 0
+	require.Error(t, ValidateImageSetPlan(plan))
+}
+
 func setResultFixture(t *testing.T) (Plan, []SlotProjection) {
 	plan := setPlanFixture(t)
 	failed := plan.Slots[0]
