@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ToolPage } from "./tool-page";
+const switchGuards = vi.hoisted(() => new Set<() => boolean>());
 const context = vi.hoisted(() => ({
   user: { id: "actor" },
   effectiveOrganization: { id: "org-a", name: "A企业" } as {
@@ -19,7 +20,10 @@ const context = vi.hoisted(() => ({
   error: null,
   blockingError: null,
   retry: vi.fn(),
-  registerOrganizationSwitchGuard: () => () => {},
+  registerOrganizationSwitchGuard: (guard: () => boolean) => {
+    switchGuards.add(guard);
+    return () => { switchGuards.delete(guard); };
+  },
 }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({
   useWorkbenchContext: () => context,
@@ -51,6 +55,7 @@ const tool = {
 beforeEach(() => {
   sessionStorage.clear();
   vi.unstubAllGlobals();
+  switchGuards.clear();
   context.effectiveOrganization = { id: "org-a", name: "A企业" };
 });
 const mount = (mode: "official" | "mine" | "custom" | "admin") =>
@@ -199,6 +204,46 @@ it("unknown response retains its original key through remount", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "重试原操作" }));
   await waitFor(() => expect(keys).toHaveLength(2));
   expect(keys[0]).toBe(keys[1]);
+});
+
+it("allows switching after an unknown outcome and retries only the restored original scope", async () => {
+  const writes: { key: string; organization: string }[] = [];
+  const lost = Promise.withResolvers<Response>();
+  vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+    if (init?.method === "PUT") {
+      const headers = new Headers(init.headers);
+      writes.push({
+        key: headers.get("Idempotency-Key")!,
+        organization: headers.get("X-Expected-Organization-ID")!,
+      });
+      if (writes.length === 1) return lost.promise;
+      return Response.json({
+        commandId: headers.get("Idempotency-Key"), operation: "activation",
+        id: tool.id, revision: "1", committedAt: "2026-10-09T00:00:00Z",
+      });
+    }
+    return Response.json({tools: [tool], canManage: true, canCustomize: true});
+  }));
+  const first = mount("official");
+  fireEvent.click(await screen.findByRole("button", { name: "立即启用" }));
+  await waitFor(() => expect(writes).toHaveLength(1));
+  expect(switchGuards.size).toBeGreaterThan(0);
+  expect([...switchGuards].every((guard) => guard()), "in-flight dispatch must block switching").toBe(false);
+  lost.reject(new Error("response lost"));
+  await screen.findByRole("button", { name: "重试原操作" });
+  expect([...switchGuards].every((guard) => guard()), "retained unknown intent must allow switching away").toBe(true);
+  first.unmount();
+  context.effectiveOrganization = { id: "org-b", name: "B企业" };
+  const second = mount("official");
+  await screen.findByRole("button", { name: "立即启用" });
+  expect(screen.queryByRole("button", { name: "重试原操作" })).not.toBeInTheDocument();
+  expect(writes, "entering another enterprise must not replay the retained command").toHaveLength(1);
+  second.unmount();
+  context.effectiveOrganization = { id: "org-a", name: "A企业" };
+  mount("official");
+  fireEvent.click(await screen.findByRole("button", { name: "重试原操作" }));
+  await waitFor(() => expect(writes).toHaveLength(2));
+  expect(writes[1]).toEqual(writes[0]);
 });
 it("readonly members cannot enable the enterprise tool", async () => {
   vi.stubGlobal(

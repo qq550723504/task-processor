@@ -114,9 +114,9 @@ function useCommands(scope: ToolScope, admin: boolean) {
   useEffect(
     () =>
       context.registerOrganizationSwitchGuard(
-        () => !pending.command && !busy && !pending.error,
+        () => !running.current && !busy && !pending.error,
       ),
-    [context, pending.command, busy, pending.error],
+    [context, busy, pending.error],
   );
   async function execute(i: Intent) {
     try {
