@@ -105,13 +105,13 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
     const id=initialRunId??localStorage.getItem(storageKey+":run");if(id)await readRun(id,controller.signal);
    }catch(e){if(!controller.signal.aborted)fail(e)}finally{if(!controller.signal.aborted)setLoading(false)}
   })();return()=>controller.abort();
- },[stableScope,storageKey,effectiveVersion,applyReceiptId,initialRunId,readRun]);
+ },[stableScope,storageKey,effectiveVersion,applyReceiptId,initialRunId,readRun,fail]);
  const running=run&&["executing","evaluating","repairing"].includes(run.status);
  useEffect(()=>{
   if(!running||locked||!run)return;
   const controller=new AbortController();const timer=setTimeout(()=>{void readRun(run.runId,controller.signal).catch(e=>{if(!controller.signal.aborted)fail(e)})},5000);
   return()=>{clearTimeout(timer);controller.abort()};
- },[run,locked,running,readRun]);
+ },[run,locked,running,readRun,fail]);
  function acceptPreparation(p:ImageSetRun){remember(p);clearIntent();setInventory(undefined);setSelected([]);setPreview(null);setRegenerate([])}
  async function send(command:Intent,replay=false){
   if(flight.current||!active.current)return;
