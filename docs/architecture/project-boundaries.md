@@ -232,9 +232,14 @@ Issue #611 additionally admits `internal/agentcustomization` for human service
 requests, contact consent, private reference files and manual progress. Its
 `httpapi` adapter owns enterprise and verified-platform routes; the single
 PostgreSQL transaction repository is injected from
-`internal/integration/persistence/agentcustomization`. It does not own executable
-Agent definitions, enterprise activation/templates, AI runs, third-party orders
-or payment facts. See [the approved customization contract](./agent-customization-v1.md).
+`internal/integration/persistence/agentcustomization`. The subsequently approved
+[private delivery contract](./private-agent-delivery-v1.md) additionally owns
+fixed code-version deliveries bound to the original enterprise and immutable
+execution reports. `internal/product/quality` owns the pure deterministic check;
+it writes no canonical Product facts. This is a bounded compute consumer, not a
+second generic Agent runtime. Enterprise activation/templates, AI runs,
+third-party orders and payment facts retain their existing owners. See also
+[the manual customization contract](./agent-customization-v1.md).
 
 ### 3.7 `internal/compatibility/listingkit`
 

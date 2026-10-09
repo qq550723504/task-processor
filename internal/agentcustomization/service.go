@@ -1,4 +1,4 @@
-// Package agentcustomization owns human service requests, not executable agents.
+// Package agentcustomization owns service requests and their bounded private deliveries.
 package agentcustomization
 
 import (
@@ -58,6 +58,7 @@ type Input struct {
 	Files         []Upload `json:"files,omitempty"`
 }
 type Update struct {
+	DeliverQualityAgent bool   `json:"deliverQualityAgent,omitempty"`
 	Stage               Stage  `json:"stage"`
 	Note                string `json:"note"`
 	Proposal            string `json:"proposal,omitempty"`
@@ -70,6 +71,7 @@ type Attachment struct {
 	Size        int    `json:"size"`
 }
 type Request struct {
+	DeliveryID          string       `json:"deliveryId,omitempty"`
 	ID                  string       `json:"id"`
 	OrganizationID      string       `json:"organizationId"`
 	CreatedBy           string       `json:"createdBy"`
@@ -175,6 +177,9 @@ func ApplyUpdate(r *Request, u Update, platform bool) error {
 		return ErrForbidden
 	}
 	if r == nil || !text(u.Note, 5000, true) {
+		return ErrInvalid
+	}
+	if u.DeliverQualityAgent && (u.Stage != Delivered || r.Proposal == "" || r.OfflineConfirmation == "") {
 		return ErrInvalid
 	}
 	from, to := -1, -1

@@ -19,6 +19,7 @@ import (
 
 const Base = "/api/v1/agent-customization/requests"
 const AdminBase = "/api/v1/admin/agent-customization/requests"
+const PrivateBase = "/api/v1/agent-customization/agents"
 
 type ServicePort interface {
 	Execute(context.Context, d.Command) (d.Receipt, error)
@@ -64,6 +65,19 @@ func Routes(h *Handler) []httproute.Descriptor {
 				h.serve(c, admin, s.operation)
 			})})
 		}
+	}
+	for _, r := range []struct{ method, path, operation string }{{"GET", "", "deliveries"}, {"GET", "/:id", "delivery"}, {"GET", "/:id/reports", "reports"}, {"POST", "/:id/reports", "run"}} {
+		permission := authz.PermissionWorkbenchAgentRead
+		if r.operation == "run" {
+			permission = authz.PermissionWorkbenchAgentUse
+		}
+		out = append(out, httproute.Descriptor{Method: r.method, Path: PrivateBase + r.path, Module: "agent-customization", Permission: permission, AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: 30 * time.Second, RejectUnreadRequestBody: r.method == "GET", Handler: httproute.WithRequestBodyReadTimeout(30*time.Second, func(c *gin.Context) {
+			if h == nil || h.Service == nil {
+				failure(c, d.ErrUnavailable)
+				return
+			}
+			h.serve(c, false, r.operation)
+		})})
 	}
 	return out
 }
@@ -116,6 +130,10 @@ func (h *Handler) serve(c *gin.Context, platform bool, operation string) {
 	}
 	if !d.ValidScope(scope) {
 		failure(c, d.ErrForbidden)
+		return
+	}
+	if operation == "deliveries" || operation == "delivery" || operation == "reports" || operation == "run" {
+		h.servePrivate(c, scope, operation)
 		return
 	}
 	query, e := url.ParseQuery(c.Request.URL.RawQuery)

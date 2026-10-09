@@ -42,6 +42,10 @@ func InstallSchema(ctx context.Context, db *sql.DB) error {
 		"CREATE TABLE IF NOT EXISTS agent_customization.attachments(id uuid PRIMARY KEY,request_id uuid NOT NULL REFERENCES agent_customization.requests(id),digest text NOT NULL,data bytea NOT NULL CHECK(octet_length(data)>0 AND octet_length(data)<=2097152))",
 		"CREATE TABLE IF NOT EXISTS agent_customization.events(request_id uuid NOT NULL REFERENCES agent_customization.requests(id),version bigint NOT NULL CHECK(version>0),payload jsonb NOT NULL,PRIMARY KEY(request_id,version))",
 		"CREATE TABLE IF NOT EXISTS agent_customization.commands(scope_kind text NOT NULL CHECK(scope_kind IN ('enterprise','platform')),organization_id text NOT NULL,actor_id text NOT NULL,key uuid NOT NULL,fingerprint text NOT NULL,receipt jsonb NOT NULL,PRIMARY KEY(scope_kind,organization_id,actor_id,key))",
+		"CREATE TABLE IF NOT EXISTS agent_customization.deliveries(id uuid PRIMARY KEY,request_id uuid NOT NULL UNIQUE REFERENCES agent_customization.requests(id),organization_id text NOT NULL,payload jsonb NOT NULL)",
+		"CREATE INDEX IF NOT EXISTS customization_delivery_org ON agent_customization.deliveries(organization_id,id)",
+		"CREATE TABLE IF NOT EXISTS agent_customization.quality_runs(id uuid PRIMARY KEY,delivery_id uuid NOT NULL REFERENCES agent_customization.deliveries(id),organization_id text NOT NULL,actor_id text NOT NULL,key uuid NOT NULL,fingerprint text NOT NULL,payload jsonb NOT NULL,UNIQUE(organization_id,actor_id,key))",
+		"CREATE INDEX IF NOT EXISTS customization_quality_delivery ON agent_customization.quality_runs(organization_id,delivery_id,id)",
 		"REVOKE ALL ON SCHEMA agent_customization FROM PUBLIC",
 		"REVOKE ALL ON ALL TABLES IN SCHEMA agent_customization FROM PUBLIC",
 		"RESET ROLE",
@@ -95,7 +99,7 @@ func GrantRuntime(ctx context.Context, db *sql.DB, role string) error {
 	if unsafe {
 		return d.ErrInvalid
 	}
-	for _, table := range []string{"requests", "events", "attachments", "commands"} {
+	for _, table := range []string{"requests", "events", "attachments", "commands", "deliveries", "quality_runs"} {
 		if e = tx.QueryRowContext(ctx, "SELECT has_table_privilege($1,$2,'DELETE,TRUNCATE')", role, "agent_customization."+table).Scan(&unsafe); e != nil {
 			return e
 		}
@@ -125,7 +129,7 @@ func VerifySchema(ctx context.Context, db *sql.DB) error {
 	if err != nil || unsafe {
 		return d.ErrUnavailable
 	}
-	for _, table := range []string{"requests", "events", "attachments", "commands"} {
+	for _, table := range []string{"requests", "events", "attachments", "commands", "deliveries", "quality_runs"} {
 		var present, readable, insertable, destructive bool
 		name := "agent_customization." + table
 		err = db.QueryRowContext(ctx, `SELECT to_regclass($1) IS NOT NULL, has_table_privilege(current_user,$1,'SELECT'),has_table_privilege(current_user,$1,'INSERT'),has_table_privilege(current_user,$1,'DELETE,TRUNCATE')`, name).Scan(&present, &readable, &insertable, &destructive)

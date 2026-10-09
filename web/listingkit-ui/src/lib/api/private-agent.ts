@@ -1,0 +1,13 @@
+import { z } from "zod";
+import { customId, customizationRequest, type CustomScope } from "./agent-customization";
+const field = (max: number) => z.string().max(max * 2).refine(v => Array.from(v).length <= max && v.trim() === v && !/[^\P{Cc}\n\r\t]/u.test(v));
+export const qualityInput = z.strictObject({ name: field(120), material: field(240), dimensions: field(240), description: field(4000), specifications: z.array(z.strictObject({ name: field(80), value: field(240) })).max(20) }).refine(v => !!(v.name || v.material || v.dimensions || v.description || v.specifications.some(s => s.name || s.value)));
+const definition = z.literal("product.quality.check"), version = z.literal("1.0.0"), organizationId = z.string().min(1).max(128), actor = z.string().min(1).max(256), createdAt = z.iso.datetime({ offset: true }), cursor = z.union([customId, z.literal("")]);
+export const privateDelivery = z.strictObject({ id: customId, requestId: customId, organizationId, definition, version, name: z.string().min(1).max(120), createdBy: actor, createdAt });
+export const privatePage = z.strictObject({ items: z.array(privateDelivery).max(20), nextCursor: cursor });
+export const qualityRun = z.strictObject({ id: customId, deliveryId: customId, organizationId, actorId: actor, key: customId, definition, version, input: qualityInput, report: z.strictObject({ ruleVersion: z.literal("product-quality-rules-v1"), summary: z.string().min(1).max(240), findings: z.array(z.strictObject({ code: z.string().min(1).max(80), field: z.string().min(1).max(80), message: z.string().min(1).max(240), suggestion: z.string().min(1).max(500) })).max(50) }), createdAt });
+export const qualityPage = z.strictObject({ items: z.array(qualityRun).max(20), nextCursor: cursor });
+export const qualityPending = z.strictObject({ key: customId, deliveryId: customId, input: qualityInput });
+export type PrivateDelivery = z.infer<typeof privateDelivery>;
+export type QualityRun = z.infer<typeof qualityRun>;
+export const privateAgentRequest = <T,>(scope: CustomScope, path: string, schema: z.ZodType<T>, init: RequestInit = {}) => customizationRequest({ ...scope, admin: false }, path, schema, init, "agents");

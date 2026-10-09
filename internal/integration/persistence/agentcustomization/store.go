@@ -101,6 +101,22 @@ func (s *Store) Execute(ctx context.Context, c d.Command) (d.Receipt, error) {
 		if e = d.ApplyUpdate(&r, c.Update, c.Scope.Platform); e != nil {
 			return d.Receipt{}, e
 		}
+		if c.Update.DeliverQualityAgent {
+			deliveryID := uuid.NewSHA1(uuid.NameSpaceOID, []byte("private-quality:"+r.ID+":"+d.QualityVersion)).String()
+			if r.DeliveryID == "" {
+				v := d.Delivery{ID: deliveryID, RequestID: r.ID, OrganizationID: r.OrganizationID, Definition: d.QualityDefinition, Version: d.QualityVersion, Name: "商品资料质检", CreatedBy: c.Scope.ActorID, CreatedAt: now}
+				payload, err := json.Marshal(v)
+				if err != nil {
+					return d.Receipt{}, err
+				}
+				if _, e = tx.ExecContext(ctx, "INSERT INTO agent_customization.deliveries(id,request_id,organization_id,payload) VALUES($1,$2,$3,$4)", v.ID, v.RequestID, v.OrganizationID, payload); e != nil {
+					return d.Receipt{}, e
+				}
+				r.DeliveryID = deliveryID
+			} else if r.DeliveryID != deliveryID {
+				return d.Receipt{}, d.ErrUnavailable
+			}
+		}
 		r.Version = strconv.FormatInt(version+1, 10)
 		r.UpdatedAt = now
 		raw, e = json.Marshal(r)

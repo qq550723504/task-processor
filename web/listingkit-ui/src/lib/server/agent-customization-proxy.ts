@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { customDetail, customId, customInput, customPage, customReceipt, customUpdate, customVersion } from "@/lib/api/agent-customization";
+import { privateDelivery,privatePage,qualityInput,qualityPage,qualityRun } from "@/lib/api/private-agent";
 import { readBoundedStrictJSON } from "@/lib/api/strict-json-response";
 import { hasTrustedSameOriginWrite } from "./same-origin-write";
 import { hasEmptyBody } from "./members-proxy";
@@ -8,7 +9,8 @@ const safe = { "Cache-Control": "private, no-store", "X-Content-Type-Options": "
 export const customizationFailure = (status: number, code: string) => Response.json({ code }, { status, headers: safe });
 function customizationEndpoint(url: URL, method: string) {
     const admin = url.pathname.startsWith("/api/workbench/admin/agent-customization/requests");
-    const prefix = `/api/workbench/${admin ? "admin/" : ""}agent-customization/requests`;
+    const kind = !admin && url.pathname.startsWith("/api/workbench/agent-customization/agents") ? "agents" : "requests";
+    const prefix = `/api/workbench/${admin ? "admin/" : ""}agent-customization/${kind}`;
     if (!url.pathname.startsWith(prefix))
         return null;
     const suffix = url.pathname.slice(prefix.length);
@@ -17,7 +19,14 @@ function customizationEndpoint(url: URL, method: string) {
         return null;
     let output: z.ZodType = customPage, input: z.ZodType | undefined;
     let download = false, cas = false;
-    if (p.length === 0 && method === "GET")
+    if (kind === "agents") {
+        if(p.length===0&&method==="GET") output=privatePage;
+        else if(p.length===1&&customId.safeParse(p[0]).success&&method==="GET") output=privateDelivery;
+        else if(p.length===2&&customId.safeParse(p[0]).success&&p[1]==="reports"&&method==="GET") output=qualityPage;
+        else if(p.length===2&&customId.safeParse(p[0]).success&&p[1]==="reports"&&method==="POST") {input=qualityInput;output=qualityRun;}
+        else return null;
+    }
+    else if (p.length === 0 && method === "GET")
         output = customPage;
     else if (p.length === 0 && method === "POST" && !admin) {
         input = customInput;
@@ -37,10 +46,10 @@ function customizationEndpoint(url: URL, method: string) {
     if (url.search.length > 256)
         return null;
     for (const [k, v] of url.searchParams) {
-        if (url.searchParams.getAll(k).length !== 1 || !(method === "GET" && (p.length === 0 && k === "cursor" && customId.safeParse(v).success || p.length === 1 && k === "after" && customVersion.safeParse(v).success)))
+        if (url.searchParams.getAll(k).length !== 1 || !(method === "GET" && ((p.length === 0 || kind === "agents" && p.length === 2) && k === "cursor" && customId.safeParse(v).success || kind === "requests" && p.length === 1 && k === "after" && customVersion.safeParse(v).success)))
             return null;
     }
-    return { admin, path: suffix, output, input, download, cas };
+    return { admin,kind, path: suffix, output, input, download, cas };
 }
 async function boundedBytes(response: Response, signal: AbortSignal) { const reader = response.body?.getReader(); if (!reader)
     throw new Error(); let size = 0; const chunks: Uint8Array[] = []; const cancel = () => { void reader.cancel().catch(() => undefined); }; signal.addEventListener("abort", cancel, { once: true }); try {
@@ -127,7 +136,7 @@ export async function proxyAgentCustomization(request: Request, token: string, u
             }
             else if (request.headers.has("If-Match"))
                 return customizationFailure(400, "CUSTOMIZATION_INVALID");
-            const payload = await readBoundedStrictJSON(new Response(request.body, { headers: { "Content-Type": request.headers.get("Content-Type") ?? "" } }), route.cas ? 64 * 1024 : 9 * 1024 * 1024, controller.signal);
+            const payload = await readBoundedStrictJSON(new Response(request.body, { headers: { "Content-Type": request.headers.get("Content-Type") ?? "" } }), route.kind === "agents" ? 16 * 1024 : route.cas ? 64 * 1024 : 9 * 1024 * 1024, controller.signal);
             const value = route.input!.safeParse(payload);
             if (!value.success)
                 return customizationFailure(400, "CUSTOMIZATION_INVALID");
@@ -138,7 +147,7 @@ export async function proxyAgentCustomization(request: Request, token: string, u
             return customizationFailure(400, "CUSTOMIZATION_INVALID");
         controller.signal.throwIfAborted();
         dispatched = true;
-        const response = await fetch(origin + `/api/v1/${route.admin ? "admin/" : ""}agent-customization/requests` + route.path + url.search, { method: request.method, headers, body, signal: controller.signal, cache: "no-store", redirect: "manual" });
+        const response = await fetch(origin + `/api/v1/${route.admin ? "admin/" : ""}agent-customization/${route.kind}` + route.path + url.search, { method: request.method, headers, body, signal: controller.signal, cache: "no-store", redirect: "manual" });
         if (route.download && response.status === 200) {
             const mime = response.headers.get("Content-Type") ?? "";
             if (!["application/pdf", "image/png", "image/jpeg", "text/plain; charset=utf-8"].includes(mime))
@@ -168,6 +177,10 @@ export async function proxyAgentCustomization(request: Request, token: string, u
         }
         if (route.output === customPage && !route.admin && customPage.parse(parsed.data).items.some(v => v.organizationId !== org))
             throw new Error();
+        if(route.output===privateDelivery) {const v=privateDelivery.parse(parsed.data);if(v.id!==route.path.slice(1)||v.organizationId!==org)throw new Error();}
+        if(route.output===privatePage&&privatePage.parse(parsed.data).items.some(v=>v.organizationId!==org))throw new Error();
+        if(route.output===qualityRun) {const v=qualityRun.parse(parsed.data);if(v.organizationId!==org||v.actorId!==userId||v.deliveryId!==route.path.split("/")[1]||v.key!==request.headers.get("Idempotency-Key"))throw new Error();}
+        if(route.output===qualityPage&&qualityPage.parse(parsed.data).items.some(v=>v.organizationId!==org||v.deliveryId!==route.path.split("/")[1]))throw new Error();
         return Response.json(parsed.data, { headers: safe });
     }
     catch {

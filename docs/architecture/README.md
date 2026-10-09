@@ -172,6 +172,12 @@ source of truth for long-lived rules.
     Submission is free; proposals and fees are confirmed offline. Runtime
     assembly and user acceptance remain separate from the owner implementation.
 
+- [`private-agent-delivery-v1.md`](./private-agent-delivery-v1.md)
+  - APPROVED / IMPLEMENTATION_READY #611: fixed-version product quality checks
+    privately delivered to the original request enterprise, atomic publication,
+    immutable reports and current authorization. Deterministic compute only;
+    no model/provider, product mutation or second generic Agent runtime.
+
 - [`product-agent-text-provider-neutral-v1.md`](./product-agent-text-provider-neutral-v1.md)
   - IMPLEMENTATION_READY #573 architecture for organization-scoped,
     provider-neutral title text admission over OpenAI-compatible routes. The

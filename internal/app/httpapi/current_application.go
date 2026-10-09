@@ -1062,7 +1062,7 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {
-		if descriptor.Path == customhttp.Base || strings.HasPrefix(descriptor.Path, customhttp.Base+"/") || descriptor.Path == customhttp.AdminBase || strings.HasPrefix(descriptor.Path, customhttp.AdminBase+"/") {
+		if descriptor.Path == customhttp.Base || strings.HasPrefix(descriptor.Path, customhttp.Base+"/") || descriptor.Path == customhttp.AdminBase || strings.HasPrefix(descriptor.Path, customhttp.AdminBase+"/") || descriptor.Path == customhttp.PrivateBase || strings.HasPrefix(descriptor.Path, customhttp.PrivateBase+"/") {
 			if !optional.AgentCustomization {
 				return errors.New("agent customization not admitted")
 			}

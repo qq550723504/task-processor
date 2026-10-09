@@ -93,7 +93,7 @@ func TestAgentCustomizationModulePostgresNormalMiddlewareFlow(t *testing.T) {
 	require.NoError(t, err)
 	registry := kernelmodule.NewRegistry()
 	require.NoError(t, m.Register(registry))
-	require.Len(t, registry.Routes(), 8)
+	require.Len(t, registry.Routes(), 12)
 	authorizer, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
 	identity := authidentity.AuthenticatedIdentity{UserID: "verified-user", Roles: []string{"platform_admin"}, TokenExpiresAt: time.Now().Add(time.Minute)}
@@ -133,7 +133,7 @@ func TestAgentCustomizationModulePostgresNormalMiddlewareFlow(t *testing.T) {
 		`{"stage":"EVALUATING","note":"专员评估"}`,
 		`{"stage":"PROPOSED","note":"给出方案","proposal":"方案和报价在线下确认"}`,
 		`{"stage":"DEVELOPING","note":"开始开发","offlineConfirmation":"线下方案费用已确认"}`,
-		`{"stage":"DELIVERED","note":"交付操作说明"}`,
+		`{"stage":"DELIVERED","note":"交付操作说明","deliverQualityAgent":true}`,
 	} {
 		w = request("POST", customhttp.AdminBase+"/"+receipt.RequestID+"/progress", update, uuid.NewString(), receipt.Version)
 		require.Equal(t, 200, w.Code, w.Body.String())
@@ -148,6 +148,25 @@ func TestAgentCustomizationModulePostgresNormalMiddlewareFlow(t *testing.T) {
 	require.Equal(t, "verified-user", detail.Request.CreatedBy)
 	require.Equal(t, d.Delivered, detail.Request.Stage)
 	require.Len(t, detail.Events, 5)
+	require.NotEmpty(t, detail.Request.DeliveryID)
+	w = request("GET", customhttp.PrivateBase, "", "", "")
+	require.Equal(t, 200, w.Code, w.Body.String())
+	var deliveries d.DeliveryPage
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &deliveries))
+	require.Len(t, deliveries.Items, 1)
+	reportKey := uuid.NewString()
+	reportPath := customhttp.PrivateBase + "/" + deliveries.Items[0].ID + "/reports"
+	w = request("POST", reportPath, `{"name":"收纳盒","material":"","dimensions":"20x10","description":"","specifications":[]}`, reportKey, "")
+	require.Equal(t, 200, w.Code, w.Body.String())
+	var report d.QualityRun
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &report))
+	require.NotEmpty(t, report.Report.Findings)
+	w = request("GET", reportPath, "", "", "")
+	require.Equal(t, 200, w.Code, w.Body.String())
+	var reports d.QualityRunPage
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &reports))
+	require.Len(t, reports.Items, 1)
+	require.Equal(t, report, reports.Items[0])
 	var count int
 	require.NoError(t, db.QueryRow("SELECT count(*) FROM agent_customization.requests").Scan(&count))
 	require.Equal(t, 1, count, "replay did not create another request")
