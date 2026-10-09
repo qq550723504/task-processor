@@ -27,8 +27,11 @@ type Handler struct {
 	// Authorize resolves current trusted identity and fresh permission. Platform
 	// requests use verified platform roles, without requiring customer membership.
 	Authorize func(context.Context, string, bool) (tm.Scope, error)
-	Readiness tm.Readiness
-	plugin    []byte
+	// ReadAuthorize uses CachedRead for enterprise GETs and action visibility.
+	// It is required separately; writes never fall back to cached grants.
+	ReadAuthorize func(context.Context, string, bool) (tm.Scope, error)
+	Readiness     tm.Readiness
+	plugin        []byte
 }
 
 // ConfigurePackage runs before serving startup; arbitrary unverified bytes are
@@ -46,7 +49,7 @@ func (h *Handler) ConfigurePackage(c tm.PackageConfig) error {
 // BuildRoutes checks the feature dependencies. Process configuration and the
 // kernel Module wrapper belong to the existing application assembly layer.
 func BuildRoutes(h *Handler) ([]httproute.Descriptor, error) {
-	if h == nil || h.Repository == nil || h.Authorize == nil || h.Bind == nil {
+	if h == nil || h.Repository == nil || h.Authorize == nil || h.ReadAuthorize == nil || h.Bind == nil {
 		return nil, tm.ErrUnavailable
 	}
 	return Routes(h), nil
@@ -82,7 +85,7 @@ func Routes(h *Handler) []httproute.Descriptor {
 			policy, org = httproute.AuthPolicyCurrentIdentityWithVerifiedRoles, httproute.OrganizationAccessPolicyNone
 		}
 		out = append(out, httproute.Descriptor{Method: s.method, Path: s.path, Module: ModuleName, Permission: s.permission, AuthPolicy: policy, OrganizationAccessPolicy: org, RequestTimeout: 10 * time.Second, RejectUnreadRequestBody: s.method == "GET", Handler: httproute.WithRequestBodyReadTimeout(10*time.Second, func(c *gin.Context) {
-			if h == nil || h.Repository == nil || h.Authorize == nil {
+			if h == nil || h.Repository == nil || h.Authorize == nil || h.ReadAuthorize == nil {
 				failure(c, tm.ErrUnavailable)
 				return
 			}
@@ -179,7 +182,11 @@ func (h *Handler) serve(c *gin.Context, s spec) {
 		}
 		ctx = bound
 	}
-	scope, e := h.Authorize(ctx, s.permission, s.platform)
+	authorize := h.Authorize
+	if s.method == http.MethodGet {
+		authorize = h.ReadAuthorize
+	}
+	scope, e := authorize(ctx, s.permission, s.platform)
 	if e != nil {
 		failure(c, e)
 		return
@@ -246,8 +253,8 @@ func (h *Handler) serve(c *gin.Context, s spec) {
 				c.Data(200, "application/zip", h.plugin)
 				return
 			}
-			manage, em := h.Authorize(ctx, authz.PermissionWorkbenchToolsManage, false)
-			customize, ec := h.Authorize(ctx, authz.PermissionWorkbenchToolsCustomize, false)
+			manage, em := h.ReadAuthorize(ctx, authz.PermissionWorkbenchToolsManage, false)
+			customize, ec := h.ReadAuthorize(ctx, authz.PermissionWorkbenchToolsCustomize, false)
 			reply(c, gin.H{"tools": tm.Catalog(ready, activations, s.operation == "mine"), "canManage": em == nil && manage == scope, "canCustomize": ec == nil && customize == scope})
 		case "requests":
 			v, e := h.Repository.Requests(ctx, scope, s.platform, cursor, limit)

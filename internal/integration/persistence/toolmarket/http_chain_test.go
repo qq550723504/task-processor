@@ -30,6 +30,7 @@ func TestEnterpriseDemandAndSpecialistProgressHTTPChain(t *testing.T) {
 		}
 		return current, nil
 	}}
+	h.ReadAuthorize = h.Authorize // Controlled HTTP fixture, not the runtime adapter.
 	router := gin.New()
 	for _, r := range api.Routes(h) {
 		router.Handle(r.Method, r.Path, r.Handler)
@@ -76,6 +77,7 @@ func TestCommittedActivationReplaysWhenCapabilityGoesOffline(t *testing.T) {
 	h := &api.Handler{Repository: store, Readiness: tm.Readiness{LocalCapture: true}, Authorize: func(context.Context, string, bool) (tm.Scope, error) {
 		return tm.Scope{ActorID: "admin-a", OrganizationID: "org-a"}, nil
 	}}
+	h.ReadAuthorize = h.Authorize // Controlled HTTP fixture, not the runtime adapter.
 	router := gin.New()
 	for _, r := range api.Routes(h) {
 		router.Handle(r.Method, r.Path, r.Handler)

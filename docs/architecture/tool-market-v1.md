@@ -83,12 +83,22 @@ toolmarket Repository/Catalog/Authorize窄Port → tool_market PG及专属HTTP m
 企业写入前/事务内通过注入回调重新确认相同actor+organization；撤权则回滚。
 
 拟新增workbench.tools.read/manage/customize权限：
-- 当前企业成员可查看清单/需求（现有viewer/operator/admin角色的read许可）。
+- 当前企业成员通过本企业自定义角色的`tools`或`tools-custom`模块read许可查看清单/需求；
+  现有listingkit_admin具有三项静态许可。旧viewer/operator已被当前scoped policy退休，
+  不恢复其静态grant或将其配置成平台protected role。
 - 只有现有受保护企业admin能改变启用；不将自定义模块的read授权视为管理员身份。
-- operator/admin可提交需求；viewer只读。提交不是授权执行所述流程。
+- 具有`tools-custom`模块customize许可的成员和admin可提交需求；只有`tools`模块的成员只读。
+  提交不是授权执行所述流程。
 - 专员跨企业list/detail/update仅由现有PermissionListingKitPlatformAdm授权。
   平台权限判断使用现有平台authorizer；企业角色、模块权限、JSON布尔字段不授予平台权。
   可读取的企业事实范围和平台权限分开，不让工具manage自动获得跨企业进度权限。
+
+功能提供`ToolMarketPolicies`（仅现有admin静态许可）及`ToolMarketModulePermissions`；
+共享runtime Writer在已有模块目录启用tools/tools-custom并消费对应权限定义，再由当前
+RoleModules和真实ListingKitAuthorizer执行scoped授权。WorkbenchPermissions只决定权限
+投影，不代替模块grant。独立模块PR中的受控组合测试不表示共享安装已完成该接线。
+Handler明确注入ReadAuthorize和Authorize：GET、下载及按钮权限展示消费CachedRead；
+写请求和事务内guard消费LiveWrite。缺任何授权依赖拒绝构建，不在失败时降级到另一策略。
 
 平台list/detail/progress精确复用现有ecoservices路径：
 AuthPolicyCurrentIdentityWithVerifiedRoles + OrganizationAccessPolicyNone +
