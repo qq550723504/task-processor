@@ -23,3 +23,12 @@ it("discards old reads across A to B to A without using a cached response",async
 it("does not expose protected reference fields or fabricated completion on unavailable tasks",async()=>{
  f.request.mockImplementation(async(_s,path)=>path.endsWith("visit")?{id,revision:1,replayed:false}:{...p,references:[{slotId:id,kind:"BUSINESS_TASK",available:false}],taskTotal:1,taskSummaryAvailable:false});render(<ProjectPage projectId={id}/>);await screen.findByText("任务状态暂不可用");fireEvent.click(screen.getByRole("button",{name:"任务"}));expect(screen.getByText("内容当前不可访问")).toBeVisible();expect(screen.queryByRole("progressbar")).toBeNull();expect(screen.getByRole("button",{name:"移除关联"})).toBeVisible();
 });
+
+it("keeps an unknown create key through permission denial and later authentication denial until a receipt arrives",async()=>{
+ const intent={path:"",method:"POST",body:{title:"目标",goal:"长期目标",kind:"OTHER",dueDate:"",storeId:""},key:id};
+ sessionStorage.setItem("project-center:intent:user-a:org-a",JSON.stringify(intent));
+ f.request.mockImplementation(async(_scope,_path,_schema,_signal,command)=>{if(command)throw new ProjectError("FORBIDDEN");return {projects:[],next:""};});
+ let view=render(<ProjectPage/>);await screen.findByRole("button",{name:"重试原操作"});fireEvent.click(screen.getByRole("button",{name:"重试原操作"}));await screen.findByText("当前权限不可用，请重新确认企业。");expect(JSON.parse(sessionStorage.getItem("project-center:intent:user-a:org-a")!).key).toBe(id);view.unmount();
+ f.request.mockImplementation(async(_scope,_path,_schema,_signal,command)=>{if(command)throw new ProjectError("AUTHENTICATION_REQUIRED");return {projects:[],next:""};});view=render(<ProjectPage/>);await screen.findByRole("button",{name:"重试原操作"});fireEvent.click(screen.getByRole("button",{name:"重试原操作"}));await waitFor(()=>expect(screen.getByRole("button",{name:"重试原操作"})).toBeEnabled());expect(sessionStorage.getItem("project-center:intent:user-a:org-a")).not.toBeNull();view.unmount();
+ f.request.mockImplementation(async(_scope,_path,_schema,_signal,command)=>command?{id,revision:1,replayed:true}:{projects:[],next:""});render(<ProjectPage/>);await screen.findByRole("button",{name:"重试原操作"});fireEvent.click(screen.getByRole("button",{name:"重试原操作"}));await waitFor(()=>expect(sessionStorage.getItem("project-center:intent:user-a:org-a")).toBeNull());expect(f.push).toHaveBeenCalledWith("/workbench/ai/projects/"+id);expect(f.request.mock.calls.filter(c=>c[4]).every(c=>c[4].key===id)).toBe(true);
+});

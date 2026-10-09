@@ -24,7 +24,7 @@ export function ProjectPage({mode="active",projectId}:{mode?:Mode;projectId?:str
  const scope=ready?{userId:c.user!.id,organizationId:c.effectiveOrganization!.id}:null;
  const read=c.permissions.includes("workbench.project.read"),manage=c.permissions.includes("workbench.project.manage");
  return <ConsolePage title={projectId?"项目详情":titles[mode]} description={projectId?"目标和关联内容仅由你在当前企业内查看。":descriptions[mode]} breadcrumbs={[{label:"AI工作台"},{label:"项目中心",href:root},{label:projectId?"项目详情":titles[mode]}]} className={styles.page}>
- {!scope?<ConsoleState kind={c.isLoading || c.isSwitching?"loading":"unavailable"} title="请先确认当前企业"/>:!c.projectCenterAvailable?<ConsoleState kind="unavailable" title="当前应用暂未启用项目中心"/>:!read?<ConsoleState kind="unavailable" title="当前身份没有项目查看权限"/>:<ProjectContent key={JSON.stringify([scope,c.permissions])} scope={scope} mode={mode} projectId={projectId} manage={manage}/>}
+ {!scope?<ConsoleState kind={c.isLoading || c.isSwitching?"loading":"unavailable"} title="请先确认当前企业"/>:!c.projectCenterAvailable?<ConsoleState kind="unavailable" title="当前应用暂未启用项目中心"/>:!read?<ConsoleState kind="unavailable" title="当前身份没有项目查看权限"/>:<ProjectContent key={JSON.stringify([scope,c.permissions,mode,projectId])} scope={scope} mode={mode} projectId={projectId} manage={manage}/>}
  </ConsolePage>;
 }
 function summary(p:Project){return !p.taskSummaryAvailable?"任务状态暂不可用":p.taskTotal===0?"尚未关联任务":`${p.taskCompleted} / ${p.taskTotal} 项关联任务已完成`;}
@@ -46,11 +46,12 @@ function ProjectContent({scope,mode,projectId,manage}:{scope:ProjectScope;mode:M
  const reload=()=>{setAfter("");setRefresh(v=>v+1);};
  const mutate=async(intent:Intent,isVisit=false)=>{
   const controller=lifetime.current;if(!controller || controller.signal.aborted || busy || !hydrated)return;
+  const recovering=pending?.key===intent.key;
   if(!isVisit){try{sessionStorage.setItem(storageKey,JSON.stringify(intent));setPending(intent);}catch{setError("请允许浏览器会话存储，以保留操作结果未知时的重试记录。");return;}}
   setBusy(true);setError("");
   try{const r=await projectRequest(scope,intent.path,receipt,controller.signal,intent);if(controller.signal.aborted)return;
    if(!isVisit){sessionStorage.removeItem(storageKey);setPending(null);setForm(null);setLink("");setTemplateName("");setSources([]);if(intent.path==="" && intent.method==="POST")router.push(root+"/"+r.id);else reload();}
-  }catch(e){if(controller.signal.aborted)return;setForm(null);setError(errorText(e));if(e instanceof ProjectError && e.code!=="OUTCOME_UNKNOWN" && !isVisit){sessionStorage.removeItem(storageKey);setPending(null);}}
+  }catch(e){if(controller.signal.aborted)return;setForm(null);setError(errorText(e));if(e instanceof ProjectError && e.code!=="OUTCOME_UNKNOWN" && !recovering && !isVisit){sessionStorage.removeItem(storageKey);setPending(null);}}
   finally{if(!controller.signal.aborted)setBusy(false);}
  };
  // Visits are explicit commands and never modify the project's business revision.

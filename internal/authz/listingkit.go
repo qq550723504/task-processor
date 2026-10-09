@@ -234,13 +234,20 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		}
 	}
 
-	for _, role := range []string{"listingkit_viewer", "listingkit_operator", "listingkit_admin", "platform_admin"} {
+	for _, role := range append([]string{"listingkit_viewer", "listingkit_operator", "listingkit_admin", "platform_admin"}, normalizeUnique(platformAdminRoles)...) {
 		if _, e := enforcer.AddPolicy(role, "workbench.project.read"); e != nil {
 			return nil, e
 		}
 		if role != "listingkit_viewer" {
 			if _, e := enforcer.AddPolicy(role, "workbench.project.manage"); e != nil {
 				return nil, e
+			}
+		}
+	}
+	for _, userID := range normalizeUnique(platformAdminUsers) {
+		for _, permission := range []string{"workbench.project.read", "workbench.project.manage"} {
+			if _, err := enforcer.AddPolicy(userSubject(userID), permission); err != nil {
+				return nil, err
 			}
 		}
 	}
