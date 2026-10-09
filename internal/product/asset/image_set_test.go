@@ -46,7 +46,7 @@ func TestImageSetCommitBindsSelectedOriginsToTheExactResultAndSource(t *testing.
 					commit.ImageSet.Target = &ImageSetTarget{StoreID: "store"}
 				}
 				if mode == "platform_site_drift" {
-					commit.ImageSet.Target = &ImageSetTarget{StoreID: "store", Site: "shein-fr", ApplicationID: "application", ApplicationMode: "fully_managed", CategoryID: 1, ProductTypeID: 2, AttributesDigest: strings.Repeat("c", 64), VariantsDigest: strings.Repeat("d", 64)}
+					commit.ImageSet.Target = &ImageSetTarget{RecordID: "record", StoreID: "store", Site: "shein-fr", ApplicationID: "application", ApplicationMode: "fully_managed", CategoryID: 1, ProductTypeID: 2, AttributesDigest: strings.Repeat("c", 64), VariantsDigest: strings.Repeat("d", 64)}
 				}
 			}
 			commit.ImageSet.Digest = ImageSetSelectionDigest(commit)

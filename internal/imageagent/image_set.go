@@ -25,6 +25,7 @@ type ImageTarget struct {
 	Platform, StoreID, Site, ApplicationID, ApplicationMode                 string
 	CategoryID, ProductTypeID                                               int64
 	AttributesDigest, VariantsDigest, RequirementDigest, RequirementVersion string
+	RecordID                                                                string `json:",omitempty"`
 }
 
 type ImageSetPlan struct {
@@ -126,7 +127,7 @@ func ValidateImageSetPlan(plan Plan) error {
 		return fmt.Errorf("%w: incomplete image quote binding", ErrValidation)
 	}
 	if s.Target.Platform != "product" {
-		if !agentconfig.Platform(s.Target.Platform) || !canonicalImageValue(s.Target.StoreID) || !canonicalImageValue(s.Target.Site) || !canonicalImageValue(s.Target.ApplicationID) || !canonicalImageValue(s.Target.ApplicationMode) || s.Target.CategoryID <= 0 || s.Target.ProductTypeID <= 0 || !agentconfig.ImageDigest(s.Target.AttributesDigest) || !agentconfig.ImageDigest(s.Target.VariantsDigest) || !agentconfig.ImageDigest(s.Target.RequirementDigest) || !canonicalImageValue(s.Target.RequirementVersion) {
+		if !agentconfig.Platform(s.Target.Platform) || !canonicalImageValue(s.Target.RecordID) || !canonicalImageValue(s.Target.StoreID) || !canonicalImageValue(s.Target.Site) || !canonicalImageValue(s.Target.ApplicationID) || !canonicalImageValue(s.Target.ApplicationMode) || s.Target.CategoryID <= 0 || s.Target.ProductTypeID <= 0 || !agentconfig.ImageDigest(s.Target.AttributesDigest) || !agentconfig.ImageDigest(s.Target.VariantsDigest) || !agentconfig.ImageDigest(s.Target.RequirementDigest) || !canonicalImageValue(s.Target.RequirementVersion) {
 			return fmt.Errorf("%w: target image requirements are unavailable", ErrValidation)
 		}
 	} else if s.Target != (ImageTarget{Platform: "product"}) {

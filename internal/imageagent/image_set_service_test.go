@@ -175,8 +175,8 @@ func TestPrepareImageSetMissingSpecificationsBlocksBeforeGeneration(t *testing.T
 
 func TestPrepareImageSetRejectsAResolvedDifferentStore(t *testing.T) {
 	s, _, workflows, config, contexts, _, ctx, input := imageSetServiceFixture(t)
-	input.Target = imageagent.ImageTargetSelection{Platform: "shein", StoreID: "chosen-store", Site: "shein-us", CategoryID: 1}
-	contexts.preparation.Target = imageagent.ImageTarget{Platform: "shein", StoreID: "different-store", Site: "shein-us", CategoryID: 1, ProductTypeID: 2, ApplicationID: "application", ApplicationMode: "fully_managed", AttributesDigest: strings.Repeat("d", 64), VariantsDigest: strings.Repeat("e", 64), RequirementDigest: strings.Repeat("f", 64), RequirementVersion: "current"}
+	input.Target = imageagent.ImageTargetSelection{Platform: "shein", RecordID: "record", StoreID: "chosen-store", Site: "shein-us", CategoryID: 1}
+	contexts.preparation.Target = imageagent.ImageTarget{Platform: "shein", RecordID: "record", StoreID: "different-store", Site: "shein-us", CategoryID: 1, ProductTypeID: 2, ApplicationID: "application", ApplicationMode: "fully_managed", AttributesDigest: strings.Repeat("d", 64), VariantsDigest: strings.Repeat("e", 64), RequirementDigest: strings.Repeat("f", 64), RequirementVersion: "current"}
 	contexts.preparation.OfficialPlacements = map[string]imageagent.OfficialImagePlacement{"identity": {Group: "skc", Type: 1, Sort: 1, Site: "shein-us"}, "overview": {Group: "detail", Type: 7, Sort: 1, Site: "shein-us"}}
 	_, err := s.PrepareImageSet(ctx, input)
 	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
@@ -190,9 +190,9 @@ func TestPrepareImageSetBindsExplicitOfficialPositionsToEachConfiguredTask(t *te
 			s, _, _, configuration, contexts, _, ctx, input := imageSetServiceFixture(t)
 			configuration.template.Detail = nil
 			position := imageagent.OfficialImagePlacement{Group: "skc", Type: 1, Sort: 1, Site: "shein-us"}
-			input.Target = imageagent.ImageTargetSelection{Platform: "shein", StoreID: "store", Site: "shein-us", CategoryID: 1}
+			input.Target = imageagent.ImageTargetSelection{Platform: "shein", RecordID: "record", StoreID: "store", Site: "shein-us", CategoryID: 1}
 			input.OfficialPlacements = map[string]imageagent.OfficialImagePlacement{"identity": position}
-			contexts.preparation.Target = imageagent.ImageTarget{Platform: "shein", StoreID: "store", Site: "shein-us", ApplicationID: "application", ApplicationMode: "self_operated", CategoryID: 1, ProductTypeID: 2, AttributesDigest: strings.Repeat("a", 64), VariantsDigest: strings.Repeat("b", 64), RequirementDigest: strings.Repeat("c", 64), RequirementVersion: "shein-images-v1"}
+			contexts.preparation.Target = imageagent.ImageTarget{Platform: "shein", RecordID: "record", StoreID: "store", Site: "shein-us", ApplicationID: "application", ApplicationMode: "self_operated", CategoryID: 1, ProductTypeID: 2, AttributesDigest: strings.Repeat("a", 64), VariantsDigest: strings.Repeat("b", 64), RequirementDigest: strings.Repeat("c", 64), RequirementVersion: "shein-images-v1"}
 			contexts.preparation.OfficialPlacements = map[string]imageagent.OfficialImagePlacement{"identity": position}
 			switch mode {
 			case "changed":

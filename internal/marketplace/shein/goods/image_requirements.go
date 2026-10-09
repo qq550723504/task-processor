@@ -54,6 +54,9 @@ func (r OfficialImageRequirements) AllowsSlot(slot OfficialImageSlot) bool {
 	return false
 }
 func (r OfficialImageRequirements) ValidateSelection(slots []OfficialImageSlot, dimensions []OfficialImageDimensions) []OfficialIssue {
+	return r.validateSelection(slots, dimensions, true)
+}
+func (r OfficialImageRequirements) validateSelection(slots []OfficialImageSlot, dimensions []OfficialImageDimensions, complete bool) []OfficialIssue {
 	issues := []OfficialIssue{}
 	issue := func(group OfficialImageSlot, code, message string) {
 		issues = append(issues, OfficialIssue{Field: officialImageGroupPath(group.Group, group.SKC, group.SKU), Code: code, Message: message})
@@ -97,9 +100,9 @@ func (r OfficialImageRequirements) ValidateSelection(slots []OfficialImageSlot, 
 		for _, count := range actual {
 			total += count
 		}
-		invalid := group.MainWhenAny && total > 0 && actual[1] != 1
+		invalid := complete && group.MainWhenAny && total > 0 && actual[1] != 1
 		for _, imageType := range group.Types {
-			if actual[imageType.Type] < imageType.Minimum || actual[imageType.Type] > imageType.Maximum {
+			if complete && actual[imageType.Type] < imageType.Minimum || actual[imageType.Type] > imageType.Maximum {
 				invalid = true
 			}
 		}
@@ -108,6 +111,12 @@ func (r OfficialImageRequirements) ValidateSelection(slots []OfficialImageSlot, 
 		}
 	}
 	return issues
+}
+
+// Approval stores selected material. Listing checks whether its explicit
+// references fill every required publish position, including shared assets.
+func (r OfficialImageRequirements) ValidateMaterialSelection(slots []OfficialImageSlot, dimensions []OfficialImageDimensions) []OfficialIssue {
+	return r.validateSelection(slots, dimensions, false)
 }
 
 func officialImageGroupPath(group string, skc, sku int) string {

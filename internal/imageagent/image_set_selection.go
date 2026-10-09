@@ -66,6 +66,7 @@ func ValidateImageSetSelectionIntent(plan Plan, actionID string, selection *prod
 		}
 	} else {
 		expected := &productasset.ImageSetTarget{StoreID: target.StoreID, Site: target.Site, ApplicationID: target.ApplicationID, ApplicationMode: target.ApplicationMode, CategoryID: target.CategoryID, ProductTypeID: target.ProductTypeID, AttributesDigest: target.AttributesDigest, VariantsDigest: target.VariantsDigest}
+		expected.RecordID = target.RecordID
 		if !reflect.DeepEqual(selection.Target, expected) {
 			return ErrRevisionConflict
 		}

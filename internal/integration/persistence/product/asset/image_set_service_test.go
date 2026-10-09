@@ -78,7 +78,7 @@ func TestImageSetSelectionBindsExplicitPlatformPositionsToOriginalRequest(t *tes
 	sources.selection.TargetPlatform = "shein"
 	input.Source.TargetPlatform = "shein"
 	input.Choices = input.Choices[:1]
-	input.Target = &productasset.ImageSetTarget{StoreID: "store", Site: "shein-us", ApplicationID: "application", ApplicationMode: "self_operated", CategoryID: 1, ProductTypeID: 2, AttributesDigest: strings.Repeat("a", 64), VariantsDigest: strings.Repeat("b", 64)}
+	input.Target = &productasset.ImageSetTarget{RecordID: "record", StoreID: "store", Site: "shein-us", ApplicationID: "application", ApplicationMode: "self_operated", CategoryID: 1, ProductTypeID: 2, AttributesDigest: strings.Repeat("a", 64), VariantsDigest: strings.Repeat("b", 64)}
 	input.Choices[0].OfficialPlacement = &productasset.ImageOfficialPlacement{Group: "skc", Type: 5, Sort: 3, Site: "shein-us"}
 	_, repo := setSelectionService(t, sources, &setCandidateReader{})
 	service, err := productasset.NewImageSetService(sources, repo, repo.(productasset.ImageSetInventoryReader), repo.(productasset.ApprovalCommitReader), &setCandidateReader{}, selectedTargetPositions{t: t})

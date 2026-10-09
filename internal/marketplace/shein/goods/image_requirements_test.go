@@ -1,11 +1,31 @@
 package goods
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	model "task-processor/internal/marketplace/shein/model"
 )
+
+func TestImageMaterialApprovalValidatesGeometryAndMaximumsWithoutClaimingPublishReadiness(t *testing.T) {
+	input, rules, _ := officialFixture()
+	requirements, err := ResolveOfficialImageRequirements(input.Product, rules.Fill, nil)
+	require.NoError(t, err)
+	slots := []OfficialImageSlot{{Group: "skc", Type: 1, Sort: 1, AssetID: "main"}}
+	dimensions := []OfficialImageDimensions{{AssetID: "main", Width: 1024, Height: 1024}}
+	require.Empty(t, requirements.ValidateMaterialSelection(slots, dimensions))
+	require.NotEmpty(t, requirements.ValidateSelection(slots, dimensions), "Listing still requires the complete reference set")
+	dimensions[0].Width = 800
+	require.NotEmpty(t, requirements.ValidateMaterialSelection(slots, dimensions))
+	dimensions[0].Width = 1024
+	for i := 0; i < 11; i++ {
+		id := fmt.Sprintf("detail-%d", i)
+		slots = append(slots, OfficialImageSlot{Group: "skc", Type: 2, Sort: i + 2, AssetID: id})
+		dimensions = append(dimensions, OfficialImageDimensions{AssetID: id, Width: 1024, Height: 1024})
+	}
+	require.NotEmpty(t, requirements.ValidateMaterialSelection(slots, dimensions), "the maximum is an actual constraint for both approval and publishing")
+}
 
 func TestImageRequirementsProjectActualCategoryAndQuantityRules(t *testing.T) {
 	input, rules, _ := officialFixture()

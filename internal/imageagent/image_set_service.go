@@ -30,6 +30,7 @@ type PrepareImageSetInput struct {
 type ImageTargetSelection struct {
 	Platform, StoreID, Site string
 	CategoryID              int64
+	RecordID                string `json:",omitempty"`
 }
 
 type ImageSetPreparation struct {
@@ -99,7 +100,7 @@ func validPrepareImageSetInput(input PrepareImageSetInput) bool {
 			return false
 		}
 	}
-	if !agentconfig.UUID(input.RequestID) || !canonicalImageValue(input.ContextID) || input.Target.Platform != "product" && (!agentconfig.Platform(input.Target.Platform) || !canonicalImageValue(input.Target.StoreID) || !canonicalImageValue(input.Target.Site) || input.Target.CategoryID <= 0) || input.Target.Platform == "product" && input.Target != (ImageTargetSelection{Platform: "product"}) {
+	if !agentconfig.UUID(input.RequestID) || !canonicalImageValue(input.ContextID) || input.Target.Platform != "product" && (!agentconfig.Platform(input.Target.Platform) || !canonicalImageValue(input.Target.RecordID) || !canonicalImageValue(input.Target.StoreID) || !canonicalImageValue(input.Target.Site) || input.Target.CategoryID <= 0) || input.Target.Platform == "product" && input.Target != (ImageTargetSelection{Platform: "product"}) {
 		return false
 	}
 	if input.Template != nil {
@@ -171,7 +172,7 @@ func (s *Service) PrepareImageSet(ctx context.Context, input PrepareImageSetInpu
 	if err != nil {
 		return PreparedImageSet{}, err
 	}
-	if resolved.Source.OperationID != input.ContextID || resolved.Source.ProductID != resolved.Catalog.ProductContext.ProductID || resolved.Source.CatalogHash != resolved.Catalog.Manifest.Hash || resolved.Target.Platform != input.Target.Platform || resolved.Target.StoreID != input.Target.StoreID || resolved.Target.Site != input.Target.Site || resolved.Target.CategoryID != input.Target.CategoryID {
+	if resolved.Source.OperationID != input.ContextID || resolved.Source.ProductID != resolved.Catalog.ProductContext.ProductID || resolved.Source.CatalogHash != resolved.Catalog.Manifest.Hash || resolved.Target.Platform != input.Target.Platform || resolved.Target.StoreID != input.Target.StoreID || resolved.Target.Site != input.Target.Site || resolved.Target.CategoryID != input.Target.CategoryID || resolved.Target.RecordID != input.Target.RecordID {
 		return PreparedImageSet{}, ErrRevisionConflict
 	}
 	if resolved.Source.ApplyReceiptID != input.ApplyReceiptID || input.EffectiveCatalogVersion > 0 && resolved.Source.EffectiveVersion != input.EffectiveCatalogVersion || input.EffectiveCatalogVersion == 0 && resolved.Source.EffectiveVersion != resolved.Source.OriginalVersion {

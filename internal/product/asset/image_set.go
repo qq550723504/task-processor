@@ -65,6 +65,7 @@ type ImageSetSelection struct {
 }
 
 type ImageSetTarget struct {
+	RecordID         string `json:"record_id,omitempty"`
 	StoreID          string `json:"store_id"`
 	Site             string `json:"site"`
 	ApplicationID    string `json:"application_id"`
@@ -76,7 +77,7 @@ type ImageSetTarget struct {
 }
 
 func (t ImageSetTarget) Valid() bool {
-	return validIdentityPart(t.StoreID) && validIdentityPart(t.Site) && validIdentityPart(t.ApplicationID) && validIdentityPart(t.ApplicationMode) && t.CategoryID > 0 && t.ProductTypeID > 0 && imageSetDigest(t.AttributesDigest) && imageSetDigest(t.VariantsDigest)
+	return validIdentityPart(t.RecordID) && validIdentityPart(t.StoreID) && validIdentityPart(t.Site) && validIdentityPart(t.ApplicationID) && validIdentityPart(t.ApplicationMode) && t.CategoryID > 0 && t.ProductTypeID > 0 && imageSetDigest(t.AttributesDigest) && imageSetDigest(t.VariantsDigest)
 }
 
 func (s ImageInventoryHead) Valid() bool {
