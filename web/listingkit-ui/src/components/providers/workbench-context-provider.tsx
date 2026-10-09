@@ -67,9 +67,11 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
   const [pendingAcquisitionIntent, setPendingAcquisitionIntent] =
     useState<AcquisitionOperation | null>(null);
   const [pendingCollectionIntent, setCollectionIntent] = useState<CollectionIntent | null>(null);
+  const collectionIntentRef = useRef<CollectionIntent | null>(null);
   const [collectionIntentReady, setCollectionIntentReady] = useState(false);
   const setPendingCollectionIntent = useCallback((intent: CollectionIntent | null) => {
-    if (!saveCollectionIntent(intent)) return false;
+    if (!saveCollectionIntent(intent, collectionIntentRef.current)) return false;
+    collectionIntentRef.current = intent;
     setCollectionIntent(intent);
     return true;
   }, []);
@@ -80,7 +82,9 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
     // Hydrate browser storage after the initial server-compatible render.
     void Promise.resolve().then(() => {
       if (active) {
-        setCollectionIntent(loadCollectionIntent());
+        const collectionIntent = loadCollectionIntent();
+        collectionIntentRef.current = collectionIntent;
+        setCollectionIntent(collectionIntent);
         setCollectionIntentReady(true);
         setSupplyIntent(loadSupplyIntent());
         setSupplyIntentReady(true);

@@ -13,11 +13,16 @@ export function parseCollectionIntent(raw: string | null): CollectionIntent | nu
 export function loadCollectionIntent(): CollectionIntent | null {
   try { return parseCollectionIntent(localStorage.getItem(storageKey)); } catch { return null; }
 }
-export function saveCollectionIntent(intent: CollectionIntent | null): boolean {
+export function saveCollectionIntent(intent: CollectionIntent | null, expected: CollectionIntent | null): boolean {
   try {
-    if (intent === null) { localStorage.removeItem(storageKey); return true; }
+    const prior = parseCollectionIntent(localStorage.getItem(storageKey));
+    if (intent === null) {
+      if (prior && JSON.stringify(prior) !== JSON.stringify(expected && parseCollectionIntent(JSON.stringify(expected)))) return false;
+      localStorage.removeItem(storageKey); return true;
+    }
     const raw = JSON.stringify(intent);
-    if (!parseCollectionIntent(raw)) return false;
+    const parsed = parseCollectionIntent(raw);
+    if (!parsed || prior && JSON.stringify(prior) !== JSON.stringify(parsed)) return false;
     localStorage.setItem(storageKey, raw);
     return true;
   } catch { return false; }

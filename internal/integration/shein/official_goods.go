@@ -183,7 +183,12 @@ func (c *OfficialClient) QueryProductFillStandards(ctx context.Context, credenti
 // This new-product response must contain exactly the requested SKU membership,
 // unique platform identifiers and the same SKC grouping as the sent payload.
 func (c *OfficialClient) PublishProduct(ctx context.Context, credential storecenter.OfficialMerchantCredential, input sheinmodel.PublishProduct) (sheinmodel.PublishResult, error) {
-	if input.CategoryID <= 0 || input.ProductTypeID <= 0 || input.SourceSystem != "OpenAPI" || input.SuitFlag != "0" || len(input.SKCs) < 1 || len(input.SKCs) > 40 || len(input.Names) == 0 || len(input.Sites) != 1 || input.Sites[0].MainSite != "shein" || len(input.Sites[0].SubSites) != 1 || input.Sites[0].SubSites[0] != "shein-us" {
+	// Application-specific required fields belong to the bound rule builder.
+	// Fully managed products omit site_list; any supplied site stays US-only.
+	if input.CategoryID <= 0 || input.ProductTypeID <= 0 || input.SourceSystem != "OpenAPI" || input.SuitFlag != "0" || len(input.SKCs) < 1 || len(input.SKCs) > 40 || len(input.Names) == 0 || len(input.Sites) > 1 {
+		return sheinmodel.PublishResult{}, ErrGoodsInvalid
+	}
+	if len(input.Sites) == 1 && (input.Sites[0].MainSite != "shein" || len(input.Sites[0].SubSites) != 1 || input.Sites[0].SubSites[0] != "shein-us") {
 		return sheinmodel.PublishResult{}, ErrGoodsInvalid
 	}
 	expected := map[string]int{}

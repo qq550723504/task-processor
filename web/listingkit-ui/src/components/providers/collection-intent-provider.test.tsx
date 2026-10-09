@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { WorkbenchContextProvider, useWorkbenchContext } from "./workbench-context-provider";
 import type { CollectionIntent } from "@/lib/api/product-collection";
+import { loadCollectionIntent, saveCollectionIntent } from "@/lib/api/collection-intent";
 
 const key = "550e8400-e29b-41d4-a716-446655440000";
 const intent: CollectionIntent = { userId: "actor-a", organizationId: "org-a", key,
@@ -27,4 +28,15 @@ it("hydrates the original scoped import key and payload after the tab is closed"
   first.unmount(); sessionStorage.clear();
   mount();
   await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(JSON.stringify(intent)));
+});
+
+it("keeps an unresolved intent when another tab attempts to replace or clear it", () => {
+  expect(saveCollectionIntent(intent, null)).toBe(true);
+  const other = { ...intent, key: "650e8400-e29b-41d4-a716-446655440000" };
+  expect(saveCollectionIntent(other, null)).toBe(false);
+  expect(loadCollectionIntent()).toEqual(intent);
+  expect(saveCollectionIntent(null, other)).toBe(false);
+  expect(loadCollectionIntent()).toEqual(intent);
+  expect(saveCollectionIntent(null, intent)).toBe(true);
+  expect(loadCollectionIntent()).toBeNull();
 });
