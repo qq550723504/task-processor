@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import { useResourcePending } from "../resources/resource-pending";
@@ -762,23 +762,33 @@ function RequestDetail({
   admin: boolean;
   commands: ReturnType<typeof useCommands>;
 }) {
-  const detail = useQuery({
+  const detail = useInfiniteQuery({
     queryKey: ["tool-market", scope.userId, scope.organizationId, "detail", id],
-    queryFn: ({ signal }) =>
+    initialPageParam: "",
+    queryFn: ({ signal, pageParam }) =>
       toolRequest(
         scope,
-        (admin ? "admin/" : "") + "requests/" + id,
+        (admin ? "admin/" : "") +
+          "requests/" +
+          id +
+          (pageParam ? "?eventsBefore=" + pageParam : ""),
         detailSchema,
         { signal },
       ),
+    getNextPageParam: (page) => page.nextEventsBefore || undefined,
   });
   const [stage, setStage] = useState(""),
     [note, setNote] = useState("");
   if (detail.isPending)
     return <ConsoleState kind="loading" title="正在读取原需求与进度" />;
-  if (detail.error || !detail.data)
+  const historyUnavailable =
+    detail.isFetchNextPageError &&
+    detail.error instanceof ToolMarketError &&
+    detail.error.status >= 500;
+  if ((detail.error && !historyUnavailable) || !detail.data)
     return <ConsoleState kind="error" title={errorText(detail.error)} />;
-  const r = detail.data.request;
+  const r = detail.data.pages[0].request;
+  const events = detail.data.pages.slice().reverse().flatMap((page) => page.events);
   return (
     <Card className={styles.detail}>
       <h2>{r.title}</h2>
@@ -788,7 +798,7 @@ function RequestDetail({
       <p className={styles.description}>{r.description}</p>
       <h3>专员记录的进度</h3>
       <ol>
-        {detail.data.events.map((e) => (
+        {events.map((e) => (
           <li key={e.revision}>
             <span>
               {stageNames[e.stage]} ·{" "}
@@ -798,6 +808,18 @@ function RequestDetail({
           </li>
         ))}
       </ol>
+      {detail.hasNextPage ? (
+        <Button
+          variant="outline"
+          disabled={detail.isFetching}
+          onClick={() => void detail.fetchNextPage()}
+        >
+          {detail.isFetchingNextPage ? "正在读取更早进度" : "加载更早进度"}
+        </Button>
+      ) : null}
+      {detail.isFetchNextPageError ? (
+        <p role="alert">更早进度暂时无法读取，请重试；已读取进度仍可查看。</p>
+      ) : null}
       <p>进度记录不代表付款或工具已安装。实际工具交付及开放另行核实。</p>
       {admin && !["DELIVERED", "CLOSED"].includes(r.stage) ? (
         <form

@@ -25,6 +25,10 @@ var (
 
 const AcquisitionID = "product-acquisition"
 
+// EventPageSize leaves room for the request and worst-case JSON escaping of
+// every permitted note/description inside the existing 256 KiB response cap.
+const EventPageSize = 16
+
 type Scope struct{ OrganizationID, ActorID string }
 
 func (s Scope) Valid(platform bool) bool {
@@ -104,8 +108,9 @@ type Event struct {
 	OccurredAt time.Time `json:"occurredAt"`
 }
 type Detail struct {
-	Request Request `json:"request"`
-	Events  []Event `json:"events"`
+	Request          Request `json:"request"`
+	Events           []Event `json:"events"`
+	NextEventsBefore string  `json:"nextEventsBefore"`
 }
 type RequestPage struct {
 	Items      []RequestSummary `json:"items"`
@@ -155,7 +160,7 @@ type Receipt struct {
 type Repository interface {
 	Activations(context.Context, Scope) ([]Activation, error)
 	Requests(context.Context, Scope, bool, string, int) (RequestPage, error)
-	Detail(context.Context, Scope, bool, string) (Detail, error)
+	Detail(context.Context, Scope, bool, string, string) (Detail, error)
 	// beforeApply checks current capability only for a new application. Durable
 	// receipts replay after fresh authorization even when capability is offline.
 	Execute(context.Context, Command, func(context.Context) error, ...func(context.Context) error) (Receipt, error)

@@ -20,7 +20,7 @@ func (*repo) Activations(context.Context, tm.Scope) ([]tm.Activation, error) {
 func (*repo) Requests(context.Context, tm.Scope, bool, string, int) (tm.RequestPage, error) {
 	return tm.RequestPage{Items: []tm.RequestSummary{}}, nil
 }
-func (*repo) Detail(context.Context, tm.Scope, bool, string) (tm.Detail, error) {
+func (*repo) Detail(context.Context, tm.Scope, bool, string, string) (tm.Detail, error) {
 	return tm.Detail{}, tm.ErrNotFound
 }
 func (r *repo) Execute(ctx context.Context, c tm.Command, g func(context.Context) error, beforeApply ...func(context.Context) error) (tm.Receipt, error) {

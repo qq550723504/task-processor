@@ -89,6 +89,9 @@ Handler不暴露原始包bytes注入口，ConfigurePackage内部调用LoadPackag
 采集插件启用不授予Product/Sourcing业务权限。
 需求stage推进依次：提交→评估→方案确认→开发联调→专员记录交付；同阶段追加进度或非终态关闭。
 已交付/已关闭是终态，进度不是付款或Tool安装证明。
+需求详情每次显示最新16条进度，`加载更早进度`沿`nextEventsBefore`读取历史；
+企业与专员GET详情均接受单值`eventsBefore`精确revision游标。需求当前revision始终独立返回，
+写请求仍按该revision发送If-Match；历史分页不变更schema、状态或写事务。
 
 未知写响应保存在本浏览器会话的原actor+org隔离存储，刷新/返回原上下文可重试原命令。
 浏览器无法读写恢复记录时暂停新提交；不清理用户浏览器数据来恢复操作。

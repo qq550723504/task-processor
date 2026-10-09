@@ -68,4 +68,54 @@ describe("tool market trusted proxy", () => {
       ),
     ).toBe(false);
   });
+  it("forwards only exact bounded event cursors for enterprise and platform details", async () => {
+    const id = "aa1043df-c64c-499d-9c99-57598f7bff18";
+    const payload = {
+      request: {
+        id,
+        organizationId: "org-a",
+        kind: "DATA",
+        title: "需求",
+        description: "说明",
+        stage: "SUBMITTED",
+        revision: "100",
+        createdAt: "2026-10-09T00:00:00Z",
+        updatedAt: "2026-10-09T00:00:00Z",
+      },
+      events: [],
+      nextEventsBefore: "",
+    };
+    const fetch = vi.fn(async (url: string) => {
+      expect(url).toContain("?eventsBefore=85");
+      return Response.json(payload);
+    });
+    vi.stubGlobal("fetch", fetch);
+    for (const prefix of ["", "admin/"]) {
+      const send = (query: string) =>
+        proxyToolMarket(
+          new Request(
+            `https://app.example.com/api/tool-market/${prefix}requests/${id}?${query}`,
+            { headers: prefix ? { "X-Expected-User-ID": "actor" } : headers },
+          ),
+          "token",
+          "actor",
+        );
+      expect((await send("eventsBefore=85")).status).toBe(200);
+      expect(fetch.mock.lastCall?.[0]).toBe(
+        `http://localhost:8080/api/v1/${prefix ? "admin" : "workbench"}/tool-market/requests/${id}?eventsBefore=85`,
+      );
+      const calls = fetch.mock.calls.length;
+      for (const query of [
+        "eventsBefore=0",
+        "eventsBefore=01",
+        "eventsBefore=-1",
+        "eventsBefore=9223372036854775808",
+        "eventsBefore=85&eventsBefore=69",
+        "eventsBefore=85&organizationId=other",
+        "pageSize=50",
+      ])
+        expect((await send(query)).status).toBe(400);
+      expect(fetch).toHaveBeenCalledTimes(calls);
+    }
+  });
 });
