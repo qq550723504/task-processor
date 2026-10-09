@@ -59,7 +59,7 @@ Figma 未提供抓取配置、API 创建/编辑密钥或数据集定制的专属
 
 1. `integration/crawler/amazon/processor.go` 的 `LegacyCrawlSource` / `NewLegacySource` 包装旧 `internal/crawler/amazon`；`AmazonDefaultDomainResolver` 未知站点回退美国站。新请求不能依赖这个 wrapper/fallback。新 adapter采用显式站点表和 neutral DTO，抽取纯解析及有效校验行为，不使用数字 Tenant/Store 或旧 `SourceRequest` 作为授权。
 2. 现有 acquisition 是明确的 1688 `Canonical1688Source` / OfferID / fingerprint / channel 合同。不能将 Amazon ASIN 塞入 OfferID、伪造 1688 operation 或改旧 channel 重放分类。本批 Amazon job/item 是新的有界 acquisition 事实，原 1688 状态、价格和 free channel 完全保留。
-3. Collection 的 `AppendPublished` 名称、schema kind 与来源解析当前写死 1688/acquisition/own。必须由 Collection owner 增加明确的 Amazon/定制引用入口及 source resolver；不在数据服务直接 INSERT Collection 表，不能假冒“自有商品”或伪造旧 acquisition receipt。此窄变化由 §13 明确所有权后才写。
+3. Collection 的 `AppendPublished` 名称、schema kind 与前端来源枚举当前写死 1688/acquisition/own。必须由 Collection owner 增加明确的 Amazon/定制批次引用入口与读取枚举/标签；当前精确 Catalog 版本读取已不依赖来源kind，直接复用，不另建source resolver。不在数据服务直接 INSERT Collection 表，不能假冒“自有商品”或伪造旧 acquisition receipt。此窄变化由 §13 明确所有权后才写。
 
 ## 4. Owner 与调用路径
 

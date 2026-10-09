@@ -33,11 +33,11 @@ export const collectionCommandSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create_product"), batchId: collectionID.optional(), product: ownProductSchema }).strict(),
 ]);
 export type CollectionCommand = z.infer<typeof collectionCommandSchema>;
-const collectionBatchSchema = z.object({ id: collectionID, name, kind: z.enum(["acquisition", "own", "manual"]),
+const collectionBatchSchema = z.object({ id: collectionID, name, kind: z.enum(["acquisition", "own", "manual", "amazon_data", "custom_dataset"]),
   revision, count, createdAt: timestamp, archivedAt: timestamp.optional() });
 export const collectionItemSchema = z.object({ id: collectionID, batchId: collectionID, revision, createdAt: timestamp, archivedAt: timestamp.optional(), title: bytes(2000).optional(), thumbnailUrl: bytes(2048).optional(),
   source: z.object({ productKey: bytes(128).min(1), publicationId: bytes(128).min(1), version,
-    kind: z.enum(["acquisition", "own"]), operationId: collectionID.optional() }) });
+    kind: z.enum(["acquisition", "own", "amazon_data", "custom_dataset"]), operationId: collectionID.optional() }) });
 export const collectionReceiptSchema = z.object({ operationId: collectionID, batchId: collectionID.optional(), itemId: collectionID.optional(), revision, replayed: z.boolean() });
 const page = <T extends z.ZodType>(schema: T) => z.object({ items: z.array(schema).max(100), total: count, nextCursor: collectionID.optional() });
 export const collectionBatchesSchema = page(collectionBatchSchema);

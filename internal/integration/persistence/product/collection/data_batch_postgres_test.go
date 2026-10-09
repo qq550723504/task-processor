@@ -1,0 +1,95 @@
+package collectionpersistence
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+	catalogstore "task-processor/internal/integration/persistence/product/catalog"
+	"task-processor/internal/product/collection"
+)
+
+func TestPostgresDataPublicationBatchAtomicityReplayAndActorIsolation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	c, err := tcpostgres.Run(ctx, "postgres:16-alpine", tcpostgres.WithDatabase("data_collection621"), tcpostgres.WithUsername("test_owner"), tcpostgres.WithPassword("isolated-data621"), tcpostgres.BasicWaitStrategies())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, c.Terminate(context.Background())) })
+	dsn, err := c.ConnectionString(ctx, "sslmode=disable")
+	require.NoError(t, err)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	pool, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+	require.NoError(t, catalogstore.AutoMigrate(db))
+	require.NoError(t, InstallSchema(db))
+	scope := collection.Scope{OrganizationID: "org", ActorID: "creator", MemberID: "grant"}
+	job := uuid.NewString()
+	batch, err := collection.NewPublicationBatch(scope, job, "amazon_data", "Amazon · us")
+	require.NoError(t, err)
+	for _, title := range []string{"fixture one", "fixture two"} {
+		op := uuid.NewString()
+		envelope, err := collection.OwnEnvelope(op, collection.OwnProduct{Title: title})
+		require.NoError(t, err)
+		require.NoError(t, db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			source, err := (testOwnPublisher{tx}).PublishOwn(ctx, scope, op, envelope)
+			if err != nil {
+				return err
+			}
+			source.Kind = "amazon_data"
+			source.OperationID = op
+			first, err := AppendDataPublication(ctx, tx, scope, batch, source, time.Now())
+			if err != nil {
+				return err
+			}
+			replay, err := AppendDataPublication(ctx, tx, scope, batch, source, time.Now())
+			require.Equal(t, first, replay)
+			return err
+		}))
+	}
+	r, err := NewRepository(ctx, db, func(tx *gorm.DB) (OwnPublisher, error) { return testOwnPublisher{tx}, nil })
+	require.NoError(t, err)
+	items, err := r.ListItems(ctx, scope, batch.ID, collection.Query{Limit: 100})
+	require.NoError(t, err)
+	require.Len(t, items.Items, 2)
+	for _, i := range items.Items {
+		require.Equal(t, "amazon_data", i.Source.Kind)
+	}
+	foreign, err := r.ListItems(ctx, collection.Scope{OrganizationID: "org", ActorID: "other", MemberID: "other"}, "", collection.Query{Limit: 100})
+	require.NoError(t, err)
+	require.Empty(t, foreign.Items)
+	failedOp := uuid.NewString()
+	envelope, err := collection.OwnEnvelope(failedOp, collection.OwnProduct{Title: "rollback fixture"})
+	require.NoError(t, err)
+	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		source, err := (testOwnPublisher{tx}).PublishOwn(ctx, scope, failedOp, envelope)
+		if err != nil {
+			return err
+		}
+		source.Kind = "amazon_data"
+		source.OperationID = failedOp
+		if _, err = AppendDataPublication(ctx, tx, scope, batch, source, time.Now()); err != nil {
+			return err
+		}
+		return errors.New("injected Product transaction failure")
+	})
+	require.Error(t, err)
+	var persisted int64
+	require.NoError(t, db.Raw("SELECT count(*) FROM product_snapshot_versions WHERE tenant_id=? AND publication_id=?", scope.OrganizationID, failedOp).Scan(&persisted).Error)
+	require.Zero(t, persisted)
+	items, err = r.ListItems(ctx, scope, batch.ID, collection.Query{Limit: 100})
+	require.NoError(t, err)
+	require.Len(t, items.Items, 2)
+	// An old kind constraint must fail readiness instead of enabling a route
+	// that cannot save Amazon/custom source references. This is isolated test DDL.
+	require.NoError(t, db.Exec("ALTER TABLE product_collection_items DROP CONSTRAINT product_collection_items_source_kind_check; ALTER TABLE product_collection_items ADD CONSTRAINT product_collection_items_source_kind_check CHECK(source_kind IN ('acquisition','own')) NOT VALID").Error)
+	require.ErrorIs(t, VerifySchema(ctx, db), collection.ErrUnavailable)
+}
