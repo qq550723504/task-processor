@@ -107,8 +107,10 @@ func (s *Service) Start(ctx context.Context, p Principal, command string, q Quer
 	if err != nil {
 		return Job{}, err
 	}
-	if err = s.starter.EnsureExecution(ctx, job); err != nil {
-		return job, ErrUnavailable
+	if job.State == "ADMITTED" || job.State == "RUNNING" {
+		if err = s.starter.EnsureExecution(ctx, job); err != nil {
+			return job, ErrUnknown
+		}
 	}
 	return job, nil
 }
@@ -126,8 +128,10 @@ func (s *Service) Read(ctx context.Context, p Principal, id string) (Job, error)
 	if p.CredentialID != "" && job.CredentialID != p.CredentialID {
 		return Job{}, ErrNotFound
 	}
-	if err = s.starter.EnsureExecution(ctx, job); err != nil {
-		return job, ErrUnavailable
+	if job.State == "ADMITTED" || job.State == "RUNNING" {
+		if err = s.starter.EnsureExecution(ctx, job); err != nil {
+			return job, ErrUnavailable
+		}
 	}
 	return job, nil
 }

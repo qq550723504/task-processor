@@ -38,6 +38,8 @@ type executionFixture struct {
 	fetchErr        error
 	authDelay       time.Duration
 	executionChecks int
+	startErr        error
+	starts          int
 }
 
 func (f *executionFixture) CheckExecution(ctx context.Context, _ dataacquisition.Principal, _ orgresource.ResourceFunding) error {
@@ -56,7 +58,10 @@ func (f *executionFixture) CheckExecution(ctx context.Context, _ dataacquisition
 	}
 	return nil
 }
-func (f *executionFixture) EnsureExecution(context.Context, dataacquisition.Job) error { return nil }
+func (f *executionFixture) EnsureExecution(context.Context, dataacquisition.Job) error {
+	f.starts++
+	return f.startErr
+}
 func (f *executionFixture) Funding(context.Context, collection.Scope) (orgresource.ResourceFunding, error) {
 	return orgresource.FundingEnterprise, nil
 }
@@ -261,6 +266,18 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 		w = send("GET", APIBase+"/"+externalJob.ID+"/results", "", keyHeader, "")
 		require.Equal(t, 200, w.Code)
 		require.Contains(t, w.Body.String(), "controlled fixture")
+		fixture.startErr = dataacquisition.ErrUnavailable
+		t.Cleanup(func() { fixture.startErr = nil })
+		starts := fixture.starts
+		w = send("GET", APIBase+"/"+externalJob.ID, "", keyHeader, "")
+		require.Equal(t, 200, w.Code, "terminal Product facts must remain readable during Temporal outage")
+		w = send("GET", APIBase+"/"+externalJob.ID+"/results", "", keyHeader, "")
+		require.Equal(t, 200, w.Code)
+		require.Contains(t, w.Body.String(), "controlled fixture")
+		w = send("POST", APIBase, `{"query":{"site":"us","mode":"asin","asins":["B000123456"],"limit":1},"maximumRows":1,"maximumCostFen":5}`, keyHeader, jobCommand)
+		require.Equal(t, http.StatusAccepted, w.Code, "terminal command replay uses the original result")
+		require.Equal(t, starts, fixture.starts)
+		fixture.startErr = nil
 		_, err = module.keys.Change(ctx, created.Key.ID, uuid.NewString(), 1, dataservice.KeyPatch{State: "REVOKED"})
 		require.NoError(t, err)
 		w = send("GET", APIBase+"/"+externalJob.ID, "", keyHeader, "")
@@ -273,6 +290,55 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 		w = send("GET", ConsoleBase+"/overview", "", "", "")
 		require.Equal(t, 200, w.Code)
 		require.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+		t.Run("committed admission returns UNKNOWN and recovers the same command and quota", func(t *testing.T) {
+			created, err := module.keys.Create(ctx, uuid.NewString(), dataservice.KeyInput{Name: "startup outage", ExpiresAt: time.Now().UTC().Add(time.Hour), DailyRows: 2, MonthlyCostFen: 10, Permissions: []string{dataservice.PermissionAcquire, dataservice.PermissionResult}})
+			require.NoError(t, err)
+			header := "DataKey " + created.Key.ID + "." + created.Secret
+			command := uuid.NewString()
+			body := `{"query":{"site":"us","mode":"asin","asins":["B000123456"],"limit":1},"maximumRows":1,"maximumCostFen":5}`
+			fixture.startErr = dataacquisition.ErrUnavailable
+			t.Cleanup(func() { fixture.startErr = nil })
+			for attempt := 0; attempt < 2; attempt++ {
+				w := send("POST", APIBase, body, header, command)
+				require.Equal(t, 503, w.Code)
+				require.Contains(t, w.Body.String(), "DATA_UNKNOWN", "post-commit startup failure must preserve the original intent")
+			}
+			originalID := collection.StableID(scope.OrganizationID, scope.ActorID, "amazon-job", command)
+			original, err := repo.Read(ctx, scope, originalID)
+			require.NoError(t, err)
+			require.Equal(t, "ADMITTED", original.State)
+			checkQuota := func(reservedRows, reservedFen int64) {
+				quotas, err := repo.KeyQuotas(ctx, scope)
+				require.NoError(t, err)
+				found := false
+				for _, quota := range quotas {
+					if quota.KeyID == created.Key.ID {
+						found = true
+						require.Equal(t, reservedRows, quota.DayReservedRows)
+						require.Equal(t, reservedFen, quota.MonthReservedFen)
+						require.Zero(t, quota.DayConsumedRows)
+					}
+				}
+				require.True(t, found)
+			}
+			checkQuota(1, 5)
+			fixture.startErr = nil
+			w := send("POST", APIBase, body, header, command)
+			require.Equal(t, http.StatusAccepted, w.Code)
+			var recovered dataacquisition.Job
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &recovered))
+			require.Equal(t, originalID, recovered.ID)
+			checkQuota(1, 5)
+			_, err = repo.Cancel(ctx, scope, originalID, uuid.NewString())
+			require.NoError(t, err)
+			require.NoError(t, module.Runner().Run(ctx, scope, originalID))
+			checkQuota(0, 0)
+			fixture.startErr = dataacquisition.ErrUnavailable
+			w = send("GET", APIBase+"/"+originalID, "", header, "")
+			require.Equal(t, 200, w.Code)
+			require.Contains(t, w.Body.String(), "CANCELED")
+			fixture.startErr = nil
+		})
 		w = send("POST", ConsoleBase+"/custom", `{"name":"HTTP fixture","query":{"site":"us","mode":"asin","asins":["B000123456"],"limit":1},"purpose":"controlled fixture","format":"json"}`, "", uuid.NewString())
 		require.Equal(t, 200, w.Code)
 		var custom dataservice.CustomRequest
