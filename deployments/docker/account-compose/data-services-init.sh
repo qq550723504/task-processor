@@ -8,8 +8,10 @@ test ! -f /schema-state/.init-complete || { echo 'data services require a new em
 for path in /secrets/acquisition-owner/acquisition-db-password /secrets/acquisition-runtime/acquisition-runtime-password /secrets/data-services-runtime/password /runtime/current-application.json; do
  test -s "$path" || { echo 'data services installation inputs unavailable' >&2; exit 1; }
 done
-jq -n --rawfile password /secrets/acquisition-owner/acquisition-db-password \
- '{schemaVersion:1,collections:true,dataServices:true,database:{host:"127.0.0.1",port:5433,user:"acquisition_owner",password:($password|rtrimstr("\n")),database:"product_acquisition"}}' > "$work/product.json"
+market=false
+if [ "${ACCOUNT_NATIVE_MODULES_ENABLED:-}" = 1 ]; then market=true; fi
+jq -n --argjson market "$market" --rawfile password /secrets/acquisition-owner/acquisition-db-password \
+ '{schemaVersion:1,collections:true,dataServices:true,supplyMarket:$market,database:{host:"127.0.0.1",port:5433,user:"acquisition_owner",password:($password|rtrimstr("\n")),database:"product_acquisition"}}' > "$work/product.json"
 product-acquisition-init -config "$work/product.json" -confirm-empty-database product_acquisition
 jq --rawfile productPassword /secrets/acquisition-runtime/acquisition-runtime-password --rawfile dataPassword /secrets/data-services-runtime/password \
  '.productCollections=true |

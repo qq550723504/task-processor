@@ -19,6 +19,11 @@ import (
 )
 
 func TestDataServicesFreshInstallerKeepsProductRolesNarrow(t *testing.T) {
+	t.Run("data services", func(t *testing.T) { verifyDataServicesFreshInstaller(t, false) })
+	t.Run("data services with supply market", func(t *testing.T) { verifyDataServicesFreshInstaller(t, true) })
+}
+
+func verifyDataServicesFreshInstaller(t *testing.T, supplyMarket bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	container, err := tcpostgres.Run(ctx, "postgres:16-alpine", tcpostgres.WithDatabase("product_runtime"), tcpostgres.WithUsername("test_owner"), tcpostgres.WithPassword("isolated-test-only"), tcpostgres.BasicWaitStrategies())
@@ -42,7 +47,7 @@ func TestDataServicesFreshInstallerKeepsProductRolesNarrow(t *testing.T) {
 	port, err := container.MappedPort(ctx, "5432/tcp")
 	require.NoError(t, err)
 	path := filepath.Join(t.TempDir(), "install.json")
-	manifest := map[string]any{"schemaVersion": 1, "collections": true, "dataServices": true, "database": map[string]any{"host": "127.0.0.1", "port": int(port.Num()), "database": "product_runtime", "user": "test_owner", "password": "isolated-test-only"}}
+	manifest := map[string]any{"schemaVersion": 1, "collections": true, "dataServices": true, "supplyMarket": supplyMarket, "database": map[string]any{"host": "127.0.0.1", "port": int(port.Num()), "database": "product_runtime", "user": "test_owner", "password": "isolated-test-only"}}
 	raw, err := json.Marshal(manifest)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(path, raw, 0600))
@@ -54,7 +59,7 @@ func TestDataServicesFreshInstallerKeepsProductRolesNarrow(t *testing.T) {
 	dataURL.User = url.UserPassword(acquisitionstore.DataServicesRuntimeRole, "runtime-fixture")
 	source := open(sourceURL.String(), 4)
 	data := open(dataURL.String(), 4)
-	require.NoError(t, acquisitionstore.VerifyRuntimePermissions(ctx, source, acquisitionstore.RuntimeCapabilities{Collections: true}))
+	require.NoError(t, acquisitionstore.VerifyRuntimePermissions(ctx, source, acquisitionstore.RuntimeCapabilities{Collections: true, SupplyMarket: supplyMarket}))
 	require.NoError(t, acquisitionstore.VerifyDataServicesRuntimePermissions(ctx, data))
 	require.Error(t, source.Exec("SELECT id FROM data_service_credentials LIMIT 0").Error)
 	require.Error(t, data.Exec("SELECT operation_id FROM product_acquisition_operations LIMIT 0").Error)

@@ -3,9 +3,11 @@
 Optional ZITADEL/Tencent SMS delivery configuration and the remaining local
 provider connection prerequisite are documented in [SMS.md](SMS.md).
 
-The opt-in Data Market / API Management candidate profile, its current
-authorization blocker and new-empty-project startup are documented in
-[DATA_SERVICES.md](DATA_SERVICES.md).
+The opt-in Data Market / API Management profile and admitted native authorization
+are documented in [DATA_SERVICES.md](DATA_SERVICES.md). The unified new-empty
+program combining the completed native modules is documented in
+[MODULES.md](MODULES.md), including exact-origin plugin packaging, retained
+restart commands and the remaining external configuration requirements.
 
 ## Enterprise custom roles and members (#598)
 
