@@ -134,6 +134,7 @@ if [ "${ACCOUNT_DATA_SERVICES_ENABLED:-}" = 1 ]; then
   test -z "${ACCOUNT_IMAGE_AGENT_TRIAL:-}" && test -z "${ACCOUNT_ISSUE36_LOCAL_TRIAL:-}" || { echo 'data services profile excludes isolated legacy trial profiles' >&2; exit 1; }
   mkdir -p /data-services-runtime-secret
   write_random 24 /data-services-runtime-secret/password
+  chown 70:70 /data-services-runtime-secret/password
   touch "$state/.data-services-enabled"
   chmod 600 "$state/.data-services-enabled"
 fi
