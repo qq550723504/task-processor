@@ -118,13 +118,12 @@ export async function dataRequest<T>(scope: DataScope, path: string, schema: z.Z
 }
 export async function executeDataIntent(intent: DataIntent, signal?: AbortSignal) { const route = dataRoute("POST", intent.path.split("/"), intent.specialist)!; return dataRequest<unknown>(intent, intent.path, route.response, intent, signal, intent.specialist); }
 export async function recoverDataIntent(intent: DataIntent, signal?: AbortSignal) {
+	// Amazon creation replays its original write; command GET requires separate Collection read permission.
     let read: string | undefined;
     if (intent.specialist)
         read = `by-command/${intent.key}`;
     else if (intent.path === "keys")
         read = `keys/by-command/${intent.key}`;
-    else if (intent.path === "amazon/jobs")
-        read = `amazon/jobs/by-command/${intent.key}`;
     else if (intent.path === "custom")
         read = `custom/by-command/${intent.key}`;
     if (!read)
