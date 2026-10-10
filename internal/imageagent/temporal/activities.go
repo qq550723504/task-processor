@@ -7,6 +7,7 @@ import (
 	"strings"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/shared/aiidentity"
 	"time"
 )
@@ -18,6 +19,7 @@ var errPublicationOwnerRequiresActivity = errors.New("publication owner requires
 type RecoveryWorkflowStarter func(context.Context, EffectRecoveryWorkflowInput) error
 
 type ActivityDependencies struct {
+	ImageSetApprovals        productasset.ApprovalCommitReader
 	ImageSetPublisher        imageagent.ApprovedImageSetPublisher
 	GenerationRecovery       imageagent.GenerationRecovery
 	GenerationOutputRecovery imageagent.GenerationOutputRecovery
@@ -36,6 +38,7 @@ type ActivityDependencies struct {
 }
 
 type Activities struct {
+	imageSetApprovals        productasset.ApprovalCommitReader
 	imageSetPublisher        imageagent.ApprovedImageSetPublisher
 	generationRecovery       imageagent.GenerationRecovery
 	generationOutputRecovery imageagent.GenerationOutputRecovery
@@ -54,6 +57,9 @@ type Activities struct {
 }
 
 func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
+	if dependencies.ImageSetApprovals != nil && (dependencies.ExecutionAuthorizer == nil || dependencies.ImageSetPublisher == nil) {
+		return nil, fmt.Errorf("image set approval recovery requires organization publication assembly")
+	}
 	if (dependencies.GenerationRecovery != nil || dependencies.GenerationOutputRecovery != nil) && dependencies.ExecutionAuthorizer == nil {
 		return nil, fmt.Errorf("generation recovery requires organization execution assembly")
 	}
@@ -101,6 +107,7 @@ func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
 		}
 	}
 	return &Activities{
+		imageSetApprovals:        dependencies.ImageSetApprovals,
 		generationRecovery:       dependencies.GenerationRecovery,
 		imageSetPublisher:        dependencies.ImageSetPublisher,
 		generationOutputRecovery: dependencies.GenerationOutputRecovery,

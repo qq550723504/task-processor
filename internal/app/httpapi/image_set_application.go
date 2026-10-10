@@ -225,7 +225,7 @@ func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB
 	if err != nil {
 		return nil, empty, err
 	}
-	dependencies, err := imageworker.NewImageSetTemporalDependencies(workerConfig, workerDB, resourceDB, imageAuth, contexts, publisher, logger)
+	dependencies, err := imageworker.NewImageSetTemporalDependencies(workerConfig, workerDB, resourceDB, imageAuth, contexts, publisher, approvals, logger)
 	if err != nil {
 		return nil, empty, err
 	}

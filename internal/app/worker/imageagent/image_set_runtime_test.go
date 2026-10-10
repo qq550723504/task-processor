@@ -18,6 +18,6 @@ func TestImageSetExecutorDoesNotDispatchUnconfirmedOrSingleImageInputs(t *testin
 	require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
 	_, err = executor.BuildSlotResult(context.Background(), input, imageagent.PublishedSlotOutput{})
 	require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
-	_, err = NewImageSetTemporalDependencies(nil, nil, nil, nil, nil, nil, nil)
+	_, err = NewImageSetTemporalDependencies(nil, nil, nil, nil, nil, nil, nil, nil)
 	require.ErrorIs(t, err, imageagent.ErrValidation)
 }

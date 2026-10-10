@@ -113,7 +113,9 @@ func (s *ImageSetService) Select(ctx context.Context, input ImageSetCommand) (Ap
 	return s.repository.CommitApproval(ctx, commit)
 }
 
-func imageSetRequestDigest(input ImageSetCommand) string {
+// ImageSetRequestDigest binds the original ordered command independently of
+// its computed selection digest, including an exact approving Run/result.
+func ImageSetRequestDigest(input ImageSetCommand) string {
 	input.SelectionDigest = ""
 	return approvalDigest(input)
 }
@@ -136,7 +138,7 @@ func (s *ImageSetService) prepare(ctx context.Context, input ImageSetCommand) (A
 	if !validIdentityPart(source.TenantID) || !validIdentityPart(source.ActorID) || !validIdentityPart(source.MemberID) || !validIdentityPart(source.ProductKey) {
 		return ApprovalCommit{}, ErrSourceApprovalForbidden
 	}
-	requestDigest := imageSetRequestDigest(input)
+	requestDigest := ImageSetRequestDigest(input)
 	existing, err := s.approvals.ReadApprovalCommit(ctx, source.TenantID, input.ActionID)
 	if err == nil {
 		if existing.ImageSet == nil || existing.ImageSet.RequestDigest != requestDigest || existing.ProductKey != source.ProductKey || existing.TargetPlatform != source.TargetPlatform || existing.SourceSnapshotVersion != source.EffectiveCatalogVersion {

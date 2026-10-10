@@ -70,7 +70,8 @@ func (e *settledSetExecutor) GenerateSlot(ctx context.Context, input imageagent.
 	return e.recordingStagedExecutor.GenerateSlot(ctx, input)
 }
 
-func TestPersistImageSetAcceptedOutputKeepsOriginalGenerationProof(t *testing.T) {
+func persistedAcceptedImageSetFixture(t *testing.T) (*Activities, imageagent.Repository, ExecuteSlotV3ActivityInput, imageagent.SlotEffectV3PublishedResult, imageagent.GenerationFact, *recordingStagedExecutor) {
+	t.Helper()
 	a, repo, input := imageSetPersistenceFixture(t)
 	var pngBytes bytes.Buffer
 	require.NoError(t, png.Encode(&pngBytes, image.NewNRGBA(image.Rect(0, 0, 1024, 1024))))
@@ -106,12 +107,20 @@ func TestPersistImageSetAcceptedOutputKeepsOriginalGenerationProof(t *testing.T)
 	require.NoError(t, err)
 	require.Len(t, projection.Candidates, 1)
 	require.Equal(t, &imageagent.ImageGenerationProof{IntentID: originalFact.IntentID, Fingerprint: originalFact.Fingerprint, SettlementProofDigest: originalFact.TerminalProofDigest(), Points: 12}, projection.Candidates[0].GenerationProof)
+	return a, repo, input, published, originalFact, recorder
+}
+
+func TestPersistImageSetAcceptedOutputKeepsOriginalGenerationProof(t *testing.T) {
+	a, repo, input, published, originalFact, recorder := persistedAcceptedImageSetFixture(t)
+	projection, err := repo.GetProjection(context.Background(), originalFact.Intent.Identity.RunScope)
+	require.NoError(t, err)
+	accepted := projection.Slots[0]
 	replay, err := a.PersistImageSetSlotResult(context.Background(), PersistSlotResultV3ActivityInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: 1, AttemptKey: input.IdempotencyKey, Result: SlotWorkflowV3Result{Published: published, Status: imageagent.SlotStatusAccepted, EffectPhase: imageagent.SlotEffectV3PublicationComplete}})
 	require.NoError(t, err)
-	require.Equal(t, projection, replay)
+	require.Equal(t, accepted, replay)
 	expired, err := a.PersistImageSetSlotResult(context.Background(), PersistSlotResultV3ActivityInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: 1, AttemptKey: input.IdempotencyKey, Result: SlotWorkflowV3Result{Published: imageagent.SlotEffectV3PublishedResult{SlotID: input.Slot.ID, Attempt: 1}, Status: imageagent.SlotStatusBlocked, ErrorCode: imageagent.BudgetElapsedCode, EffectPhase: imageagent.SlotEffectV3ProviderNotDispatched}})
 	require.NoError(t, err)
-	require.Equal(t, projection, expired, "expiration must not overwrite original settled materialized success")
+	require.Equal(t, accepted, expired, "expiration must not overwrite original settled materialized success")
 	require.Equal(t, 1, recorder.GenerateCalls())
 	current, err := repo.GetProjection(context.Background(), originalFact.Intent.Identity.RunScope)
 	require.NoError(t, err)

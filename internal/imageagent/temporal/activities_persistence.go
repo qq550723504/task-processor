@@ -183,14 +183,21 @@ type slotResultPersistedEventPayload struct {
 }
 
 func (a *Activities) PersistRunState(ctx context.Context, input PersistRunStateActivityInput) error {
-	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
+	ctx, recovered, err := a.restoreImageSetCompletionIdentity(ctx, &input)
 	if err != nil {
 		return err
 	}
 	scope := imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID}
-	current, err := a.repository.GetProjection(ctx, scope)
-	if err != nil {
-		return fmt.Errorf("get image agent projection: %w", err)
+	var current imageagent.RunProjection
+	if recovered != nil {
+		// Use the exact snapshot whose committed approval was checked. The
+		// existing projection/run CAS rejects a concurrent change after it.
+		current = *recovered
+	} else {
+		current, err = a.repository.GetProjection(ctx, scope)
+		if err != nil {
+			return fmt.Errorf("get image agent projection: %w", err)
+		}
 	}
 	if current.Run.ActivePlanRevision != input.PlanRevision {
 		return imageagent.ErrRevisionConflict
@@ -381,7 +388,7 @@ func cloneTemporalBlock(block *imageagent.Block) *imageagent.Block {
 }
 
 func (a *Activities) PersistPendingCommand(ctx context.Context, input PersistPendingCommandActivityInput) error {
-	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
+	ctx, recovered, err := a.restoreImageSetPendingRecoveryIdentity(ctx, input)
 	if err != nil {
 		return err
 	}
@@ -389,9 +396,14 @@ func (a *Activities) PersistPendingCommand(ctx context.Context, input PersistPen
 		return fmt.Errorf("pending command projection commit ID is required")
 	}
 	scope := imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID}
-	current, err := a.repository.GetProjection(ctx, scope)
-	if err != nil {
-		return err
+	var current imageagent.RunProjection
+	if recovered != nil {
+		current = *recovered
+	} else {
+		current, err = a.repository.GetProjection(ctx, scope)
+		if err != nil {
+			return err
+		}
 	}
 	if reflect.DeepEqual(current.PendingCommand, input.Receipt) && reflect.DeepEqual(current.CommandIngress, input.CommandIngress) {
 		return nil

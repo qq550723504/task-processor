@@ -9,14 +9,15 @@ import (
 	"task-processor/internal/imageagent"
 	imagestore "task-processor/internal/imageagent/store"
 	imagetools "task-processor/internal/imageagent/tools"
+	productasset "task-processor/internal/product/asset"
 )
 
 // The current application supplies its existing source/rule and Asset owners.
 // This worker consumes only the set protocol and never assembles retired
 // Extract/Render/Review capabilities or another approval inventory.
-func NewImageSetTemporalDependencies(cfg *config.Config, imageDB, resourceDB *gorm.DB, authorizer imageagent.ExecutionAuthorizer, contexts imageagent.ImageSetContextReader, publisher imageagent.ApprovedImageSetPublisher, logger *logrus.Logger) (appruntime.ImageAgentTemporalDependencies, error) {
+func NewImageSetTemporalDependencies(cfg *config.Config, imageDB, resourceDB *gorm.DB, authorizer imageagent.ExecutionAuthorizer, contexts imageagent.ImageSetContextReader, publisher imageagent.ApprovedImageSetPublisher, approvals productasset.ApprovalCommitReader, logger *logrus.Logger) (appruntime.ImageAgentTemporalDependencies, error) {
 	var empty appruntime.ImageAgentTemporalDependencies
-	if cfg == nil || imageDB == nil || resourceDB == nil || authorizer == nil || contexts == nil || publisher == nil || !cfg.ImageAgent.Generation.Configured() {
+	if cfg == nil || imageDB == nil || resourceDB == nil || authorizer == nil || contexts == nil || publisher == nil || approvals == nil || !cfg.ImageAgent.Generation.Configured() {
 		return empty, imageagent.ErrValidation
 	}
 	repository := imagestore.NewOrganizationRepository(imageDB)
@@ -29,7 +30,7 @@ func NewImageSetTemporalDependencies(cfg *config.Config, imageDB, resourceDB *go
 		return empty, err
 	}
 	slots := imageSetSlotExecutor{generation: executor, builder: imagetools.NewImageSetResultBuilder()}
-	return appruntime.ImageAgentTemporalDependencies{Repository: repository, ExecutionAuthorizer: authorizer, SlotExecutor: slots, StagedSlotExecutor: slots, ArtifactStore: artifacts, ImageSetPublisher: publisher, GenerationRecovery: recovery, GenerationOutputRecovery: generationOutputRecovery(nil), PublicationLeaseDuration: defaultImageAgentArtifactTiming.PublicationLeaseDuration}, nil
+	return appruntime.ImageAgentTemporalDependencies{Repository: repository, ExecutionAuthorizer: authorizer, SlotExecutor: slots, StagedSlotExecutor: slots, ArtifactStore: artifacts, ImageSetPublisher: publisher, ImageSetApprovals: approvals, GenerationRecovery: recovery, GenerationOutputRecovery: generationOutputRecovery(nil), PublicationLeaseDuration: defaultImageAgentArtifactTiming.PublicationLeaseDuration}, nil
 }
 
 type imageSetSlotExecutor struct {

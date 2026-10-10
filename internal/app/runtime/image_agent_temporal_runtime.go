@@ -16,6 +16,7 @@ import (
 	"task-processor/internal/imageagent"
 	imageagenttemporal "task-processor/internal/imageagent/temporal"
 	platformtemporal "task-processor/internal/platform/temporal"
+	productasset "task-processor/internal/product/asset"
 )
 
 const (
@@ -34,6 +35,7 @@ type FullImageSetDependencies struct {
 }
 
 type ImageAgentTemporalDependencies struct {
+	ImageSetApprovals        productasset.ApprovalCommitReader
 	ImageSetPublisher        imageagent.ApprovedImageSetPublisher
 	GenerationRecovery       imageagent.GenerationRecovery
 	GenerationOutputRecovery imageagent.GenerationOutputRecovery
@@ -65,10 +67,11 @@ type imageAgentWorker interface {
 type ImageAgentWorker = imageAgentWorker
 
 func NewOrganizationImageSetWorker(client sdkclient.Client, d ImageAgentTemporalDependencies) (ImageAgentWorker, error) {
-	if client == nil || d.ExecutionAuthorizer == nil || d.ImageSetPublisher == nil {
+	if client == nil || d.ExecutionAuthorizer == nil || d.ImageSetPublisher == nil || d.ImageSetApprovals == nil {
 		return nil, imageagent.ErrCommandBlocked
 	}
 	activities, err := imageagenttemporal.NewActivities(imageagenttemporal.ActivityDependencies{
+		ImageSetApprovals: d.ImageSetApprovals,
 		ImageSetPublisher: d.ImageSetPublisher, GenerationRecovery: d.GenerationRecovery, GenerationOutputRecovery: d.GenerationOutputRecovery,
 		ExecutionAuthorizer: d.ExecutionAuthorizer, Repository: d.Repository, SlotExecutor: d.SlotExecutor, StagedSlotExecutor: d.StagedSlotExecutor, ArtifactStore: d.ArtifactStore, PublicationLeaseDuration: d.PublicationLeaseDuration,
 	})
@@ -188,6 +191,7 @@ func startImageAgentTemporalWorkerWithOptionsAndDependenciesContext(ctx context.
 		return nil, fmt.Errorf("organization image agent execution authorizer requires organization worker mode")
 	}
 	activities, err := imageagenttemporal.NewActivities(imageagenttemporal.ActivityDependencies{
+		ImageSetApprovals:        dependencies.ImageSetApprovals,
 		ImageSetPublisher:        dependencies.ImageSetPublisher,
 		GenerationRecovery:       dependencies.GenerationRecovery,
 		GenerationOutputRecovery: dependencies.GenerationOutputRecovery,

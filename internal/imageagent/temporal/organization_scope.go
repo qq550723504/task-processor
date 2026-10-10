@@ -41,19 +41,9 @@ func (a *Activities) restoreExecutionIdentity(ctx context.Context, runID string,
 	if a.executionAuthorizer == nil {
 		return restoreActivityIdentity(ctx, identity)
 	}
-	if err := imageagent.ValidateOrganizationExecution(identity, runID); err != nil {
-		return nil, err
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	projection, err := a.repository.GetProjection(ctx, imageagent.RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: runID})
+	projection, err := a.loadOrganizationExecution(ctx, runID, identity)
 	if err != nil {
 		return nil, err
-	}
-	run := projection.Run
-	if run.ScopeProtocol != identity.ScopeProtocol || run.TenantID != identity.TenantID || run.UserID != identity.UserID || run.MemberID != identity.MemberID || run.ID != runID || run.BusinessTaskID != identity.BusinessTaskID {
-		return nil, imageagent.ErrIdentityRequired
 	}
 	if err := a.executionAuthorizer.AuthorizeExecution(ctx, identity); err != nil {
 		return nil, fmt.Errorf("current organization authorization: %w", err)
@@ -61,8 +51,33 @@ func (a *Activities) restoreExecutionIdentity(ctx context.Context, runID string,
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	return withOrganizationActivityIdentity(ctx, projection.Run, identity.TraceID), nil
+}
+
+func (a *Activities) loadOrganizationExecution(ctx context.Context, runID string, identity imageagent.ExecutionIdentity) (imageagent.RunProjection, error) {
+	if err := imageagent.ValidateOrganizationExecution(identity, runID); err != nil {
+		return imageagent.RunProjection{}, err
+	}
+	if ctx == nil {
+		return imageagent.RunProjection{}, imageagent.ErrIdentityRequired
+	}
+	if err := ctx.Err(); err != nil {
+		return imageagent.RunProjection{}, err
+	}
+	projection, err := a.repository.GetProjection(ctx, imageagent.RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: runID})
+	if err != nil {
+		return imageagent.RunProjection{}, err
+	}
+	run := projection.Run
+	if run.ScopeProtocol != identity.ScopeProtocol || run.TenantID != identity.TenantID || run.UserID != identity.UserID || run.MemberID != identity.MemberID || run.ID != runID || run.BusinessTaskID != identity.BusinessTaskID {
+		return imageagent.RunProjection{}, imageagent.ErrIdentityRequired
+	}
+	return projection, nil
+}
+
+func withOrganizationActivityIdentity(ctx context.Context, run imageagent.Run, traceID string) context.Context {
 	ctx = authidentity.WithAuthenticatedIdentity(ctx, authidentity.AuthenticatedIdentity{TenantID: run.TenantID, EffectiveOrganizationID: run.TenantID, EffectiveMemberID: run.MemberID, UserID: run.UserID})
-	return aiidentity.WithIdentity(ctx, aiidentity.Identity{AgentRunID: run.ID, TenantID: run.TenantID, UserID: run.UserID, BusinessTaskID: run.BusinessTaskID, TraceID: identity.TraceID}), nil
+	return aiidentity.WithIdentity(ctx, aiidentity.Identity{AgentRunID: run.ID, TenantID: run.TenantID, UserID: run.UserID, BusinessTaskID: run.BusinessTaskID, TraceID: traceID})
 }
 
 func validateWorkflowScope(ctx workflow.Context, identity imageagent.ExecutionIdentity, runID string) error {
