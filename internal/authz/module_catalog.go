@@ -27,7 +27,7 @@ var enterpriseModules = []MenuModule{
 	{"supply-mine", "供应市场", "我的供应链", true, []string{PermissionWorkbenchSupplyRead, PermissionWorkbenchSupplyManage, PermissionWorkbenchListingSubmit, PermissionWorkbenchCollectionRead, PermissionWorkbenchCollectionManage, PermissionWorkbenchStoreRead}},
 	{"agent-market", "智能市场", "智能体市场", true, []string{PermissionWorkbenchAgentRead}},
 	{"agents", "智能市场", "我的智能体", true, []string{PermissionLocalAgentWrite, PermissionWorkbenchAgentRead, PermissionWorkbenchAgentUse, PermissionWorkbenchTaskRead}},
-	{"agent-custom", "智能市场", "智能体定制", false, nil},
+	{"agent-custom", "智能市场", "智能体定制", true, []string{PermissionWorkbenchAgentRead, PermissionWorkbenchAgentUse}},
 	{"images", "工具市场", "商品图片", true, []string{PermissionImageAgentRead, PermissionImageAgentWrite}},
 	{"tools", "工具市场", "我的工具", true, ToolMarketModulePermissions("tools")},
 	{"tools-custom", "工具市场", "工具定制", true, ToolMarketModulePermissions("tools-custom")},
