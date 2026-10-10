@@ -14,6 +14,7 @@ import {configurationRequest} from "@/lib/api/agent-configuration";
 import {catalogEntrySchema} from "@/lib/contracts/agent-configuration";
 import {imageTemplatesPageSchema,imageTemplateSchema,carouselTasks,detailTasks,type ImageAgentTemplate} from "@/lib/contracts/image-set-configuration";
 import {ImageSetError,imageSetRequest,type ImageSetScope} from "@/lib/api/product-image-set";
+import {isAcquisitionUUID} from "@/lib/contracts/product-acquisition";
 import {imageSetApprovalSchema,imageSetRunSchema,imageSetSourcesSchema,imageSetRecentSchema,imageSetInventorySchema,imageSetPreviewSchema,imageSetAcceptedSchema,imageSetRequirementsSchema,imageSetRequestSchema,type ImageSetRun,type ImageSetPrepare,type ImageSetChoice,type ImageSetSelection,type ImageSetRequirements,type ImageSetInventory,type ImageSetRoute} from "@/lib/contracts/product-image-set";
 
 type Props={kind:ImageSetScope["kind"];contextId:string;target?:ImageSetPrepare["target"];effectiveVersion?:string;applyReceiptId?:string;onSaved?:()=>void;initialRunId?:string};
@@ -103,7 +104,14 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
   void (async()=>{
    try{
     const saved=localStorage.getItem(storageKey+":intent");
-    if(saved){const parsed=z.object({action:z.enum(["prepare","regenerate","confirm","approve","cancel","recover","resume","restart"]),runId:z.string().optional(),requestKey:z.string().optional(),body:z.unknown()}).strict().safeParse(JSON.parse(saved));if(parsed.success&&imageSetRequestSchema(parsed.data.action).safeParse(parsed.data.body).success)setIntent(parsed.data)}
+    if(saved){
+     let decoded:unknown;
+     try{decoded=JSON.parse(saved)}catch{decoded=null}
+     const uuid=z.string().refine(isAcquisitionUUID);
+     const parsed=z.object({action:z.enum(["prepare","regenerate","confirm","approve","cancel","recover","resume","restart"]),runId:uuid.optional(),requestKey:uuid.optional(),body:z.unknown()}).strict().refine(command => (command.action==="prepare"||!!command.runId)&&(!(command.action==="prepare"||command.action==="regenerate")||!!command.requestKey)).safeParse(decoded);
+     if(parsed.success&&imageSetRequestSchema(parsed.data.action).safeParse(parsed.data.body).success)setIntent(parsed.data);
+     else localStorage.removeItem(storageKey+":intent");
+    }
     const agent=await configurationRequest(stableScope,"product.image.agent",catalogEntrySchema,{signal:controller.signal});if(controller.signal.aborted)return;setEntry(agent);
     if(!agent.canReadRuns)return;
     const query=new URLSearchParams();if(effectiveVersion)query.set("effectiveCatalogVersion",effectiveVersion);if(applyReceiptId)query.set("applyReceiptId",applyReceiptId);

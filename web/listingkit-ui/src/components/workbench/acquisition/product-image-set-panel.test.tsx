@@ -37,6 +37,25 @@ async function prepare(){
  fireEvent.click(await screen.findByRole("checkbox",{name:"共用原始素材 素材 1"}));
  const button=screen.getByRole("button",{name:"准备整套图片计划（2 项）"});await waitFor(()=>expect(button).toBeEnabled());fireEvent.click(button);
 }
+it.each([
+ "{bad JSON",
+ JSON.stringify({action:"read",body:{}}),
+ JSON.stringify({action:"confirm",runId,body:{actionId:operation,planRevision:"bad"}}),
+ ...[undefined,"bad-key"].map(requestKey=>JSON.stringify({action:"prepare",requestKey,body:{target:{Platform:"product"}}})),
+ ...[undefined,"bad-run"].map(runId=>JSON.stringify({action:"confirm",runId,body:{actionId:operation,planRevision:1,planDigest:sha,quoteDigest:digest}})),
+ JSON.stringify({action:"regenerate",requestKey:operation,body:{target:{Platform:"product"}}}),
+])("discards invalid saved intent %s while restoring the known run with GET only",async(saved)=>{
+ state=projection("awaiting_final_approval",templateId);
+ const key=`product-image-set:actor:org:acquisition:${operation}:intent`;
+ localStorage.setItem(key,saved);
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:run`,runId);
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ expect(await screen.findAllByRole("button",{name:"选择采用"})).toHaveLength(2);
+ await waitFor(()=>expect(localStorage.getItem(key)).toBeNull());
+ expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/sources"))).toBe(true);
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/images/runs"))).toBe(true));
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+});
 it("shows all eight exact references used by a generated slot",async()=>{
  state=projection("awaiting_final_approval",templateId);
  const originals=Array.from({length:8},(_,i)=>({ID:i?`original-${i+1}`:"original",DisplayURL:`https://images.test/reference-${i+1}.png`,Width:1024,Height:1024}));

@@ -1,15 +1,19 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { z } from "zod";
+import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { configurationRequest, ConfigurationError, type ConfigurationScope } from "@/lib/api/agent-configuration";
 import { catalogEntrySchema, configReceiptSchema, configVersion } from "@/lib/contracts/agent-configuration";
-import { imageTemplateSchema, imageTemplatesPageSchema, imageSetTemplateSchema, carouselTasks, detailTasks, type ImageAgentTemplate, type ImageSetTemplate } from "@/lib/contracts/image-set-configuration";
+import { imageTemplateSchema, imageTemplatesPageSchema, imageSetTemplateSchema, imageTemplateInputSchema, carouselTasks, detailTasks, type ImageAgentTemplate, type ImageSetTemplate } from "@/lib/contracts/image-set-configuration";
+import { knowledgeId } from "@/lib/api/knowledge";
 import { ConsolePage, ConsoleState } from "../console/console-page";
 import { ResourceDialog } from "../resources/resource-dialog";
+import { useResourcePending } from "../resources/resource-pending";
 import { configurationError, useConfigurationRead } from "./agent-configuration-hooks";
 import { ImageConfigurationDialog } from "./image-configuration-dialog";
 import styles from "./agents.module.css";
@@ -18,22 +22,39 @@ import {RecentImageSets} from "./recent-image-sets";
 const agentId = "product.image.agent";
 const activationNames = { ENABLED: "已启用", DISABLED: "已停用", NOT_ENABLED: "尚未启用" };
 const capabilityNames: Record<string, string> = { "image.generate": "图片生成", "product.source-evidence": "商品素材读取", "platform.write": "平台写入" };
-type Intent = { path: string; payload: unknown; method: "POST" | "PUT"; key: string; operation: string; revision?: string; absent?: boolean; templateId?: string };
+const emptyPayload = z.strictObject({});
+const defaultPayload = z.strictObject({templateId:knowledgeId.nullable(),revision:configVersion.nullable()}).refine(value => (value.templateId === null) === (value.revision === null));
+const intentSchema = z.strictObject({path:z.string().max(200),payload:z.unknown(),method:z.enum(["POST","PUT"]),key:z.uuid(),operation:configReceiptSchema.shape.operation,revision:configVersion.optional(),absent:z.boolean().optional(),templateId:knowledgeId.optional()}).refine(command => {
+  switch(command.operation){
+    case "enable": return command.path === `${agentId}/enable` && command.method === "POST" && emptyPayload.safeParse(command.payload).success && (!!command.revision !== !!command.absent);
+    case "disable": return command.path === `${agentId}/disable` && command.method === "POST" && !!command.revision && emptyPayload.safeParse(command.payload).success;
+    case "default": return command.path === `${agentId}/default-template` && command.method === "PUT" && !!command.revision && defaultPayload.safeParse(command.payload).success;
+    case "create-template": return command.path === `${agentId}/templates` && command.method === "POST" && imageTemplateInputSchema.safeParse(command.payload).success;
+    case "update-template": return !!command.templateId && !!command.revision && command.path === `${agentId}/templates/${command.templateId}` && command.method === "PUT" && imageTemplateInputSchema.safeParse(command.payload).success;
+    case "archive-template": return !!command.templateId && !!command.revision && command.path === `${agentId}/templates/${command.templateId}/archive` && command.method === "POST" && emptyPayload.safeParse(command.payload).success;
+  }
+});
+type Intent = z.infer<typeof intentSchema>;
 type Draft = { name: string; targetPlatform: ImageAgentTemplate["targetPlatform"]; image: ImageSetTemplate; original?: ImageAgentTemplate };
 function initialDraft(): Draft {
   return { name: "", targetPlatform: "product", image: { schema: "image-config-v1", mode: "standard", shareOriginals: true, background: "白色", language: "en", carousel: [{ id: "main-identity", purpose: "product_identity" }], detail: [{ id: "detail-closeup", purpose: "detail_closeup" }] } };
 }
 
 export function ImageAgentPage({ scope, organization }: { scope: ConfigurationScope; organization: string }) {
+  const context = useWorkbenchContext();
+  const pending = useResourcePending({expectedUserId:scope.userId,expectedOrganizationId:scope.organizationId},["agent-configuration",agentId],intentSchema,{storage:"local",maxLength:128*1024});
+  const intent = pending.command;
   const [nonce, setNonce] = useState(0), [after, setAfter] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null), [configure, setConfigure] = useState(false), [disable, setDisable] = useState(false);
   const [chosen, setChosen] = useState<ImageAgentTemplate | null>(null), [history, setHistory] = useState("");
-  const [intent, setIntent] = useState<Intent | null>(null), [busy, setBusy] = useState(false), [failure, setFailure] = useState<unknown>(null), [formError, setFormError] = useState(""), [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false), [failure, setFailure] = useState<unknown>(null), [formError, setFormError] = useState(""), [message, setMessage] = useState("");
   const active = useRef(true), flight = useRef(false), abort = useRef<AbortController | null>(null);
   useEffect(() => {
     active.current = true;
     return () => { active.current = false; abort.current?.abort(); };
   }, []);
+  const registerSwitchGuard = context.registerOrganizationSwitchGuard;
+  useEffect(() => registerSwitchGuard(() => !flight.current && !intent && !pending.error), [registerSwitchGuard,intent,pending.error]);
   const detail = useConfigurationRead(scope, agentId, catalogEntrySchema, nonce);
   const entry = detail.data;
   // A full image template may contain 64 KiB; one row fits the 128 KiB response cap.
@@ -41,25 +62,26 @@ export function ImageAgentPage({ scope, organization }: { scope: ConfigurationSc
   const defaultRef = entry?.agent.defaultTemplate;
   const defaultTemplate = useConfigurationRead(scope, defaultRef ? `${agentId}/templates/${defaultRef.templateId}/revisions/${defaultRef.revision}` : "", imageTemplateSchema, nonce, !!defaultRef);
   const historic = useConfigurationRead(scope, chosen && configVersion.safeParse(history).success ? `${agentId}/templates/${chosen.templateId}/revisions/${history}` : "", imageTemplateSchema, nonce, !!chosen && configVersion.safeParse(history).success);
-  const locked = busy || !!intent;
+  const locked = busy || !!intent || !pending.ready;
 
-  async function send(command: Intent) {
-    if (flight.current || !active.current) return;
+  async function send(command: Intent, verification = false) {
+    if (flight.current || !active.current || !pending.ready) return;
     flight.current = true;
-    setBusy(true); setIntent(command); setFailure(null); setMessage("");
+    setBusy(true); setFailure(null); setMessage("");
     const controller = new AbortController(); abort.current = controller;
     const headers = new Headers({ "Content-Type": "application/json", "Idempotency-Key": command.key });
     if (command.absent) headers.set("If-None-Match", "*");
     else if (command.revision) headers.set("If-Match", `"${command.revision}"`);
     try {
+      pending.persist(command);
       await configurationRequest(scope, command.path, configReceiptSchema.refine(receipt => receipt.agentId === agentId && receipt.operation === command.operation && (!command.templateId || receipt.templateId === command.templateId)), { method: command.method, headers, body: JSON.stringify(command.payload), signal: controller.signal });
       if (!active.current) return;
-      setIntent(null); setDraft(null); setDisable(false); setChosen(null); setConfigure(false);
+      pending.clear(command); setDraft(null); setDisable(false); setChosen(null); setConfigure(false);
       setMessage("操作已保存，正在读取当前企业配置。"); setNonce(value => value + 1);
     } catch (error) {
       if (!active.current) return;
       setFailure(error);
-      if (!(error instanceof ConfigurationError) || error.code !== "OUTCOME_UNKNOWN") setIntent(null);
+      if (!verification && error instanceof ConfigurationError && error.code !== "OUTCOME_UNKNOWN" && [400,403,404,409,412,422].includes(error.status)) pending.clear(command);
     } finally {
       flight.current = false;
       if (active.current) setBusy(false);
@@ -81,7 +103,8 @@ export function ImageAgentPage({ scope, organization }: { scope: ConfigurationSc
 
   return <ConsolePage title="商品图片智能体" description={`当前企业：${organization} · 整套主图与详情图配置`} breadcrumbs={[{ label: "我的智能体", href: "/workbench/agents/mine" }, { label: "商品图片智能体" }]} actions={<Button variant="outline" disabled={busy} onClick={() => setNonce(value => value + 1)}>刷新配置</Button>}>
     {message && <p role="status">{message}</p>}
-    {failure ? <ConsoleState kind="error" title={configurationError(failure)}>{intent && <Button disabled={busy} onClick={() => void send(intent)}>核实原操作</Button>}</ConsoleState> : null}
+    {intent ? <ConsoleState kind="error" title={failure ? configurationError(failure) : "原操作尚未核实，请沿用原请求编号。"}><Button disabled={busy} onClick={() => void send(intent,true)}>核实原操作</Button></ConsoleState> : failure ? <ConsoleState kind="error" title={configurationError(failure)} /> : null}
+    {pending.error && <ConsoleState kind="unavailable" title="无法读取原操作记录，请恢复浏览器存储后重试。" />}
     {detail.error ? <ConsoleState kind="error" title={configurationError(detail.error)} /> : !entry ? <ConsoleState kind="loading" title="正在读取图片智能体配置" /> : <>
       <Card className={styles.detailHead}>
         <div><h2>{entry.name}</h2><p>{entry.description}</p><p>{activationNames[entry.agent.activation]} · 配置版本 {entry.agent.revision || "尚未建立"}</p></div>
