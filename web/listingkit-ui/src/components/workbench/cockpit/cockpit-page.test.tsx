@@ -10,7 +10,7 @@ const capabilities = { access: { goalsRead: true, goalsCreate: true, goalsManage
 const emptyGoal = { goal: null, evaluation: null, head: null, goalUnavailable: false, capturedAt: "2026-10-10T01:00:00Z", basis: [] };
 function mount() { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CockpitPage mode="settings" /></QueryClientProvider>); }
 beforeEach(() => { sessionStorage.clear(); context.effectiveOrganization = { id: "org-a" }; context.operationsCockpitAvailable = true;context.permissions=["workbench.cockpit.goals.read"]; });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals();vi.restoreAllMocks(); });
 it("retains the identical original operation after an unknown save result", async () => {
  const writes: { body: string; key: string }[] = [];
  vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
@@ -61,4 +61,26 @@ it("starts a fresh record after retrying an unknown financial save",async()=>{
  fireEvent.click(screen.getByRole("button",{name:"保存经营数据"}));fireEvent.click(await screen.findByRole("button",{name:"重试原操作"}));await screen.findByText("已保存，当前版本 V1。");
  expect(writes[1]).toEqual(writes[0]);expect(screen.queryByRole("button",{name:"保存经营数据"})).not.toBeInTheDocument();
  fireEvent.click(screen.getByRole("button",{name:"录入经营数据"}));for(const label of ["销售收入（退款前）","退款","本期已销售商品采购成本","物流成本","平台费用","广告成本","其他成本"])fireEvent.change(screen.getByLabelText(label),{target:{value:"0"}});fireEvent.click(screen.getByRole("button",{name:"保存经营数据"}));await waitFor(()=>expect(writes).toHaveLength(3));expect(JSON.parse(writes[2].body).id).not.toBe(JSON.parse(writes[0].body).id);
+});
+
+it("keeps unknown old-scope evidence while explicitly reconfiguring the current goal",async()=>{
+ const writes:{body:string,key:string}[]=[];let lost=false;const newStore="123e4567-e89b-42d3-a456-426614174002";
+ const head={goalId:id,revision:"1",scopeValid:false,canReconfigure:true};
+ vi.stubGlobal("fetch",vi.fn(async(url:string,init:RequestInit)=>{
+  if(init.method==="POST"){
+   writes.push({body:String(init.body),key:new Headers(init.headers).get("Idempotency-Key")!});
+   if(writes.length===1){lost=true;return Response.json({code:"OUTCOME_UNKNOWN"},{status:502});}
+   if(writes.length===2)return Response.json({code:"FORBIDDEN"},{status:403});
+   const body=JSON.parse(String(init.body));return Response.json({commandId:writes[2].key,operation:"goal_update",id:body.id,revision:"2",committedAt:"2026-10-10T01:00:00Z"});
+  }
+  if(url.endsWith("capabilities"))return Response.json(lost?{...capabilities,stores:[{...capabilities.stores[0],id:newStore,name:"现授权店铺"}]}:capabilities);
+  return Response.json(lost?{...emptyGoal,goalUnavailable:true,head}:emptyGoal);
+ }));
+ // Fix the goal ID so the authoritative head can identify the original unknown request.
+ const random=vi.spyOn(crypto,"randomUUID").mockReturnValue(id);
+ mount();await screen.findByText("目标配置");fireEvent.click(screen.getByLabelText("真实店铺 · US"));fireEvent.change(screen.getByLabelText("目标净利润（人民币元）"),{target:{value:"100"}});await waitFor(()=>expect(screen.getByRole("button",{name:"保存并启用"})).toBeEnabled());fireEvent.click(screen.getByRole("button",{name:"保存并启用"}));
+ fireEvent.click(await screen.findByRole("button",{name:"重试原操作"}));
+ fireEvent.click(await screen.findByRole("button",{name:"保留原操作并维护当前版本"}));
+ fireEvent.click(await screen.findByLabelText("现授权店铺 · US"));fireEvent.change(screen.getByLabelText("目标净利润（人民币元）"),{target:{value:"200"}});random.mockRestore();fireEvent.click(screen.getByRole("button",{name:"保存并启用"}));
+ await screen.findByText("已保存，当前版本 V2。");expect(writes[1]).toEqual(writes[0]);expect(JSON.parse(writes[2].body)).toMatchObject({id,expectedRevision:"1",goal:{profit:20000,storeIds:[newStore]}});expect(writes[2].key).not.toBe(writes[0].key);expect(sessionStorage.length).toBe(1);expect(sessionStorage.getItem(sessionStorage.key(0)!)).toContain(writes[0].key);
 });

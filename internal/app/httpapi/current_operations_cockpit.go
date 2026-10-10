@@ -3,12 +3,12 @@ package httpapi
 import (
 	"context"
 	"gorm.io/gorm"
+	"task-processor/internal/app/operationscockpitobservations"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	"task-processor/internal/integration/operationscockpitauth"
-	"task-processor/internal/integration/operationscockpitobservations"
 	persistence "task-processor/internal/integration/persistence/operationscockpit"
 	kernelmodule "task-processor/internal/kernel/module"
 	o "task-processor/internal/marketplace/shein/observations"

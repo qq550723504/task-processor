@@ -49,7 +49,8 @@ Out of Scope：自动抓取财务、汇率换算、平台资金结算、Commerci
 | 店铺身份/名称/平台/站点/状态/服务、成员grant | `internal/storecenter` |
 | 已取得平台商品/订单/物流、同步范围/覆盖 | `internal/marketplace/shein/observations` |
 | 钱包、资源、费用、订阅、AI调用与Product事实 | 原owner，本批不复制/修改 |
-| 数据库/官方观察消费/身份adapter | feature-local integration；app只组合 |
+| 数据库/身份adapter | feature-local integration；app HTTP assembly只组合 |
+| 官方观察消费 | feature-local `app/operationscockpitobservations`，复用现有观察Service只读合同；不将业务Service引入infra/integration |
 
 链路：Console/BFF → CurrentIdentity + live Effective Organization/module permission → Cockpit usecase（scope只来自服务端）→ 当前member-scoped Store窄reader → Cockpit repository → 纯计算projection → 最后live权限/店铺重查 → 当前企业响应。每次请求只捕获一次UTC+8日期基准；目标revision、当前事实revisions、coverage、列表及汇总在同一SQL读取快照中取得，不能拼装不同时间版本的依据。退出该快照后再重查live权限，不能在旧快照中“重验”撤权；平台观察保留自身独立generation/time，不声称跨owner全局原子快照。
 
