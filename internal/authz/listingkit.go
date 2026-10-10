@@ -290,6 +290,11 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		}
 	}
 	for _, userID := range normalizeUnique(platformAdminUsers) {
+		for _, permission := range supplyMarketPermissions {
+			if _, err := enforcer.AddPolicy(userSubject(userID), permission); err != nil {
+				return nil, err
+			}
+		}
 		for _, permission := range workbenchSupplyPermissions {
 			if _, err := enforcer.AddPolicy(userSubject(userID), permission); err != nil {
 				return nil, err
