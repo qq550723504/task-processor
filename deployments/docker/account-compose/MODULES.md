@@ -64,7 +64,7 @@ After normal login and enterprise selection, this combination provides:
 
 | Completed capability | Entry |
 | --- | --- |
-| Cockpit goals, store matrix, manual financial facts, alerts/advice | `/workbench` |
+| Cockpit goals, store matrix, manual financial facts, alerts/advice | `/workbench/overview/goals`, `/workbench/overview/stores`, `/workbench/overview/alerts`, `/workbench/overview/advice` |
 | Accounts, members, roles, resources, audit and store management | `/workbench/account`, `/workbench/stores` |
 | Knowledge, personal projects and reports | `/workbench/ai/knowledge`, `/workbench/ai/projects`, `/workbench/ai/reports` |
 | 1688 acquisition and Product Collection | `/workbench/supply/acquisition`, `/workbench/data/mine` |
@@ -77,6 +77,12 @@ After normal login and enterprise selection, this combination provides:
 API/private/platform permissions still apply. Configuration and empty lists are
 real owner reads; the installer creates no sample requests, products, orders,
 profits, successful jobs or balances.
+
+The `/workbench` aggregate dashboard remains the existing unimplemented overview;
+its GMV/trend/AI summary cards do not consume the completed Cockpit subpages yet.
+Report reads are mounted, but saving a title report still requires the current
+Product Review source below. Project/report linking and automated AI advice are
+not completed capabilities and are not introduced by this composition.
 
 The user selected on 2026-10-10: finish the unified program first and list every
 missing configuration. These completed code paths remain unavailable here:
@@ -92,6 +98,7 @@ missing configuration. These completed code paths remain unavailable here:
 | Supply-chain publication | Official Store application plus current Asset/Temporal configuration and permissions |
 | POD execution | Qualified SDS merchant credential, OSS hosts and current canonical Asset/Temporal configuration |
 | Private platform-draft inspection | Authoritative current draft facts; the separate isolated offline trial cannot replace them in this combination |
+| Saving a new title review report | Same-instance current Product Review reader; existing saved report reads do not require enabling model execution |
 
 No fake merchant, invented price, old-organization credential, legacy trial or
 always-allow policy is used to open these paths. Amazon/1688/model/payment/store
