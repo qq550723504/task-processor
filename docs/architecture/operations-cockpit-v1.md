@@ -3,7 +3,7 @@
 Refs [执行 Issue #627](https://github.com/qq550723504/task-processor/issues/627)、#137。
 
 - Design Basis: **Independent Architecture**。
-- Admission Status: **NOT_READY / 目标归属决定已确认，待相关增量独立复核**。正式生产代码尚未开工；评审依据与分类见第10节。
+- Admission Status: **IMPLEMENTATION_READY / FROZEN**。第2轮有界独立复核通过；准确候选与证据见第10节。共享接线仍遵守唯一Writer协调gate。
 - 调查基线：`main 6db1bbc5529433d37b49708828b7d2b621bf9bc2`（含 #615）。
 - 唯一 Writer：chat `01a11f6e-6586-7e13-ba3a-1758a7123e90`，`codex/operations-cockpit`。
 
@@ -111,7 +111,7 @@ Figma的安全底线只消费真正存在的平台异常事实；库存为0/平�
 
 ## 8. 持久化、接线与共享Writer
 
-最小表：店铺事实锁head；经营区间事实head及不可变revision；organization唯一目标head（稳定goal ID与不可变creator）及不可变revision；actor-scoped command receipts。payload有界JSON，显式check/唯一键/索引，SQL schema-qualified。head metadata只返回安全CAS标识；SQL不联表IAM、不创建第二身份owner。原生Store行/grant只由当前owner操作；初始化是显式空schema安装，同事务，serving只VerifySchema、不建表；运行账号只获得本schema必要SELECT/INSERT/UPDATE，不授予DDL/DELETE。
+最小表：经营区间事实head及不可变revision；organization唯一目标head（稳定goal ID与不可变creator）及不可变revision；actor-scoped command receipts。本地店铺事实/企业目标/命令串行锁使用PostgreSQL事务级锁，不新增独立锁状态或恢复协议；Store原生行/grant锁仍由既有owner借用同一事务持有。payload有界JSON，显式check/唯一键/索引，SQL schema-qualified。head metadata只返回安全CAS标识；SQL不联表IAM、不创建第二身份owner。初始化是显式空schema安装，同事务，serving只VerifySchema、不建表；运行账号只获得本schema必要SELECT/INSERT/UPDATE，不授予DDL/DELETE。
 
 共享增量已在[#137接单通知](https://github.com/qq550723504/task-processor/issues/137#issuecomment-6091453232)登记：Console四菜单/三级goal路径、authz四module/policy、currentapplication config/schema initializer/HTTP injection/Store serving role本schema grant和preflight。**未协调前不写共享路径**。feature-local可在准入后由本唯一Writer实现，完整运行交付仍需共享owner接线。
 
@@ -133,6 +133,8 @@ Legacy decision: N/A。已有合格Store、observations、Console/authz合同按
 
 2026-10-10 第1轮只读独立Reviewer `/root/cockpit_architecture_review` 检查设计候选 `0a6d7e1b44dc7b84d48897b6022b79927978a310` 及直接相关Store/member/schema/授权合同，结论 **NOT_READY**。唯一剩余架构准入阻碍是目标归属产品决定，命中当前AGENTS“核心happy path按当前设计无法完成”及潜在“错误授权”：企业singleton旧head不可读时无安全CAS来源，不能允许盲覆盖。
 
-用户随后明确“目标由创建人与管理权限维护”。第5/7/8节已以企业目标稳定goal ID、不可变creator、创建人OR当前manage、安全head metadata + 完整payload CAS重配回应该决定；该决定替代原草案中管理员限定/成员个人两种待选路径。第2轮只复核这些scope/权限/失效重配相关增量，不重复全局审查；当前尚未声称IMPLEMENTATION_READY。共享路径唯一Writer责任仍须协调，它是接线gate，不由Reviewer替用户指定。
+用户随后明确“目标由创建人与管理权限维护”。第5/7/8节已以企业目标稳定goal ID、不可变creator、创建人OR当前manage、安全head metadata + 完整payload CAS重配回应该决定；该决定替代原草案中管理员限定/成员个人两种待选路径。
 
-其余五项为IMPLEMENTATION_TEST，均是当前Must的实现义务，不重开架构：当前Store owner提供同tx窄锁读并live重查admin；稳定record ID日期纠错/并发重叠/保留revision；同SQL快照覆盖和目标/数据依据；checked金额和math/big阈值边界；启用schema时全部Store consumers使用同一最小capability/preflight清单。相关最低合同已写入正文，必须实现并验证后才能交付。无新增Accepted Risk或额外验收平台。运行/真实数据/用户验收NOT_RUN，未改生产代码。
+2026-10-10 第2轮只读独立Reviewer `/root/cockpit_architecture_review` 对准确候选 `88d1684ebea5f714e085f0abab5c29adb018b6f0` 仅复核这些scope/权限/失效重配增量，结论 **IMPLEMENTATION_READY / FROZEN，无剩余BLOCKER**。本设计冻结，未变部分不重新全局评审。新增目标边界检查归IMPLEMENTATION_TEST：创建人无manage仍可维护；非创建人需live manage；管理人不夺creator；退企业/撤模块拒绝；metadata不泄露旧scope；新scope完整验证/stale412；并发首次创建/维护；历史恢复及actor-private回执撤权回放。共享路径唯一Writer责任仍须协调，它是接线gate，不由Reviewer替用户指定。
+
+其余五项为IMPLEMENTATION_TEST，均是当前Must的实现义务，不重开架构：当前Store owner提供同tx窄锁读并live重查admin；稳定record ID日期纠错/并发重叠/保留revision；同SQL快照覆盖和目标/数据依据；checked金额和math/big阈值边界；启用schema时全部Store consumers使用同一最小capability/preflight清单。相关最低合同已写入正文，必须实现并验证后才能交付。无新增Accepted Risk或额外验收平台。两轮架构评审均先于正式生产代码开工；评审不构成运行、真实数据或用户验收通过。
