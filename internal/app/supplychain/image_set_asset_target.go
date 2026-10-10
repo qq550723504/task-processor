@@ -3,6 +3,8 @@ package supplychainapp
 import (
 	"context"
 	"reflect"
+	"time"
+
 	"task-processor/internal/imageagent"
 	record "task-processor/internal/listing/record/target"
 	"task-processor/internal/marketplace/shein/goods"
@@ -10,8 +12,9 @@ import (
 )
 
 type ImageSetAssetTargetResolver struct {
-	Rules  ImageSetTargetRules
-	Images record.TargetImageReader
+	Rules              ImageSetTargetRules
+	Images             record.TargetImageReader
+	ReadGeneratedBytes func(context.Context, asset.SourceSelection, asset.ApprovedAsset, int64) ([]byte, error)
 }
 
 func (r ImageSetAssetTargetResolver) ResolveImageSetTarget(ctx context.Context, source asset.SourceSelection, target *asset.ImageSetTarget, assets []asset.ApprovedAsset) (asset.ImageSetTargetResolution, error) {
@@ -41,7 +44,8 @@ func (r ImageSetAssetTargetResolver) ResolveImageSetTarget(ctx context.Context, 
 	if !reflect.DeepEqual(target, actual) {
 		return empty, asset.ErrApprovalConflict
 	}
-	observations, err := record.ProbeTargetImages(ctx, r.Images, goods.OfficialDraftInput{Images: slots}, asset.ApprovedAssetInventory{Assets: assets})
+	images := imageSetTargetImageReader{source: source, original: r.Images, generated: r.ReadGeneratedBytes}
+	observations, err := record.ProbeTargetImages(ctx, images, goods.OfficialDraftInput{Images: slots}, asset.ApprovedAssetInventory{Assets: assets})
 	if err != nil || len(observations) != len(assets) {
 		return empty, asset.ErrInvalidApproval
 	}
@@ -63,4 +67,28 @@ func (r ImageSetAssetTargetResolver) ResolveImageSetTarget(ctx context.Context, 
 		return empty, asset.ErrInvalidApproval
 	}
 	return asset.ImageSetTargetResolution{Target: actual, RequirementDigest: value.RequirementDigest, Placements: positions}, nil
+}
+
+// Generated identities have already been verified by the material owner. Never
+// reinterpret their published URL as a network download or fall back to one.
+type imageSetTargetImageReader struct {
+	source    asset.SourceSelection
+	original  record.TargetImageReader
+	generated func(context.Context, asset.SourceSelection, asset.ApprovedAsset, int64) ([]byte, error)
+}
+
+func (r imageSetTargetImageReader) Probe(ctx context.Context, approved asset.ApprovedAsset, imageType int) (goods.OfficialImageObservation, error) {
+	if approved.GenerationEvidence == nil {
+		return r.original.Probe(ctx, approved, imageType)
+	}
+	if ctx == nil || r.generated == nil {
+		return goods.OfficialImageObservation{}, record.ErrNotReady
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	content, err := r.generated(ctx, r.source, approved, goods.MaxOfficialImageBytes)
+	if err != nil {
+		return goods.OfficialImageObservation{}, record.ErrNotReady
+	}
+	return inspectOfficialImageBytes(ctx, approved, imageType, content)
 }

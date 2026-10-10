@@ -334,6 +334,28 @@ const sheinTarget={Platform:"shein",StoreID:"saved-store",Site:"US",CategoryID:1
 const officialPlacement={Group:"spu",SKC:0,SKU:0,Type:1,Sort:1,Site:"US"};
 const sheinRequirements={platform:"shein",site:"US",categoryId:123,version:"current-official-rules",nativeWidth:1024,nativeHeight:1024,groups:[{group:"spu",skc:0,sku:0,types:[{type:1,minimum:1,maximum:8,nativeCompatible:true}]}]};
 function sheinProjection(){const p=projection("awaiting_final_approval",templateId);return {...p,plan:{...p.plan,Source:{...source,EffectiveVersion:"2",ApplyReceiptID:operation},Target:sheinTarget},slots:p.slots.map(slot=>({...slot,recipe:{...slot.recipe,OfficialPlacement:officialPlacement}}))}}
+it("requires current compatible placements before regenerating a historical SHEIN slot",async()=>{
+ const p=sheinProjection(),real=fetch.getMockImplementation()!;
+ const changed={...sheinRequirements,version:"changed-rules",groups:[{...sheinRequirements.groups[0],types:[{type:2,minimum:1,maximum:8,nativeCompatible:true}]}]};
+ fetch.mockImplementation((url,init)=>String(url).endsWith("/requirements")?Promise.resolve(Response.json(changed)):String(url).endsWith(`/runs/${runId}`)?Promise.resolve(Response.json(p)):String(url).endsWith("/regenerate")?Promise.resolve(Response.json(state,{status:201})):real(url,init));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation} initialRunId={runId}/>);
+ await screen.findByText(/规则 changed-rules/);
+ const regenerateSlot=screen.getAllByRole("checkbox",{name:"重新生成此项，另行确认点数"})[0];
+ fireEvent.click(regenerateSlot);
+ const prepareSubset=screen.getByRole("button",{name:"准备所选 1 项的新计划"});
+ expect(prepareSubset).toBeDisabled();
+ expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/regenerate"))).toBe(false);
+ const slot=within(regenerateSlot.closest("article")!);
+ const position=slot.getByLabelText("官方图片位置");
+ fireEvent.change(position,{target:{value:"spu:0:0"}});
+ expect(slot.getByLabelText("官方图片类型")).toHaveValue("2");
+ fireEvent.change(slot.getByLabelText("官方图片排序"),{target:{value:"3"}});
+ expect(prepareSubset).toBeEnabled();fireEvent.click(prepareSubset);
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/regenerate"))).toBe(true));
+ const request=fetch.mock.calls.find(([url])=>String(url).endsWith("/regenerate"))!;
+ expect(JSON.parse(String(request[1]!.body))).toMatchObject({target:sheinTarget,effectiveCatalogVersion:"2",applyReceiptId:operation,selectedTaskIds:["main"],officialPlacements:{main:{...officialPlacement,Type:2,Sort:3}}});
+ expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/confirm"))).toBe(false);
+});
 it("returns from a historical platform run to the current page target for fresh preparation",async()=>{
  const p=sheinProjection(),liveTarget={...sheinTarget,StoreID:"current-store",RecordID:"current-record",CategoryID:456},real=fetch.getMockImplementation()!;
  fetch.mockImplementation((url,init)=>String(url).endsWith("/requirements")?Promise.resolve(Response.json({...sheinRequirements,categoryId:JSON.parse(String(init!.body)).target.CategoryID})):String(url).endsWith(`/runs/${runId}`)?Promise.resolve(Response.json(p)):String(url).endsWith("/images/runs")?Promise.resolve(Response.json({items:[{runId,contextKind:"acquisition",contextId:operation,status:p.status,targetPlatform:"shein",createdAt:now}],nextCursor:""})):real(url,init));

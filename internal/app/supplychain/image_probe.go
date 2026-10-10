@@ -41,6 +41,14 @@ func (p *PublicImageProbe) Probe(ctx context.Context, approved asset.ApprovedAss
 	if err != nil {
 		return observation, record.ErrNotReady
 	}
+	return inspectOfficialImageBytes(ctx, approved, imageType, content)
+}
+
+func inspectOfficialImageBytes(ctx context.Context, approved asset.ApprovedAsset, imageType int, content []byte) (goods.OfficialImageObservation, error) {
+	var observation goods.OfficialImageObservation
+	if ctx == nil || approved.ID == "" || imageType != 1 && imageType != 2 && imageType != 5 && imageType != 6 && imageType != 7 || len(content) == 0 || int64(len(content)) > goods.MaxOfficialImageBytes {
+		return observation, record.ErrNotReady
+	}
 	mediaType, width, height, err := httpimage.InspectGeneratedArtifact(content)
 	if err != nil || mediaType != "image/jpeg" && mediaType != "image/png" || width > 10000 || height > 10000 || int64(width)*int64(height) > 20_000_000 {
 		return observation, record.ErrNotReady
