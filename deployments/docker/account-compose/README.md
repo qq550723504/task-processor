@@ -3,6 +3,10 @@
 Optional ZITADEL/Tencent SMS delivery configuration and the remaining local
 provider connection prerequisite are documented in [SMS.md](SMS.md).
 
+The opt-in Data Market / API Management candidate profile, its current
+authorization blocker and new-empty-project startup are documented in
+[DATA_SERVICES.md](DATA_SERVICES.md).
+
 ## Enterprise custom roles and members (#598)
 
 The entry is `/workbench/account/organization/members`. **角色权限** shows the

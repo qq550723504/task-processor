@@ -45,7 +45,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/store-center-sche
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/account-acceptance-fixture ./cmd/account-acceptance-fixture && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/product-acquisition-init ./cmd/product-acquisition-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/product-listing-api-schema-migrate ./cmd/product-listing-api-schema-migrate && \
-    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/image-agent-temporal-worker ./cmd/image-agent-temporal-worker
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/image-agent-temporal-worker ./cmd/image-agent-temporal-worker && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/playwright-install github.com/mxschmitt/playwright-go/cmd/playwright
 
 FROM alpine:3.22 AS runtime
 RUN apk add --no-cache ca-certificates tzdata
@@ -71,6 +72,8 @@ COPY --from=go-builder /out/notification-center-schema-init /usr/local/bin/notif
 COPY --from=go-builder /out/referral-schema-init /usr/local/bin/referral-schema-init
 COPY --from=go-builder /out/organization-membership-schema-init /usr/local/bin/organization-membership-schema-init
 COPY --from=go-builder /out/source-account-registry-schema-init /usr/local/bin/source-account-registry-schema-init
+COPY --from=go-builder /out/product-acquisition-init /usr/local/bin/product-acquisition-init
+COPY --chmod=0755 deployments/docker/account-compose/data-services-init.sh /usr/local/bin/data-services-init
 COPY --from=go-builder /out/listingkit-schema-migrate /usr/local/bin/listingkit-schema-migrate
 COPY --from=go-builder /out/commercial-owner-schema-migrate /usr/local/bin/commercial-owner-schema-migrate
 COPY --chmod=0755 deployments/docker/account-compose/init.sh /usr/local/bin/account-schema-init
@@ -93,3 +96,17 @@ FROM alpine:3.22 AS image-trial-worker
 RUN apk add --no-cache ca-certificates tzdata
 COPY --from=go-builder /out/image-agent-temporal-worker /usr/local/bin/image-agent-temporal-worker
 ENTRYPOINT ["/usr/local/bin/image-agent-temporal-worker"]
+
+# The existing pinned Go SDK installs its matching driver and browser at build
+# time. The serving container never downloads or installs browser dependencies.
+FROM ubuntu:24.04 AS data-services-runtime
+ENV DEBIAN_FRONTEND=noninteractive PLAYWRIGHT_DRIVER_PATH=/opt/data-services/playwright PLAYWRIGHT_BROWSERS_PATH=/opt/data-services/browsers
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata wget && rm -rf /var/lib/apt/lists/*
+COPY --from=go-builder /out/playwright-install /usr/local/bin/playwright-install
+RUN playwright-install install --with-deps chromium && \
+    browser="$(find /opt/data-services/browsers -type f -name chrome)" && \
+    test -n "$browser" && test "$(printf '%s\n' "$browser" | wc -l)" -eq 1 && \
+    ln -s "$browser" /opt/data-services/chromium && \
+    rm /usr/local/bin/playwright-install && rm -rf /var/lib/apt/lists/*
+COPY --from=go-builder /out/current-application /usr/local/bin/current-application
+ENTRYPOINT ["/usr/local/bin/current-application"]

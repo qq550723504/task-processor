@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 	podapp "task-processor/internal/app/pod"
+	dataservicesruntime "task-processor/internal/app/runtime/dataservices"
 	podruntime "task-processor/internal/app/runtime/pod"
 	observationruntime "task-processor/internal/app/runtime/storeobservations"
 	supplyruntime "task-processor/internal/app/runtime/supplychain"
@@ -60,6 +61,16 @@ func execute() error {
 		defer cancel()
 	}
 	return currentapplication.Run(ctx, cfg, logger, currentapplication.Dependencies{
+		OpenDataServices: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
+		DialDataServicesWorkflow: func(ctx context.Context, address, namespace string) (client.Client, func() error, error) {
+			c, err := client.DialContext(ctx, client.Options{HostPort: address, Namespace: namespace})
+			if err != nil {
+				return nil, nil, err
+			}
+			return c, func() error { c.Close(); return nil }, nil
+		},
 		NewMarketStorage: prepareSupplyMarket,
 		PreparePOD: func(ctx context.Context, p *currentapplication.PODConfig) (sds.CredentialSource, error) {
 			return currentapplication.PreparePODCredentials(ctx, p.CredentialFile, &http.Client{Timeout: 15 * time.Second})
@@ -204,6 +215,12 @@ func execute() error {
 			}
 			if features.ToolMarketDB != nil && features.ToolMarket != nil {
 				options = append(options, httpapi.WithToolMarket(httpapi.ToolMarketDependencies{DB: features.ToolMarketDB, Package: features.ToolMarket.PackageConfig()}))
+			}
+			if features.DataServices != nil {
+				d := features.DataServices
+				options = append(options, httpapi.WithDataServices(httpapi.DataServicesDependencies{ProductDB: features.DataServicesDB, Provider: features.DataServicesProvider, Starter: dataservicesruntime.TemporalStarter{Client: features.DataServicesWorkflow}, NewWorker: func(runner dataservicesruntime.JobRunner) (dataservicesruntime.Worker, error) {
+					return dataservicesruntime.NewWorker(features.DataServicesWorkflow, runner)
+				}, Worker: features.DataServicesWorker, TrustedProxyCIDRs: d.TrustedProxyCIDRs}))
 			}
 			if features.ProductCollections {
 				options = append(options, httpapi.WithProductCollections())

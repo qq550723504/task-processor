@@ -69,6 +69,8 @@ feature-local `internal/dataservice/httpapi` 负责框架 adapter，app module �
 
 ## 浏览器、Temporal 与 Resource 恢复
 
+#619 的正常接线候选使用 [原生 Data Services Compose profile](../../deployments/docker/account-compose/DATA_SERVICES.md)，显式安装于新空 Product 库；`data_services_runtime` 与原 `source_acquisition_runtime` 使用同一物理库、不同受限 pool，原 pool 不增权。当前正式 Workbench 没有企业业务停用 owner，而本特性 Authorizer 要求非空 suspensionChecker，故候选 **BLOCKED**、尚不能作为可用实例交付。此授权边界等待用户产品决定及适用设计准入；不能用永远允许的假 checker 接线。既有运行实例和数据保留。
+
 Amazon 复用现有 Playwright Go SDK，先安装匹配 SDK 的 driver 与 Chromium，再显式配置路径。`DriverDirectory` 下必须有 `node`（Windows `node.exe`）及 `package/cli.js`；另提供真实 browser executable。`PLAYWRIGHT_NODEJS_PATH` / `PLAYWRIGHT_CLI_PATH` 如果存在必须等于这两个明确路径，否则 fail closed。serving 不下载安装，也不清空进程全局环境。
 
 支持配置 `us uk de fr it es ca jp au mx br in ae sa`，界面/API options 只返回实际配置且本地路径就绪的站点。Ready 检查文件存在，**不是真实站点可抓取证明**。站点公开页面可能挑战或结构不支持，诚实返回失败/部分完成，不自动登录、换代理、绕过 CAPTCHA 或生成缺失数据。保留正常 DNS/公网 IP 固定、TLS 校验，匿名 context 禁用脚本/下载/子资源/ServiceWorker/WebSocket。

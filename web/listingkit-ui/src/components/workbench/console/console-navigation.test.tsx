@@ -7,6 +7,16 @@ import { ConsoleNavigation } from "./console-navigation";
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 
 const query=vi.hoisted(()=>({value:""}));
+it("opens data market and API only with their runtime and keeps My Data separate", () => {
+ const view=render(<ConsoleNavigation pathname="/workbench/data/api" ariaLabel="主导航" productCollectionsAvailable />);
+ expect(screen.getByRole("link",{name:"数据市场"})).toHaveAttribute("title","数据市场：业务暂未启用");
+ expect(screen.getByRole("link",{name:"API管理"})).toHaveAttribute("title","API管理：业务暂未启用");
+ expect(screen.getByRole("link",{name:"我的数据"})).toHaveAttribute("title","我的数据");
+ view.rerender(<ConsoleNavigation pathname="/workbench/data/api" ariaLabel="主导航" dataServicesAvailable />);
+ expect(screen.getByRole("link",{name:"数据市场"})).toHaveAttribute("title","数据市场");
+ expect(screen.getByRole("link",{name:"API管理"})).toHaveAttribute("title","API管理");
+ expect(screen.getByRole("link",{name:"我的数据"})).toHaveAttribute("title","我的数据：业务暂未启用");
+});
 it("opens saved reports without an Agent only when the report runtime is configured", () => {
  const view=render(<ConsoleNavigation pathname="/workbench/ai/reports" ariaLabel="主导航" />);
  expect(screen.getByRole("link",{name:"我的报告"})).toHaveAttribute("title","我的报告：业务暂未启用");

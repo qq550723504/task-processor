@@ -1,0 +1,38 @@
+# Combine with docker-compose.yml for an authorized new empty installation.
+services:
+ bootstrap:
+  environment: {ACCOUNT_DATA_SERVICES_ENABLED: "1"}
+  volumes: [data-services-runtime-secret:/data-services-runtime-secret]
+ business-db:
+  environment: {ACCOUNT_DATA_SERVICES_ENABLED: "1"}
+  volumes: [data-services-runtime-secret:/secrets/data-services-runtime:ro]
+ schema-init:
+  environment: {ACCOUNT_DATA_SERVICES_ENABLED: "1"}
+  volumes:
+   - acquisition-db-owner-secret:/secrets/acquisition-owner:ro
+   - acquisition-runtime-secret:/secrets/acquisition-runtime:ro
+   - data-services-runtime-secret:/secrets/data-services-runtime:ro
+ current-application:
+  build: {context: ../../..,dockerfile: deployments/docker/Dockerfile.account-compose,target: data-services-runtime}
+  depends_on: {data-services-temporal: {condition: service_healthy}}
+ listingkit-ui:
+  environment:
+   LISTINGKIT_DATA_SERVICES_ENABLED: "true"
+   LISTINGKIT_PRODUCT_COLLECTIONS_ENABLED: "true"
+   LISTINGKIT_PRODUCT_ACQUISITION_ENABLED: "true"
+ traefik:
+  volumes: [./traefik-data-services.yml:/etc/traefik/dynamic.yml:ro]
+ data-services-temporal-volume-init:
+  image: alpine:3.22
+  command: [chown,"1000:1000",/data]
+  volumes: [data-services-temporal:/data]
+ data-services-temporal:
+  image: temporalio/temporal@sha256:cf86707827fac99e4d1c4a47dc11b105382d796199c7bd41fb3213fb0471628e
+  network_mode: service:runtime-network
+  command: [server,start-dev,--headless,--ip,127.0.0.1,--db-filename,/data/temporal.db]
+  volumes: [data-services-temporal:/data]
+  depends_on: {data-services-temporal-volume-init: {condition: service_completed_successfully}}
+  healthcheck: {test: [CMD,temporal,operator,cluster,health],interval: 5s,timeout: 5s,retries: 30}
+volumes:
+ data-services-runtime-secret: {name: "${COMPOSE_PROJECT_NAME}-data-services-runtime-secret"}
+ data-services-temporal: {name: "${COMPOSE_PROJECT_NAME}-data-services-temporal"}

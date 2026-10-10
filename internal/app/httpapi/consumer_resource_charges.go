@@ -14,6 +14,10 @@ func buildProductResourceCharges(ctx context.Context, productDB, resourceDB *gor
 	return buildCurrentResourceCharges(ctx, productDB, nil, resourceDB, nil, storecenter.RuntimeCapabilities{})
 }
 func buildCurrentResourceCharges(ctx context.Context, productDB, storeDB, resourceDB *gorm.DB, authorizer *authz.ListingKitAuthorizer, capabilities storecenter.RuntimeCapabilities) (*orgresource.ConsumerChargeService, error) {
+	return buildCurrentResourceChargesWithOwners(ctx, productDB, storeDB, resourceDB, authorizer, capabilities, nil)
+}
+
+func buildCurrentResourceChargesWithOwners(ctx context.Context, productDB, storeDB, resourceDB *gorm.DB, authorizer *authz.ListingKitAuthorizer, capabilities storecenter.RuntimeCapabilities, additional map[orgresource.ResourceConsumer]orgresource.ConsumerChargeOwner) (*orgresource.ConsumerChargeService, error) {
 	if resourceDB == nil || productDB == resourceDB || storeDB == resourceDB || (productDB == nil && storeDB == nil) || (storeDB != nil && storeDB == productDB) {
 		return nil, orgresource.ErrInvalidInput
 	}
@@ -47,6 +51,12 @@ func buildCurrentResourceCharges(ctx context.Context, productDB, storeDB, resour
 			return nil, err
 		}
 		owners[orgresource.ConsumerStoreService] = owner
+	}
+	for consumer, owner := range additional {
+		if consumer != orgresource.ConsumerAmazonData || owner == nil || owners[consumer] != nil {
+			return nil, orgresource.ErrInvalidInput
+		}
+		owners[consumer] = owner
 	}
 	repository, err := resourceadapter.NewGormConsumerChargeRepository(resourceDB, resourceadapter.TransactionConfig{})
 	if err != nil {

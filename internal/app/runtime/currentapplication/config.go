@@ -36,6 +36,7 @@ type Config struct {
 	AgentCustomizationDatabase *DatabaseConfig                           `json:"agentCustomizationDatabase,omitempty"`
 	ProjectCenter              *ProjectCenterConfig                      `json:"projectCenter,omitempty"`
 	ToolMarket                 *ToolMarketConfig                         `json:"toolMarket,omitempty"`
+	DataServices               *DataServicesConfig                       `json:"dataServices,omitempty"`
 	Ecoservices                *EcoservicesConfig                        `json:"ecoservices,omitempty"`
 	NotificationCenterDatabase *DatabaseConfig                           `json:"notificationCenterDatabase,omitempty"`
 	Knowledge                  *KnowledgeConfig                          `json:"knowledge,omitempty"`
@@ -312,6 +313,9 @@ func (cfg *Config) validate() error {
 		return err
 	}
 	if err := cfg.validateToolMarket(); err != nil {
+		return err
+	}
+	if err := cfg.validateDataServices(); err != nil {
 		return err
 	}
 	if cfg.NotificationCenterDatabase != nil {

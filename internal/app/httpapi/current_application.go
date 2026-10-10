@@ -27,6 +27,7 @@ import (
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
+	datahttp "task-processor/internal/dataservice/httpapi"
 	ehttp "task-processor/internal/ecoservices/httpapi"
 	"task-processor/internal/httproute"
 	"task-processor/internal/imageagent"
@@ -129,6 +130,8 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
+	dataServicesConfigs          int
+	dataServices                 *DataServicesDependencies
 	reportCenters                int
 	reportCenterDB               *gorm.DB
 	operationsCockpits           int
@@ -379,6 +382,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, errors.New("operations cockpit requires current Store owner")
 	}
 	storeCapabilities := storecenter.RuntimeCapabilities{Observations: supplied.storeObservations == 1, OperationsCockpit: supplied.operationsCockpits == 1}
+	if err := validateDataServicesDependencies(supplied, sourceAccountDB, cfg); err != nil {
+		return nil, err
+	}
 	if supplied.supplyMarkets > 1 || supplied.supplyMarkets == 1 && (supplied.supplyMarket == nil || supplied.supplyMarket.Storage == nil || supplied.productCollections != 1 || supplied.productAcquisitionDB == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "") {
 		return nil, errors.New("supply market requires current Product, collections, private storage and live authorization")
 	}
@@ -483,7 +489,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	if supplied.officialStoreConfigs > 1 || (supplied.officialStoreConfigs > 0 && supplied.storeCenters == 0) || (supplied.officialStoreConfigs > 0 && supplied.officialStoreApplications == nil) {
 		return nil, errors.New("official Store configuration must accompany its owner and protection")
 	}
-	if supplied.productAcquisitionDB != nil || supplied.storeCenters > 0 {
+	if supplied.dataServices == nil && (supplied.productAcquisitionDB != nil || supplied.storeCenters > 0) {
 		if supplied.commercialOwnerDB == nil {
 			return nil, errors.New("resource consumers require their resource owner pool")
 		}
@@ -574,6 +580,14 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, fmt.Errorf("build current commercial module: %w", err)
 	}
 	modules := []kernelmodule.Module{workbench.module, commercial, sourceAccount}
+	if supplied.dataServices != nil {
+		module, charges, err := buildDataServices(ctx, supplied, *workbench.authDependencies, authorizer, cfg, storeCapabilities)
+		if err != nil {
+			return nil, fmt.Errorf("build current data services: %w", err)
+		}
+		consumerCharges = charges
+		modules = append(modules, module)
+	}
 	var ecoservicesRecovery func(context.Context) error
 	if supplied.ecoservices != nil {
 		handler, recover, err := buildEcoservices(ctx, *supplied.ecoservices, supplied.commercialOwnerDB, supplied.moneyOwnerDB, authorizer, cfg)
@@ -959,6 +973,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		AgentCustomization:  supplied.agentCustomizations > 0,
 		PrivateDraftTrial:   privateDraftTrial,
 		ToolMarket:          supplied.toolMarket != nil,
+		DataServices:        supplied.dataServices != nil,
 		Ecoservices:         supplied.ecoservices != nil,
 		SupplyChain:         fullSupply,
 		SupplyMarket:        supplied.supplyMarkets > 0,
@@ -1067,6 +1082,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	DataServices        bool
 	ReportCenter        bool
 	SupplyMarket        bool
 	POD                 bool
@@ -1100,6 +1116,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 		return errors.New("private draft trial excludes market/POD services")
 	}
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if optional.DataServices {
+		for _, r := range datahttp.BuildRoutes(datahttp.Dependencies{}) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
 	if optional.SupplyMarket {
 		for _, r := range markethttp.Routes(nil, nil, nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
@@ -1308,6 +1329,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {
+		if descriptor.Module == "data-services" || descriptor.Path == datahttp.ConsoleBase || strings.HasPrefix(descriptor.Path, datahttp.ConsoleBase+"/") || descriptor.Path == datahttp.SpecialistBase || strings.HasPrefix(descriptor.Path, datahttp.SpecialistBase+"/") || descriptor.Path == datahttp.APIBase || strings.HasPrefix(descriptor.Path, datahttp.APIBase+"/") {
+			if !optional.DataServices {
+				return errors.New("data services not admitted")
+			}
+			if err := validateDataServicesDescriptor(descriptor); err != nil {
+				return err
+			}
+		}
 		if descriptor.Path == reporthttp.Base || strings.HasPrefix(descriptor.Path, reporthttp.Base+"/") {
 			if !optional.ReportCenter {
 				return errors.New("report center not admitted")

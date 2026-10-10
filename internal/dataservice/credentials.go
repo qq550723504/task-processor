@@ -16,12 +16,13 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"task-processor/internal/authz"
 	"task-processor/internal/product/collection"
 )
 
 const (
-	PermissionManage  = "workbench.data-api.manage"
-	PermissionMarket  = "workbench.data-market.use"
+	PermissionManage  = authz.PermissionWorkbenchDataAPI
+	PermissionMarket  = authz.PermissionWorkbenchDataMarket
 	PermissionAcquire = "amazon.acquire"
 	PermissionResult  = "amazon.result.read"
 )

@@ -63,6 +63,9 @@ create_role referral_runtime /secrets/referral-runtime/referral-runtime-password
 create_role organization_membership_runtime /secrets/membership-runtime/membership-runtime-password
 create_role organization_role_policy_reader /secrets/role-policy-reader/password
 create_role source_acquisition_runtime /secrets/acquisition-runtime/acquisition-runtime-password
+if [ "${ACCOUNT_DATA_SERVICES_ENABLED:-}" = 1 ]; then
+ create_role data_services_runtime /secrets/data-services-runtime/password
+fi
 create_role image_agent_runtime /secrets/image-runtime/image-runtime-password
 create_role image_agent_worker_runtime /secrets/image-worker/image-worker-password
 if [ "${ACCOUNT_ISSUE36_LOCAL_TRIAL:-}" = ISOLATED_TRIAL_ONLY ]; then
