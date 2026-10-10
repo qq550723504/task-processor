@@ -105,6 +105,16 @@ func (a *Activities) restoreImageSetPendingRecoveryIdentity(ctx context.Context,
 	if err != nil {
 		return nil, nil, err
 	}
+	before, after := current.PendingCommand, input.Receipt
+	if before != nil && before.Kind == "approve_results" && before.Phase == string(updatePhaseApprovalPublish) &&
+		after.Phase == imageagent.ImageSetApprovalPublicationStarted && after.ActionID == before.ActionID &&
+		after.PlanRevision == before.PlanRevision && after.SelectionDigest == before.SelectionDigest &&
+		after.ResultDigest == before.ResultDigest && after.SlotID == before.SlotID && after.Attempt >= before.Attempt &&
+		after.Status == "pending" && reflect.DeepEqual(current.CommandIngress, input.CommandIngress) {
+		// This is the first durable publication marker. Asset has not been
+		// called yet; live IAM, rather than receipt recovery, authorizes it.
+		return a.liveRunProjectionIdentity(ctx, input.RunID, input.Identity)
+	}
 	_, committed, err := a.readCommittedImageSetApproval(ctx, current)
 	if err != nil {
 		return nil, nil, err
@@ -112,7 +122,6 @@ func (a *Activities) restoreImageSetPendingRecoveryIdentity(ctx context.Context,
 	if !committed {
 		return a.liveRunProjectionIdentity(ctx, input.RunID, input.Identity)
 	}
-	before, after := current.PendingCommand, input.Receipt
 	if after.ActionID != before.ActionID || after.PlanRevision != before.PlanRevision || after.SelectionDigest != before.SelectionDigest ||
 		after.ResultDigest != before.ResultDigest || after.SlotID != before.SlotID || after.Attempt < before.Attempt ||
 		after.Status != "pending" && after.Status != "failed" ||

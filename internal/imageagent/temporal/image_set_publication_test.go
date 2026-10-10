@@ -80,6 +80,10 @@ type approvalRecoveryFixture struct {
 }
 
 func newApprovalRecoveryFixture(t *testing.T) approvalRecoveryFixture {
+	return newApprovalRecoveryFixtureAtPhase(t, imageagent.ImageSetApprovalPublicationStarted)
+}
+
+func newApprovalRecoveryFixtureAtPhase(t *testing.T, phase string) approvalRecoveryFixture {
 	t.Helper()
 	a, repo, execution, _, _, _ := persistedAcceptedImageSetFixture(t)
 	auth := &approvalRecoveryAuthorization{}
@@ -107,7 +111,7 @@ func newApprovalRecoveryFixture(t *testing.T) approvalRecoveryFixture {
 	preview, err := service.Preview(context.Background(), selection)
 	require.NoError(t, err)
 	selection.SelectionDigest = preview.Digest
-	pending := &imageagent.PendingCommandReceipt{ActionID: selection.ActionID, Kind: "approve_results", Phase: imageagent.ImageSetApprovalPublicationStarted, Status: "pending", PlanRevision: 1, Attempt: 1, SelectionDigest: selection.SelectionDigest, ResultDigest: digest}
+	pending := &imageagent.PendingCommandReceipt{ActionID: selection.ActionID, Kind: "approve_results", Phase: phase, Status: "pending", PlanRevision: 1, Attempt: 1, SelectionDigest: selection.SelectionDigest, ResultDigest: digest}
 	require.NoError(t, a.PersistPendingCommand(context.Background(), PersistPendingCommandActivityInput{RunID: current.Run.ID, Identity: execution.Identity, Receipt: pending, CommitID: "approval-publish-started"}))
 	selector := &lostApprovalACKSelector{service: service}
 	publisher, err := assetpublication.NewImageSetPublisher(repo, selector)
@@ -116,6 +120,75 @@ func newApprovalRecoveryFixture(t *testing.T) approvalRecoveryFixture {
 	a.imageSetApprovals = assets.(productasset.ApprovalCommitReader)
 	result.Status = imageagent.RunStatusCompleted
 	return approvalRecoveryFixture{activities: a, assets: assets, auth: auth, sources: sources, selector: selector, publish: PublishImageSetActivityInput{RunID: current.Run.ID, Identity: execution.Identity, PlanRevision: 1, ResultDigest: digest, Selection: selection}, complete: PersistRunStateActivityInput{RunID: current.Run.ID, Identity: execution.Identity, PlanRevision: 1, Projection: result, CurrentNode: "complete", CommitID: "complete-original-approval"}}
+}
+
+func TestImageSetFirstPublicationMarkerRequiresLiveAuthorization(t *testing.T) {
+	for _, revoked := range []bool{false, true} {
+		t.Run(map[bool]string{false: "authorized", true: "revoked"}[revoked], func(t *testing.T) {
+			f := newApprovalRecoveryFixtureAtPhase(t, string(updatePhaseApprovalPublish))
+			scope := imageagent.RunScope{TenantID: f.publish.Identity.TenantID, OwnerUserID: f.publish.Identity.UserID, RunID: f.publish.RunID}
+			current, err := f.activities.repository.GetProjection(context.Background(), scope)
+			require.NoError(t, err)
+			pending := clonePendingReceipt(current.PendingCommand)
+			pending.Phase = imageagent.ImageSetApprovalPublicationStarted
+			reads := 0
+			f.activities.imageSetApprovals = approvalRecoveryReceiptReader{read: func(context.Context, string, string) (productasset.ApprovalCommit, error) {
+				reads++
+				return productasset.ApprovalCommit{}, productasset.ErrRepositoryUnavailable
+			}}
+			f.auth.revoked = revoked
+			authorizations := f.auth.calls
+			err = f.activities.PersistPendingCommand(context.Background(), PersistPendingCommandActivityInput{RunID: f.publish.RunID, Identity: f.publish.Identity, Receipt: pending, CommandIngress: current.CommandIngress, CommitID: "first-publication-marker"})
+			if revoked {
+				require.ErrorIs(t, err, imageagent.ErrIdentityRequired)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, authorizations+1, f.auth.calls, "the first publication marker requires live IAM")
+			require.Zero(t, reads, "before the publication marker there is no committed publication to recover")
+			require.Zero(t, f.selector.calls, "persisting the boundary must not call Asset")
+			retained, err := f.activities.repository.GetProjection(context.Background(), scope)
+			require.NoError(t, err)
+			if revoked {
+				require.Equal(t, current, retained)
+			} else {
+				require.Equal(t, pending, retained.PendingCommand)
+				require.Equal(t, current.CommandIngress, retained.CommandIngress)
+				f.activities.imageSetApprovals = f.assets.(productasset.ApprovalCommitReader)
+				f.loseCommittedACK(t)
+				require.NoError(t, f.activities.PublishApprovedImageSet(context.Background(), f.publish))
+				require.NoError(t, f.activities.PersistRunState(context.Background(), f.complete))
+				require.Equal(t, 1, f.selector.calls, "the first marker and later receipt recovery form one publication")
+			}
+		})
+	}
+}
+
+func TestImageSetFirstPublicationMarkerCannotReplacePendingApproval(t *testing.T) {
+	for _, changed := range []string{"action", "selection", "ingress"} {
+		t.Run(changed, func(t *testing.T) {
+			f := newApprovalRecoveryFixtureAtPhase(t, string(updatePhaseApprovalPublish))
+			scope := imageagent.RunScope{TenantID: f.publish.Identity.TenantID, OwnerUserID: f.publish.Identity.UserID, RunID: f.publish.RunID}
+			current, err := f.activities.repository.GetProjection(context.Background(), scope)
+			require.NoError(t, err)
+			pending := clonePendingReceipt(current.PendingCommand)
+			pending.Phase = imageagent.ImageSetApprovalPublicationStarted
+			input := PersistPendingCommandActivityInput{RunID: f.publish.RunID, Identity: f.publish.Identity, Receipt: pending, CommandIngress: current.CommandIngress, CommitID: "changed-first-publication"}
+			switch changed {
+			case "action":
+				input.Receipt.ActionID = "ca1aa25c-3661-4c80-8c85-e3fe93220f8f"
+			case "selection":
+				input.Receipt.SelectionDigest = strings.Repeat("c", 64)
+			case "ingress":
+				input.CommandIngress.Used++
+			}
+			require.ErrorIs(t, f.activities.PersistPendingCommand(context.Background(), input), imageagent.ErrCommandBlocked)
+			retained, err := f.activities.repository.GetProjection(context.Background(), scope)
+			require.NoError(t, err)
+			require.Equal(t, current, retained)
+			require.Zero(t, f.selector.calls)
+		})
+	}
 }
 
 func (f approvalRecoveryFixture) loseCommittedACK(t *testing.T) productasset.ApprovalCommit {
