@@ -147,6 +147,11 @@ source of truth for long-lived rules.
   - IMPLEMENTATION_READY #36 bounded completed-work v2 projection of Listing's
     historical Store ID and local preparation action; no Store name read,
     remote publication claim, or Product Review dependency.
+- [`ai-workbench-project-center-v1.md`](./ai-workbench-project-center-v1.md)
+  - APPROVED / IMPLEMENTATION_READY #624: creator-private current-enterprise
+    long-term projects, manually authorized references and personal templates;
+    independent persistence/runtime, receipt-first replay and slot removal.
+    Does not own execution, source facts or shared project permissions.
 - [`ai-workbench-chat-business-task-v1.md`](./ai-workbench-chat-business-task-v1.md)
   - APPROVED / IMPLEMENTATION_READY #576 Slice E: owner-scoped Conversation,
     no-tool Eino/eino-ext planning, immutable execution proposals and BusinessTask,
