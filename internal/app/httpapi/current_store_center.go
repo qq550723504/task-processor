@@ -34,14 +34,14 @@ func WithStoreOfficialApplications(applications *storeapp.OfficialApplicationReg
 		o.officialStoreApplications = applications
 	}
 }
-func buildCurrentStoreCenterModule(ctx context.Context, records *gorm.DB, authorizer *authz.ListingKitAuthorizer, charges orgresource.ConsumerChargePort, applications *storeapp.OfficialApplicationRegistry) (kernelmodule.Module, error) {
+func buildCurrentStoreCenterModule(ctx context.Context, records *gorm.DB, authorizer *authz.ListingKitAuthorizer, charges orgresource.ConsumerChargePort, applications *storeapp.OfficialApplicationRegistry, capabilities storecenter.RuntimeCapabilities) (kernelmodule.Module, error) {
 	if records == nil {
 		return nil, errors.New("store center requires its native record pool")
 	}
 	if err := storecenter.VerifyCurrentSchema(ctx, records); err != nil {
 		return nil, fmt.Errorf("verify store center schema: %w", err)
 	}
-	if err := storecenter.VerifyRuntimePermissions(ctx, records); err != nil {
+	if err := storecenter.VerifyRuntimePermissionsForCapabilities(ctx, records, capabilities); err != nil {
 		return nil, err
 	}
 	if authorizer == nil {

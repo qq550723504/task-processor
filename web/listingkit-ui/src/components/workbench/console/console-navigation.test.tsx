@@ -7,6 +7,15 @@ import { ConsoleNavigation } from "./console-navigation";
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 
 const query=vi.hoisted(()=>({value:""}));
+it("advertises each Store observation entry only with ready runtime and its read permission", () => {
+  const view=render(<ConsoleNavigation pathname="/workbench/store-orders" ariaLabel="主导航" storeProductsAvailable={false} storeOrdersAvailable={false}/>);
+  expect(screen.getByRole("link",{name:"订单履约"})).toHaveAttribute("title","订单履约：业务暂未启用");
+  view.rerender(<ConsoleNavigation pathname="/workbench/store-orders" ariaLabel="主导航" storeProductsAvailable={false} storeOrdersAvailable/>);
+  expect(screen.getByRole("link",{name:"订单履约"})).toHaveAttribute("title","订单履约");
+  expect(screen.getByRole("link",{name:"店铺商品"})).toHaveAttribute("title","店铺商品：业务暂未启用");
+  view.rerender(<ConsoleNavigation pathname="/workbench/store-orders" ariaLabel="主导航" storeProductsAvailable storeOrdersAvailable/>);
+  expect(screen.getByRole("link",{name:"店铺商品"})).toHaveAttribute("title","店铺商品");
+});
 vi.mock("next/navigation",()=>({useSearchParams:()=>new URLSearchParams(query.value)}));
 afterEach(()=>{cleanup();query.value="";});
 

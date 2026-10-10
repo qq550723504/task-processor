@@ -17,6 +17,7 @@ import (
 	e "task-processor/internal/ecoservices"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/ledger/orgresource"
+	"task-processor/internal/storecenter"
 )
 
 type combinationObjects struct{ e.PrivateObjectStore }
@@ -36,7 +37,7 @@ func TestCurrentApplicationEcoservicesAndSupplyAssetOwnersCannotAlias(t *testing
 			stop := errors.New("bounded workbench construction stop")
 			built := 0
 			factories := currentApplicationFactories{
-				buildResourceCharges: func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (*orgresource.ConsumerChargeService, error) {
+				buildResourceCharges: func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer, storecenter.RuntimeCapabilities) (*orgresource.ConsumerChargeService, error) {
 					built++
 					return nil, stop
 				},
@@ -45,7 +46,7 @@ func TestCurrentApplicationEcoservicesAndSupplyAssetOwnersCannotAlias(t *testing
 				},
 				buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
 				buildCommercial:    func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
-				buildStoreCenter: func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, *storeapp.OfficialApplicationRegistry) (kernelmodule.Module, error) {
+				buildStoreCenter: func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, *storeapp.OfficialApplicationRegistry, storecenter.RuntimeCapabilities) (kernelmodule.Module, error) {
 					return nil, nil
 				},
 			}
