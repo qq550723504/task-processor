@@ -59,11 +59,12 @@ func TestRecordSourceUsesSavedDiagnosticWithoutReadingPayloadOrCurrentTime(t *te
 	scope := rc.Scope{OrganizationID: "org-a", ActorID: "actor-a"}
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: scope.ActorID, TenantID: scope.OrganizationID, EffectiveOrganizationID: scope.OrganizationID, TokenExpiresAt: time.Now().Add(time.Hour)})
 	at := time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)
-	hash := strings.Repeat("a", 64)
-	diagnostic := validator.DiagnosticResult{DiagnosticOnly: true, Scope: "offline", Target: validator.Target{Marketplace: "shein"}, Action: validator.SaveDraft, RuleVersion: "rules-v1", Input: validator.BoundInput{Digest: "sha256:" + hash, BindingVersion: "policy-v1", ReadAt: at, EvaluatedAt: at}, Freshness: validator.ExternalFreshness{Status: validator.NotEvaluated}, OfflineChecks: validator.OfflineChecks{Status: validator.Blocked, Checks: []validator.Check{{Code: "ASSET_MISSING", Status: validator.CheckBlocking, Message: "缺少图片"}}}, NotEvaluated: []string{"platform_submission"}}
+	// record.Reader returns canonical digests with the algorithm prefix.
+	hash := "sha256:" + strings.Repeat("a", 64)
+	diagnostic := validator.DiagnosticResult{DiagnosticOnly: true, Scope: "offline", Target: validator.Target{Marketplace: "shein"}, Action: validator.SaveDraft, RuleVersion: "rules-v1", Input: validator.BoundInput{Digest: hash, BindingVersion: "policy-v1", ReadAt: at, EvaluatedAt: at}, Freshness: validator.ExternalFreshness{Status: validator.NotEvaluated}, OfflineChecks: validator.OfflineChecks{Status: validator.Blocked, Checks: []validator.Check{{Code: "ASSET_MISSING", Status: validator.CheckBlocking, Message: "缺少图片"}}}, NotEvaluated: []string{"platform_submission"}}
 	raw, _ := json.Marshal(diagnostic)
 	sum := sha256.Sum256(raw)
-	r := record.Record{ID: uuid.NewString(), OrganizationID: scope.OrganizationID, OwnerUserID: scope.ActorID, Input: record.Input{ProductKey: "product-a", SnapshotVersion: 1, StoreID: uuid.NewString(), Country: "US", Language: "en", Action: validator.SaveDraft}, InputHash: hash, PackageHash: hash, DiagnosticHash: hex.EncodeToString(sum[:]), RuleRevision: "rules-v1", PolicyRevision: "policy-v1", DiagnosticStatus: validator.Blocked, Diagnostic: raw, CreatedAt: at, Payload: []byte("secret complete payload must not be copied")}
+	r := record.Record{ID: uuid.NewString(), OrganizationID: scope.OrganizationID, OwnerUserID: scope.ActorID, Input: record.Input{ProductKey: "product-a", SnapshotVersion: 1, StoreID: uuid.NewString(), Country: "US", Language: "en", Action: validator.SaveDraft}, InputHash: hash, PackageHash: hash, DiagnosticHash: "sha256:" + hex.EncodeToString(sum[:]), RuleRevision: "rules-v1", PolicyRevision: "policy-v1", DiagnosticStatus: validator.Blocked, Diagnostic: raw, CreatedAt: at, Payload: []byte("secret complete payload must not be copied")}
 	s := Sources{Policy: allowPolicy(true), Records: recordFunc(func(context.Context, listingtask.Actor, string) (record.Record, error) {
 		r.ReadAt = time.Now()
 		return r, nil

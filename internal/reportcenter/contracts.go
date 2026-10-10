@@ -47,8 +47,9 @@ func (r SourceRef) Valid() bool {
 		return false
 	}
 	if r.Kind == "SHEIN_RECORD" {
-		b, e := hex.DecodeString(r.Version)
-		return e == nil && len(b) == 32 && hex.EncodeToString(b) == r.Version
+		value, canonical := strings.CutPrefix(r.Version, "sha256:")
+		b, e := hex.DecodeString(value)
+		return canonical && e == nil && len(b) == 32 && hex.EncodeToString(b) == value
 	}
 	p := strings.Split(r.Version, ":")
 	if len(p) != 2 {

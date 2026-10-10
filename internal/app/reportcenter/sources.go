@@ -92,7 +92,7 @@ func (s *Sources) Read(ctx context.Context, scope rc.Scope, kind, id string) (rc
 	}
 	var d validator.DiagnosticResult
 	sum := sha256.Sum256(r.Diagnostic)
-	if r.Input.Validate() != nil || hex.EncodeToString(sum[:]) != r.DiagnosticHash || len(r.Diagnostic) > record.MaxPayloadBytes || json.Unmarshal(r.Diagnostic, &d) != nil || !d.DiagnosticOnly || d.Target.Marketplace != "shein" || d.Target.Site != "" || d.Action != r.Input.Action || d.RuleVersion != r.RuleRevision || d.Input.BindingVersion != r.PolicyRevision || d.OfflineChecks.Status != r.DiagnosticStatus || validator.ValidateBoundInput(d.Input, "sha256:"+r.PackageHash) != nil || d.Freshness.Validate(d.Input.Digest, d.Input.EvaluatedAt) != nil {
+	if r.Input.Validate() != nil || "sha256:"+hex.EncodeToString(sum[:]) != r.DiagnosticHash || len(r.Diagnostic) > record.MaxPayloadBytes || json.Unmarshal(r.Diagnostic, &d) != nil || !d.DiagnosticOnly || d.Target.Marketplace != "shein" || d.Target.Site != "" || d.Action != r.Input.Action || d.RuleVersion != r.RuleRevision || d.Input.BindingVersion != r.PolicyRevision || d.OfflineChecks.Status != r.DiagnosticStatus || validator.ValidateBoundInput(d.Input, r.PackageHash) != nil || d.Freshness.Validate(d.Input.Digest, d.Input.EvaluatedAt) != nil {
 		return rc.Snapshot{}, rc.ErrUnavailable
 	}
 	result := rc.Snapshot{SourceInfo: rc.SourceInfo{Ref: rc.SourceRef{Kind: kind, ID: id, Version: r.InputHash}, Title: "SHEIN 商品资料与离线诊断 · " + r.Input.ProductKey, ProductKey: r.Input.ProductKey, StoreID: r.Input.StoreID, SourceAt: &r.CreatedAt}, Content: rc.Document{SchemaVersion: 1}}

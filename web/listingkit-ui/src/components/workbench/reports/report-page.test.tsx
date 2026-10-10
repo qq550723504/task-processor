@@ -10,6 +10,33 @@ const source = { ref: { kind: "TITLE_REVIEW" as const, id: "550e8400-e29b-41d4-a
 const report: Report = { ...source, id: "550e8400-e29b-41d4-a716-446655440001", capturedAt: "2026-10-10T00:00:00Z", favorite: false, content: { schemaVersion: 1, sections: [{ title: "标题历史", fields: [{ label: "建议标题", value: "已保存的标题内容" }] }] }, digest: "a".repeat(64) };
 beforeEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); sessionStorage.clear(); fixture.context.effectiveOrganization = { id: "org-a" }; fixture.context.permissions = ["workbench.report.read", "workbench.report.manage"]; fixture.sourceList.mockResolvedValue({ items: [{ proposal_id: source.ref.id }], next_cursor: null }); });
 const tree = (client: QueryClient) => <QueryClientProvider client={client}><ReportPage view="all" /></QueryClientProvider>;
+it.each(["applied", "rejected"])("saves a %s Review from its existing detail link after it leaves the actionable collection", async state => {
+  fixture.sourceList.mockResolvedValue({ items: [], next_cursor: null });
+  const terminal = { ...source, ref: { ...source.ref, version: `2:${state}` } }, terminalReport = { ...report, ...terminal };
+  const bodies: unknown[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (path: string, init: RequestInit) => {
+    if (init.method === "POST") { bodies.push(JSON.parse(String(init.body))); return Response.json({ commandId: new Headers(init.headers).get("Idempotency-Key"), report: terminalReport, replayed: false }); }
+    if (path.includes("/sources/")) return path.endsWith(source.ref.id) ? Response.json(terminal) : Response.json({ code: "NOT_FOUND" }, { status: 404 });
+    if (path.endsWith("/summary")) return Response.json({ saved: 0, recent: 0, favorites: 0, stores: 0 });
+    if (path.endsWith(report.id)) return Response.json(terminalReport);
+    return Response.json({ items: [], nextCursor: "" });
+  }));
+  const client = new QueryClient(), view = render(tree(client));
+  await screen.findByText("当前范围暂无报告");
+  await waitFor(() => expect(screen.getByRole("button", { name: "保存报告" })).toBeEnabled());
+  fireEvent.click(await screen.findByRole("button", { name: "保存报告" }));
+  fireEvent.click(screen.getByRole("button", { name: "已有审核详情" }));
+  const input = screen.getByLabelText("标题审核详情链接或 ID");
+  fireEvent.change(input, { target: { value: "/workbench/ai/tasks/pending/other?proposal_id=550e8400-e29b-41d4-a716-446655440099" } });
+  fireEvent.click(screen.getByRole("button", { name: "读取当前详情" }));
+  await screen.findByText("来源读取失败"); expect(screen.queryByRole("button", { name: "保存此版本" })).not.toBeInTheDocument();
+  fireEvent.change(input, { target: { value: `/workbench/ai/tasks/pending/other?proposal_id=${source.ref.id}` } });
+  fireEvent.click(screen.getByRole("button", { name: "读取当前详情" }));
+  await screen.findByText(`版本 2:${state}`); expect(bodies).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: "保存此版本" }));
+  await within(await screen.findByRole("region", { name: "报告详情" })).findByText(`2:${state}`);
+  expect(bodies).toEqual([{ source: terminal.ref }]); view.unmount(); client.clear();
+});
 it("manually saves an exact version, reads it, favorites it and downloads the same snapshot", async () => {
   let saved = false, favorite = false; const bodies: { path: string; key: string; body: object }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (path: string, init: RequestInit) => {
