@@ -96,6 +96,7 @@ consider the applicable guards, including:
 - `TestListingSubmissionPersistenceAdapterImplementsOnlySubmissionPort`
 - `TestSupplyPersistenceAndOfficialTransportOnlyImportAdmittedPorts`
 - `TestSupplyAndCollectionHTTPRegistrationKeepsBusinessSiblingsFrameworkFree`
+- `TestCockpitHTTPBoundaryRegistration`
 - `TestProductCatalogPersistenceGuardRejectsEverySiblingProductDomainFixture`
 - `depguard: infrastructure_business_boundaries`
 - `depguard: product_catalog_persistence_boundary`
