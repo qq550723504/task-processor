@@ -177,6 +177,10 @@ Workflow attempt 窗口澄清（2026-10-10）：每轮重新取 min(6分钟, 原
 
 专属Console routes `/workbench/data/market`、`/workbench/data/api`，平台定制处理 `/workbench/admin/data-customization`。沿现有Shell/tokens/page-template；shared nav最后由既定owner消费，不另造菜单系统。BFF按现有固定origin、server-only session、no redirects、deadline/JSON size验证；跨企业/actor/key/job切换取消pending请求，晚到响应不能更新另一个scope；未知mutation保留原key/冻结payload。
 
+Console Amazon 创建 UNKNOWN 恢复（2026-10-10，原权限拆分与原命令恢复 Must）：创建 use/manage 权限不推导 Collection read 权限；恢复直接重放原已持久 intent 的 POST/UUID/完整body/expected user+org，沿原 admission/EnsureExecution 幂等与当前授权检查，不依赖仅read可调用的 by-command GET，不给创建者扩大结果读取权限。恢复失败继续保留原intent，只有确定成功清除；密钥首次secret、custom和专员沿各自已匹配权限的原恢复路径。本项分类 IMPLEMENTATION_TEST，不改变后端权限、owner、schema、状态机或恢复协议。
+
+真实 hook RED：本次未知提交和从sessionStorage恢复两条路径均错用GET，期望原POST的DATA_UNKNOWN却收到只读403/FORBIDDEN。测试保留同scope/UUID/body、失败继续保留、成功解除pending并允许下一独立请求；生产修复前提交。
+
 API固定 `/data-api/v1/amazon/jobs`（POST）、`/data-api/v1/amazon/jobs/{id}` / `results`（GET），仅data-key协议；Console管理API和platform routes使用正常session身份，descriptor不与全站auth替换混用。所有GET拒绝unread请求体，Console/外部POST最大64KiB；交付upload最多2MiB，最多200行且每envelope受2MiB owner约束；JSON/分页response最多2MiB/100条，大结果按exact itemcursor取，每次实时授权。errors无secret、原始HTTP body或内部provider响应。
 
 API四tab的card/列表从scope-qualified DB job/key与Resource receipt聚合：有效密钥、当日成功保存、本月确认费用、明确时间窗的成功率；样本为0时比率未知，不显示0%成功。调用记录显示原query数量、saved/failed/pending、已确认费用与unknown；生成的job不宣称成功返回所有请求条数。80%费用阈值及余额/异常提示按真实limit/Resource状态显示本页告警；没有有效通知owner输入就不声称已发送提醒，不为了此提示建设新的通知系统。
