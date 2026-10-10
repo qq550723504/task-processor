@@ -16,8 +16,9 @@ import (
 // Original material has no official publishing claim. Its actual artifact is
 // still validated by the existing bounded probe before the Asset transaction.
 type ImageSetMaterialTargetResolver struct {
-	Official  asset.ImageSetTargetResolver
-	ReadBytes SourceByteReader
+	Official           asset.ImageSetTargetResolver
+	ReadBytes          SourceByteReader
+	ReadGeneratedBytes GeneratedMaterialByteReader
 }
 
 func (r ImageSetMaterialTargetResolver) ResolveImageSetTarget(ctx context.Context, source asset.SourceSelection, target *asset.ImageSetTarget, selected []asset.ApprovedAsset) (asset.ImageSetTargetResolution, error) {
@@ -41,10 +42,19 @@ func (r ImageSetMaterialTargetResolver) ResolveImageSetTarget(ctx context.Contex
 	group.SetLimit(4)
 	for index, item := range selected {
 		group.Go(func() error {
-			if _, err := imageagent.ValidateSafeImageURL(item.URL); err != nil {
-				return asset.ErrInvalidApproval
+			var content []byte
+			var err error
+			if item.GenerationEvidence != nil {
+				if r.ReadGeneratedBytes == nil {
+					return asset.ErrInvalidApproval
+				}
+				content, err = r.ReadGeneratedBytes(probeContext, source, item, productimage.MaxInlineArtifactBytes)
+			} else {
+				if _, err := imageagent.ValidateSafeImageURL(item.URL); err != nil {
+					return asset.ErrInvalidApproval
+				}
+				content, err = r.ReadBytes(probeContext, imageagent.AuthorizedAsset{ID: item.ID, URL: item.URL}, productimage.MaxInlineArtifactBytes)
 			}
-			content, err := r.ReadBytes(probeContext, imageagent.AuthorizedAsset{ID: item.ID, URL: item.URL}, productimage.MaxInlineArtifactBytes)
 			if err != nil || len(content) == 0 || len(content) > productimage.MaxInlineArtifactBytes {
 				return asset.ErrInvalidApproval
 			}

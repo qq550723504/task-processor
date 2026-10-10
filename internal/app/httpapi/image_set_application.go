@@ -179,6 +179,10 @@ func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB
 	if err != nil {
 		return nil, empty, err
 	}
+	generatedMaterials, err := imageworker.NewImageSetMaterialReader(workerConfig, logger)
+	if err != nil {
+		return nil, empty, err
+	}
 	newSelections := func(repository imageagent.Repository) (*asset.ImageSetService, error) {
 		facts, ok := repository.(imageagent.GenerationFactRepository)
 		if !ok {
@@ -193,7 +197,7 @@ func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB
 			return nil, err
 		}
 		images := supplyapp.NewPublicImageProbe()
-		targets := imageapp.ImageSetMaterialTargetResolver{ReadBytes: newImageSetSourceByteReader(), Official: supplyapp.ImageSetAssetTargetResolver{Rules: rules, Images: images}}
+		targets := imageapp.ImageSetMaterialTargetResolver{ReadBytes: newImageSetSourceByteReader(), ReadGeneratedBytes: generatedMaterials.Read, Official: supplyapp.ImageSetAssetTargetResolver{Rules: rules, Images: images}}
 		service, err := asset.NewImageSetService(sourceSelections, assetRepository, inventories, approvals, candidates, targets)
 		if err != nil {
 			return nil, err

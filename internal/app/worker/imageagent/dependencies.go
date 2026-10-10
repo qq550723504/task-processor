@@ -16,6 +16,7 @@ import (
 	"task-processor/internal/aicapability"
 	aicapabilitystore "task-processor/internal/aicapability/store"
 	"task-processor/internal/app/configadapter"
+	imageapp "task-processor/internal/app/imageagent"
 	appruntime "task-processor/internal/app/runtime"
 	"task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
@@ -475,6 +476,29 @@ func buildImageAgentDurableArtifactStore(cfg *config.Config, timing imageAgentAr
 	if err := timing.validate(); err != nil {
 		return nil, err
 	}
+	objects, err := buildImageAgentImmutableObjects(cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	store, err := objectstore.NewDurableArtifactStore(objects, objectstore.DurableArtifactStoreConfig{MaxArtifactBytes: httpimage.DefaultMaxBodyBytes, OperationTimeout: timing.OperationTimeout})
+	if err != nil {
+		return nil, fmt.Errorf("build durable image artifact object store: %w", err)
+	}
+	return store, nil
+}
+
+func NewImageSetMaterialReader(cfg *config.Config, logger *logrus.Logger) (imageapp.GeneratedMaterialReader, error) {
+	objects, err := buildImageAgentImmutableObjects(cfg, logger)
+	if err != nil {
+		return imageapp.GeneratedMaterialReader{}, err
+	}
+	return imageapp.GeneratedMaterialReader{PublicBase: cfg.ImageAgent.ArtifactStore.PublicBase, Objects: objects}, nil
+}
+
+func buildImageAgentImmutableObjects(cfg *config.Config, logger *logrus.Logger) (objectstore.ImmutableObjectStore, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("image agent configuration is required")
+	}
 	storeConfig := cfg.ImageAgent.ArtifactStore
 	capabilities, err := artifactStorageCapabilitiesFromConfig(storeConfig)
 	if err != nil {
@@ -500,11 +524,7 @@ func buildImageAgentDurableArtifactStore(cfg *config.Config, timing imageAgentAr
 	if err != nil {
 		return nil, fmt.Errorf("build durable image artifact S3 uploader: %w", err)
 	}
-	store, err := objectstore.NewDurableArtifactStore(workerArtifactStore{uploader: uploader}, objectstore.DurableArtifactStoreConfig{MaxArtifactBytes: httpimage.DefaultMaxBodyBytes, OperationTimeout: timing.OperationTimeout})
-	if err != nil {
-		return nil, fmt.Errorf("build durable image artifact object store: %w", err)
-	}
-	return store, nil
+	return workerArtifactStore{uploader: uploader}, nil
 }
 
 func (timing imageAgentArtifactTiming) validate() error {

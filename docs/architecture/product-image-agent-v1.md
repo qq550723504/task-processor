@@ -255,3 +255,11 @@ Legacy decision: **EXTRACT | RETIRE**。抽取当前合格计划/逐图 effect/�
 2026-10-09已按AGENTS完成两轮正常独立架构评审，技术设计收束为IMPLEMENTATION_READY。R1配置准入BLOCKER已由§7.2整套事务准入回执解除；R1的批准ACK/cancel、set digest/持久化、官方位置映射、Asset CAS/replay及多来源proof接缝为IMPLEMENTATION_TEST，正式实现与必要测试内收敛，不重开全局设计。正式实现使用本Delivery Batch一个Writer/分支/主要PR；复用现PG/Temporal/provider fixtures，不建设runner/验收平台。评审候选合同SHA256为417e65c9fdd0f1705d5e0a174fe63efc8647b78f36f532ffcc47035dcdb7179c；本次状态标记和R2提出的非阻塞停用文案清理不新增合同边界。
 
 最终交付检查包括完整用户路径、准确diff/当前运行组合、权限/错误副作用/数据保存。架构独立review已完成；正式实现进度与开发检查证据记录在#612/PR#616，设计准入不代表完整用户链或产品验收。最终交付检查、付费provider、真实平台与用户验收仍**NOT_RUN**。无合并、关单、共享/生产部署或真实数据授权。
+
+### 8.2 受控试用的生成物实际字节读取（Reuse Existing Architecture / Ready）
+
+2026-10-10 用户明确选择“先用受控响应跑通完整流程”。既有 IsolatedTrialGeneratedURLPolicy 只允许配置 localhost 下经验证的精确生成物 key，明确不允许任意网络下载；generic material 的公网探测会拒绝该生成物，阻塞试用的预览/保存。对应独立复核分类为 IMPLEMENTATION_TEST，现 owner/合同足以覆盖，不需重开全局架构。
+
+复用当前 Image/Asset 候选核验、原不可变批准回执、canonical published-key 与 ImmutableObjectStore.ReadObject。MaterialTargetResolver 对已经 service 核实的生成候选/已批准生成物走独立只读 owner port：source tenant、原 Run/revision/slot/attempt/hash 与规范 published key、配置 PublicBase 精确匹配后，从当前 immutable owner 读取真实字节，继续原大小、完整解码、hash/尺寸校验。已批准素材可能由同企业其它成员生成，原 URL/身份必须来自已核实批准回执，不以当前 actor 重写原 owner key。API 预览和 worker 保存注入同一 port；没有 port 或证据拒绝，不回落到 URL 下载。原图仍走公共 HTTPS/SSRF 读取；手动素材保留已有 immutable storage 读取。没有任意 key/URL 的用户入口，也没有 localhost 下载豁免。
+
+仅补当前用户完整受控试用所需读取接线；不改变 schema、canonical owner、权限政策、批准事务、生成/计费状态、UNKNOWN、恢复或 provider POST。复用现 S3 uploader/worker object-store bridge；不得增加存储框架或验收 runner。验证为原 local generated URL 拒绝 RED，精确 key 读取/跨企业及身份/hash/key漂移拒绝、原图私网拒绝、真实字节损坏拒绝的有界 GREEN，以及 API/worker 同 port 和实际受控完整流程。独立评审已给上述最小边界，Issue 记录为 Reuse Existing Architecture / Ready 后实施；真实模型质量和用户验收保留 NOT_RUN。
