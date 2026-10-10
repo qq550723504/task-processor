@@ -3,20 +3,20 @@ export const reportID = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[
 const bytes = (v: string) => new TextEncoder().encode(v).length;
 const text = (n: number) => z.string().min(1).refine(v => bytes(v) <= n && !/\p{Cc}/u.test(v));
 const timestamp = z.iso.datetime().refine(v => !v.startsWith("0001-"));
-export const reportKind = z.enum(["TITLE_REVIEW", "SHEIN_RECORD"]);
+const reportKind = z.enum(["TITLE_REVIEW", "SHEIN_RECORD"]);
 export const sourceRef = z.strictObject({ kind: reportKind, id: reportID, version: z.string().max(96) }).refine(v =>
   v.kind === "SHEIN_RECORD" ? /^sha256:[0-9a-f]{64}$/.test(v.version) : /^[1-9][0-9]{0,18}:(pending|accepted|rejected|applied)$/.test(v.version) && BigInt(v.version.split(":")[0]) <= BigInt("9223372036854775807"));
 const metadata = { ref: sourceRef, title: text(256), productKey: text(128), storeId: z.union([z.literal(""), reportID]), sourceAt: timestamp.optional() };
 export const reportSourceSchema = z.strictObject(metadata);
 const summary = { ...metadata, id: reportID, capturedAt: timestamp, favorite: z.boolean() };
-export const reportSummarySchema = z.strictObject(summary);
-export const reportDocumentSchema = z.strictObject({ schemaVersion: z.literal(1), sections: z.array(z.strictObject({ title: text(256), fields: z.array(z.strictObject({ label: text(256), value: z.string().refine(v => bytes(v) <= 16000 && !/\p{Cc}/u.test(v.replace(/[\r\n\t]/g, ""))) })).min(1).max(256) })).min(1).max(16) }).refine(v => v.sections.reduce((n, s) => n + s.fields.length, 0) <= 256 && bytes(JSON.stringify(v)) <= 131072);
+const reportSummarySchema = z.strictObject(summary);
+const reportDocumentSchema = z.strictObject({ schemaVersion: z.literal(1), sections: z.array(z.strictObject({ title: text(256), fields: z.array(z.strictObject({ label: text(256), value: z.string().refine(v => bytes(v) <= 16000 && !/\p{Cc}/u.test(v.replace(/[\r\n\t]/g, ""))) })).min(1).max(256) })).min(1).max(16) }).refine(v => v.sections.reduce((n, s) => n + s.fields.length, 0) <= 256 && bytes(JSON.stringify(v)) <= 131072);
 export const reportSchema = z.strictObject({ ...summary, content: reportDocumentSchema, digest: z.string().regex(/^[0-9a-f]{64}$/) });
 export const reportsPageSchema = z.strictObject({ items: z.array(reportSummarySchema).max(50), nextCursor: z.string().max(512).regex(/^[A-Za-z0-9_-]*$/) }).refine(v => new Set(v.items.map(i => i.id)).size === v.items.length);
 export const reportsSummarySchema = z.strictObject({ saved: z.number().int().nonnegative(), recent: z.number().int().nonnegative(), favorites: z.number().int().nonnegative(), stores: z.number().int().nonnegative() });
 export const reportResultSchema = z.strictObject({ commandId: reportID, report: reportSchema, replayed: z.boolean() });
-export const reportSaveBody = z.strictObject({ source: sourceRef });
-export const reportFavoriteBody = z.strictObject({ favorite: z.boolean() });
+const reportSaveBody = z.strictObject({ source: sourceRef });
+const reportFavoriteBody = z.strictObject({ favorite: z.boolean() });
 export const reportIntentSchema = z.discriminatedUnion("operation", [z.strictObject({ operation: z.literal("save"), key: reportID, source: sourceRef }), z.strictObject({ operation: z.literal("favorite"), key: reportID, id: reportID, favorite: z.boolean() })]);
 export type Report = z.infer<typeof reportSchema>;
 export type ReportSource = z.infer<typeof reportSourceSchema>;
