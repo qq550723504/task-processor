@@ -118,7 +118,10 @@ func DataWorkflow(ctx workflow.Context, input Execution) error {
 			return err
 		}
 	}
-	cleanup := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{StartToCloseTimeout: 5 * time.Minute, ScheduleToCloseTimeout: 8 * time.Minute, RetryPolicy: &temporal.RetryPolicy{InitialInterval: 10 * time.Second, MaximumAttempts: 3}})
+	// Keep original terminal fencing retryable for the remaining execution
+	// lifetime (bounded by EnsureExecution's 40 minutes). This phase cannot
+	// extend the persisted provider deadline or start a new reservation.
+	cleanup := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{StartToCloseTimeout: 5 * time.Minute, RetryPolicy: &temporal.RetryPolicy{InitialInterval: 10 * time.Second, MaximumInterval: time.Minute}})
 	return workflow.ExecuteActivity(cleanup, CleanupActivityName, input).Get(ctx, nil)
 }
 

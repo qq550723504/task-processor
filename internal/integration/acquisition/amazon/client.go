@@ -218,6 +218,22 @@ func (c *Client) Fetch(ctx context.Context, code, asin string) (dataacquisition.
 	}
 	return ParseProduct(raw, code, asin, time.Now())
 }
+func readDocumentResponse(resp *http.Response) ([]byte, error) {
+	if resp.ContentLength > maxHTMLBytes || !strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
+		return nil, ErrRejected
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxHTMLBytes+1))
+	if err != nil || len(body) > maxHTMLBytes {
+		return nil, ErrRejected
+	}
+	if resp.StatusCode != http.StatusOK {
+		if _, err := document(string(body)); errors.Is(err, ErrChallenge) {
+			return nil, err
+		}
+		return nil, ErrRejected
+	}
+	return body, nil
+}
 func (c *Client) page(parent context.Context, site dataacquisition.Site, address string) (string, error) {
 	if !allowedNavigation(site, address) {
 		return "", ErrRejected
@@ -281,14 +297,9 @@ func (c *Client) page(parent context.Context, site dataacquisition.Site, address
 			return
 		}
 		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK || resp.ContentLength > maxHTMLBytes || !strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
-			setError(ErrRejected)
-			_ = route.Abort()
-			return
-		}
-		body, err := io.ReadAll(io.LimitReader(resp.Body, maxHTMLBytes+1))
-		if err != nil || len(body) > maxHTMLBytes {
-			setError(ErrRejected)
+		body, err := readDocumentResponse(resp)
+		if err != nil {
+			setError(err)
 			_ = route.Abort()
 			return
 		}
