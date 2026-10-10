@@ -35,6 +35,7 @@ const workbenchContextSchema = z
     effectiveOrganizationId: safeIdSchema.nullable(),
     selectionRequired: z.boolean(),
     aiWorkbenchAvailable: z.boolean().optional(),
+ projectCenterAvailable:z.boolean().optional(),
     storeObservationsAvailable: z.boolean().optional(),
     operationsCockpitAvailable: z.boolean().optional(),
     aiWorkbenchPlanningReadiness: z.enum(["AVAILABLE", "NEEDS_CONFIGURATION", "UNAVAILABLE"]).optional(),

@@ -17,7 +17,7 @@ var enterpriseModules = []MenuModule{
 	{"advice", "运营驾驶舱", "经营建议", true, CockpitModulePermissions("advice")},
 	{"chat", "AI工作台", "硕米Chat", true, []string{PermissionWorkbenchChatRead, PermissionWorkbenchChatUse, PermissionWorkbenchTaskRead}},
 	{"tasks", "AI工作台", "任务中心", true, []string{PermissionWorkbenchTaskRead}},
-	{"projects", "AI工作台", "项目中心", false, nil},
+	{"projects", "AI工作台", "项目中心", true, []string{"workbench.project.read", "workbench.project.manage"}},
 	{"knowledge", "AI工作台", "知识库", true, []string{PermissionWorkbenchKnowledgeRead, PermissionWorkbenchKnowledgeManage}},
 	{"reports", "AI工作台", "我的报告", false, nil},
 	{"acquisition", "供应市场", "1688采集", true, []string{PermissionProductSourcingWrite, PermissionLocalAgentWrite, PermissionWorkbenchAgentRead, PermissionWorkbenchAgentUse, PermissionWorkbenchTaskRead}},

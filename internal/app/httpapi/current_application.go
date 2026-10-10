@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	confighttp "task-processor/internal/agentconfig/httpapi"
+	ph "task-processor/internal/aiworkbench/projectcenter/httpapi"
 	registration "task-processor/internal/app/referralregistration"
 	storeapp "task-processor/internal/app/storecenter"
 	observationhttp "task-processor/internal/app/storeobservations/httpapi"
@@ -36,6 +37,7 @@ import (
 	notificationhttp "task-processor/internal/notificationcenter/httpapi"
 	cockpithttp "task-processor/internal/operationscockpit/httpapi"
 	collectionhttp "task-processor/internal/product/collection/httpapi"
+	"task-processor/internal/product/sourcing"
 	"task-processor/internal/storecenter"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
 	tm "task-processor/internal/toolmarket"
@@ -163,6 +165,8 @@ type currentApplicationOptions struct {
 	productAgents                int
 	aiWorkbench                  *AIWorkbenchDependencies
 	aiWorkbenches                int
+	projectCenterDB              *gorm.DB
+	projectCenters               int
 }
 
 // WithRuntimeContext supplies the long-lived application context for bounded
@@ -334,7 +338,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		option(&supplied)
 	}
-	if supplied.operationsCockpits > 1 || supplied.storeObservations > 1 || supplied.storeCenters > 1 || supplied.localTrials > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.productCollections > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 || supplied.accountAuditSources > 1 {
+	if supplied.operationsCockpits > 1 || supplied.storeObservations > 1 || supplied.storeCenters > 1 || supplied.localTrials > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.productCollections > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 || supplied.projectCenters > 1 || supplied.projectCenters == 1 && supplied.projectCenterDB == nil || supplied.accountAuditSources > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
 	}
 	if supplied.collectionSourceMedias > 1 || cfg.ProductCollectionSourceMedia.Enabled != (supplied.collectionSourceMedias == 1) || supplied.collectionSourceMedias == 1 && (supplied.productCollections != 1 || supplied.collectionSourceMedia == nil || supplied.collectionSourceMedia.Storage == nil) {
@@ -719,17 +723,45 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		modules = append(modules, m)
 	}
+	var projectChat *aiWorkbenchApplication
 	if supplied.aiWorkbench != nil {
 		module, e := buildAIWorkbenchModule(ctx, *supplied.aiWorkbench, productRuntime)
 		if e != nil {
 			return nil, fmt.Errorf("build AI Workbench: %w", e)
 		}
 		modules = append(modules, module)
+		projectChat = module.(aiWorkbenchModule).application
 		if workbench.handler != nil {
 			workbench.handler.SetAIWorkbenchAvailable(true)
 			workbench.handler.SetAIWorkbenchAdmission(module.(aiWorkbenchModule).AdmittedOrganization)
 			workbench.handler.SetAIWorkbenchPlanningReadiness(module.(aiWorkbenchModule).PlanningReadiness)
 			workbench.handler.SetAIWorkbenchTitleReadiness(module.(aiWorkbenchModule).TitleReadiness)
+		}
+	}
+	if supplied.projectCenterDB != nil {
+		for _, other := range []*gorm.DB{sourceAccountDB, supplied.commercialOwnerDB, supplied.storeCenterDB, supplied.productAcquisitionDB} {
+			if other == supplied.projectCenterDB {
+				return nil, errors.New("project center requires its own pool")
+			}
+		}
+		if supplied.aiWorkbench != nil && supplied.aiWorkbench.DB == supplied.projectCenterDB {
+			return nil, errors.New("project and chat pools must be distinct")
+		}
+		var products sourcing.PublishedAcquisitionReader
+		if supplied.productAcquisitionDB != nil {
+			var e error
+			products, e = buildPublishedAcquisitionReader(ctx, supplied.productAcquisitionDB, cfg, *workbench.authDependencies, authorizer)
+			if e != nil {
+				return nil, e
+			}
+		}
+		module, e := buildProjectCenter(ctx, supplied.projectCenterDB, *workbench.authDependencies, authorizer, projectChat, supplied.knowledge, supplied.storeCenterDB, products)
+		if e != nil {
+			return nil, e
+		}
+		modules = append(modules, module)
+		if workbench.handler != nil {
+			workbench.handler.SetProjectCenterAvailable(true)
 		}
 	}
 	if factories.buildBrowserCapture != nil {
@@ -833,6 +865,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		AcquisitionImage:    factories.buildAcquisitionImage != nil,
 		ProductAgent:        supplied.productAgent != nil,
 		AIWorkbench:         supplied.aiWorkbench != nil,
+		ProjectCenter:       supplied.projectCenterDB != nil,
 		AgentConfiguration:  supplied.agentConfigurationDB != nil,
 		MemberPoints:        includeMemberPoints,
 		MemberResources:     includeMemberResources,
@@ -941,6 +974,7 @@ type currentApplicationOptionalRoutes struct {
 	AcquisitionImage    bool
 	ProductAgent        bool
 	AIWorkbench         bool
+	ProjectCenter       bool
 	MemberPoints        bool
 	MemberResources     bool
 }
@@ -1078,6 +1112,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			if r.Method == http.MethodPost && r.Path == "/api/product/text-proposals" {
 				continue
 			}
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
+	if optional.ProjectCenter {
+		for _, r := range ph.Routes(nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
 		}
 	}
@@ -1252,6 +1291,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 		}
 		if strings.HasPrefix(descriptor.Path, productAgentBase) && (descriptor.Module != "product-agent" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionLocalAgentWrite || descriptor.RequestTimeout != 2*time.Minute) {
 			return errors.New("product agent loses fresh permission boundary")
+		}
+		if strings.HasPrefix(descriptor.Path, ph.Base) {
+			if !optional.ProjectCenter {
+				return errors.New("project center not admitted")
+			}
+			if e := ph.ValidateDescriptor(descriptor); e != nil {
+				return e
+			}
 		}
 		if strings.HasPrefix(descriptor.Path, workbenchChatBase) || strings.HasPrefix(descriptor.Path, workbenchTaskBase) {
 			if !optional.AIWorkbench || descriptor.Module != "ai-workbench" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Handler == nil {

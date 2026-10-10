@@ -91,7 +91,7 @@ var workbenchCommercialPermissions = []string{
 // WorkbenchPermissions is a bounded display contract, never a policy source.
 func WorkbenchPermissions() []string {
 	result := []string{PermissionListingKitAdminRead, PermissionListingKitAdminWrite, PermissionProductSourcingWrite, PermissionLocalAgentWrite, PermissionImageAgentRead, PermissionImageAgentWrite, PermissionWorkbenchAgentRead, PermissionWorkbenchAgentUse, PermissionWorkbenchAgentConfigure}
-	for _, group := range [][]string{cockpitPermissions, workbenchToolPermissions, workbenchChatPermissions, workbenchKnowledgePermissions, workbenchEcoservicesPermissions, workbenchSupplyPermissions, workbenchStorePermissions, workbenchStoreObservationPermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
+	for _, group := range [][]string{cockpitPermissions, []string{"workbench.project.read", "workbench.project.manage"}, workbenchToolPermissions, workbenchChatPermissions, workbenchKnowledgePermissions, workbenchEcoservicesPermissions, workbenchSupplyPermissions, workbenchStorePermissions, workbenchStoreObservationPermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
 		result = append(result, group...)
 	}
 	return result
@@ -240,6 +240,23 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		}
 	}
 
+	for _, role := range append([]string{"listingkit_viewer", "listingkit_operator", "listingkit_admin", "platform_admin"}, normalizeUnique(platformAdminRoles)...) {
+		if _, e := enforcer.AddPolicy(role, "workbench.project.read"); e != nil {
+			return nil, e
+		}
+		if role != "listingkit_viewer" {
+			if _, e := enforcer.AddPolicy(role, "workbench.project.manage"); e != nil {
+				return nil, e
+			}
+		}
+	}
+	for _, userID := range normalizeUnique(platformAdminUsers) {
+		for _, permission := range []string{"workbench.project.read", "workbench.project.manage"} {
+			if _, err := enforcer.AddPolicy(userSubject(userID), permission); err != nil {
+				return nil, err
+			}
+		}
+	}
 	for _, policy := range append(ToolMarketPolicies(), CockpitPolicies()...) {
 		if _, err := enforcer.AddPolicy(policy); err != nil {
 			return nil, err
