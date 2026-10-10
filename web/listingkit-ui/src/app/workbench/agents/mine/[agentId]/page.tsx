@@ -6,6 +6,6 @@ export default async function Page({
   params: Promise<{ agentId: string }>;
 }) {
   const { agentId } = await params;
-  if (agentId !== "product.title.agent") notFound();
+  if (agentId !== "product.title.agent" && agentId !== "product.image.agent") notFound();
   return <AgentPage mode="mine" id={agentId} />;
 }

@@ -11,9 +11,12 @@ import (
 	"github.com/sirupsen/logrus"
 	sdkclient "go.temporal.io/sdk/client"
 
+	"gorm.io/gorm"
+	"task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
 	imageagenttemporal "task-processor/internal/imageagent/temporal"
 	platformtemporal "task-processor/internal/platform/temporal"
+	productasset "task-processor/internal/product/asset"
 )
 
 const (
@@ -22,7 +25,18 @@ const (
 	envImageAgentTemporalNamespace = "IMAGE_AGENT_TEMPORAL_NAMESPACE"
 )
 
+// FullImageSetDependencies keeps the SDK client at the runtime assembly boundary.
+type FullImageSetDependencies struct {
+	AssetDB      *gorm.DB
+	WorkerDB     *gorm.DB
+	WorkerConfig *config.Config
+	Client       sdkclient.Client
+	Worker       *ImageAgentWorker
+}
+
 type ImageAgentTemporalDependencies struct {
+	ImageSetApprovals        productasset.ApprovalCommitReader
+	ImageSetPublisher        imageagent.ApprovedImageSetPublisher
 	GenerationRecovery       imageagent.GenerationRecovery
 	GenerationOutputRecovery imageagent.GenerationOutputRecovery
 	ExecutionAuthorizer      imageagent.ExecutionAuthorizer
@@ -46,6 +60,25 @@ type ImageAgentTemporalWorkerOptions struct {
 type imageAgentWorker interface {
 	Start() error
 	Stop()
+}
+
+// ImageAgentWorker has an explicit host lifecycle. Building it cannot dispatch
+// provider work; the host starts it only after every application port is ready.
+type ImageAgentWorker = imageAgentWorker
+
+func NewOrganizationImageSetWorker(client sdkclient.Client, d ImageAgentTemporalDependencies) (ImageAgentWorker, error) {
+	if client == nil || d.ExecutionAuthorizer == nil || d.ImageSetPublisher == nil || d.ImageSetApprovals == nil {
+		return nil, imageagent.ErrCommandBlocked
+	}
+	activities, err := imageagenttemporal.NewActivities(imageagenttemporal.ActivityDependencies{
+		ImageSetApprovals: d.ImageSetApprovals,
+		ImageSetPublisher: d.ImageSetPublisher, GenerationRecovery: d.GenerationRecovery, GenerationOutputRecovery: d.GenerationOutputRecovery,
+		ExecutionAuthorizer: d.ExecutionAuthorizer, Repository: d.Repository, SlotExecutor: d.SlotExecutor, StagedSlotExecutor: d.StagedSlotExecutor, ArtifactStore: d.ArtifactStore, PublicationLeaseDuration: d.PublicationLeaseDuration,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return imageagenttemporal.NewWorker(imageagenttemporal.WorkerConfig{Client: client, Activities: activities, WireMode: imageagenttemporal.WorkerWireModeOrganization, TaskQueue: imageagenttemporal.OrganizationTaskQueue})
 }
 
 type imageAgentTemporalRuntimeDependencies struct {
@@ -158,6 +191,8 @@ func startImageAgentTemporalWorkerWithOptionsAndDependenciesContext(ctx context.
 		return nil, fmt.Errorf("organization image agent execution authorizer requires organization worker mode")
 	}
 	activities, err := imageagenttemporal.NewActivities(imageagenttemporal.ActivityDependencies{
+		ImageSetApprovals:        dependencies.ImageSetApprovals,
+		ImageSetPublisher:        dependencies.ImageSetPublisher,
 		GenerationRecovery:       dependencies.GenerationRecovery,
 		GenerationOutputRecovery: dependencies.GenerationOutputRecovery,
 		ExecutionAuthorizer:      dependencies.ExecutionAuthorizer,

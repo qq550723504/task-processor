@@ -18,7 +18,7 @@ func VerifySourceApprovalSchema(ctx context.Context, db *gorm.DB) error {
 	}
 	for table, columns := range map[string][]string{
 		"product_approved_assets":                  {"tenant_id", "action_id", "asset_id", "origin_kind", "origin_identity", "product_key", "target_platform", "source_snapshot_version", "payload_json"},
-		"product_approval_receipts":                {"tenant_id", "action_id", "payload_hash", "asset_ids_json"},
+		"product_approval_receipts":                {"tenant_id", "action_id", "payload_hash", "asset_ids_json", "selection_json"},
 		"product_approved_inventory_heads":         {"tenant_id", "product_key", "target_platform", "action_id"},
 		"product_approved_inventory_version_heads": {"tenant_id", "product_key", "target_platform", "source_snapshot_version", "action_id"},
 	} {

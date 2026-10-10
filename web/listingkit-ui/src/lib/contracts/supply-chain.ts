@@ -7,7 +7,8 @@ const text=(max:number)=>z.string().refine(v=>new TextEncoder().encode(v).length
 const integer=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const revision=integer.min(1);
 const time=z.iso.datetime({offset:true});
-const version=z.string().regex(/^[1-9][0-9]{0,18}$/).refine(v=>BigInt(v)<=BigInt("9223372036854775807"));
+export const catalogVersionSchema=z.string().regex(/^[1-9][0-9]{0,18}$/).pipe(z.string().refine(v=>BigInt(v)<=BigInt("9223372036854775807")));
+const version=catalogVersionSchema;
 const list=<T extends z.ZodType>(value:T,max=4096)=>z.array(value).max(max).nullable().transform(v=>v??[]);
 const page=<T extends z.ZodType>(value:T)=>z.object({items:list(value,100),total:integer,nextCursor:collectionID.optional()});
 const applicationModeSchema=z.enum(["self_operated","semi_managed","fully_managed"]);
@@ -32,11 +33,11 @@ export const targetRecordSchema=z.object({id:collectionID,targetId:collectionID,
 export const targetReceiptSchema=z.object({record:targetRecordSchema,replayed:z.boolean()});
 export const transferInputSchema=z.object({batchId:collectionID,expectedRevision:revision,itemIds:z.array(collectionID).max(1000).optional()}).strict();
 export const transferReceiptSchema=z.object({preparation:preparationSchema,replayed:z.boolean()});
-export const sourceSelectionSchema=z.object({itemId:collectionID,originalPublicationId:text(128).min(1),originalSnapshotVersion:revision,effectiveCatalogVersion:revision,applyReceiptId:collectionID.optional(),targetPlatform:z.literal("shein")}).strict();
+export const sourceSelectionSchema=z.object({itemId:collectionID,originalPublicationId:text(128).min(1),originalSnapshotVersion:version,effectiveCatalogVersion:version,applyReceiptId:collectionID.optional(),targetPlatform:z.literal("shein")}).strict();
 const role=z.enum(["main","white_background","gallery","design"]);
 const imageApprovalSchema=z.object({actionId:collectionID.optional(),selection:sourceSelectionSchema,images:z.array(z.object({id:collectionID,role}).strict()).max(40),approved:z.array(z.object({actionId:text(128),assetId:text(128)}).strict()).max(40)}).strict().refine(v=>v.images.length+v.approved.length>0 && v.images.length+v.approved.length<=40);
 export const imageApprovalReceiptSchema=z.object({action_id:collectionID,asset_ids:z.array(text(128)).min(1).max(40)});
-export const inventorySchema=z.object({scope:z.object({tenant_id:text(128),product_key:text(128),target_platform:z.literal("shein"),source_snapshot_version:revision}),assets:list(z.object({id:text(128).min(1),role,url:text(2048),width:integer.optional(),height:integer.optional(),source_asset_id:text(128).optional()}),40)});
+export const inventorySchema=z.object({scope:z.object({tenant_id:text(128),product_key:text(128),target_platform:z.literal("shein"),source_snapshot_version:version}),assets:list(z.object({id:text(128).min(1),role,url:text(2048),width:integer.optional(),height:integer.optional(),source_asset_id:text(128).optional()}),40)});
 export const operationInputSchema=z.object({preparationId:collectionID,expectedRevision:revision,action:z.enum(["adapt","upload","optimize"]),storeId:collectionID,sourceIds:z.array(collectionID).max(1000).optional(),categoryId:integer.optional(),titleTemplateId:collectionID.optional(),titleTemplateRevision:version.optional(),titleQuoteHash:z.string().regex(/^[a-f0-9]{64}$/).optional(),imageTemplateId:text(128).optional()}).strict().refine(v=>v.action==="optimize"?!!(v.titleTemplateId||v.imageTemplateId):!v.titleTemplateId&&!v.imageTemplateId).refine(v=>v.action!=="upload"||!v.categoryId).refine(v=>v.titleTemplateId?!!v.titleTemplateRevision&&!!v.titleQuoteHash:!v.titleTemplateRevision&&!v.titleQuoteHash);
 export const operationSchema=z.object({id:collectionID,input:operationInputSchema,count:integer,completed:integer,status:z.enum(["pending","running","completed","cancelled"]),execution:z.enum(["pending","started","start_unknown"]),createdAt:time}).refine(v=>v.completed<=v.count);
 export const operationReceiptSchema=z.object({operation:operationSchema,replayed:z.boolean()});

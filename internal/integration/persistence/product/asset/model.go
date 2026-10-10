@@ -25,10 +25,11 @@ func (ApprovedAssetRecord) TableName() string { return "product_approved_assets"
 // ApprovalReceiptRecord is the tenant-qualified idempotency receipt for an
 // approval action.
 type ApprovalReceiptRecord struct {
-	TenantID     string `gorm:"primaryKey;size:128"`
-	ActionID     string `gorm:"primaryKey;size:128"`
-	PayloadHash  string `gorm:"size:64;not null"`
-	AssetIDsJSON []byte `gorm:"type:json;not null"`
+	SelectionJSON []byte `gorm:"type:json"`
+	TenantID      string `gorm:"primaryKey;size:128"`
+	ActionID      string `gorm:"primaryKey;size:128"`
+	PayloadHash   string `gorm:"size:64;not null"`
+	AssetIDsJSON  []byte `gorm:"type:json;not null"`
 }
 
 func (ApprovalReceiptRecord) TableName() string { return "product_approval_receipts" }

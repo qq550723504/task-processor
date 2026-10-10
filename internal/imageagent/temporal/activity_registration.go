@@ -11,6 +11,9 @@ import (
 )
 
 func (a *Activities) PublishApproved(ctx context.Context, input PublishApprovedActivityInput) error {
+	if a.publisher == nil {
+		return imageagent.ErrCommandBlocked
+	}
 	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return err
@@ -119,6 +122,10 @@ func RegisterActivitiesForMode(registrar activityRegistrar, activities *Activiti
 		registrar.RegisterActivityWithOptions(activities.PersistRecoveryBlockedEffectV3, sdkactivity.RegisterOptions{Name: activityPersistRecoveryBlockedV3})
 		registrar.RegisterActivityWithOptions(activities.ReconcileEffectRecoveryV3, sdkactivity.RegisterOptions{Name: activityReconcileEffectRecoveryV3})
 		registrar.RegisterActivityWithOptions(activities.PersistSlotResultV3, sdkactivity.RegisterOptions{Name: activityPersistSlotResultV3})
+		if mode == WorkerWireModeOrganization {
+			registrar.RegisterActivityWithOptions(activities.PublishApprovedImageSet, sdkactivity.RegisterOptions{Name: activityPublishApprovedImageSet})
+			registrar.RegisterActivityWithOptions(activities.PersistImageSetSlotResult, sdkactivity.RegisterOptions{Name: activityPersistImageSetSlotResult})
+		}
 		registrar.RegisterActivityWithOptions(activities.PublishApprovedV3, sdkactivity.RegisterOptions{Name: activityPublishApprovedV3})
 	}
 	return nil

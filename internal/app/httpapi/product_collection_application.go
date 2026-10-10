@@ -23,7 +23,7 @@ func buildProductCollectionService(ctx context.Context, db *gorm.DB, dependencie
 	if dependencies.organizationResolver == nil || permissions == nil {
 		return nil, collection.ErrUnavailable
 	}
-	if len(supply) > 3 {
+	if len(supply) > 4 {
 		return nil, collection.ErrUnavailable
 	}
 	capability, _, err := collectionAcquisitionOptions(append([]bool{true}, supply...))

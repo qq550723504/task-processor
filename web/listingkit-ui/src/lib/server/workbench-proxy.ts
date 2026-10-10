@@ -1,4 +1,4 @@
-import { SUPPLY_MAX_BYTES, supplyRouteMethods, supplyPath, supplyRequestSchema, supplyUsesKey, supplyMutates, parseSupplyResponse, type SupplyRoute } from "@/lib/contracts/supply-chain";
+import { catalogVersionSchema, SUPPLY_MAX_BYTES, supplyRouteMethods, supplyPath, supplyRequestSchema, supplyUsesKey, supplyMutates, parseSupplyResponse, type SupplyRoute } from "@/lib/contracts/supply-chain";
 import { hasValidStoreServiceFacts } from "@/lib/validation/workbench-store";
 import {officialConnectionViewSchema,officialConnectionBeginSchema,officialConnectionCompleteSchema,officialConnectionQuerySchema,officialApplicationListSchema,officialConnectionStartSchema} from "@/lib/contracts/store-connection";
 import { BROWSER_CAPTURE_MAX_BYTES, browserCaptureSchema } from "@/lib/contracts/browser-capture";
@@ -36,6 +36,7 @@ import { newRequestLogId } from "@/lib/server/request-log";
 import { hasTrustedSameOriginRecovery, hasTrustedSameOriginWrite } from "@/lib/server/same-origin-write";
 import { ACQUISITION_BODY_MAX_BYTES, ACQUISITION_RESPONSE_MAX_BYTES, acquisitionRequestSchema, acquisitionProductSchema, acquisitionResultSchema, acquisitionErrorStatuses, isAcquisitionUUID } from "@/lib/contracts/product-acquisition";
 import { mainImageAcceptedSchema, mainImageApprovalRequestSchema, mainImageCandidatesSchema, mainImageResultSchema, mainImageStartRequestSchema } from "@/lib/contracts/acquisition-main-image";
+import {imageSetRoutes,imageSetMethods,imageSetPath,imageSetRequestSchema,imageSetResponseSchema,imageSetSuccessStatus,imageSetErrorStatuses,imageSetResponseBinding,imageSetResponseBindingSchema,imageSetResponseMatches,type ImageSetRoute} from "@/lib/contracts/product-image-set";
 
 export const WORKBENCH_COOKIE_NAME = "shuomi_effective_organization";
 const EXPECTED_ORGANIZATION_ID_HEADER = "X-Expected-Organization-ID";
@@ -51,6 +52,7 @@ const REQUEST_ID_MAX_BYTES = 128;
 const imageErrorStatuses: Readonly<Record<string, number>> = { INVALID_IMAGE_REQUEST: 400, FORBIDDEN: 403, IMAGE_NOT_FOUND: 404, IMAGE_CONFLICT: 409, IMAGE_BLOCKED: 409, IMAGE_UNAVAILABLE: 503 };
 
 export type WorkbenchResponseContract =
+  | `image-set-${ImageSetRoute}`
   | `collection-${CollectionRoute}`
   | `supply-${SupplyRoute}`
   | `ai-${AIWorkbenchRoute}`
@@ -77,6 +79,7 @@ export type WorkbenchResponseContract =
   | "source-account-mutation";
 
 type WorkbenchRequestContract =
+  | `image-set-${ImageSetRoute}`
   | `collection-${CollectionRoute}`
   | `supply-${SupplyRoute}`
   | `ai-${AIWorkbenchRoute}`
@@ -316,6 +319,7 @@ const sourceAccountErrorStatuses: Readonly<Record<string, number>> = {
 };
 
 const workbenchRouteAllowlist = [
+  ...imageSetRoutes.map(action=>routeDefinition(imageSetMethods[action],`image-set-${action}`,`image-set-${action}`,path=>imageSetPath(path,action))),
   ...supplyRouteMethods.map(([method,name])=>routeDefinition(method,`supply-${name}`,`supply-${name}`,path=>supplyPath(method,path)===name?path.join("/"):null)),
   ...(["batches", "items", "own", "detail", "operation", "command", "import-preview", "import-template", "media-upload", "media-read"] as const).map(name => {
     const method = name === "command" || name === "import-preview" || name === "media-upload" ? "POST" : "GET";
@@ -428,10 +432,11 @@ export async function buildWorkbenchUpstreamRequest(
   }
   const collectionContract = route.requestContract.startsWith("collection-");
   const supplyContract = route.requestContract.startsWith("supply-");
+  const imageSetContract = route.requestContract.startsWith("image-set-");
   if (
     (supplyContract || collectionContract || route.requestContract.startsWith("store-") ||
       route.requestContract.startsWith("source-account-") ||
-      (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-") || route.requestContract.startsWith("acquisition-image-") || route.requestContract.startsWith("product-agent-") || route.requestContract.startsWith("ai-"))) &&
+      (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-") || (imageSetContract || route.requestContract.startsWith("acquisition-image-")) || route.requestContract.startsWith("product-agent-") || route.requestContract.startsWith("ai-"))) &&
     new URL(request.url).pathname !==
       `/api/workbench/${route.upstreamPath}`
   ) {
@@ -463,13 +468,13 @@ export async function buildWorkbenchUpstreamRequest(
     headers.set("Content-Type", "application/json");
     headers.set("X-Requested-Organization-ID", organizationId);
   } else {
-    const selectedOrganization = (supplyContract || collectionContract || route.requestContract.startsWith("source-account-") || (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-") || route.requestContract.startsWith("acquisition-image-") || route.requestContract.startsWith("product-agent-") || route.requestContract.startsWith("ai-")))
+    const selectedOrganization = (supplyContract || collectionContract || route.requestContract.startsWith("source-account-") || (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-") || (imageSetContract || route.requestContract.startsWith("acquisition-image-")) || route.requestContract.startsWith("product-agent-") || route.requestContract.startsWith("ai-")))
       ? readSourceSelectedOrganization(request)
       : readSelectedOrganization(request);
     if (selectedOrganization instanceof Response) return selectedOrganization;
     if (
       supplyContract || collectionContract || route.requestContract.startsWith("store-") ||
-      route.requestContract.startsWith("source-account-") || (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-") || route.requestContract.startsWith("acquisition-image-") || route.requestContract.startsWith("product-agent-") || route.requestContract.startsWith("ai-"))
+      route.requestContract.startsWith("source-account-") || (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-") || (imageSetContract || route.requestContract.startsWith("acquisition-image-")) || route.requestContract.startsWith("product-agent-") || route.requestContract.startsWith("ai-"))
     ) {
       const expectedOrganization = readExpectedOrganizationAssertion(
         request.headers,
@@ -490,7 +495,30 @@ export async function buildWorkbenchUpstreamRequest(
       headers.set("X-Requested-Organization-ID", selectedOrganization);
     }
 
-    if (supplyContract) {
+    if (imageSetContract) {
+      const action=route.requestContract.slice(10) as ImageSetRoute;
+      const url=new URL(request.url);
+      if(!authenticatedActorSubject || request.headers.get(EXPECTED_USER_ID_HEADER)!==authenticatedActorSubject)return protocolError(409,"IDENTITY_CONTEXT_CHANGED","Identity context changed");
+      if(imageSetMethods[action]==="GET"){
+        if(!(await requestHasNoBody(request))||request.headers.has("Idempotency-Key"))return protocolError(400,"INVALID_REQUEST","Image read request invalid");
+        const allowed=action==="sources"?["effectiveCatalogVersion","applyReceiptId"]:action==="recent"?["cursor"]:[];
+        for(const key of url.searchParams.keys()){
+          const values=url.searchParams.getAll(key);const value=values[0]??"";
+          if(!allowed.includes(key)||values.length!==1||!value||key==="effectiveCatalogVersion"&&!catalogVersionSchema.safeParse(value).success||(key==="applyReceiptId"||key==="cursor")&&!isAcquisitionUUID(value))return protocolError(400,"INVALID_REQUEST","Image query invalid");
+        }
+        query=url.search;
+      }else{
+        const boundary=validateSourceMutationBoundary(request,authenticatedActorSubject);if(boundary)return boundary;
+        if(url.search||request.headers.get("content-type")!=="application/json"||request.headers.has("content-encoding"))return protocolError(400,"INVALID_REQUEST","Image body invalid");
+        const raw=await readRequestBody(request,128*1024,"INPUT_TOO_LARGE");if(raw instanceof Response)return raw;
+        const parsed=parseJSONBody(raw);const validated=parsed?imageSetRequestSchema(action).safeParse(parsed.payload):null;
+        if(!validated?.success)return protocolError(400,"INVALID_REQUEST","Image body invalid");
+        if(action==="prepare"||action==="regenerate"){
+          const key=request.headers.get("Idempotency-Key")??"";if(!isAcquisitionUUID(key))return protocolError(400,"INVALID_REQUEST","Image key invalid");headers.set("Idempotency-Key",key);
+        }else if(request.headers.has("Idempotency-Key"))return protocolError(400,"INVALID_REQUEST","Unexpected image key");
+        headers.set("Content-Type","application/json");body=JSON.stringify(validated.data);
+      }
+    } else if (supplyContract) {
       const action=route.requestContract.slice(7) as SupplyRoute;
       if(!authenticatedActorSubject || request.headers.get(EXPECTED_USER_ID_HEADER)!==authenticatedActorSubject)return protocolError(409,"IDENTITY_CONTEXT_CHANGED","Identity context changed");
       const url=new URL(request.url);
@@ -936,7 +964,7 @@ export async function buildWorkbenchUpstreamRequest(
       cache: "no-store",
     },
     responseContract: route.responseContract,
-    expectedStoreId: expectedCollectionMedia ?? (
+    expectedStoreId: imageSetContract ? JSON.stringify(imageSetResponseBinding(path,route.requestContract.slice(10) as ImageSetRoute)) : expectedCollectionMedia ?? (
       (route.requestContract==="supply-target"||route.requestContract==="supply-publication") ? `${path[2]}:${path[4]}` :
       ["supply-source","supply-preparation","supply-record","supply-operation","supply-ensure","supply-cancel"].includes(route.requestContract) ? (route.requestContract==="supply-preparation"?path[1]:path[2]) :
       route.requestContract === "collection-detail" ? path[2] :
@@ -953,6 +981,7 @@ export async function buildWorkbenchUpstreamRequest(
         : undefined),
     requestId,
     sourceMutation:
+      (imageSetContract && request.method==="POST" && route.requestContract!=="image-set-preview" && route.requestContract!=="image-set-requirements") ||
       (supplyContract && supplyMutates(route.requestContract.slice(7) as SupplyRoute)) ||
       route.requestContract === "collection-command" || route.requestContract === "collection-media-upload" ||
       (route.requestContract.startsWith("ai-") && !["ai-conversation-list", "ai-conversation-read", "ai-task-list", "ai-task-read"].includes(route.requestContract)) ||
@@ -983,7 +1012,8 @@ export async function buildWorkbenchBrowserResponse(
   } = {},
 ) {
   const acquisitionContract = contract === "product-acquisition" || contract === "product-acquisition-product";
-  const imageContract = contract.startsWith("acquisition-image-");
+  const imageSetContract=contract.startsWith("image-set-");
+  const imageContract = imageSetContract || contract.startsWith("acquisition-image-");
   const agentContract = contract.startsWith("product-agent-");
   const aiContract = contract.startsWith("ai-");
   const collectionContract = contract.startsWith("collection-");
@@ -1004,7 +1034,7 @@ export async function buildWorkbenchBrowserResponse(
       void upstream.body?.cancel().catch(() => undefined);
       throw new InvalidUpstreamBodyError();
     }
-    const responseLimit = supplyContract ? SUPPLY_MAX_BYTES : collectionContract ? COLLECTION_MAX_BYTES : aiContract ? 256 * 1024 : (acquisitionContract || imageContract || agentContract) ? ACQUISITION_RESPONSE_MAX_BYTES : sourceContract
+    const responseLimit = imageSetContract ? 2*1024*1024 : supplyContract ? SUPPLY_MAX_BYTES : collectionContract ? COLLECTION_MAX_BYTES : aiContract ? 256 * 1024 : (acquisitionContract || imageContract || agentContract) ? ACQUISITION_RESPONSE_MAX_BYTES : sourceContract
       ? SOURCE_ACCOUNT_RESPONSE_MAX_BYTES
       : UPSTREAM_RESPONSE_MAX_BYTES;
     const contentLength = readContentLength(upstream.headers);
@@ -1109,6 +1139,23 @@ export async function buildWorkbenchBrowserResponse(
     const response = protocolError(upstream.status, code, "Product acquisition request could not be completed", options.requestId ?? "");
     if (code === "ORGANIZATION_ACCESS_REVOKED" || code === "ORGANIZATION_ACCESS_DENIED") clearSelectionCookie(response);
     return response;
+  }
+  if(imageSetContract){
+    const invalid=()=>protocolError(options.sourceMutation?503:502,options.sourceMutation?"OUTCOME_UNKNOWN":"DEPENDENCY_UNAVAILABLE","Image response invalid",options.requestId??"");
+    if(!parsedBody||!payload)return invalid();
+    const action=contract.slice(10) as ImageSetRoute;
+    if(upstream.ok){
+      const checked=imageSetResponseSchema(action).safeParse(payload);
+      let binding:unknown;
+      try{binding=JSON.parse(expectedStoreId??"")}catch{return invalid()}
+      const expected=imageSetResponseBindingSchema.safeParse(binding);
+      if(upstream.status!==imageSetSuccessStatus(action)||!checked.success||!expected.success||!imageSetResponseMatches(action,checked.data,expected.data))return invalid();
+      return new NextResponse(JSON.stringify(checked.data),{status:upstream.status,headers:safeJSONHeaders()});
+    }
+    const standard=parseWorkbenchErrorEnvelopePayload(payload);const code=typeof payload.code==="string"?payload.code:standard.success?standard.data.code:"";
+    if(imageSetErrorStatuses[code]!==upstream.status && acquisitionErrorStatuses[code]!==upstream.status)return invalid();
+    const response=protocolError(upstream.status,code,"Image request could not be completed",options.requestId??"");
+    if(code==="ORGANIZATION_ACCESS_REVOKED"||code==="ORGANIZATION_ACCESS_DENIED")clearSelectionCookie(response);return response;
   }
   if (imageContract) {
     if (!parsedBody || !payload) return protocolError(options.sourceMutation ? 503 : 502, options.sourceMutation ? "OUTCOME_UNKNOWN" : "DEPENDENCY_UNAVAILABLE", "Image response is unavailable", options.requestId ?? "");

@@ -4,6 +4,7 @@ package httpimage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,6 +14,16 @@ import (
 )
 
 const DefaultMaxBodyBytes int64 = 32 << 20
+
+var ErrBodyTooLarge = errors.New("image body exceeds limit")
+
+// HTTPStatusError retains a rejected response's status without exposing a
+// possibly signed result URL. Consumers decide whether the status is terminal.
+type HTTPStatusError struct{ StatusCode int }
+
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("download image: status %d", e.StatusCode)
+}
 
 const maxRedirectHops = 10
 
@@ -149,17 +160,17 @@ func Download(ctx context.Context, client *http.Client, rawURL string, maxBytes 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("download image %s: status %d", validatedURL, resp.StatusCode)
+		return nil, &HTTPStatusError{StatusCode: resp.StatusCode}
 	}
 	if resp.ContentLength > maxBytes {
-		return nil, fmt.Errorf("image body exceeds limit: %d bytes (max %d)", resp.ContentLength, maxBytes)
+		return nil, fmt.Errorf("%w: %d bytes (max %d)", ErrBodyTooLarge, resp.ContentLength, maxBytes)
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
 		return nil, err
 	}
 	if int64(len(data)) > maxBytes {
-		return nil, fmt.Errorf("image body exceeds limit: more than %d bytes", maxBytes)
+		return nil, fmt.Errorf("%w: more than %d bytes", ErrBodyTooLarge, maxBytes)
 	}
 	return data, nil
 }

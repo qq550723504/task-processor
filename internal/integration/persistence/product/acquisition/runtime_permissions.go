@@ -21,6 +21,7 @@ type RuntimeCapabilities struct {
 	SupplyChain  bool
 	SupplyMarket bool
 	POD          bool
+	ImageSets    bool
 }
 
 const collectionPrivileges = `,('product_collection_batches','SELECT'),('product_collection_batches','INSERT'),('product_collection_batches','UPDATE'),
@@ -46,6 +47,9 @@ func runtimePermissionsFor(capability RuntimeCapabilities) string {
 		if !capability.SupplyChain {
 			admitted += submissionPrivileges
 		}
+	}
+	if capability.ImageSets && !capability.SupplyChain && !capability.SupplyMarket {
+		admitted += ",('product_title_proposals','SELECT')"
 	}
 	admitted += ")"
 	return strings.Replace(runtimePermissionQuery, admittedPrivileges, admitted, 1)
@@ -175,6 +179,7 @@ func GrantRuntimePermissions(ctx context.Context, db *gorm.DB, capabilities ...R
 		}
 		enabled := len(capabilities) == 1 && capabilities[0].Collections
 		supply := len(capabilities) == 1 && capabilities[0].SupplyChain
+		images := len(capabilities) == 1 && capabilities[0].ImageSets
 		market := len(capabilities) == 1 && capabilities[0].SupplyMarket
 		pod := len(capabilities) == 1 && capabilities[0].POD
 		if (supply || market || pod) && !enabled || pod && !market {
@@ -230,6 +235,9 @@ func GrantRuntimePermissions(ctx context.Context, db *gorm.DB, capabilities ...R
 			statements = append(statements, "GRANT SELECT,INSERT,UPDATE ON public.product_pod_operations,public.listing_submission_execution_attempts,public.listing_submission_target_fences TO source_acquisition_runtime",
 				"GRANT SELECT,INSERT ON public.product_pod_commands TO source_acquisition_runtime",
 				"GRANT SELECT,INSERT,UPDATE,DELETE ON public.product_pod_fences TO source_acquisition_runtime")
+		}
+		if images && !supply && !market {
+			statements = append(statements, "GRANT SELECT ON public.product_title_proposals TO source_acquisition_runtime")
 		}
 		for _, statement := range statements {
 			if err := tx.Exec(statement).Error; err != nil {

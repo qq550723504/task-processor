@@ -20,11 +20,12 @@ const (
 // SourceApprovalProvenance is original evidence. InventoryScope separately
 // binds the complete selected set to the effective Catalog version.
 type SourceApprovalProvenance struct {
-	OriginalPublicationID   string `json:"original_publication_id"`
-	OriginalSnapshotVersion uint64 `json:"original_snapshot_version"`
-	ActorID                 string `json:"actor_id"`
-	MemberID                string `json:"member_id"`
-	ReferenceHash           string `json:"reference_hash"`
+	ManualMedia             *ManualImageReference `json:"manual_media,omitempty"`
+	OriginalPublicationID   string                `json:"original_publication_id"`
+	OriginalSnapshotVersion uint64                `json:"original_snapshot_version"`
+	ActorID                 string                `json:"actor_id"`
+	MemberID                string                `json:"member_id"`
+	ReferenceHash           string                `json:"reference_hash"`
 }
 type SelectionReceipt struct {
 	ActionID string `json:"action_id"`
@@ -53,6 +54,7 @@ func approvalDigest(value any) string {
 func ReferenceHash(id, imageURL string) string { return approvalDigest([]string{id, imageURL}) }
 
 type SourceSelectionRequest struct {
+	ContextKind             string `json:"contextKind,omitempty"`
 	ItemID                  string `json:"itemId"`
 	OriginalPublicationID   string `json:"originalPublicationId"`
 	OriginalSnapshotVersion uint64 `json:"originalSnapshotVersion"`
@@ -65,7 +67,9 @@ type SourceImage struct {
 	Width, Height          int
 }
 type SourceSelection struct {
+	ContextKind                                                                            string `json:",omitempty"`
 	TenantID, ActorID, MemberID, ItemID, ProductKey, OriginalPublicationID, TargetPlatform string
+	ApplyReceiptID                                                                         string `json:",omitempty"`
 	OriginalSnapshotVersion, EffectiveCatalogVersion                                       uint64
 	Images                                                                                 []SourceImage
 }
@@ -192,6 +196,9 @@ func (s *SourceApprovalService) Approve(ctx context.Context, input SourceApprova
 }
 func validateSourceApproval(a ApprovedAsset) bool {
 	p := a.SourceApproval
+	if p != nil && p.ManualMedia != nil && (!p.ManualMedia.Valid() || a.SourceAssetID != "source-media-"+p.ManualMedia.Hash || a.Width < 1 || a.Height < 1) {
+		return false
+	}
 	address, err := url.Parse(a.URL)
 	return p != nil && a.RunID == "" && a.PlanRevision == 0 && a.SlotID == "" && a.Attempt == 0 && a.SourceAssetID != "" &&
 		validIdentityPart(p.OriginalPublicationID) && p.OriginalSnapshotVersion > 0 && validIdentityPart(p.ActorID) && validIdentityPart(p.MemberID) &&

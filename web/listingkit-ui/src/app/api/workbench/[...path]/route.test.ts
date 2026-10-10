@@ -116,6 +116,108 @@ describe("/api/workbench BFF", () => {
   });
 
   it.each([
+    ...["sourcing/1688/acquisitions", "supply-preparations/sources"].flatMap((base) => [
+      { method: "GET", path: `${base}/${operationKey}/images/sources`, budget: 32_000 },
+      { method: "GET", path: `${base}/${operationKey}/images/runs/${storeId}`, budget: 32_000 },
+      { method: "POST", path: `${base}/${operationKey}/images/prepare`, budget: 32_000 },
+      { method: "POST", path: `${base}/${operationKey}/images/runs/${storeId}/preview`, budget: 32_000 },
+      { method: "POST", path: `${base}/${operationKey}/images/sources`, budget: 15_000 },
+      { method: "GET", path: `${base}/not-a-uuid/images/sources`, budget: 15_000 },
+      { method: "GET", path: `${base}/${operationKey}/images/runs/not-a-uuid`, budget: 15_000 },
+    ]),
+  ])("bounds image auth before dispatch using the exact route: $method $path", async ({ method, path, budget }) => {
+    vi.useFakeTimers();
+    let releaseAuth = () => {};
+    authState.gate = new Promise<void>((resolve) => { releaseAuth = resolve; });
+    const controller = new AbortController();
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    let settled = false;
+    const pending = call(method === "GET" ? GET : POST, new NextRequest(`http://localhost/api/workbench/${path}`, {
+      method, signal: controller.signal,
+    }), path.split("/")).then((response) => { settled = true; return response; });
+    try {
+      await vi.advanceTimersByTimeAsync(budget - 1);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe(true);
+      expect((await pending).status).toBeGreaterThanOrEqual(500);
+    } finally {
+      controller.abort();
+      releaseAuth();
+      await vi.advanceTimersByTimeAsync(0);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([
+    { kind: "acquisition", base: "sourcing/1688/acquisitions" },
+    { kind: "supply", base: "supply-preparations/sources" },
+  ])("allows image transport to finish after the backend window for $kind", async ({ kind, base }) => {
+    vi.useFakeTimers();
+    authState.session = { accessToken: "private-token" };
+    authState.token = "private-token";
+    authState.identity = { userId: "user-a" };
+    vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL", "http://localhost");
+    const payload = {
+      contextKind: kind, contextId: operationKey, manualReplacementAvailable: false,
+      source: { ContextKind: kind, OperationID: operationKey, ProductID: "p", OriginalPublicationID: "pub", OriginalVersion: "1", EffectiveVersion: "1" },
+      originals: [], evidence: {},
+    };
+    const fetchMock = vi.fn<typeof fetch>((_input, init) => new Promise((resolve, reject) => {
+      const timer = setTimeout(() => resolve(Response.json(payload)), 31_000);
+      init?.signal?.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new DOMException("aborted", "AbortError"));
+      }, { once: true });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const path = `${base}/${operationKey}/images/sources`.split("/");
+    let settled = false;
+    const pending = call(GET, new NextRequest(`http://localhost/api/workbench/${path.join("/")}`, {
+      headers: { cookie: "shuomi_effective_organization=org-b", "X-Expected-Organization-ID": "org-b", "X-Expected-User-ID": "user-a" },
+    }), path).then((response) => { settled = true; return response; });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect((await pending).status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(["sourcing/1688/acquisitions", "supply-preparations/sources"])("keeps a dispatched image timeout UNKNOWN without retry: %s", async (base) => {
+    vi.useFakeTimers();
+    authState.session = { accessToken: "private-token" };
+    authState.token = "private-token";
+    authState.identity = { userId: "user-a" };
+    vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL", "http://localhost");
+    const fetchMock = vi.fn<typeof fetch>((_input, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const path = `${base}/${operationKey}/images/runs/${storeId}/confirm`.split("/");
+    const pending = call(POST, new NextRequest(`http://localhost/api/workbench/${path.join("/")}`, {
+      method: "POST",
+      headers: {
+        cookie: "shuomi_effective_organization=org-b", Origin: "http://localhost",
+        "Content-Type": "application/json", "X-Expected-Organization-ID": "org-b", "X-Expected-User-ID": "user-a",
+      },
+      body: JSON.stringify({ actionId: operationKey, planRevision: 1, planDigest: "a".repeat(64), quoteDigest: "b".repeat(64) }),
+    }), path);
+    await vi.advanceTimersByTimeAsync(31_999);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const response = await pending;
+    expect(response.status).toBe(503);
+    expect((await response.json()).code).toBe("OUTCOME_UNKNOWN");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([
     { method: "POST", suffix: "acquisitions-other", budget: 15_000 },
     { method: "POST", suffix: "acquisitionsXYZ", budget: 15_000 },
     { method: "GET", suffix: "acquisitions", budget: 15_000 },

@@ -28,7 +28,28 @@ func (c *Config) validateSupplyChain() error {
 	if s.AssetDatabase.User != "supply_asset_runtime" || s.AssetDatabase.MaxConnections > 8 {
 		return errors.New("supply chain requires bounded supply_asset_runtime Asset access")
 	}
-	owners := []*DatabaseConfig{&c.SourceAccountDatabase, c.ProductAcquisitionDatabase, c.CommercialOwnerDatabase, c.MoneyOwnerDatabase, &c.StoreCenter.Database, c.NotificationCenterDatabase}
+	if err := c.validateAssetOwnerIsolation(s.AssetDatabase); err != nil {
+		return err
+	}
+	if c.ImageAgent != nil && !sameDatabaseTarget(s.AssetDatabase, c.ImageAgent.Database) || c.ProductAgent != nil && c.ProductAgent.Enabled && !sameDatabaseTarget(s.AssetDatabase, c.ProductAgent.AssetDatabase) {
+		return errors.New("supply must use the current canonical Asset database")
+	}
+	host, port, err := net.SplitHostPort(s.TemporalAddress)
+	if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
+		return errors.New("supply Temporal address must use a literal loopback address")
+	}
+	p, err := strconv.Atoi(port)
+	if err != nil || p < 1 || p > 65535 || !boundedValue(s.TemporalNamespace, 128) {
+		return errors.New("supply Temporal namespace or port invalid")
+	}
+	return nil
+}
+
+func (c *Config) validateAssetOwnerIsolation(database DatabaseConfig) error {
+	owners := []*DatabaseConfig{&c.SourceAccountDatabase, c.ProductAcquisitionDatabase, c.CommercialOwnerDatabase, c.MoneyOwnerDatabase, c.NotificationCenterDatabase}
+	if c.StoreCenter != nil {
+		owners = append(owners, &c.StoreCenter.Database)
+	}
 	if c.Ecoservices != nil && c.Ecoservices.Enabled {
 		owners = append(owners, &c.Ecoservices.Database)
 	}
@@ -45,20 +66,9 @@ func (c *Config) validateSupplyChain() error {
 		owners = append(owners, &c.Referrals.Database)
 	}
 	for _, owner := range owners {
-		if owner != nil && sameDatabaseTarget(s.AssetDatabase, *owner) {
+		if owner != nil && sameDatabaseTarget(database, *owner) {
 			return errors.New("supply assets require their independently owned database")
 		}
-	}
-	if c.ImageAgent != nil && !sameDatabaseTarget(s.AssetDatabase, c.ImageAgent.Database) || c.ProductAgent != nil && c.ProductAgent.Enabled && !sameDatabaseTarget(s.AssetDatabase, c.ProductAgent.AssetDatabase) {
-		return errors.New("supply must use the current canonical Asset database")
-	}
-	host, port, err := net.SplitHostPort(s.TemporalAddress)
-	if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
-		return errors.New("supply Temporal address must use a literal loopback address")
-	}
-	p, err := strconv.Atoi(port)
-	if err != nil || p < 1 || p > 65535 || !boundedValue(s.TemporalNamespace, 128) {
-		return errors.New("supply Temporal namespace or port invalid")
 	}
 	return nil
 }

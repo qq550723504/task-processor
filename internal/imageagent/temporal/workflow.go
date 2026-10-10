@@ -93,7 +93,19 @@ func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResu
 	if input.RunID == "" || input.Identity.TenantID == "" || input.Identity.UserID == "" {
 		return WorkflowResult{}, fmt.Errorf("run ID and verified execution identity are required")
 	}
-	if input.TargetPlatform != "" || input.ImagePolicyContext != nil {
+	if input.Plan.Set != nil {
+		if input.ImageAdmission == nil || input.ImagePolicyContext != nil {
+			return WorkflowResult{}, imageagent.ErrRevisionConflict
+		}
+		run := imageagent.Run{ID: input.RunID, ScopeProtocol: input.Identity.ScopeProtocol, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID, MemberID: input.Identity.MemberID, TargetPlatform: input.TargetPlatform, StartedAt: input.StartedAt, ImageAdmission: input.ImageAdmission, Budget: imageagent.ImageSetBudget(input.ImageAdmission.Command.Limits)}
+		if err := imageagent.ValidateImageSetAdmission(run, input.Plan); err != nil {
+			return WorkflowResult{}, err
+		}
+		policy, err := run.Budget.Policy()
+		if err != nil || policy != input.BudgetPolicy || !input.DeadlineAt.Equal(input.ImageAdmission.Deadline) {
+			return WorkflowResult{}, imageagent.ErrRevisionConflict
+		}
+	} else if input.TargetPlatform != "" || input.ImagePolicyContext != nil {
 		if input.ImagePolicyContext == nil || imageagent.ValidateImagePolicyContext(input.TargetPlatform, *input.ImagePolicyContext) != nil {
 			return WorkflowResult{}, fmt.Errorf("validate image policy context: %w", imageagent.ErrValidation)
 		}
@@ -504,6 +516,31 @@ func (o *workflowEffectOwner) persistSlotResultV3(ctx workflow.Context, input Wo
 	})
 }
 
+func (o *workflowEffectOwner) persistImageSetCompletion(ctx workflow.Context, input WorkflowInput, completion *childCompletion) error {
+	return o.execute(ctx, "", func(ownerCtx workflow.Context) error {
+		if completion == nil || completion.V3Result == nil || input.Plan.Set == nil {
+			return imageagent.ErrRevisionConflict
+		}
+		result := *completion.V3Result
+		activityInput := PersistSlotResultV3ActivityInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision, Result: result, AttemptKey: slotAttemptKey(input.Plan.Revision, findSlot(input.Plan, result.Published.SlotID), result.Published.Attempt)}
+		var projection imageagent.SlotProjection
+		if err := workflow.ExecuteActivity(ownerCtx, activityPersistImageSetSlotResult, activityInput).Get(ownerCtx, &projection); err != nil {
+			return err
+		}
+		if projection.Slot.ID != result.Published.SlotID || projection.Slot.Status != result.Status && (result.Status != imageagent.SlotStatusBlocked || projection.Slot.Status != imageagent.SlotStatusAccepted || projection.Closure == nil || projection.Closure.Kind != "settled") {
+			return imageagent.ErrRevisionConflict
+		}
+		phase := result.EffectPhase
+		if projection.Slot.Status == imageagent.SlotStatusAccepted {
+			phase = imageagent.SlotEffectV3PublicationComplete
+		} else if projection.Closure == nil {
+			phase = terminalEffectPhaseForErrorCode(projection.ErrorCode)
+		}
+		completion.Result = SlotWorkflowResult{Execution: imageagent.SlotExecutionResult{SlotID: projection.Slot.ID, Attempt: projection.Attempt, Candidates: projection.Candidates}, Status: projection.Slot.Status, ErrorCode: projection.ErrorCode, EffectPhase: phase, Closure: projection.Closure}
+		return nil
+	})
+}
+
 func (o *workflowEffectOwner) reviewStagedSlotV3(ctx workflow.Context, input WorkflowInput, index, attempt int, actionID string) (SlotWorkflowV3Result, error) {
 	if !o.activities.useV3Slot || strings.TrimSpace(o.activities.reviewStagedSlot) == "" {
 		return SlotWorkflowV3Result{}, fmt.Errorf("staged review activity is not configured")
@@ -687,6 +724,7 @@ const (
 	updatePhaseRetryPersistResult       workflowUpdatePhase = "retry.persist_result"
 	updatePhaseRetryPersistTransition   workflowUpdatePhase = "retry.persist_transition"
 	updatePhaseApprovalPublish          workflowUpdatePhase = "approval.publish"
+	updatePhaseApprovalPublishStarted   workflowUpdatePhase = imageagent.ImageSetApprovalPublicationStarted
 	updatePhaseApprovalPersistComplete  workflowUpdatePhase = "approval.persist_complete"
 	updatePhaseCancelPersist            workflowUpdatePhase = "cancel.persist"
 	updatePhaseCompleted                workflowUpdatePhase = "completed"
@@ -843,7 +881,17 @@ func (s *workflowUpdateState) applyEffectRecoveryCompleted(signal EffectRecovery
 	}
 	ownerIndex := recoverableEffectIndex(s.projection.RecoverableEffects, signal.SlotID, signal.Attempt)
 	clearOwner := false
+	if s.input.Plan.Set != nil && signal.Result.Closure != nil && !signal.Result.Closure.Valid(signal.Attempt) {
+		return false
+	}
 	if signal.Result.EffectPhase == imageagent.SlotEffectV3PublicationComplete && signal.Result.Outcome == EffectRecoveryOutcomePublished {
+		if s.input.Plan.Set != nil {
+			closure, proof := signal.Result.Closure, signal.Result.GenerationProof
+			recipe := s.input.Plan.Slots[index].Recipe
+			if closure == nil || closure.Kind != "settled" || !closure.Valid(signal.Attempt) || proof == nil || recipe == nil || closure.Points != recipe.Quote.Points || *proof != (imageagent.ImageGenerationProof{IntentID: closure.IntentID, Fingerprint: closure.Fingerprint, SettlementProofDigest: closure.SettlementProofDigest, Points: closure.Points}) {
+				return false
+			}
+		}
 		published, err := imageagent.NormalizeSlotEffectV3PublishedResult(signal.Result.Published)
 		if err != nil {
 			return false
@@ -858,14 +906,22 @@ func (s *workflowUpdateState) applyEffectRecoveryCompleted(signal EffectRecovery
 				Width: candidate.Width, Height: candidate.Height, Operations: append([]string(nil), candidate.Operations...),
 			})
 		}
+		if s.input.Plan.Set != nil {
+			if len(candidates) != 1 {
+				return false
+			}
+			proof := *signal.Result.GenerationProof
+			candidates[0].GenerationProof = &proof
+		}
 		(*s.results)[index] = SlotWorkflowResult{
 			Execution: imageagent.SlotExecutionResult{SlotID: published.SlotID, Attempt: published.Attempt, Candidates: candidates},
-			Status:    imageagent.SlotStatusAccepted, EffectPhase: imageagent.SlotEffectV3PublicationComplete,
+			Status:    imageagent.SlotStatusAccepted, EffectPhase: imageagent.SlotEffectV3PublicationComplete, Closure: signal.Result.Closure,
 		}
 		s.projection.Slots[index].Attempt = published.Attempt
 		s.projection.Slots[index].Candidates = append([]imageagent.AssetCandidate(nil), candidates...)
 		s.projection.Slots[index].ErrorCode = ""
 		s.projection.Slots[index].Slot.Status = imageagent.SlotStatusAccepted
+		s.projection.Slots[index].Closure = signal.Result.Closure
 		clearOwner = true
 	} else {
 		code := strings.TrimSpace(signal.Result.BlockedCode)
@@ -878,6 +934,11 @@ func (s *workflowUpdateState) applyEffectRecoveryCompleted(signal EffectRecovery
 		(*s.results)[index].Status = imageagent.SlotStatusBlocked
 		(*s.results)[index].ErrorCode = code
 		(*s.results)[index].EffectPhase = signal.Result.EffectPhase
+		if s.input.Plan.Set != nil {
+			(*s.results)[index].Closure = signal.Result.Closure
+			s.projection.Slots[index].Closure = signal.Result.Closure
+			clearOwner = signal.Result.Closure != nil
+		}
 		s.projection.Slots[index].Slot.Status = imageagent.SlotStatusBlocked
 		s.projection.Slots[index].ErrorCode = code
 		if ownerIndex >= 0 {
@@ -901,7 +962,12 @@ func (s *workflowUpdateState) applyEffectRecoveryCompleted(signal EffectRecovery
 			s.cancelBlocked = false
 			s.cancelActionFingerprint = s.lastBlockedCancelFingerprint
 		} else if s.projection.Status == imageagent.RunStatusBlocked {
-			s.projection.Status = imageagent.RunStatusAwaitingFinalApproval
+			if s.input.Plan.Set != nil {
+				updated := summarizeResultsForWire(s.input.Plan, *s.results, workflowActivityWire{useV3Slot: true, useV3Approval: true})
+				s.projection.Status, s.projection.Block = updated.Status, updated.Block
+			} else {
+				s.projection.Status = imageagent.RunStatusAwaitingFinalApproval
+			}
 		}
 	}
 	return true
@@ -1048,6 +1114,9 @@ func (s *workflowUpdateState) validateReplacePlan(signal ReplacePlanSignal) erro
 }
 
 func (s *workflowUpdateState) validateReplacePlanBusiness(signal ReplacePlanSignal) error {
+	if s.input.Plan.Set != nil || signal.Plan.Set != nil {
+		return updateBlockedError("image set changes require a new prepared and confirmed run")
+	}
 	if err := validateCommandRevision(*s.input, signal.ExpectedRevision); err != nil {
 		return err
 	}
@@ -1144,6 +1213,9 @@ func (s *workflowUpdateState) validateRetrySlot(signal RetrySlotSignal) error {
 }
 
 func (s *workflowUpdateState) validateRetrySlotBusiness(signal RetrySlotSignal) error {
+	if s.input.Plan.Set != nil {
+		return updateBlockedError("image set regeneration requires a new prepared and confirmed run")
+	}
 	if err := validateCommandRevision(*s.input, signal.PlanRevision); err != nil {
 		return err
 	}
@@ -1307,6 +1379,13 @@ func (s *workflowUpdateState) validateApproveResultsBusiness(signal ApproveResul
 	if signal.ResultDigest == "" || signal.ResultDigest != strings.TrimSpace(signal.ResultDigest) || signal.ResultDigest != s.projection.ResultDigest {
 		return updateBlockedError("approval result digest does not match the current projection")
 	}
+	if s.input.Plan.Set != nil {
+		if err := imageagent.ValidateImageSetSelectionIntent(s.input.RunID, s.input.Plan, s.projection.ResultDigest, signal.ActionID, signal.Selection); err != nil {
+			return updateBlockedError("image set selection does not match the original product/target and explicit selected set")
+		}
+	} else if signal.Selection != nil {
+		return updateBlockedError("image set selection requires the explicit set protocol")
+	}
 	return nil
 }
 
@@ -1339,14 +1418,34 @@ func (s *workflowUpdateState) handleApproveResults(ctx workflow.Context, signal 
 }
 
 func (s *workflowUpdateState) applyApproveResults(ctx workflow.Context, signal ApproveResultsSignal, record *workflowUpdateRecord) (CommandAcknowledgement, error) {
-	if record.phase == updatePhaseApprovalPublish {
-		publishInput := PublishApprovedActivityInput{
-			RunID: s.input.RunID, Identity: s.input.Identity, PlanRevision: s.input.Plan.Revision,
-			CandidateAssetIDs: candidateAssetIDs(s.input.Plan, *s.results),
-			IdempotencyKey:    approvalPublicationKeyForWire(signal.ActionID, s.input.RunID, s.input.Plan.Revision, s.effects.activities),
-		}
-		if err := s.effects.publishApproved(ctx, publishInput); err != nil {
+	if record.phase == updatePhaseApprovalPublish && s.input.externalEffectFinalization {
+		// Persist the publication boundary before calling Asset. A failed call
+		// can still have committed; only this action's immutable receipt may
+		// resolve it. An empty receipt lookup cannot prove no commit.
+		record.phase = updatePhaseApprovalPublishStarted
+		if err := s.persistActionReceipt(ctx, signal.ActionID, record, fmt.Sprintf("command:%s:attempt:%d:publish_start", signal.ActionID, record.attempt)); err != nil {
+			// No publication call was made by this attempt.
+			record.phase = updatePhaseApprovalPublish
 			return CommandAcknowledgement{}, err
+		}
+	}
+	if record.phase == updatePhaseApprovalPublish || record.phase == updatePhaseApprovalPublishStarted {
+		if s.input.Plan.Set != nil {
+			if signal.Selection == nil {
+				return CommandAcknowledgement{}, imageagent.ErrCommandBlocked
+			}
+			if err := s.effects.publishImageSet(ctx, PublishImageSetActivityInput{RunID: s.input.RunID, Identity: s.input.Identity, PlanRevision: s.input.Plan.Revision, ResultDigest: signal.ResultDigest, Selection: *imageagent.CloneImageSetCommand(signal.Selection)}); err != nil {
+				return CommandAcknowledgement{}, err
+			}
+		} else {
+			publishInput := PublishApprovedActivityInput{
+				RunID: s.input.RunID, Identity: s.input.Identity, PlanRevision: s.input.Plan.Revision,
+				CandidateAssetIDs: candidateAssetIDs(s.input.Plan, *s.results),
+				IdempotencyKey:    approvalPublicationKeyForWire(signal.ActionID, s.input.RunID, s.input.Plan.Revision, s.effects.activities),
+			}
+			if err := s.effects.publishApproved(ctx, publishInput); err != nil {
+				return CommandAcknowledgement{}, err
+			}
 		}
 		record.phase = updatePhaseApprovalPersistComplete
 	}
@@ -1364,6 +1463,10 @@ func (s *workflowUpdateState) applyApproveResults(ctx workflow.Context, signal A
 
 func approvalPublicationCommitted(record workflowUpdateRecord) bool {
 	return record.kind == signalApproveResults && record.phase == updatePhaseApprovalPersistComplete
+}
+
+func approvalPublicationStarted(record workflowUpdateRecord) bool {
+	return record.kind == signalApproveResults && (record.phase == updatePhaseApprovalPublishStarted || approvalPublicationCommitted(record))
 }
 
 func (s *workflowUpdateState) validateCancel(signal CancelSignal) error {
@@ -1384,6 +1487,9 @@ func (s *workflowUpdateState) validateCancelBusiness(signal CancelSignal) error 
 		pending := s.actions[s.pendingActionID]
 		if pending != nil && approvalPublicationCommitted(*pending) {
 			return updateBlockedError("approval publication is already committed")
+		}
+		if pending != nil && approvalPublicationStarted(*pending) {
+			return updateBlockedError("approval publication must reconcile its original acknowledgement before cancellation")
 		}
 	}
 	switch s.projection.Status {
@@ -1633,7 +1739,7 @@ func (s *workflowUpdateState) canAdmitNewAction(kind string) bool {
 func (s *workflowUpdateState) failedPendingActionCanBeSuperseded() bool {
 	pending := s.actions[s.pendingActionID]
 	return pending != nil && pending.kind != signalCancel &&
-		(!s.input.externalEffectFinalization || !approvalPublicationCommitted(*pending)) &&
+		(!s.input.externalEffectFinalization || !approvalPublicationStarted(*pending)) &&
 		!pending.completed && !pending.running && pending.lastFailedAt != nil
 }
 
@@ -1820,6 +1926,10 @@ func (s *workflowUpdateState) pendingReceipt(actionID string, record *workflowUp
 		FailureCode: record.failureCode, FailureCategory: record.failureCategory, FailureMessage: record.failureMessage,
 		LastFailedAt: record.lastFailedAt, Attempt: record.attempt,
 	}
+	if command, ok := record.command.(ApproveResultsSignal); ok && command.Selection != nil {
+		receipt.SelectionDigest = command.Selection.SelectionDigest
+		receipt.ResultDigest = command.ResultDigest
+	}
 	if command, ok := record.command.(RetrySlotSignal); ok {
 		receipt.SlotID = command.SlotID
 		receipt.PlanRevision = command.PlanRevision
@@ -1843,6 +1953,8 @@ func safeCommandFailure(phase workflowUpdatePhase) (code, category, message stri
 		return "provider_unavailable", "provider", "图片生成服务暂时不可用"
 	case updatePhaseApprovalPublish:
 		return "publication_failed", "publication", "结果发布暂时失败"
+	case updatePhaseApprovalPublishStarted:
+		return "publication_ack_unknown", "publication", "保存结果待核实，请恢复原保存请求"
 	case updatePhaseReplacePersistPlan, updatePhaseReplacePersistTransition, updatePhaseRetryPersistResult,
 		updatePhaseRetryPersistTransition, updatePhaseApprovalPersistComplete, updatePhaseCancelPersist:
 		return "persistence_failed", "persistence", "运行状态保存暂时失败"
@@ -1933,7 +2045,11 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 	markNotDispatchedAtLifecycleDeadline := func() error {
 		for next < len(input.Plan.Slots) {
 			completion := blockedSlotCompletion(input, next, 1, imageagent.WorkflowLifecycleElapsedCode, updates.effects.activities.useV3Slot)
-			if updates.effects.activities.useV3Slot && completion.V3Result != nil {
+			if input.Plan.Set != nil {
+				if err := updates.effects.persistImageSetCompletion(ctx, input, &completion); err != nil {
+					return err
+				}
+			} else if updates.effects.activities.useV3Slot && completion.V3Result != nil {
 				if err := updates.effects.persistSlotResultV3(ctx, input, *completion.V3Result); err != nil {
 					return err
 				}
@@ -2009,7 +2125,11 @@ func executeInitialSlots(ctx workflow.Context, input WorkflowInput, limit int, u
 			if completion.Failed {
 				completion = blockedSlotCompletion(input, completion.Index, 1, "slot_workflow_failed", updates.effects.activities.useV3Slot)
 			}
-			if updates.effects.activities.useV3Slot && completion.V3Result != nil {
+			if input.Plan.Set != nil {
+				if err := updates.effects.persistImageSetCompletion(ctx, input, &completion); err != nil {
+					return results, false, err
+				}
+			} else if updates.effects.activities.useV3Slot && completion.V3Result != nil {
 				if err := updates.effects.persistSlotResultV3(ctx, input, *completion.V3Result); err != nil {
 					return results, false, err
 				}
@@ -2044,7 +2164,8 @@ func startChild(ctx workflow.Context, input WorkflowInput, index, attempt int, c
 	})
 	if activityWire.useV3Slot {
 		future := workflow.ExecuteChildWorkflow(childCtx, ImageSlotWorkflowV3, SlotWorkflowV3Input{
-			RunID: slotInput.RunID, Identity: slotInput.Identity, PlanRevision: slotInput.PlanRevision,
+			ImageSet: imageagent.CloneImageSetPlan(input.Plan.Set),
+			RunID:    slotInput.RunID, Identity: slotInput.Identity, PlanRevision: slotInput.PlanRevision,
 			TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 			Slot: slotInput.Slot, Attempt: slotInput.Attempt, AssetCatalog: slotInput.AssetCatalog,
 			ExecuteActivityName: activityWire.executeSlot,
@@ -2156,7 +2277,8 @@ func effectRecoveryInputsForCancellation(input WorkflowInput, results []SlotWork
 				continue
 			}
 			inputs = append(inputs, EffectRecoveryWorkflowInput{
-				RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision,
+				ImageSet: imageagent.CloneImageSetPlan(input.Plan.Set),
+				RunID:    input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision,
 				TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 				Slot: input.Plan.Slots[index], Attempt: effect.Attempt, AssetCatalog: input.AssetCatalog,
 			})
@@ -2271,6 +2393,12 @@ func cancellationResultsTerminalized(results []SlotWorkflowResult) bool {
 }
 
 func cancellationResultTerminalized(result SlotWorkflowResult) bool {
+	if closure := result.Closure; closure != nil {
+		if closure.Valid(result.Execution.Attempt) {
+			return result.Status == imageagent.SlotStatusAccepted || result.Status == imageagent.SlotStatusBlocked
+		}
+		return false
+	}
 	switch result.EffectPhase {
 	case imageagent.SlotEffectV3PublicationComplete:
 		return result.Status == imageagent.SlotStatusAccepted || result.Status == imageagent.SlotStatusBlocked
@@ -2348,6 +2476,28 @@ func summarizeResults(plan imageagent.Plan, results []SlotWorkflowResult) Workfl
 
 func summarizeResultsForWire(plan imageagent.Plan, results []SlotWorkflowResult, activityWire workflowActivityWire) WorkflowResult {
 	result := summarizeResults(plan, results)
+	if plan.Set != nil && activityWire.useV3Slot && activityWire.useV3Approval {
+		result.RecoverableEffects = imageSetRecoverableEffects(results)
+		if _, err := imageagent.ImageSetResultDigest(plan, result.Slots, result.RecoverableEffects); err == nil {
+			result.Status, result.Block = imageagent.RunStatusAwaitingFinalApproval, nil
+		} else if len(result.RecoverableEffects) > 0 {
+			owner := result.RecoverableEffects[0]
+			result.Status = imageagent.RunStatusBlocked
+			result.Block = &imageagent.Block{Code: owner.Code, Message: owner.Code, SlotID: owner.SlotID}
+		} else {
+			result.Status = imageagent.RunStatusBlocked
+			if result.Block == nil {
+				result.Block = &imageagent.Block{Code: "image_set_not_closed", Message: "image_set_not_closed"}
+			}
+			for _, slot := range result.Slots {
+				if slot.Slot.Status == imageagent.SlotStatusBlocked || slot.Slot.Status == imageagent.SlotStatusRejected {
+					result.Block = &imageagent.Block{Code: slot.ErrorCode, Message: slot.ErrorCode, SlotID: slot.Slot.ID}
+					break
+				}
+			}
+		}
+		return result
+	}
 	if !activityWire.useV3Slot || result.Block == nil {
 		return result
 	}
@@ -2355,6 +2505,24 @@ func summarizeResultsForWire(plan imageagent.Plan, results []SlotWorkflowResult,
 	result.Block.Code = code
 	result.Block.Message = code
 	return result
+}
+
+// Full-set closure is stricter than stopping a child during cancellation:
+// an unclosed original effect must remain visible for identity-bound recovery.
+func imageSetRecoverableEffects(results []SlotWorkflowResult) []imageagent.RecoverableEffect {
+	var effects []imageagent.RecoverableEffect
+	for _, result := range results {
+		if result.Status != imageagent.SlotStatusBlocked || result.Execution.SlotID == "" || result.Execution.Attempt <= 0 || result.Closure != nil && result.Closure.Valid(result.Execution.Attempt) {
+			continue
+		}
+		code := result.ErrorCode
+		if !imageagent.IsRecoverableEffectBlockCode(code) {
+			code = imageagent.SlotRecoveryBlockedCode
+		}
+		effects = append(effects, imageagent.RecoverableEffect{SlotID: result.Execution.SlotID, Attempt: result.Execution.Attempt, Code: code})
+	}
+	normalized, _ := imageagent.NormalizeRecoverableEffects(effects)
+	return normalized
 }
 
 func summarizeResultsV3(plan imageagent.Plan, results []SlotWorkflowV3Result) WorkflowResult {
@@ -2415,6 +2583,7 @@ func slotProjections(plan imageagent.Plan, results []SlotWorkflowResult) []image
 			projection.Candidates = append([]imageagent.AssetCandidate(nil), result.Execution.Candidates...)
 			projection.ErrorCode = result.ErrorCode
 			projection.Slot.Status = result.Status
+			projection.Closure = result.Closure
 		}
 		projections = append(projections, projection)
 	}
@@ -2447,6 +2616,12 @@ func resultDigest(plan imageagent.Plan, results []SlotWorkflowResult) (string, e
 
 func resultDigestForWire(plan imageagent.Plan, results []SlotWorkflowResult, activityWire workflowActivityWire) (string, error) {
 	slots := slotProjections(plan, results)
+	if plan.Set != nil {
+		if !activityWire.useV3Slot || !activityWire.useV3Approval {
+			return "", imageagent.ErrRevisionConflict
+		}
+		return imageagent.ImageSetResultDigest(plan, slots, nil)
+	}
 	if activityWire.useV3Approval {
 		return imageagent.ResultDigestV3(plan, slots)
 	}

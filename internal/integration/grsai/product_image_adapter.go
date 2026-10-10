@@ -84,6 +84,14 @@ func (a *productImageAdapter) RenderWhiteBackground(ctx context.Context, request
 	return a.delegate.RenderWhiteBackground(ctx, request)
 }
 
+func (a *productImageAdapter) EditSources(ctx context.Context, request productimage.SourceEditRequest) (productimage.Candidate, error) {
+	delegate, ok := a.delegate.(productimage.SourceEditor)
+	if !ok {
+		return productimage.Candidate{}, productimage.ErrCapabilityUnsupported
+	}
+	return delegate.EditSources(ctx, request)
+}
+
 func (a *productImageAdapter) RenderScene(ctx context.Context, request productimage.SceneRequest) ([]productimage.Candidate, error) {
 	return a.delegate.RenderScene(ctx, request)
 }
@@ -105,7 +113,7 @@ func (a *productImageAdapter) QuoteUsage(ctx context.Context, request productima
 		return productimage.UsageQuote{}, productimage.ErrCapabilityUnsupported
 	}
 	switch request.Operation {
-	case "extract_subject", "render_white_background", "render_scene":
+	case "extract_subject", "render_white_background", "render_scene", productimage.SourceWhiteBackgroundOperation, productimage.SourceEditOperation:
 		if quote.Model != a.imageModel {
 			return productimage.UsageQuote{}, productimage.ErrCapabilityUnsupported
 		}

@@ -411,6 +411,10 @@ func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage
 	costPerOutput := a.config.ImageCostMicrosPerOutput
 	var maximumTokens int64
 	switch request.Operation {
+	case productimage.SourceEditOperation:
+		if a.config.Provider != "grsai" || a.config.ImageModel != "gpt-image-2.5" || maximumOutputs != 1 {
+			return productimage.UsageQuote{}, productimage.ErrCapabilityUnsupported
+		}
 	case "extract_subject", "render_white_background", productimage.SourceWhiteBackgroundOperation:
 		maximumOutputs = 1
 	case "render_scene":

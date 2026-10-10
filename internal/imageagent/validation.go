@@ -156,6 +156,14 @@ func ValidatePlan(plan Plan) error {
 			return fmt.Errorf("slot status must be pending")
 		}
 	}
+	if plan.Set != nil {
+		return ValidateImageSetPlan(plan)
+	}
+	for _, slot := range plan.Slots {
+		if slot.Recipe != nil {
+			return fmt.Errorf("%w: image recipe requires the explicit set protocol", ErrValidation)
+		}
+	}
 	if mainSlots != 1 {
 		return fmt.Errorf("plan requires exactly one main slot")
 	}

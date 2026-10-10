@@ -1,4 +1,6 @@
 import { z } from "zod";
+import {imageTemplateInputSchema,imageTemplateSchema,imageTemplatesPageSchema} from "@/lib/contracts/image-set-configuration";
+import {imageSetRecentSchema} from "@/lib/contracts/product-image-set";
 import {
   catalogEntrySchema,
   catalogPageSchema,
@@ -27,7 +29,11 @@ function endpoint(url: URL, method: string) {
   let input: z.ZodType | undefined;
   if (p.length === 1 && ["market", "mine"].includes(p[0]) && method === "GET")
     output = catalogPageSchema;
-  else if (p[0] === "product.title.agent") {
+  else if (["product.title.agent","product.image.agent"].includes(p[0])) {
+    const image=p[0]==="product.image.agent";
+    const typedTemplates=image?imageTemplatesPageSchema:templatesPageSchema;
+    const typedTemplate=image?imageTemplateSchema:templateSchema;
+    const typedInput=image?imageTemplateInputSchema:templateInputSchema;
     if (p.length === 1 && method === "GET") output = catalogEntrySchema;
     else if (
       p.length === 2 &&
@@ -51,12 +57,12 @@ function endpoint(url: URL, method: string) {
       p.length === 2 &&
       ["GET", "POST"].includes(method)
     ) {
-      output = method === "GET" ? templatesPageSchema : configReceiptSchema;
-      input = method === "POST" ? templateInputSchema : undefined;
+      output = method === "GET" ? typedTemplates : configReceiptSchema;
+      input = method === "POST" ? typedInput : undefined;
     } else if (p[1] === "templates" && knowledgeId.safeParse(p[2]).success) {
       if (p.length === 3 && ["GET", "PUT"].includes(method)) {
-        output = method === "GET" ? templateSchema : configReceiptSchema;
-        input = method === "PUT" ? templateInputSchema : undefined;
+        output = method === "GET" ? typedTemplate : configReceiptSchema;
+        input = method === "PUT" ? typedInput : undefined;
       } else if (p.length === 4 && p[3] === "archive" && method === "POST") {
         output = configReceiptSchema;
         input = z.strictObject({});
@@ -66,30 +72,30 @@ function endpoint(url: URL, method: string) {
         configVersion.safeParse(p[4]).success &&
         method === "GET"
       )
-        output = templateSchema;
+        output = typedTemplate;
       else return null;
     } else if (p.length === 2 && p[1] === "recent-runs" && method === "GET")
-      output = recentRunsSchema;
+      output = image?imageSetRecentSchema:recentRunsSchema;
     else return null;
   } else return null;
   const list =
     output === catalogPageSchema ||
     output === templatesPageSchema ||
-    output === recentRunsSchema;
+    output === recentRunsSchema || output === imageSetRecentSchema || output === imageTemplatesPageSchema;
   if (url.search.length > 512 || (url.search && !list)) return null;
   for (const [k, v] of url.searchParams) {
     if (url.searchParams.getAll(k).length !== 1) return null;
     if (k === "pageSize") {
       if (
         !/^[1-9][0-9]*$/.test(v) ||
-        Number(v) > (output === recentRunsSchema ? 20 : 100)
+        Number(v) > ((output === recentRunsSchema || output === imageSetRecentSchema) ? 20 : 100)
       )
         return null;
     } else if (k === "cursor") {
       if (!/^[A-Za-z0-9_-]{1,180}$/.test(v)) return null;
     } else if (k === "activation" && p[0] === "mine") {
       if (!["ENABLED", "DISABLED"].includes(v)) return null;
-    } else if (k === "lifecycle" && output === templatesPageSchema) {
+    } else if (k === "lifecycle" && (output === templatesPageSchema || output === imageTemplatesPageSchema)) {
       if (!["ACTIVE", "ARCHIVED"].includes(v)) return null;
     } else return null;
   }
@@ -176,7 +182,7 @@ export async function proxyAgentConfiguration(
             "Content-Type": request.headers.get("Content-Type") ?? "",
           },
         }),
-        8192,
+        route.path.startsWith("product.image.agent/") ? 128*1024 : 8192,
         controller.signal,
       );
       const parsed = route.input!.safeParse(payload);
@@ -240,7 +246,7 @@ export async function proxyAgentConfiguration(
     const parts = route.path.split("/");
     const value = parsed.data as Record<string, unknown>;
     if (
-      route.output === templateSchema &&
+      (route.output === templateSchema || route.output === imageTemplateSchema) &&
       (value.templateId !== parts[2] ||
         (parts[3] === "revisions" && value.version !== parts[4]))
     )
@@ -257,11 +263,12 @@ export async function proxyAgentConfiguration(
                 : "update-template"
             : parts[1];
       if (
-        value.operation !== operation ||
+        value.agentId !== parts[0] || value.operation !== operation ||
         (parts[2] && value.templateId !== parts[2])
       )
         throw new Error();
     }
+    if(route.output===catalogEntrySchema&&(value.agent as {agentId?:string})?.agentId!==parts[0])throw new Error();
     const outgoing = new Headers(safeHeaders);
     const etag = response.headers.get("ETag");
     if (

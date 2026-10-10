@@ -102,6 +102,14 @@ func execute() error {
 		OpenImageAgent: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
+		OpenImageSetWorker: openImageSetWorker,
+		DialImageSetWorkflow: func(ctx context.Context, address, namespace string) (client.Client, func() error, error) {
+			current, err := client.DialContext(ctx, client.Options{HostPort: address, Namespace: namespace})
+			if err != nil {
+				return nil, nil, err
+			}
+			return current, func() error { current.Close(); return nil }, nil
+		},
 		OpenSupplyAssets: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
@@ -206,7 +214,7 @@ func execute() error {
 			if t := features.PrivateDraftTrial; t != nil {
 				options = append(options, httpapi.WithPrivateDraftTrial(httpapi.PrivateDraftTrialDependencies{Scope: collection.Scope{OrganizationID: t.OrganizationID, ActorID: t.ActorID, MemberID: t.MemberID}, StoreID: t.StoreID}))
 			}
-			if features.SupplyAssetDB != nil {
+			if features.SupplyWorkflow != nil {
 				options = append(options, httpapi.WithSupplyChain(httpapi.SupplyChainDependencies{AssetDB: features.SupplyAssetDB, Starter: supplyruntime.TemporalOperationStarter{Client: features.SupplyWorkflow}, NewWorker: supplyruntime.WorkerFactory(features.SupplyWorkflow), Worker: features.SupplyWorker}))
 			}
 			if features.MarketStorage != nil {
@@ -217,7 +225,11 @@ func execute() error {
 				options = append(options, httpapi.WithPOD(httpapi.PODDependencies{AssetDB: features.PODAssetDB, Credentials: features.PODCredentials, HTTP: &http.Client{Timeout: 15 * time.Second}, OSSHosts: p.OSSHosts, Starter: podruntime.TemporalStarter{Client: features.PODWorkflow}, NewWorker: func(p *podapp.Processor) (podapp.Worker, error) { return podruntime.NewWorker(features.PODWorkflow, p) }, Worker: features.PODWorker}))
 			}
 			if features.ImageAgentDB != nil {
-				options = append(options, httpapi.WithAcquisitionImageAgent(features.ImageAgentDB, features.ImageAgentWorkflow))
+				if features.ImageSetWorkerConfig != nil {
+					options = append(options, httpapi.WithFullImageSet(features.ImageAgentDB, features.ImageAgentWorkflow, httpapi.FullImageSetDependencies{AssetDB: features.ImageSetAssetDB, WorkerDB: features.ImageSetWorkerDB, WorkerConfig: features.ImageSetWorkerConfig, Client: features.ImageSetTemporal, Worker: features.ImageSetWorker}))
+				} else {
+					options = append(options, httpapi.WithAcquisitionImageAgent(features.ImageAgentDB, features.ImageAgentWorkflow))
+				}
 			}
 			if features.AccountAuditImageDB != nil || features.AccountAuditProductDB != nil {
 				options = append(options, httpapi.WithAccountAuditUsageSources(features.AccountAuditImageDB, features.AccountAuditProductDB))

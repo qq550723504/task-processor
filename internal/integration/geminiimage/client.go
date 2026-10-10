@@ -208,6 +208,9 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 	if req == nil {
 		return nil, fmt.Errorf("image edit request cannot be nil")
 	}
+	if len(req.ReferenceImages) != 0 {
+		return nil, fmt.Errorf("exact additional image references are unsupported by this transport")
+	}
 	if req.MaxRetries != nil {
 		return nil, fmt.Errorf("gemini image edit does not support a request-scoped retry policy")
 	}

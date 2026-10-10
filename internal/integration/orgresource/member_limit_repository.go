@@ -134,5 +134,5 @@ func lockMemberMonth(tx *gorm.DB, org, member string, month time.Time) (memberAI
 	return row, err
 }
 func limitSnapshot(config memberAIPointLimitRow, counter memberAIPointMonthRow) orgresource.MemberLimitSnapshot {
-	return orgresource.MemberLimitSnapshot{OrganizationID: config.OrganizationID, MemberID: config.MemberID, MonthlyLimit: config.MonthlyLimit, Version: config.Version, MonthStart: counter.MonthStart, Reserved: counter.Reserved, Consumed: counter.Consumed}
+	return orgresource.MemberLimitSnapshot{OrganizationID: config.OrganizationID, MemberID: config.MemberID, MonthlyLimit: config.MonthlyLimit, Version: config.Version, MonthStart: counter.MonthStart.UTC(), Reserved: counter.Reserved, Consumed: counter.Consumed}
 }

@@ -12,12 +12,13 @@ import (
 const MaxIdentityLength = 128
 
 type ApprovalCommit struct {
-	TenantID              string          `json:"tenant_id"`
-	ProductKey            string          `json:"product_key"`
-	TargetPlatform        string          `json:"target_platform,omitempty"`
-	ActionID              string          `json:"action_id"`
-	SourceSnapshotVersion uint64          `json:"source_snapshot_version,omitempty"`
-	Assets                []ApprovedAsset `json:"assets"`
+	ImageSet              *ImageSetSelection `json:"image_set,omitempty"`
+	TenantID              string             `json:"tenant_id"`
+	ProductKey            string             `json:"product_key"`
+	TargetPlatform        string             `json:"target_platform,omitempty"`
+	ActionID              string             `json:"action_id"`
+	SourceSnapshotVersion uint64             `json:"source_snapshot_version,omitempty"`
+	Assets                []ApprovedAsset    `json:"assets"`
 }
 
 type ApprovalReceipt struct {
@@ -64,6 +65,9 @@ func ValidateApprovalCommit(commit ApprovalCommit) error {
 			return fmt.Errorf("%w: duplicate typed approval identity", ErrInvalidApproval)
 		}
 		identities[identity] = struct{}{}
+	}
+	if commit.ImageSet != nil {
+		return ValidateImageSetCommit(commit)
 	}
 	return nil
 }
@@ -148,6 +152,7 @@ func validCanonicalExternalFact(value string) bool {
 func CloneApprovalCommit(commit ApprovalCommit) ApprovalCommit {
 	out := commit
 	out.Assets = cloneApprovedAssets(commit.Assets)
+	out.ImageSet = CloneImageSetSelection(commit.ImageSet)
 	return out
 }
 
@@ -170,8 +175,24 @@ func cloneApprovedAssets(assets []ApprovedAsset) []ApprovedAsset {
 	out := make([]ApprovedAsset, len(assets))
 	for index, approved := range assets {
 		out[index] = approved
+		if approved.Presentation != nil {
+			copy := *approved.Presentation
+			out[index].Presentation = &copy
+		}
+		if approved.OfficialPlacement != nil {
+			copy := *approved.OfficialPlacement
+			out[index].OfficialPlacement = &copy
+		}
+		if approved.GenerationEvidence != nil {
+			copy := *approved.GenerationEvidence
+			out[index].GenerationEvidence = &copy
+		}
 		if approved.SourceApproval != nil {
 			copy := *approved.SourceApproval
+			if copy.ManualMedia != nil {
+				media := *copy.ManualMedia
+				copy.ManualMedia = &media
+			}
 			out[index].SourceApproval = &copy
 		}
 		if approved.SelectionReceipt != nil {

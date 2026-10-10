@@ -368,6 +368,9 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 	if req == nil {
 		return nil, fmt.Errorf("image edit request cannot be nil")
 	}
+	if len(req.ReferenceImages) != 0 {
+		return nil, fmt.Errorf("exact additional image references require synchronous edit")
+	}
 	c = c.withEditRetryPolicy(req)
 	images, releaseReferences, err := c.imageInputsForRequest(ctx, req)
 	if err != nil {

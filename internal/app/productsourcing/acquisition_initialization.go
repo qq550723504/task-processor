@@ -31,6 +31,7 @@ type acquisitionInitManifest struct {
 	SchemaVersion int  `json:"schemaVersion"`
 	Collections   bool `json:"collections,omitempty"`
 	SupplyChain   bool `json:"supplyChain,omitempty"`
+	ImageSets     bool `json:"imageSets,omitempty"`
 	SupplyMarket  bool `json:"supplyMarket,omitempty"`
 	POD           bool `json:"pod,omitempty"`
 	Database      struct {
@@ -98,6 +99,11 @@ func InitializeAcquisitionDatabase(ctx context.Context, manifest, confirmedDatab
 				return err
 			}
 		}
+		if cfg.ImageSets && !cfg.SupplyChain {
+			if err := reviewstore.InstallSchema(tx); err != nil {
+				return err
+			}
+		}
 		if cfg.SupplyMarket {
 			if err := reviewstore.InstallSchema(tx); err != nil {
 				return err
@@ -114,7 +120,7 @@ func InitializeAcquisitionDatabase(ctx context.Context, manifest, confirmedDatab
 				return err
 			}
 		}
-		return acquisitionstore.GrantRuntimePermissions(ctx, tx, acquisitionstore.RuntimeCapabilities{Collections: cfg.Collections, SupplyChain: cfg.SupplyChain, SupplyMarket: cfg.SupplyMarket, POD: cfg.POD})
+		return acquisitionstore.GrantRuntimePermissions(ctx, tx, acquisitionstore.RuntimeCapabilities{Collections: cfg.Collections, SupplyChain: cfg.SupplyChain, SupplyMarket: cfg.SupplyMarket, POD: cfg.POD, ImageSets: cfg.ImageSets})
 	})
 	if err != nil {
 		return unavailable

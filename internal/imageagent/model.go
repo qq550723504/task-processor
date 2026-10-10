@@ -3,6 +3,8 @@ package imageagent
 import (
 	"fmt"
 	"time"
+
+	"task-processor/internal/agentconfig"
 )
 
 type RunMode string
@@ -50,6 +52,7 @@ const (
 )
 
 type Slot struct {
+	Recipe            *ImageSlotRecipe `json:",omitempty"`
 	ID                string
 	Role              SlotRole
 	SourceAssetIDs    []string
@@ -60,6 +63,7 @@ type Slot struct {
 }
 
 type Plan struct {
+	Set               *ImageSetPlan `json:",omitempty"`
 	Revision          int64
 	ParentRevision    int64
 	IdempotencyKey    string
@@ -76,6 +80,7 @@ type ImagePolicyContext struct {
 }
 
 type Run struct {
+	ImageAdmission *agentconfig.ImageRunAdmissionReceipt `json:",omitempty"`
 	ScopeProtocol  string
 	ID             string
 	BusinessTaskID string
@@ -172,6 +177,8 @@ type CatalogManifest struct {
 }
 
 type PendingCommandReceipt struct {
+	SelectionDigest string `json:",omitempty"`
+	ResultDigest    string `json:",omitempty"`
 	ActionID        string
 	Kind            string
 	Phase           string
@@ -201,14 +208,15 @@ type ProductContextRef struct {
 }
 
 type AssetCandidate struct {
-	AssetID       string
-	URL           string
-	SourceAssetID string
-	Metadata      map[string]string
-	Width         int                  `json:"-"`
-	Height        int                  `json:"-"`
-	Operations    []string             `json:"-"`
-	DurableAsset  DurableAssetIdentity `json:"-"`
+	GenerationProof *ImageGenerationProof `json:"-"`
+	AssetID         string
+	URL             string
+	SourceAssetID   string
+	Metadata        map[string]string
+	Width           int                  `json:"-"`
+	Height          int                  `json:"-"`
+	Operations      []string             `json:"-"`
+	DurableAsset    DurableAssetIdentity `json:"-"`
 }
 
 type Budget struct {

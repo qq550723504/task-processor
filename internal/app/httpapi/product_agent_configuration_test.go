@@ -1,11 +1,25 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/stretchr/testify/require"
 	"task-processor/internal/agentconfig"
 	"testing"
 )
+
+func TestProductAgentCatalogHasDistinctDefinitionsInCursorOrder(t *testing.T) {
+	entries, err := (productAgentCatalog{}).ReadCatalog(context.Background())
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	require.Less(t, entries[0].Definition.ID, entries[1].Definition.ID, "market cursors require canonical ID order")
+	schemas := map[string]string{}
+	for _, entry := range entries {
+		schemas[entry.Definition.ID] = entry.ParameterSchema
+	}
+	require.Equal(t, agentconfig.ImageParameterSchema, schemas[agentconfig.ImageAgentID])
+	require.Equal(t, agentconfig.ParameterSchema, schemas["product.title.agent"])
+}
 
 func TestProductAgentTemplateSelectionIsExplicitAndStartOnly(t *testing.T) {
 	b := productAgentRequestBody{}

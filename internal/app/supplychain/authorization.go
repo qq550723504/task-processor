@@ -35,7 +35,10 @@ func (a OrganizationExecutionAuthorizer) current(ctx context.Context, scope coll
 	if _, bounded := ctx.Deadline(); !bounded {
 		return nil, collection.ErrForbidden
 	}
-	if identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx); ok && (identity.TenantID != scope.OrganizationID || identity.EffectiveOrganizationID != scope.OrganizationID || identity.UserID != scope.ActorID || identity.EffectiveMemberID != scope.MemberID || !time.Now().Before(identity.TokenExpiresAt)) {
+	// A restored durable worker subject has no browser token expiry. Its
+	// exact fields remain bound here and its current grant is checked below.
+	// Request identities with a token expiry must still be unexpired.
+	if identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx); ok && (identity.TenantID != scope.OrganizationID || identity.EffectiveOrganizationID != scope.OrganizationID || identity.UserID != scope.ActorID || identity.EffectiveMemberID != scope.MemberID || (!identity.TokenExpiresAt.IsZero() && !time.Now().Before(identity.TokenExpiresAt))) {
 		return nil, collection.ErrForbidden
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -100,6 +103,38 @@ func (a OrganizationExecutionAuthorizer) ResolveAgentExecution(ctx context.Conte
 		}
 	}
 	return append([]string(nil), roles...), nil
+}
+
+func (a OrganizationExecutionAuthorizer) AuthorizeImageExecution(ctx context.Context, scope collection.Scope) error {
+	roles, err := a.current(ctx, scope)
+	if err != nil {
+		return err
+	}
+	for _, permission := range []string{authz.PermissionImageAgentWrite, authz.PermissionProductSourcingWrite} {
+		allowed, err := authz.AuthorizeOrganization(ctx, a.Permissions, scope.ActorID, scope.OrganizationID, roles, permission)
+		if err != nil {
+			return collection.ErrUnavailable
+		}
+		if !allowed {
+			return collection.ErrForbidden
+		}
+	}
+	return nil
+}
+
+func (a OrganizationExecutionAuthorizer) AuthorizeImageSource(ctx context.Context, scope collection.Scope) error {
+	roles, err := a.current(ctx, scope)
+	if err != nil {
+		return err
+	}
+	allowed, err := authz.AuthorizeOrganization(ctx, a.Permissions, scope.ActorID, scope.OrganizationID, roles, authz.PermissionProductSourcingWrite)
+	if err != nil {
+		return collection.ErrUnavailable
+	}
+	if !allowed {
+		return collection.ErrForbidden
+	}
+	return nil
 }
 func (a OrganizationExecutionAuthorizer) AuthorizeProductExecution(ctx context.Context, subject storecenter.ProductExecutionSubject) (storecenter.ProductExecutionAuthorization, error) {
 	scope := collection.Scope{OrganizationID: subject.OrganizationID, ActorID: subject.ActorID, MemberID: subject.MemberID}

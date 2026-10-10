@@ -1,6 +1,9 @@
 package imageagent
 
-import "context"
+import (
+	"context"
+	productasset "task-processor/internal/product/asset"
+)
 
 // ExecutionIdentity is the tenant/user identity verified at the command edge
 // and durably captured in workflow input.
@@ -64,6 +67,17 @@ type ApprovedAssetPublisherV3 interface {
 	PublishApprovedV3(context.Context, PublishApprovedV3Input) (PublicationAcknowledgement, error)
 }
 
+type ApprovedImageSetPublisher interface {
+	PublishApprovedImageSet(context.Context, PublishImageSetInput) (PublicationAcknowledgement, error)
+}
+
+type PublishImageSetInput struct {
+	RunID, TenantID, UserID string
+	PlanRevision            int64
+	ResultDigest            string
+	Selection               productasset.ImageSetCommand
+}
+
 // DurableAssetPublicURLResolver turns a durable public object key into the
 // readable URL stored in ListingKit. Storage adapters own the endpoint and
 // public-base rules; the domain only defines this narrow boundary.
@@ -92,10 +106,12 @@ type SlotExecutionInput struct {
 	IdempotencyKey     string
 	AssetCatalog       AssetCatalog
 	ProductContext     ProductContextRef
+	ImageSet           *ImageSetPlan `json:",omitempty"`
 	// Populated only in-process after the organization generation intent binds
 	// these exact bytes. Never transport source bytes in workflow history.
 	SourceBytes          []byte            `json:"-"`
 	SourceDigest         string            `json:"-"`
+	SourceReferences     [][]byte          `json:"-"`
 	OrganizationIdentity ExecutionIdentity `json:"-"`
 }
 
@@ -220,6 +236,7 @@ type RunProjection struct {
 }
 
 type SlotProjection struct {
+	Closure    *ImageSlotClosure `json:",omitempty"`
 	Slot       Slot
 	Attempt    int
 	Candidates []AssetCandidate
@@ -278,6 +295,7 @@ type RetrySlotCommand struct {
 }
 
 type ApproveResultsCommand struct {
+	Selection    *productasset.ImageSetCommand `json:",omitempty"`
 	RunID        string
 	PlanRevision int64
 	ResultDigest string

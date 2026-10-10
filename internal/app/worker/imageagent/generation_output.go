@@ -2,8 +2,11 @@ package imageagentworker
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/integration/httpimage"
+	"task-processor/internal/pkg/imagex"
 	productimage "task-processor/internal/product/image"
 )
 
@@ -20,7 +23,17 @@ func generationOutputRecovery(fetch func(context.Context, string) ([]byte, error
 			return imageagent.SlotGeneratedOutput{}, imageagent.ErrValidation
 		}
 		id := imageagent.SlotExternalEffectIdentity{RunScope: imageagent.RunScope{TenantID: input.TenantID, OwnerUserID: input.UserID, RunID: input.RunID}, PlanRevision: input.PlanRevision, SlotID: input.Slot.ID, Attempt: input.Attempt}
-		if fact.Validate() != nil || fact.State != imageagent.GenerationSucceeded || fact.Intent.Identity != id || fact.Intent.MemberID != input.OrganizationIdentity.MemberID || fact.Intent.CatalogHash != input.AssetCatalog.Manifest.Hash || fact.Success.ResultURL == "" || input.Slot.Role != imageagent.SlotRoleMain || len(input.Slot.SourceAssetIDs) != 1 {
+		if fact.Validate() != nil || fact.State != imageagent.GenerationSucceeded || fact.Intent.Identity != id || fact.Intent.MemberID != input.OrganizationIdentity.MemberID || fact.Intent.CatalogHash != input.AssetCatalog.Manifest.Hash || len(input.Slot.SourceAssetIDs) < 1 {
+			return bad()
+		}
+		operation := productimage.SourceWhiteBackgroundOperation
+		if input.ImageSet != nil || input.Slot.Recipe != nil || fact.Intent.InputProtocol != "" {
+			digest, err := imageagent.ImageSlotGenerationInputDigest(input)
+			if err != nil || fact.Intent.InputProtocol != imageagent.ImageSetSchema || fact.Intent.InputDigest != digest || fact.Intent.SourceDigest != imageagent.ImageSourceBundleDigest(input.Slot.Recipe.References) || fact.Intent.PromptVersion != input.Slot.Recipe.PromptVersion {
+				return bad()
+			}
+			operation = productimage.SourceEditOperation
+		} else if input.Slot.Role != imageagent.SlotRoleMain || len(input.Slot.SourceAssetIDs) != 1 {
 			return bad()
 		}
 		var sourceURL string
@@ -35,17 +48,38 @@ func generationOutputRecovery(fetch func(context.Context, string) ([]byte, error
 		if _, err := imageagent.ValidateSafeImageURL(sourceURL); err != nil {
 			return bad()
 		}
-		if _, err := imageagent.ValidateSafeImageURL(fact.Success.ResultURL); err != nil {
+		if _, err := imageagent.ValidateSafeImageURL(fact.Success.ResultURL); err != nil || fact.Success.ResultUnavailable != "" {
+			// Only after binding the immutable success to this original input
+			// may an unusable locator close the charged image-set failure.
+			if input.ImageSet != nil {
+				return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
+			}
 			return bad()
 		}
 		data, err := fetch(ctx, fact.Success.ResultURL)
-		if err != nil || len(data) == 0 || len(data) > productimage.MaxInlineArtifactBytes {
+		if err != nil {
+			var response *httpimage.HTTPStatusError
+			// This is the original success's fixed public URL; no alternate
+			// credentials or replacement locator are part of this recovery.
+			if errors.Is(err, httpimage.ErrBodyTooLarge) || errors.As(err, &response) && (response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusGone) {
+				return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
+			}
 			return bad()
+		}
+		if len(data) == 0 || len(data) > productimage.MaxInlineArtifactBytes {
+			return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
 		}
 		contentType, width, height, err := httpimage.InspectGeneratedArtifact(data)
 		if err != nil {
-			return bad()
+			return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
 		}
-		return imageagent.SlotGeneratedOutput{SlotID: input.Slot.ID, Attempt: input.Attempt, SourceAssetID: input.Slot.SourceAssetIDs[0], Assets: []imageagent.GeneratedAsset{{Bytes: append([]byte(nil), data...), ContentType: contentType, Width: width, Height: height, SourceURL: sourceURL, Operations: []string{productimage.SourceWhiteBackgroundOperation}, ProviderReceiptID: fact.Success.RequestID}}}, nil
+		if input.ImageSet != nil && (width != 1024 || height != 1024) {
+			return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
+		}
+		info, err := imagex.Inspect(data)
+		if err != nil || info.Width != width || info.Height != height {
+			return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
+		}
+		return imageagent.SlotGeneratedOutput{SlotID: input.Slot.ID, Attempt: input.Attempt, SourceAssetID: input.Slot.SourceAssetIDs[0], Assets: []imageagent.GeneratedAsset{{Bytes: append([]byte(nil), data...), ContentType: contentType, Width: width, Height: height, SourceURL: sourceURL, Operations: []string{operation}, ProviderReceiptID: fact.Success.RequestID}}}, nil
 	}
 }

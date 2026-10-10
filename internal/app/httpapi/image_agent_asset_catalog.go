@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	imageapp "task-processor/internal/app/imageagent"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/integration/httpimage"
@@ -266,4 +267,11 @@ func catalogAttributes(attributes []catalog.Attribute) map[string]string {
 		}
 	}
 	return out
+}
+
+func newImageSetSourceByteReader() imageapp.SourceByteReader {
+	client := httpimage.NewPublicImageHTTPClient()
+	return func(ctx context.Context, asset imageagent.AuthorizedAsset, maximum int64) ([]byte, error) {
+		return httpimage.Download(ctx, client, asset.URL, maximum)
+	}
 }

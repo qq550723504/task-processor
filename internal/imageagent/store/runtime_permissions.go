@@ -14,8 +14,9 @@ const OrganizationRuntimeRole = "image_agent_runtime"
 var errOrganizationRuntimePermissions = errors.New("organization image agent runtime permissions unavailable")
 var organizationRuntimeRoleName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
 
-// Only the current application's Start/Get/Approve path uses this role.
-// The worker owns all later projection, effect and approved-asset writes.
+// API Prepare/Confirm/Cancel uses this role. Only the confirmation/status
+// columns are writable. Candidate verification reads original provider facts
+// and materialization; their writes stay with the worker and existing owners.
 var organizationRuntimeTables = []struct{ name, privileges string }{
 	{"image_agent_v2_runs", "SELECT,INSERT"},
 	{"image_agent_v2_plans", "INSERT"},
@@ -25,8 +26,14 @@ var organizationRuntimeTables = []struct{ name, privileges string }{
 	{"image_agent_v2_asset_catalog_manifests", "INSERT"},
 	{"image_agent_v2_projection_snapshots", "SELECT,INSERT"},
 	{"image_agent_v2_projection_commits", "SELECT,INSERT"},
+	{"image_agent_v3_slot_external_effects", "SELECT"},
 	{"product_approval_receipts", "SELECT"},
 	{"product_approved_assets", "SELECT"},
+}
+
+var organizationRuntimeColumnGrants = []struct{ name, columns string }{
+	{"image_agent_v2_runs", "admission_json,status,current_node,active_plan_revision,block_json,version,updated_at"},
+	{"image_agent_v2_projection_snapshots", "version,snapshot_json,updated_at"},
 }
 
 const organizationRuntimePermissionQuery = `WITH admitted(table_name,privilege) AS (VALUES
@@ -38,7 +45,14 @@ const organizationRuntimePermissionQuery = `WITH admitted(table_name,privilege) 
  ('image_agent_v2_asset_catalog_manifests','INSERT'),
  ('image_agent_v2_projection_snapshots','SELECT'),('image_agent_v2_projection_snapshots','INSERT'),
  ('image_agent_v2_projection_commits','SELECT'),('image_agent_v2_projection_commits','INSERT'),
- ('product_approval_receipts','SELECT'),('product_approved_assets','SELECT'))
+ ('image_agent_v3_slot_external_effects','SELECT'),
+ ('product_approval_receipts','SELECT'),('product_approved_assets','SELECT')),
+ admitted_columns(table_name,column_name) AS (VALUES
+ ('image_agent_v2_runs','admission_json'),('image_agent_v2_runs','status'),
+ ('image_agent_v2_runs','current_node'),('image_agent_v2_runs','active_plan_revision'),
+ ('image_agent_v2_runs','block_json'),('image_agent_v2_runs','version'),('image_agent_v2_runs','updated_at'),
+ ('image_agent_v2_projection_snapshots','version'),('image_agent_v2_projection_snapshots','snapshot_json'),
+ ('image_agent_v2_projection_snapshots','updated_at'))
  SELECT current_user::text AS role_name,
  session_user=current_user
  AND current_schemas(false)=ARRAY['public']::name[]
@@ -49,6 +63,7 @@ const organizationRuntimePermissionQuery = `WITH admitted(table_name,privilege) 
    AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls)
  AND NOT EXISTS(SELECT 1 FROM admitted WHERE NOT coalesce(has_table_privilege(current_user,format('public.%I',table_name),privilege),false))
  AND NOT EXISTS(SELECT 1 FROM admitted WHERE to_regclass(format('public.%I',table_name)) IS NULL)
+ AND NOT EXISTS(SELECT 1 FROM admitted_columns WHERE NOT coalesce(has_column_privilege(current_user,format('public.%I',table_name),column_name,'UPDATE'),false))
  AS required_privileges,
  has_database_privilege(current_user,current_database(),'CREATE')
  OR EXISTS(SELECT 1 FROM pg_auth_members WHERE member=(SELECT oid FROM pg_roles WHERE rolname=current_user))
@@ -57,7 +72,9 @@ const organizationRuntimePermissionQuery = `WITH admitted(table_name,privilege) 
  OR EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
    CROSS JOIN (VALUES('SELECT'),('INSERT'),('UPDATE'),('DELETE'),('TRUNCATE'),('REFERENCES'),('TRIGGER')) p(privilege)
    WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema' AND c.relkind IN ('r','p','v','m','f')
-   AND CASE WHEN p.privilege IN ('SELECT','INSERT','UPDATE','REFERENCES')
+   AND CASE WHEN p.privilege='UPDATE' THEN EXISTS(SELECT 1 FROM pg_attribute att WHERE att.attrelid=c.oid AND att.attnum>0 AND NOT att.attisdropped AND has_column_privilege(current_user,c.oid,att.attnum,'UPDATE')
+     AND NOT EXISTS(SELECT 1 FROM admitted_columns ac WHERE n.nspname='public' AND ac.table_name=c.relname AND ac.column_name=att.attname))
+     WHEN p.privilege IN ('SELECT','INSERT','REFERENCES')
      THEN has_any_column_privilege(current_user,c.oid,p.privilege)
      ELSE has_table_privilege(current_user,c.oid,p.privilege) END
    AND NOT EXISTS(SELECT 1 FROM admitted a WHERE n.nspname='public' AND a.table_name=c.relname AND a.privilege=p.privilege))
@@ -100,6 +117,9 @@ func grantOrganizationRuntimePermissions(ctx context.Context, db *gorm.DB, role 
 		}
 		for _, table := range organizationRuntimeTables {
 			statements = append(statements, "REVOKE ALL PRIVILEGES ON TABLE public."+table.name+" FROM "+quotedRole, "GRANT "+table.privileges+" ON TABLE public."+table.name+" TO "+quotedRole)
+		}
+		for _, grant := range organizationRuntimeColumnGrants {
+			statements = append(statements, "GRANT UPDATE("+grant.columns+") ON TABLE public."+grant.name+" TO "+quotedRole)
 		}
 		for _, statement := range statements {
 			if err := tx.Exec(statement).Error; err != nil {

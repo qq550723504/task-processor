@@ -22,6 +22,7 @@ type ProfileResolver interface {
 // Dependencies contains only provider-neutral capabilities and the exact
 // marketplace policy resolver required by one ImageAgent slot.
 type Dependencies struct {
+	SourceEditor            productimage.SourceEditor
 	SubjectExtractor        productimage.SubjectExtractor
 	WhiteBackgroundRenderer productimage.WhiteBackgroundRenderer
 	SceneRenderer           productimage.SceneRenderer
@@ -66,6 +67,8 @@ type resolvedSlotInput struct {
 	legacyPolicy    bool
 	sourceBytes     []byte
 	sourceDigest    string
+	sources         []productimage.Asset
+	references      [][]byte
 }
 
 type quotedSlotOperation struct {
@@ -100,6 +103,9 @@ func (e *ProductImageSlotExecutor) quoteSlot(ctx context.Context, input imageage
 	}
 	if e.sourceOnlyMain(resolved) {
 		operations = []string{productimage.SourceWhiteBackgroundOperation}
+	}
+	if resolved.slot.Recipe != nil {
+		operations = []string{productimage.SourceEditOperation}
 	}
 	inputFingerprint := imageagent.SlotExecutionFingerprint(input)
 	quoted := quotedSlotExecution{operations: make([]quotedSlotOperation, 0, len(operations))}
@@ -177,13 +183,17 @@ func (e *ProductImageSlotExecutor) generateSlot(ctx context.Context, input image
 	}
 	var candidates []productimage.Candidate
 	var receipt imageagent.SlotUsageReceipt
-	switch resolved.slot.Role {
-	case imageagent.SlotRoleMain:
-		candidates, receipt, err = e.generateMain(ctx, resolved, quoted)
-	case imageagent.SlotRoleScene, imageagent.SlotRoleDetail, imageagent.SlotRoleSellingPoint, imageagent.SlotRoleSize:
-		candidates, receipt, err = e.generateScene(ctx, resolved, quoted)
-	default:
-		err = fmt.Errorf("%w: unsupported slot role %q", imageagent.ErrValidation, resolved.slot.Role)
+	if resolved.slot.Recipe != nil {
+		candidates, receipt, err = e.generateSourceSet(ctx, resolved, quoted)
+	} else {
+		switch resolved.slot.Role {
+		case imageagent.SlotRoleMain:
+			candidates, receipt, err = e.generateMain(ctx, resolved, quoted)
+		case imageagent.SlotRoleScene, imageagent.SlotRoleDetail, imageagent.SlotRoleSellingPoint, imageagent.SlotRoleSize:
+			candidates, receipt, err = e.generateScene(ctx, resolved, quoted)
+		default:
+			err = fmt.Errorf("%w: unsupported slot role %q", imageagent.ErrValidation, resolved.slot.Role)
+		}
 	}
 	if err != nil {
 		return imageagent.SlotGeneratedOutput{}, fmt.Errorf("execute slot %q: %w", resolved.slot.ID, err)
@@ -216,7 +226,7 @@ func (e *ProductImageSlotExecutor) generateSlot(ctx context.Context, input image
 }
 
 func (e *ProductImageSlotExecutor) reviewGeneratedCandidates(ctx context.Context, input resolvedSlotInput, candidates []productimage.Candidate, quoted *quotedSlotExecution) error {
-	if e.sourceOnlyMain(input) {
+	if e.sourceOnlyMain(input) || input.slot.Recipe != nil {
 		return nil
 	}
 	if e != nil && (e.legacyV2 || input.legacyPolicy) {
@@ -247,7 +257,7 @@ func (e *ProductImageSlotExecutor) ReviewStagedSlot(ctx context.Context, input i
 	if err != nil {
 		return err
 	}
-	if e.sourceOnlyMain(resolved) {
+	if e.sourceOnlyMain(resolved) || resolved.slot.Recipe != nil {
 		return imageagent.ErrValidation
 	}
 	candidates, err := e.reviewCandidates(input, resolved, staged)
@@ -262,7 +272,7 @@ func (e *ProductImageSlotExecutor) QuoteStagedReview(ctx context.Context, input 
 	if err != nil {
 		return imageagent.SlotUsageQuote{}, err
 	}
-	if e.sourceOnlyMain(resolved) {
+	if e.sourceOnlyMain(resolved) || resolved.slot.Recipe != nil {
 		return imageagent.SlotUsageQuote{}, imageagent.ErrBudgetQuoteUnavailable
 	}
 	if e == nil || e.dependencies.UsageQuoter == nil {
@@ -296,7 +306,7 @@ func (e *ProductImageSlotExecutor) ReviewStagedSlotQuoted(ctx context.Context, i
 	if err != nil {
 		return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderNotDispatched, err)
 	}
-	if e.sourceOnlyMain(resolved) {
+	if e.sourceOnlyMain(resolved) || resolved.slot.Recipe != nil {
 		return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderNotDispatched, imageagent.ErrValidation)
 	}
 	if e.dependencies.Reviewer == nil {
@@ -557,6 +567,9 @@ func (e *ProductImageSlotExecutor) resolveInput(input imageagent.SlotExecutionIn
 	if e == nil {
 		return resolvedSlotInput{}, fmt.Errorf("%w: image executor is required", imageagent.ErrValidation)
 	}
+	if input.ImageSet != nil || input.Slot.Recipe != nil {
+		return e.resolveImageSetInput(input)
+	}
 	legacyPolicy := !e.legacyV2 && strings.TrimSpace(input.TargetPlatform) == "" && input.ImagePolicyContext == nil
 	if !e.legacyV2 && !legacyPolicy && e.dependencies.ProfileResolver == nil {
 		return resolvedSlotInput{}, fmt.Errorf("%w: image policy resolver is required", imageagent.ErrValidation)
@@ -757,6 +770,7 @@ func cloneSlot(slot imageagent.Slot) imageagent.Slot {
 	cloned := slot
 	cloned.SourceAssetIDs = append([]string(nil), slot.SourceAssetIDs...)
 	cloned.StyleReferenceIDs = append([]string(nil), slot.StyleReferenceIDs...)
+	cloned.Recipe = imageagent.CloneImageSlotRecipe(slot.Recipe)
 	return cloned
 }
 

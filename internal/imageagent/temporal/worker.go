@@ -99,7 +99,14 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 	if err := imageagent.ValidateMaxConcurrentSlots(start.Run.MaxConcurrentSlots); err != nil {
 		return err
 	}
-	if err := imageagent.ValidateImagePolicyContext(start.Run.TargetPlatform, start.Run.ImagePolicyContext); err != nil {
+	if start.Plan.Set != nil {
+		if !c.organizationScope || start.Run.MemberID != start.Identity.MemberID {
+			return imageagent.ErrIdentityRequired
+		}
+		if err := imageagent.ValidateImageSetAdmission(start.Run, start.Plan); err != nil {
+			return err
+		}
+	} else if err := imageagent.ValidateImagePolicyContext(start.Run.TargetPlatform, start.Run.ImagePolicyContext); err != nil {
 		return err
 	}
 	if err := imageagent.ValidateSubmittedPlan(start.Plan); err != nil {
@@ -128,7 +135,8 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 		WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
 		WorkflowIDReusePolicy:    enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY,
 	}, c.workflowName(), WorkflowInput{
-		RunID: start.Run.ID, Mode: imageagent.RunModeManual, Identity: start.Identity,
+		ImageAdmission: imageagent.CloneImageAdmission(start.Run.ImageAdmission),
+		RunID:          start.Run.ID, Mode: imageagent.RunModeManual, Identity: start.Identity,
 		TargetPlatform: start.Run.TargetPlatform, ImagePolicyContext: policyContextPointer(start.Run.ImagePolicyContext),
 		Plan: start.Plan, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(start.Run.MaxConcurrentSlots), WaitForCommands: true,
 		AssetCatalog: start.AssetCatalog,
@@ -149,7 +157,8 @@ func (c *Client) RecoverEffect(ctx context.Context, command imageagent.RecoverEf
 		return err
 	}
 	return newRecoveryWorkflowStarter(c.client, c.taskQueue())(ctx, EffectRecoveryWorkflowInput{
-		RunID: command.RunID, Identity: command.Identity, PlanRevision: command.PlanRevision,
+		ImageSet: imageagent.CloneImageSetPlan(projection.Plan.Set),
+		RunID:    command.RunID, Identity: command.Identity, PlanRevision: command.PlanRevision,
 		TargetPlatform: projection.Run.TargetPlatform, ImagePolicyContext: policyContextPointer(projection.Run.ImagePolicyContext),
 		Slot: slot, Attempt: command.Attempt, ActionID: command.ActionID, AssetCatalog: projection.AssetCatalog,
 	})
@@ -184,7 +193,8 @@ func (c *Client) ApproveResults(ctx context.Context, command imageagent.ApproveR
 		return fmt.Errorf("image agent approval result digest is required")
 	}
 	return c.executeCommandUpdate(ctx, command.Identity, command.RunID, signalApproveResults, command.ActionID, ApproveResultsSignal{
-		RunID: command.RunID, PlanRevision: command.PlanRevision, ResultDigest: command.ResultDigest,
+		Selection: imageagent.CloneImageSetCommand(command.Selection),
+		RunID:     command.RunID, PlanRevision: command.PlanRevision, ResultDigest: command.ResultDigest,
 		ActorID: command.ActorID, ActionID: command.ActionID,
 	})
 }

@@ -19,9 +19,11 @@ import (
 	"gorm.io/gorm"
 
 	aistore "task-processor/internal/aicapability/store"
+	appruntime "task-processor/internal/app/runtime"
 	storeapp "task-processor/internal/app/storecenter"
 	coreconfig "task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
+	imagetemporal "task-processor/internal/imageagent/temporal"
 	"task-processor/internal/knowledge"
 )
 
@@ -47,6 +49,8 @@ type Dependencies struct {
 	OpenMoneyOwner                func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenProductAcquisition        func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenImageAgent                func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenImageSetWorker            func(context.Context, string, DatabaseConfig) (*coreconfig.Config, *gorm.DB, error)
+	DialImageSetWorkflow          func(context.Context, string, string) (client.Client, func() error, error)
 	OpenAccountAuditUsage         func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	DialImageAgentWorkflow        func(context.Context, string, string) (imageagent.WorkflowClient, func() error, error)
 	OpenSupplyAssets              func(context.Context, DatabaseConfig) (*gorm.DB, error)
@@ -100,6 +104,11 @@ type ApplicationFeatures struct {
 	SupplyWorkflow                                       client.Client
 	SupplyWorker                                         *supplyapp.OperationWorker
 	ImageAgentDB                                         *gorm.DB
+	ImageSetAssetDB                                      *gorm.DB
+	ImageSetWorkerDB                                     *gorm.DB
+	ImageSetWorkerConfig                                 *coreconfig.Config
+	ImageSetTemporal                                     client.Client
+	ImageSetWorker                                       *appruntime.ImageAgentWorker
 	AccountAuditImageDB, AccountAuditProductDB           *gorm.DB
 	ImageAgentWorkflow                                   imageagent.WorkflowClient
 	ReferralDB                                           *gorm.DB
@@ -196,8 +205,11 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	if cfg.AIWorkbench != nil && cfg.AIWorkbench.Enabled && (dependencies.OpenAIWorkbench == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("AI Workbench lifecycle unavailable")
 	}
-	if cfg.ImageAgent != nil && (dependencies.OpenImageAgent == nil || dependencies.DialImageAgentWorkflow == nil || dependencies.NewApplicationWithFeatures == nil) {
+	if cfg.ImageAgent != nil && (dependencies.OpenImageAgent == nil || dependencies.NewApplicationWithFeatures == nil || (cfg.ImageAgent.WorkerConfigFile == "" && dependencies.DialImageAgentWorkflow == nil)) {
 		return errors.New("current image agent owner and organization workflow lifecycle unavailable")
+	}
+	if cfg.ImageAgent != nil && cfg.ImageAgent.WorkerConfigFile != "" && (dependencies.OpenImageSetWorker == nil || dependencies.DialImageSetWorkflow == nil || dependencies.OpenSupplyAssets == nil) {
+		return errors.New("full image set worker lifecycle unavailable")
 	}
 	if cfg.SupplyChain != nil && (dependencies.OpenSupplyAssets == nil || dependencies.DialSupplyWorkflow == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("supply chain runtime dependencies unavailable")
@@ -338,6 +350,10 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var imageDB *gorm.DB
 	var imageWorkflow imageagent.WorkflowClient
+	var imageWorkerDB *gorm.DB
+	var imageWorkerConfig *coreconfig.Config
+	var imageTemporal client.Client
+	var imageWorker appruntime.ImageAgentWorker
 	if cfg.ImageAgent != nil {
 		imageDB, err = dependencies.OpenImageAgent(startupContext, cfg.ImageAgent.Database)
 		if err != nil {
@@ -348,7 +364,19 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		}
 		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(imageDB)) }()
 		var closeWorkflow func() error
-		imageWorkflow, closeWorkflow, err = dependencies.DialImageAgentWorkflow(startupContext, cfg.ImageAgent.TemporalAddress, cfg.ImageAgent.TemporalNamespace)
+		if cfg.ImageAgent.WorkerConfigFile != "" {
+			imageWorkerConfig, imageWorkerDB, err = dependencies.OpenImageSetWorker(startupContext, cfg.ImageAgent.WorkerConfigFile, cfg.ImageAgent.Database)
+			if err != nil || imageWorkerConfig == nil || imageWorkerDB == nil || imageWorkerDB == imageDB {
+				return errors.New("open existing full image worker pool failed")
+			}
+			defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(imageWorkerDB)) }()
+			imageTemporal, closeWorkflow, err = dependencies.DialImageSetWorkflow(startupContext, cfg.ImageAgent.TemporalAddress, cfg.ImageAgent.TemporalNamespace)
+			if imageTemporal != nil {
+				imageWorkflow = imagetemporal.NewOrganizationClient(imageTemporal)
+			}
+		} else {
+			imageWorkflow, closeWorkflow, err = dependencies.DialImageAgentWorkflow(startupContext, cfg.ImageAgent.TemporalAddress, cfg.ImageAgent.TemporalNamespace)
+		}
 		if err != nil {
 			return fmt.Errorf("connect organization image agent workflow: %w", err)
 		}
@@ -449,19 +477,35 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		}
 	}
 	var supplyAssetDB *gorm.DB
+	var imageAssetDB *gorm.DB
 	var supplyWorkflow client.Client
 	var supplyWorker supplyapp.OperationWorker
-	if s := cfg.SupplyChain; s != nil {
-		supplyAssetDB, err = dependencies.OpenSupplyAssets(startupContext, s.AssetDatabase)
-		if err != nil || supplyAssetDB == nil {
-			return errors.New("open supply Asset runtime owner failed")
+	var assetConfig *DatabaseConfig
+	if cfg.SupplyChain != nil {
+		assetConfig = &cfg.SupplyChain.AssetDatabase
+	}
+	if cfg.ImageAgent != nil && cfg.ImageAgent.WorkerConfigFile != "" {
+		assetConfig = &cfg.ImageAgent.AssetDatabase
+	}
+	if assetConfig != nil {
+		pool, openErr := dependencies.OpenSupplyAssets(startupContext, *assetConfig)
+		if openErr != nil || pool == nil {
+			return errors.New("open current Asset runtime owner failed")
 		}
-		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, imageDB, storeDB, notificationDB} {
-			if supplyAssetDB == existing {
-				return errors.New("supply requires its narrow independently opened Asset pool")
+		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, imageWorkerDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, notificationDB} {
+			if pool == existing {
+				return errors.New("current Asset requires its narrow independently opened pool")
 			}
 		}
-		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(supplyAssetDB)) }()
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(pool)) }()
+		if cfg.SupplyChain != nil {
+			supplyAssetDB = pool
+		}
+		if cfg.ImageAgent != nil && cfg.ImageAgent.WorkerConfigFile != "" {
+			imageAssetDB = pool
+		}
+	}
+	if s := cfg.SupplyChain; s != nil {
 		var closeWorkflow func() error
 		supplyWorkflow, closeWorkflow, err = dependencies.DialSupplyWorkflow(startupContext, s.TemporalAddress, s.TemporalNamespace)
 		if err != nil || supplyWorkflow == nil || closeWorkflow == nil {
@@ -496,7 +540,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if trialDB == nil {
 			return errors.New("isolated local trial database unavailable")
 		}
-		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB} {
+		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, imageAssetDB} {
 			if trialDB == existing {
 				return errors.New("local trial requires its dedicated runtime pool")
 			}
@@ -513,7 +557,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if openErr != nil || pool == nil {
 			return errors.New("ecoservices owner database unavailable")
 		}
-		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, trialDB, notificationDB, supplyAssetDB} {
+		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, trialDB, notificationDB, supplyAssetDB, imageAssetDB} {
 			if pool == existing {
 				return errors.New("ecoservices requires an independent owner pool")
 			}
@@ -531,7 +575,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if openErr != nil || pool == nil {
 			return errors.New("knowledge database unavailable")
 		}
-		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, imageDB, referralDB, membershipDB, storeDB} {
+		for _, existing := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, imageDB, referralDB, membershipDB, storeDB, imageAssetDB} {
 			if existing == pool {
 				return errors.New("knowledge requires an independently owned pool")
 			}
@@ -562,7 +606,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if err != nil || customizationDB == nil {
 			return errors.New("agent customization owner database unavailable")
 		}
-		others := []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, trialDB, notificationDB, supplyAssetDB, knowledgeDB}
+		others := []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, imageWorkerDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, trialDB, notificationDB, supplyAssetDB, imageAssetDB, knowledgeDB}
 		if ecoservicesRuntime != nil {
 			others = append(others, ecoservicesRuntime.DB)
 		}
@@ -582,7 +626,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if err != nil || toolMarketDB == nil {
 			return errors.New("tool market database unavailable")
 		}
-		for _, other := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, trialDB, notificationDB, supplyAssetDB, customizationDB} {
+		for _, other := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, trialDB, notificationDB, supplyAssetDB, imageAssetDB, customizationDB} {
 			if other == toolMarketDB {
 				return errors.New("tool market requires its independent owner pool")
 			}
@@ -598,7 +642,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if err != nil || projectDB == nil {
 			return errors.New("project center database unavailable")
 		}
-		for _, other := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, trialDB, notificationDB, supplyAssetDB, toolMarketDB, customizationDB} {
+		for _, other := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, trialDB, notificationDB, supplyAssetDB, imageAssetDB, toolMarketDB, customizationDB} {
 			if projectDB == other {
 				return errors.New("project center requires independent pool")
 			}
@@ -610,7 +654,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	if cfg.ReportCenter != nil {
 		reportDB, err = dependencies.OpenReportCenter(startupContext, cfg.ReportCenter.Database)
 		if reportDB != nil {
-			for _, other := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, trialDB, notificationDB, supplyAssetDB, toolMarketDB, customizationDB, projectDB, knowledgeDB} {
+			for _, other := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, trialDB, notificationDB, supplyAssetDB, toolMarketDB, customizationDB, projectDB, knowledgeDB, imageAssetDB, imageWorkerDB} {
 				if reportDB == other {
 					return errors.New("report center requires its independent owner pool")
 				}
@@ -668,7 +712,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		}
 	}
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{ReportCenterDB: reportDB, MarketStorage: marketStorage, POD: cfg.POD, PODCredentials: podCredentials, PODAssetDB: podAssetDB, PODWorkflow: podWorkflow, PODWorker: &podWorker, AgentCustomizationDB: customizationDB, ProjectCenterDB: projectDB, OperationsCockpit: cfg.StoreCenter != nil && cfg.StoreCenter.Enabled && cfg.StoreCenter.OperationsCockpit, ToolMarketDB: toolMarketDB, ToolMarket: cfg.ToolMarket, Ecoservices: ecoservicesRuntime, NotificationCenterDB: notificationDB, Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, PrivateDraftTrial: cfg.PrivateDraftTrial, SourceMediaStorage: sourceMediaStorage, SupplyAssetDB: supplyAssetDB, StoreObservationsWorkflow: observationWorkflow, StoreObservationsLifecycle: &observationLifecycle, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{ReportCenterDB: reportDB, MarketStorage: marketStorage, POD: cfg.POD, PODCredentials: podCredentials, PODAssetDB: podAssetDB, PODWorkflow: podWorkflow, PODWorker: &podWorker, AgentCustomizationDB: customizationDB, ProjectCenterDB: projectDB, OperationsCockpit: cfg.StoreCenter != nil && cfg.StoreCenter.Enabled && cfg.StoreCenter.OperationsCockpit, ToolMarketDB: toolMarketDB, ToolMarket: cfg.ToolMarket, Ecoservices: ecoservicesRuntime, NotificationCenterDB: notificationDB, Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, PrivateDraftTrial: cfg.PrivateDraftTrial, SourceMediaStorage: sourceMediaStorage, SupplyAssetDB: supplyAssetDB, StoreObservationsWorkflow: observationWorkflow, StoreObservationsLifecycle: &observationLifecycle, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, ImageSetAssetDB: imageAssetDB, ImageSetWorkerDB: imageWorkerDB, ImageSetWorkerConfig: imageWorkerConfig, ImageSetTemporal: imageTemporal, ImageSetWorker: &imageWorker, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {
@@ -717,6 +761,18 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			return errors.New("start supply worker failed")
 		}
 		defer supplyWorker.Stop()
+	}
+	if imageWorkerConfig != nil {
+		if imageWorker == nil {
+			_ = listener.Close()
+			return errors.New("full image worker was not assembled")
+		}
+		if err = imageWorker.Start(); err != nil {
+			imageWorker.Stop()
+			_ = listener.Close()
+			return errors.New("start full image worker failed")
+		}
+		defer imageWorker.Stop()
 	}
 	if observationWorkflow != nil {
 		if err := observationLifecycle.Start(); err != nil {

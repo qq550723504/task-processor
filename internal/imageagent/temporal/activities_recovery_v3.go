@@ -29,6 +29,7 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 		return EffectRecoveryResult{}, err
 	}
 	executionInput := imageagent.SlotExecutionInput{
+		ImageSet:             imageagent.CloneImageSetPlan(input.ImageSet),
 		OrganizationIdentity: input.Identity,
 		RunID:                input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
 		TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
@@ -38,6 +39,9 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 		ProductContext: input.AssetCatalog.ProductContext,
 	}
 	reservation := slotEffectReservationV3(executionInput)
+	if err := a.validatePersistedImageSetExecution(ctx, executionInput); err != nil {
+		return EffectRecoveryResult{}, err
+	}
 	effect, err := a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
 	if err != nil {
 		if errors.Is(err, imageagent.ErrRunNotFound) {
@@ -53,6 +57,9 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 	}
 	reservation.Policy = effect.Policy
 	reservation.Quote = effect.Quote
+	if input.ImageSet != nil && effect.InputFingerprint != reservation.InputFingerprint {
+		return EffectRecoveryResult{}, imageagent.ErrRevisionConflict
+	}
 	if effect.Phase == imageagent.SlotEffectV3RecoveryBlocked && strings.TrimSpace(input.ActionID) != "" {
 		restorer, ok := a.slotEffectsV3.(imageagent.RecoveryBlockedSlotEffectV3Repository)
 		if !ok {
@@ -94,7 +101,8 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 	}
 	budgetAuthorization := effect.Quote.Fingerprint != ""
 	published, err := a.ExecuteSlotV3(ctx, ExecuteSlotV3ActivityInput{
-		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision,
+		ImageSet: imageagent.CloneImageSetPlan(input.ImageSet),
+		RunID:    input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision,
 		TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 		Slot: input.Slot, Attempt: input.Attempt,
 		IdempotencyKey:             executionInput.IdempotencyKey,
@@ -123,8 +131,12 @@ func (a *Activities) PersistRecoveryBlockedEffectV3(ctx context.Context, input E
 	if err != nil {
 		return EffectRecoveryResult{}, err
 	}
+	if err := a.validatePersistedImageSetExecution(ctx, recoverySlotExecutionInput(input)); err != nil {
+		return EffectRecoveryResult{}, err
+	}
 	executionInput := imageagent.SlotExecutionInput{
-		RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
+		ImageSet: imageagent.CloneImageSetPlan(input.ImageSet),
+		RunID:    input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
 		TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 		PlanRevision: input.PlanRevision, Slot: input.Slot, Attempt: input.Attempt,
 		IdempotencyKey: slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt),
@@ -174,6 +186,9 @@ func (a *Activities) StartEffectRecoveryV3(ctx context.Context, input EffectReco
 	if err != nil {
 		return err
 	}
+	if err := a.validatePersistedImageSetExecution(ctx, recoverySlotExecutionInput(input)); err != nil {
+		return err
+	}
 	return a.recoveryWorkflowStarter(ctx, input)
 }
 
@@ -183,6 +198,9 @@ func (a *Activities) ReconcileEffectRecoveryV3(ctx context.Context, input Effect
 	}
 	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
+		return EffectRecoveryResult{}, err
+	}
+	if err := a.validatePersistedImageSetExecution(ctx, recoverySlotExecutionInput(input)); err != nil {
 		return EffectRecoveryResult{}, err
 	}
 	execution := imageagent.SlotExecutionInput{
@@ -202,11 +220,14 @@ func (a *Activities) ReconcileEffectRecoveryV3(ctx context.Context, input Effect
 	if err := validatePersistedSlotEffectV3(effect); err != nil {
 		return EffectRecoveryResult{}, err
 	}
+	if input.ImageSet != nil && effect.InputFingerprint != imageagent.SlotExecutionFingerprint(recoverySlotExecutionInput(input)) {
+		return EffectRecoveryResult{}, imageagent.ErrRevisionConflict
+	}
 	result, err := effectRecoveryResultFromDurableEffect(effect)
 	if err != nil {
 		return EffectRecoveryResult{}, err
 	}
-	if err := a.reconcileEffectRecoveryProjection(ctx, input, effect, result); err != nil {
+	if err := a.reconcileEffectRecoveryProjection(ctx, input, effect, &result); err != nil {
 		return EffectRecoveryResult{}, err
 	}
 	return result, nil
@@ -256,7 +277,7 @@ func effectRecoveryResultFromDurableEffect(effect imageagent.SlotEffectV3Attempt
 	}
 }
 
-func (a *Activities) reconcileEffectRecoveryProjection(ctx context.Context, input EffectRecoveryWorkflowInput, effect imageagent.SlotEffectV3Attempt, result EffectRecoveryResult) error {
+func (a *Activities) reconcileEffectRecoveryProjection(ctx context.Context, input EffectRecoveryWorkflowInput, effect imageagent.SlotEffectV3Attempt, result *EffectRecoveryResult) error {
 	scope := imageagent.RunScope{TenantID: input.Identity.TenantID, OwnerUserID: input.Identity.UserID, RunID: input.RunID}
 	current, err := a.repository.GetProjection(ctx, scope)
 	if err != nil {
@@ -275,12 +296,36 @@ func (a *Activities) reconcileEffectRecoveryProjection(ctx context.Context, inpu
 	}
 	ownerIndex := recoverableEffectIndex(owners, input.Slot.ID, input.Attempt)
 	if ownerIndex < 0 {
+		if current.Plan.Set != nil && current.Slots[slotIndex].Slot.Status == imageagent.SlotStatusBlocked && current.Slots[slotIndex].Closure != nil {
+			published := effect.Published
+			if published.SlotID == "" {
+				published.SlotID, published.Attempt = input.Slot.ID, input.Attempt
+			}
+			derived, err := a.deriveImageSetSlotProjection(ctx, current, PersistSlotResultV3ActivityInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision, AttemptKey: slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt), Result: SlotWorkflowV3Result{Published: published, Status: imageagent.SlotStatusBlocked, ErrorCode: current.Slots[slotIndex].ErrorCode, EffectPhase: effect.Phase}}, current.Slots[slotIndex])
+			if err != nil {
+				return err
+			}
+			if !reflect.DeepEqual(derived, current.Slots[slotIndex]) {
+				return imageagent.ErrRevisionConflict
+			}
+			result.Closure, result.BlockedCode = derived.Closure, derived.ErrorCode
+			return nil
+		}
 		if effect.Phase == imageagent.SlotEffectV3PublicationComplete && recoveredSlotProjectionMatches(current.Slots[slotIndex], effect.Published) {
+			if current.Plan.Set != nil {
+				result.Closure = current.Slots[slotIndex].Closure
+				if len(current.Slots[slotIndex].Candidates) == 1 {
+					result.GenerationProof = current.Slots[slotIndex].Candidates[0].GenerationProof
+				}
+				if result.Closure == nil || !result.Closure.Valid(input.Attempt) || result.GenerationProof == nil {
+					return imageagent.ErrRevisionConflict
+				}
+			}
 			return nil
 		}
 		return imageagent.ErrRevisionConflict
 	}
-	if effect.Phase != imageagent.SlotEffectV3PublicationComplete && recoveredBlockedProjectionMatches(current, slotIndex, ownerIndex, result.BlockedCode) {
+	if current.Plan.Set == nil && effect.Phase != imageagent.SlotEffectV3PublicationComplete && recoveredBlockedProjectionMatches(current, slotIndex, ownerIndex, result.BlockedCode) {
 		return nil
 	}
 	updated := current
@@ -316,6 +361,27 @@ func (a *Activities) reconcileEffectRecoveryProjection(ctx context.Context, inpu
 			updated.Run.Block.Message = result.BlockedCode
 		}
 	}
+	if current.Plan.Set != nil {
+		status := updated.Slots[slotIndex].Slot.Status
+		published := effect.Published
+		if published.SlotID == "" {
+			published.SlotID, published.Attempt = input.Slot.ID, input.Attempt
+		}
+		derived, err := a.deriveImageSetSlotProjection(ctx, current, PersistSlotResultV3ActivityInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision, AttemptKey: slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt), Result: SlotWorkflowV3Result{Published: published, Status: status, ErrorCode: updated.Slots[slotIndex].ErrorCode, EffectPhase: effect.Phase}}, updated.Slots[slotIndex])
+		if err != nil {
+			return err
+		}
+		updated.Slots[slotIndex] = derived
+		result.Closure = derived.Closure
+		if len(derived.Candidates) == 1 {
+			result.GenerationProof = derived.Candidates[0].GenerationProof
+		}
+		if status == imageagent.SlotStatusBlocked && derived.Closure != nil {
+			result.BlockedCode = derived.ErrorCode
+			updated.RecoverableEffects = append(updated.RecoverableEffects[:ownerIndex], updated.RecoverableEffects[ownerIndex+1:]...)
+			updated.Run.Block = recoveryParentBlock(updated.RecoverableEffects)
+		}
+	}
 	commitID, err := effectRecoveryReconciliationCommitID(input, effect.Phase)
 	if err != nil {
 		return err
@@ -349,7 +415,8 @@ func (a *Activities) reconcileEffectRecoveryProjection(ctx context.Context, inpu
 		SlotMutation: &imageagent.SlotProjectionMutation{
 			PlanRevision: input.PlanRevision,
 			Result: imageagent.SlotResult{
-				SlotID: input.Slot.ID, Attempt: input.Attempt, Status: updated.Slots[slotIndex].Slot.Status,
+				Closure: updated.Slots[slotIndex].Closure,
+				SlotID:  input.Slot.ID, Attempt: input.Attempt, Status: updated.Slots[slotIndex].Slot.Status,
 				CandidateAssetIDs: candidateIDs, ErrorCode: updated.Slots[slotIndex].ErrorCode,
 			},
 			Projection: updated.Slots[slotIndex],

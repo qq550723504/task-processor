@@ -17,6 +17,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	sigjson "sigs.k8s.io/json"
+	imageapp "task-processor/internal/app/imageagent"
 	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
@@ -420,10 +421,10 @@ func buildProductAcquisitionModule(ctx context.Context, db *gorm.DB, dependencie
 	return productAcquisitionModule{routes: productAcquisitionRoutes(service, binder.Bind), noticeReader: reader}, nil
 }
 func collectionAcquisitionOptions(enabled []bool) (acquisitionstore.RuntimeCapabilities, []productsourcing.AcquisitionPublicationOption, error) {
-	if len(enabled) > 4 {
+	if len(enabled) > 5 {
 		return acquisitionstore.RuntimeCapabilities{}, nil, sourcing.ErrAcquisitionUnavailable
 	}
-	capability := acquisitionstore.RuntimeCapabilities{Collections: len(enabled) >= 1 && enabled[0], SupplyChain: len(enabled) >= 2 && enabled[1], SupplyMarket: len(enabled) >= 3 && enabled[2], POD: len(enabled) >= 4 && enabled[3]}
+	capability := acquisitionstore.RuntimeCapabilities{Collections: len(enabled) >= 1 && enabled[0], SupplyChain: len(enabled) >= 2 && enabled[1], SupplyMarket: len(enabled) >= 3 && enabled[2], POD: len(enabled) >= 4 && enabled[3], ImageSets: len(enabled) == 5 && enabled[4]}
 	if (capability.SupplyChain || capability.SupplyMarket || capability.POD) && !capability.Collections || capability.POD && !capability.SupplyMarket {
 		return acquisitionstore.RuntimeCapabilities{}, nil, sourcing.ErrAcquisitionUnavailable
 	}
@@ -432,4 +433,10 @@ func collectionAcquisitionOptions(enabled []bool) (acquisitionstore.RuntimeCapab
 		options = append(options, productsourcing.WithCollectionPublication())
 	}
 	return capability, options, nil
+}
+
+// The image consumer reads current acquisition receipts through the admitted
+// Product sourcing composition. It receives no producer or publication writes.
+func newImageSetAcquisitionReceipts(ctx context.Context, db *gorm.DB, auth imageapp.ImagePublicationScopeAuthorizer) (sourcing.PublishedAcquisitionReader, error) {
+	return productsourcing.NewScopedPublishedAcquisitionReader(ctx, db, auth)
 }

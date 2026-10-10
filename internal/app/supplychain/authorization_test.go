@@ -77,6 +77,7 @@ func TestSupplyExecutionChecksOriginalGrantCurrentRoleAndOrganizationStatus(t *t
 	defer cancel()
 	scope := collection.Scope{"org-a", "actor-a", "member-a"}
 	require.NoError(t, owner.AuthorizeExecution(ctx, scope, collection.PermissionRead))
+	require.NoError(t, owner.AuthorizeImageExecution(ctx, scope))
 	roles, err := owner.ResolveAgentExecution(ctx, scope)
 	require.NoError(t, err)
 	require.Contains(t, roles, "listingkit_admin")
@@ -85,12 +86,26 @@ func TestSupplyExecutionChecksOriginalGrantCurrentRoleAndOrganizationStatus(t *t
 	owner.OrganizationStatus = status
 	_, authenticated := authidentity.AuthenticatedIdentityFromContext(ctx)
 	require.False(t, authenticated)
+	// Temporal restores this exact durable subject after live authorization,
+	// without retaining the originating browser token or its expiry.
+	workerIdentity := authidentity.AuthenticatedIdentity{TenantID: scope.OrganizationID, EffectiveOrganizationID: scope.OrganizationID, UserID: scope.ActorID, EffectiveMemberID: scope.MemberID}
+	ctx = authidentity.WithAuthenticatedIdentity(ctx, workerIdentity)
+	require.NoError(t, owner.AuthorizeImageExecution(ctx, scope))
+	require.NoError(t, owner.AuthorizeImageSource(ctx, scope))
+	expired := workerIdentity
+	expired.TokenExpiresAt = time.Now().Add(-time.Minute)
+	require.ErrorIs(t, owner.AuthorizeImageExecution(authidentity.WithAuthenticatedIdentity(ctx, expired), scope), collection.ErrForbidden)
+	foreign := workerIdentity
+	foreign.EffectiveOrganizationID = "org-b"
+	require.ErrorIs(t, owner.AuthorizeImageSource(authidentity.WithAuthenticatedIdentity(ctx, foreign), scope), collection.ErrForbidden)
 	replaced.Store(true)
+	require.ErrorIs(t, owner.AuthorizeImageExecution(ctx, scope), collection.ErrForbidden)
 	_, err = owner.ResolveAgentExecution(ctx, scope)
 	require.ErrorIs(t, err, collection.ErrForbidden)
 	require.ErrorIs(t, owner.AuthorizeExecution(ctx, scope, collection.PermissionRead), collection.ErrForbidden)
 	replaced.Store(false)
 	status.suspended.Store(true)
+	require.ErrorIs(t, owner.AuthorizeImageExecution(ctx, scope), collection.ErrForbidden)
 	require.ErrorIs(t, owner.AuthorizeExecution(ctx, scope, preparation.PermissionSubmit), collection.ErrForbidden)
 	status.suspended.Store(false)
 	role.Store(authz.EnterpriseRoleKey(scope.OrganizationID, 1))
@@ -99,6 +114,7 @@ func TestSupplyExecutionChecksOriginalGrantCurrentRoleAndOrganizationStatus(t *t
 	require.ErrorIs(t, owner.AuthorizeExecution(ctx, scope, collection.PermissionRead), collection.ErrUnavailable)
 	policy.unavailable = false
 	policy.removed.Store(true)
+	require.ErrorIs(t, owner.AuthorizeImageExecution(ctx, scope), collection.ErrForbidden)
 	require.ErrorIs(t, owner.AuthorizeExecution(ctx, scope, collection.PermissionRead), collection.ErrForbidden)
 	policy.removed.Store(false)
 	_, err = owner.AuthorizeProductExecution(ctx, storecenter.ProductExecutionSubject{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID, MemberID: scope.MemberID, Purpose: storecenter.ProductPurposePublish})

@@ -118,15 +118,25 @@ func (r publishedAcquisitionReader) ReadPublished(ctx context.Context, operation
 
 // Read consumers receive no provider or charge mutation capability.
 func NewPublishedAcquisitionReader(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer) (sourcing.PublishedAcquisitionReader, error) {
+	authorizer, err := sourcing.NewContextAuthorizer(live, permissions)
+	if err != nil {
+		return nil, err
+	}
+	return NewScopedPublishedAcquisitionReader(ctx, db, authorizer)
+}
+
+// Execution consumers supply an explicitly assembled live scope authorizer.
+// The producer retains actor-scoped operation/receipt and exact Catalog reads;
+// this constructor grants no capture, publication or charge capability.
+func NewScopedPublishedAcquisitionReader(ctx context.Context, db *gorm.DB, authorizer sourcing.PublicationAuthorizer) (sourcing.PublishedAcquisitionReader, error) {
+	if authorizer == nil {
+		return nil, sourcing.ErrPublicationForbidden
+	}
 	operations, err := acquisitionpersistence.NewRepository(ctx, db)
 	if err != nil {
 		return nil, err
 	}
 	store, err := sourcingpersistence.NewRepository(db, newCatalogBridge)
-	if err != nil {
-		return nil, err
-	}
-	authorizer, err := sourcing.NewContextAuthorizer(live, permissions)
 	if err != nil {
 		return nil, err
 	}

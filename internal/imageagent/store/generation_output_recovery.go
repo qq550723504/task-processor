@@ -64,7 +64,25 @@ func (r *gormRepository) RecoverGenerationStaging(ctx context.Context, reservati
 			return err
 		}
 		var sources []string
-		if json.Unmarshal(slot.SourceAssetIDs, &sources) != nil || slot.Role != string(imageagent.SlotRoleMain) || len(sources) != 1 || ref.SourceAssetID != sources[0] {
+		if json.Unmarshal(slot.SourceAssetIDs, &sources) != nil || len(sources) == 0 || ref.SourceAssetID != sources[0] {
+			return imageagent.ErrRevisionConflict
+		}
+		if intent.InputProtocol == imageagent.ImageSetSchema {
+			var plan planRecord
+			if err := tx.Where("tenant_id = ? AND owner_user_id = ? AND run_id = ? AND revision = ?", intent.Identity.TenantID, intent.Identity.OwnerUserID, intent.Identity.RunID, intent.Identity.PlanRevision).Take(&plan).Error; err != nil {
+				return err
+			}
+			var set *imageagent.ImageSetPlan
+			var recipe *imageagent.ImageSlotRecipe
+			var styles []string
+			if json.Unmarshal(plan.SetJSON, &set) != nil || set == nil || json.Unmarshal(slot.RecipeJSON, &recipe) != nil || recipe == nil || unmarshalJSON(slot.StyleReferenceIDs, &styles) != nil {
+				return imageagent.ErrRevisionConflict
+			}
+			stored := imageagent.SlotExecutionInput{ImageSet: set, TargetPlatform: set.Target.Platform, Slot: imageagent.Slot{ID: slot.ID, Role: imageagent.SlotRole(slot.Role), SourceAssetIDs: sources, StyleReferenceIDs: styles, Brief: slot.Brief, IdempotencyKey: slot.IdempotencyKey, Recipe: recipe}}
+			if imageagent.ValidateImageSetExecution(stored) != nil || set.Source.CatalogHash != intent.CatalogHash || imageagent.ImageSourceBundleDigest(recipe.References) != intent.SourceDigest || intent.InputDigest != imageagent.ImageGenerationInputDigestFromFingerprint(row.InputFingerprint) {
+				return imageagent.ErrRevisionConflict
+			}
+		} else if slot.Role != string(imageagent.SlotRoleMain) || len(sources) != 1 {
 			return imageagent.ErrRevisionConflict
 		}
 		current, err := decodeSlotEffectV3Record(row)

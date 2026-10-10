@@ -95,6 +95,12 @@ type productReviewCore struct {
 	store        *reviewstore.Repository
 }
 
+// Read consumers reuse the current Review owner without constructing its
+// producer, mutation service or operation inventory.
+func newProductAppliedPublicationReader(db *gorm.DB) (review.AppliedPublicationLookup, error) {
+	return newProductReviewRepository(db)
+}
+
 // The current Review repository owns this transaction source binding. Native
 // draft observations reuse its assembly without constructing title execution.
 func newProductReviewRepository(db *gorm.DB) (*reviewstore.Repository, error) {

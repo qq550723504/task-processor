@@ -21,6 +21,7 @@ import (
 	customhttp "task-processor/internal/agentcustomization/httpapi"
 	ph "task-processor/internal/aiworkbench/projectcenter/httpapi"
 	registration "task-processor/internal/app/referralregistration"
+	appruntime "task-processor/internal/app/runtime"
 	storeapp "task-processor/internal/app/storecenter"
 	observationhttp "task-processor/internal/app/storeobservations/httpapi"
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
@@ -40,6 +41,7 @@ import (
 	o "task-processor/internal/marketplace/shein/observations"
 	notificationhttp "task-processor/internal/notificationcenter/httpapi"
 	cockpithttp "task-processor/internal/operationscockpit/httpapi"
+	"task-processor/internal/product/asset"
 	collectionhttp "task-processor/internal/product/collection/httpapi"
 	"task-processor/internal/product/sourcing"
 	reporthttp "task-processor/internal/reportcenter/httpapi"
@@ -161,6 +163,7 @@ type currentApplicationOptions struct {
 	accountAuditProductDB        *gorm.DB
 	accountAuditSources          int
 	imageAgentWorkflows          imageagent.WorkflowClient
+	fullImages                   *FullImageSetDependencies
 	membership                   *MembershipDependencies
 	referrals                    int
 	productAcquisitions          int
@@ -462,6 +465,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	if supplied.imageAgents > 0 && (supplied.imageAgentDB == nil || supplied.imageAgentWorkflows == nil || supplied.productAcquisitionDB == nil || supplied.imageAgentDB == sourceAccountDB || supplied.imageAgentDB == supplied.productAcquisitionDB || supplied.imageAgentDB == supplied.commercialOwnerDB || supplied.imageAgentDB == supplied.referralDB) {
 		return nil, errors.New("acquisition image agent requires its owner pool, organization workflow, and product acquisition pool")
 	}
+	if d := supplied.fullImages; d != nil && (d.AssetDB == nil || d.AssetDB == supplied.imageAgentDB || d.AssetDB == d.WorkerDB || d.AssetDB == supplied.productAcquisitionDB || d.AssetDB == sourceAccountDB || d.AssetDB == supplied.commercialOwnerDB || d.WorkerDB == nil || d.WorkerDB == supplied.imageAgentDB || d.WorkerConfig == nil || d.Client == nil || d.Worker == nil || supplied.agentConfigurationDB == nil || supplied.commercialOwnerDB == nil || factories.buildAcquisitionImage != nil || supplied.supplyChain != nil && supplied.supplyChain.AssetDB != d.AssetDB) {
+		return nil, errors.New("full image application requires all current owner ports and an explicit worker")
+	}
 	if supplied.referralDB != nil && (supplied.referralDB == sourceAccountDB || supplied.referralDB == supplied.productAcquisitionDB) {
 		return nil, errors.New("referrals requires an independent pool")
 	}
@@ -508,7 +514,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 			if err != nil {
 				return nil, err
 			}
-			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges, supplied.productCollections > 0, (supplied.supplyChains > 0 || supplied.privateDraftTrials > 0), supplied.supplyMarkets > 0, supplied.pods > 0)
+			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges, supplied.productCollections > 0, supplied.supplyChains > 0 || supplied.privateDraftTrials > 0, supplied.supplyMarkets > 0, supplied.pods > 0, supplied.fullImages != nil)
 		}
 	}
 	if supplied.browserCaptures > 1 {
@@ -523,10 +529,10 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		browserDB := supplied.productAcquisitionDB
 		factories.buildBrowserCapture = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer, supplied.productCollections > 0, (supplied.supplyChains > 0 || supplied.privateDraftTrials > 0), supplied.supplyMarkets > 0, supplied.pods > 0)
+			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer, supplied.productCollections > 0, supplied.supplyChains > 0 || supplied.privateDraftTrials > 0, supplied.supplyMarkets > 0, supplied.pods > 0, supplied.fullImages != nil)
 		}
 	}
-	if supplied.imageAgents > 0 {
+	if supplied.imageAgents > 0 && supplied.fullImages == nil {
 		if factories.buildAcquisitionImage != nil {
 			return nil, errors.New("acquisition image agent factory and option cannot both be supplied")
 		}
@@ -711,7 +717,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, acquisition)
 	}
 	if supplied.productCollections > 0 {
-		collections, err := buildProductCollectionModuleWithSourceMedia(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, cfg, (supplied.supplyChains > 0 || supplied.privateDraftTrials > 0), supplied.collectionSourceMedia, supplied.supplyMarkets > 0, supplied.pods > 0)
+		collections, err := buildProductCollectionModuleWithSourceMedia(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, cfg, supplied.supplyChains > 0 || supplied.privateDraftTrials > 0, supplied.collectionSourceMedia, supplied.supplyMarkets > 0, supplied.pods > 0, supplied.fullImages != nil)
 		if err != nil {
 			return nil, fmt.Errorf("build current product collections: %w", err)
 		}
@@ -736,6 +742,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, module)
 	}
 	var supplyRuntime *supplyChainModule
+	var imageRuntime *fullImageApplication
 	var marketRuntime *supplyMarketModule
 	if supplied.supplyMarket != nil {
 		module, e := buildSupplyMarketModule(ctx, supplied.productAcquisitionDB, *supplied.supplyMarket, supplied.pod, *workbench.authDependencies, authorizer, cfg, supplied.supplyChains > 0)
@@ -781,7 +788,31 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, module)
 	}
 	if supplied.agentConfigurationDB != nil {
-		m, e := buildAgentConfigurationModule(ctx, supplied.agentConfigurationDB, workbench.authDependencies.organizationResolver, authorizer, supplied.knowledge, productRuntime)
+		if supplied.fullImages != nil {
+			if supplied.fullImages.Worker == nil || supplied.fullImages.Client == nil {
+				return nil, imageagent.ErrCommandBlocked
+			}
+			products, live, e := buildFullImageProducts(supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, cfg)
+			if e != nil {
+				return nil, fmt.Errorf("build full image Product context: %w", e)
+			}
+			var sourceMedia asset.ManualImageReader
+			if supplied.collectionSourceMedia != nil && cfg.ProductCollectionSourceMedia.Enabled {
+				sourceMedia = newImageSetManualMedia(supplied.collectionSourceMedia, imageMediaScopeAuthority{current: live})
+			}
+			full, dependencies, e := buildFullImageApplication(ctx, supplied.productAcquisitionDB, supplied.imageAgentDB, supplied.fullImages.WorkerDB, supplied.agentConfigurationDB, supplied.commercialOwnerDB, supplied.fullImages.AssetDB, supplied.imageAgentWorkflows, products, live, supplyRuntime, cfg, supplied.fullImages.WorkerConfig, logger, sourceMedia)
+			if e != nil {
+				return nil, fmt.Errorf("build full image application: %w", e)
+			}
+			worker, e := appruntime.NewOrganizationImageSetWorker(supplied.fullImages.Client, dependencies)
+			if e != nil {
+				return nil, e
+			}
+			*supplied.fullImages.Worker = worker
+			imageRuntime = full
+			modules = append(modules, fullImageModule{application: full, bind: (productReviewCapabilityBinder{now: time.Now}).Bind})
+		}
+		m, e := buildAgentConfigurationModule(ctx, supplied.agentConfigurationDB, workbench.authDependencies.organizationResolver, authorizer, supplied.knowledge, productRuntime, imageRuntime)
 		if e != nil {
 			return nil, fmt.Errorf("build current agent configuration: %w", e)
 		}
@@ -940,6 +971,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		LocalTrial:          supplied.localTrials > 0,
 		Knowledge:           supplied.knowledgeServices > 0,
 		AcquisitionImage:    factories.buildAcquisitionImage != nil,
+		FullImageSet:        imageRuntime != nil,
 		ProductAgent:        supplied.productAgent != nil,
 		AIWorkbench:         supplied.aiWorkbench != nil,
 		ProjectCenter:       supplied.projectCenterDB != nil,
@@ -1055,6 +1087,7 @@ type currentApplicationOptionalRoutes struct {
 	ZitadelSMS          bool
 	SubjectVerification bool
 	AcquisitionImage    bool
+	FullImageSet        bool
 	ProductAgent        bool
 	AIWorkbench         bool
 	ProjectCenter       bool
@@ -1197,6 +1230,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			admitted = append(admitted, route)
 		}
 	}
+	if optional.FullImageSet {
+		for _, route := range (fullImageModule{}).routes() {
+			admitted = append(admitted, currentApplicationRoute{Method: route.Method, Path: route.Path})
+		}
+	}
 	if optional.SubjectVerification {
 		for _, route := range (verificationhttp.PersonalHandler{}).Routes() {
 			admitted = append(admitted, currentApplicationRoute{Method: route.Method, Path: route.Path})
@@ -1319,7 +1357,7 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 				return err
 			}
 		}
-		if descriptor.Path == supplyhttp.SupplyBasePath || strings.HasPrefix(descriptor.Path, supplyhttp.SupplyBasePath+"/") {
+		if (descriptor.Path == supplyhttp.SupplyBasePath || strings.HasPrefix(descriptor.Path, supplyhttp.SupplyBasePath+"/")) && !strings.HasPrefix(descriptor.Path, supplyImageSetBase) {
 			if !optional.SupplyChain && (!optional.PrivateDraftTrial || !supplyhttp.IsPrivateDraftReadRoute(descriptor.Method, descriptor.Path)) {
 				return errors.New("supply chain feature not admitted")
 			}
@@ -1358,6 +1396,15 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 		}
 		if strings.HasPrefix(descriptor.Path, acquisitionImageBase) && (descriptor.Module != "acquisition-main-image" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.RequestTimeout != 30*time.Second || descriptor.Permission != map[bool]string{true: authz.PermissionImageAgentRead, false: authz.PermissionImageAgentWrite}[descriptor.Method == http.MethodGet]) {
 			return errors.New("current acquisition image route loses live permission boundary")
+		}
+		if strings.HasPrefix(descriptor.Path, acquisitionImageSetBase) || strings.HasPrefix(descriptor.Path, supplyImageSetBase) {
+			if !optional.FullImageSet {
+				return errors.New("full image application not admitted")
+			}
+			readPermission := descriptor.Method == http.MethodGet || descriptor.Method == http.MethodPost && (descriptor.Path == acquisitionImageSetBase+"/requirements" || descriptor.Path == supplyImageSetBase+"/requirements")
+			if descriptor.Module != "product-image-set" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.RequestTimeout != 30*time.Second || descriptor.Permission != map[bool]string{true: authz.PermissionImageAgentRead, false: authz.PermissionImageAgentWrite}[readPermission] {
+				return errors.New("full image route loses live permission boundary")
+			}
 		}
 		for _, candidate := range currentCommercialBillingApplicationRoutes {
 			if descriptor.Method == candidate.Method && descriptor.Path == candidate.Path {

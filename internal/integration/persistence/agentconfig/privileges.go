@@ -33,7 +33,7 @@ func GrantRuntime(db *gorm.DB, role string) error {
 		"REVOKE ALL ON ALL TABLES IN SCHEMA agent_configuration FROM " + quoted,
 		"GRANT USAGE ON SCHEMA agent_configuration TO " + quoted,
 		"GRANT SELECT, INSERT, UPDATE ON agent_configuration.organization_agents, agent_configuration.templates TO " + quoted,
-		"GRANT SELECT, INSERT ON agent_configuration.template_revisions, agent_configuration.start_snapshots, agent_configuration.commands TO " + quoted,
+		"GRANT SELECT, INSERT ON agent_configuration.template_revisions, agent_configuration.start_snapshots, agent_configuration.commands, agent_configuration.image_run_admissions TO " + quoted,
 		"GRANT UPDATE (before_revision, after_revision, receipt, template_id) ON agent_configuration.commands TO " + quoted,
 	} {
 		if e := db.Exec(sql).Error; e != nil {
@@ -48,7 +48,7 @@ func GrantRuntime(db *gorm.DB, role string) error {
 	if unsafe {
 		return agentconfig.ErrInvalid
 	}
-	for _, table := range []string{"organization_agents", "templates", "template_revisions", "start_snapshots", "commands"} {
+	for _, table := range []string{"organization_agents", "templates", "template_revisions", "start_snapshots", "commands", "image_run_admissions"} {
 		if e := db.Raw("SELECT has_table_privilege(?,?,'DELETE,TRUNCATE')", role, "agent_configuration."+table).Scan(&unsafe).Error; e != nil {
 			return e
 		}
@@ -56,7 +56,7 @@ func GrantRuntime(db *gorm.DB, role string) error {
 			return agentconfig.ErrInvalid
 		}
 	}
-	for _, table := range []string{"template_revisions", "start_snapshots"} {
+	for _, table := range []string{"template_revisions", "start_snapshots", "image_run_admissions"} {
 		if e := db.Raw("SELECT has_any_column_privilege(?,?,'UPDATE')", role, "agent_configuration."+table).Scan(&unsafe).Error; e != nil {
 			return e
 		}

@@ -181,6 +181,12 @@ source of truth for long-lived rules.
     search, native role/state filtering, filtered totals and paging. IMPLEMENTATION_READY;
     no new IAM, persistence owner or shared runtime authority.
 
+- [`product-image-agent-v1.md`](./product-image-agent-v1.md)
+  - IMPLEMENTATION_READY #612: enterprise full-image configuration, product Run/Plan,
+    per-image dispatch/materialization/points, original-request recovery and explicit
+    ordered Asset selection. Reuses current owners and Figma Product Authority;
+    provider use and user acceptance remain separately gated.
+
 - [`organization-agent-configuration-v1.md`](./organization-agent-configuration-v1.md)
   - APPROVED / IMPLEMENTATION_READY #570 Slice D: enterprise Agent enablement,
     immutable templates/defaults and start snapshots, capability projections,

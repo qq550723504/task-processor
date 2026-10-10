@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"task-processor/internal/agentconfig"
 	"task-processor/internal/imageagent"
 )
 
@@ -328,6 +329,14 @@ func (r *gormRepository) findRunForUpdate(ctx context.Context, db *gorm.DB, scop
 }
 
 func runToRecord(run imageagent.Run) (runRecord, error) {
+	var admissionJSON []byte
+	if run.ImageAdmission != nil {
+		var err error
+		admissionJSON, err = marshalJSON(run.ImageAdmission)
+		if err != nil || len(admissionJSON) > 8192 {
+			return runRecord{}, imageagent.ErrRevisionConflict
+		}
+	}
 	policyContextJSON, err := marshalJSON(run.ImagePolicyContext)
 	if err != nil {
 		return runRecord{}, fmt.Errorf("marshal run image policy context: %w", err)
@@ -345,6 +354,7 @@ func runToRecord(run imageagent.Run) (runRecord, error) {
 		return runRecord{}, fmt.Errorf("marshal run block: %w", err)
 	}
 	return runRecord{
+		AdmissionJSON: admissionJSON,
 		ScopeProtocol: run.ScopeProtocol,
 		TenantID:      run.TenantID, ID: run.ID, BusinessTaskID: run.BusinessTaskID, TargetPlatform: run.TargetPlatform, UserID: run.UserID, MemberID: run.MemberID,
 		PolicyContextJSON: policyContextJSON,
@@ -354,6 +364,12 @@ func runToRecord(run imageagent.Run) (runRecord, error) {
 }
 
 func recordToRun(row runRecord) (imageagent.Run, error) {
+	var admission *agentconfig.ImageRunAdmissionReceipt
+	if len(row.AdmissionJSON) > 0 {
+		if len(row.AdmissionJSON) > 8192 || json.Unmarshal(row.AdmissionJSON, &admission) != nil || admission == nil {
+			return imageagent.Run{}, imageagent.ErrRevisionConflict
+		}
+	}
 	var policyContext imageagent.ImagePolicyContext
 	if err := unmarshalJSON(row.PolicyContextJSON, &policyContext); err != nil {
 		return imageagent.Run{}, fmt.Errorf("decode run image policy context: %w", err)
@@ -370,13 +386,18 @@ func recordToRun(row runRecord) (imageagent.Run, error) {
 	if err := unmarshalJSON(row.BlockJSON, &block); err != nil {
 		return imageagent.Run{}, fmt.Errorf("decode run block: %w", err)
 	}
-	return imageagent.Run{
-		ScopeProtocol: row.ScopeProtocol,
-		ID:            row.ID, TenantID: row.TenantID, BusinessTaskID: row.BusinessTaskID, TargetPlatform: row.TargetPlatform, UserID: row.UserID, MemberID: row.MemberID, Mode: imageagent.RunMode(row.Mode),
+	run := imageagent.Run{
+		ImageAdmission: admission,
+		ScopeProtocol:  row.ScopeProtocol,
+		ID:             row.ID, TenantID: row.TenantID, BusinessTaskID: row.BusinessTaskID, TargetPlatform: row.TargetPlatform, UserID: row.UserID, MemberID: row.MemberID, Mode: imageagent.RunMode(row.Mode),
 		ImagePolicyContext: policyContext,
 		IdempotencyKey:     row.IdempotencyKey, Status: imageagent.RunStatus(row.Status), CurrentNode: row.CurrentNode,
 		ActivePlanRevision: row.ActivePlanRevision, Version: row.Version, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(row.MaxConcurrentSlots), Budget: budget, Usage: usage, Block: block, StartedAt: row.CreatedAt.UTC(),
-	}, nil
+	}
+	if admission != nil {
+		run.StartedAt = admission.AdmittedAt
+	}
+	return run, nil
 }
 
 func planToRecords(scope imageagent.RunScope, plan imageagent.Plan) (planRecord, []slotRecord, error) {
@@ -389,6 +410,12 @@ func planToRecords(scope imageagent.RunScope, plan imageagent.Plan) (planRecord,
 		return planRecord{}, nil, err
 	}
 	planRow := planRecord{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, Revision: plan.Revision, ParentRevision: plan.ParentRevision, IdempotencyKey: plan.IdempotencyKey, SourceAssetIDs: sources, StyleReferenceIDs: styles, CreatedBy: plan.CreatedBy}
+	if plan.Set != nil {
+		planRow.SetJSON, err = marshalJSON(plan.Set)
+		if err != nil {
+			return planRecord{}, nil, err
+		}
+	}
 	slots := make([]slotRecord, 0, len(plan.Slots))
 	for _, slot := range plan.Slots {
 		slotSources, err := marshalJSON(slot.SourceAssetIDs)
@@ -399,7 +426,14 @@ func planToRecords(scope imageagent.RunScope, plan imageagent.Plan) (planRecord,
 		if err != nil {
 			return planRecord{}, nil, err
 		}
-		slots = append(slots, slotRecord{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, PlanRevision: plan.Revision, ID: slot.ID, Role: string(slot.Role), SourceAssetIDs: slotSources, StyleReferenceIDs: slotStyles, Brief: slot.Brief, IdempotencyKey: slot.IdempotencyKey, Status: string(slot.Status)})
+		row := slotRecord{TenantID: scope.TenantID, OwnerUserID: scope.OwnerUserID, RunID: scope.RunID, PlanRevision: plan.Revision, ID: slot.ID, Role: string(slot.Role), SourceAssetIDs: slotSources, StyleReferenceIDs: slotStyles, Brief: slot.Brief, IdempotencyKey: slot.IdempotencyKey, Status: string(slot.Status)}
+		if slot.Recipe != nil {
+			row.RecipeJSON, err = marshalJSON(slot.Recipe)
+			if err != nil {
+				return planRecord{}, nil, err
+			}
+		}
+		slots = append(slots, row)
 	}
 	return planRow, slots, nil
 }
@@ -439,6 +473,9 @@ func findPlanByIdentity(ctx context.Context, db *gorm.DB, scope imageagent.RunSc
 }
 
 func samePlanDefinition(existing existingPlan, wanted planRecord, wantedSlots []slotRecord) bool {
+	if !reflect.DeepEqual(existing.plan.SetJSON, wanted.SetJSON) {
+		return false
+	}
 	if existing.plan.TenantID != wanted.TenantID || existing.plan.OwnerUserID != wanted.OwnerUserID || existing.plan.RunID != wanted.RunID || existing.plan.Revision != wanted.Revision || existing.plan.ParentRevision != wanted.ParentRevision || existing.plan.IdempotencyKey != wanted.IdempotencyKey || existing.plan.CreatedBy != wanted.CreatedBy || !reflect.DeepEqual(existing.plan.SourceAssetIDs, wanted.SourceAssetIDs) || !reflect.DeepEqual(existing.plan.StyleReferenceIDs, wanted.StyleReferenceIDs) || len(existing.slots) != len(wantedSlots) {
 		return false
 	}
@@ -448,6 +485,9 @@ func samePlanDefinition(existing existingPlan, wanted planRecord, wantedSlots []
 	}
 	for _, wantedSlot := range wantedSlots {
 		stored, ok := existingByID[wantedSlot.ID]
+		if !reflect.DeepEqual(stored.RecipeJSON, wantedSlot.RecipeJSON) {
+			return false
+		}
 		if !ok || stored.Role != wantedSlot.Role || stored.IdempotencyKey != wantedSlot.IdempotencyKey || stored.Brief != wantedSlot.Brief || stored.Status != wantedSlot.Status || !reflect.DeepEqual(stored.SourceAssetIDs, wantedSlot.SourceAssetIDs) || !reflect.DeepEqual(stored.StyleReferenceIDs, wantedSlot.StyleReferenceIDs) {
 			return false
 		}
@@ -456,9 +496,15 @@ func samePlanDefinition(existing existingPlan, wanted planRecord, wantedSlots []
 }
 
 func slotResultFromRecord(record slotRecord) (imageagent.SlotResult, error) {
+	var closure *imageagent.ImageSlotClosure
+	if len(record.ClosureJSON) > 0 {
+		if err := unmarshalJSON(record.ClosureJSON, &closure); err != nil {
+			return imageagent.SlotResult{}, err
+		}
+	}
 	var candidates []string
 	if err := unmarshalJSON(record.CandidateAssetIDs, &candidates); err != nil {
 		return imageagent.SlotResult{}, fmt.Errorf("decode slot candidate asset IDs: %w", err)
 	}
-	return imageagent.SlotResult{SlotID: record.ID, Attempt: record.Attempt, Status: imageagent.SlotStatus(record.Status), CandidateAssetIDs: candidates, ErrorCode: record.ErrorCode}, nil
+	return imageagent.SlotResult{Closure: closure, SlotID: record.ID, Attempt: record.Attempt, Status: imageagent.SlotStatus(record.Status), CandidateAssetIDs: candidates, ErrorCode: record.ErrorCode}, nil
 }

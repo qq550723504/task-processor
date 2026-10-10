@@ -7,6 +7,7 @@ import (
 	"strings"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/shared/aiidentity"
 	"time"
 )
@@ -18,6 +19,8 @@ var errPublicationOwnerRequiresActivity = errors.New("publication owner requires
 type RecoveryWorkflowStarter func(context.Context, EffectRecoveryWorkflowInput) error
 
 type ActivityDependencies struct {
+	ImageSetApprovals        productasset.ApprovalCommitReader
+	ImageSetPublisher        imageagent.ApprovedImageSetPublisher
 	GenerationRecovery       imageagent.GenerationRecovery
 	GenerationOutputRecovery imageagent.GenerationOutputRecovery
 	ExecutionAuthorizer      imageagent.ExecutionAuthorizer
@@ -35,6 +38,8 @@ type ActivityDependencies struct {
 }
 
 type Activities struct {
+	imageSetApprovals        productasset.ApprovalCommitReader
+	imageSetPublisher        imageagent.ApprovedImageSetPublisher
 	generationRecovery       imageagent.GenerationRecovery
 	generationOutputRecovery imageagent.GenerationOutputRecovery
 	executionAuthorizer      imageagent.ExecutionAuthorizer
@@ -52,6 +57,9 @@ type Activities struct {
 }
 
 func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
+	if dependencies.ImageSetApprovals != nil && (dependencies.ExecutionAuthorizer == nil || dependencies.ImageSetPublisher == nil) {
+		return nil, fmt.Errorf("image set approval recovery requires organization publication assembly")
+	}
 	if (dependencies.GenerationRecovery != nil || dependencies.GenerationOutputRecovery != nil) && dependencies.ExecutionAuthorizer == nil {
 		return nil, fmt.Errorf("generation recovery requires organization execution assembly")
 	}
@@ -69,7 +77,7 @@ func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
 	if dependencies.SlotEffects == nil {
 		return nil, fmt.Errorf("image agent slot external effect repository is required")
 	}
-	if dependencies.Publisher == nil {
+	if dependencies.Publisher == nil && dependencies.ImageSetPublisher == nil {
 		return nil, fmt.Errorf("image agent approved asset publisher is required")
 	}
 	v3Requested := dependencies.SlotEffectsV3 != nil || dependencies.StagedSlotExecutor != nil || dependencies.ArtifactStore != nil
@@ -88,7 +96,7 @@ func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
 		if dependencies.ArtifactStore == nil {
 			return nil, fmt.Errorf("image agent durable artifact store is required")
 		}
-		if dependencies.PublisherV3 == nil {
+		if dependencies.PublisherV3 == nil && dependencies.ImageSetPublisher == nil {
 			return nil, fmt.Errorf("image agent v3 approved asset publisher is required")
 		}
 		if dependencies.PublicationOwner == nil {
@@ -99,7 +107,9 @@ func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
 		}
 	}
 	return &Activities{
+		imageSetApprovals:        dependencies.ImageSetApprovals,
 		generationRecovery:       dependencies.GenerationRecovery,
+		imageSetPublisher:        dependencies.ImageSetPublisher,
 		generationOutputRecovery: dependencies.GenerationOutputRecovery,
 		executionAuthorizer:      dependencies.ExecutionAuthorizer,
 		repository:               dependencies.Repository, slotEffects: dependencies.SlotEffects, slotExecutor: dependencies.SlotExecutor, publisher: dependencies.Publisher, publisherV3: dependencies.PublisherV3,

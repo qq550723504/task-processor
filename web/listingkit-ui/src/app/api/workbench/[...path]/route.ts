@@ -2,6 +2,7 @@ import { isBrowserCapturePath, isBrowserCaptureRequestURL } from "@/lib/contract
 import {agentPath} from "@/lib/contracts/product-agent";
 import { aiWorkbenchPath } from "@/lib/contracts/ai-workbench";
 import { collectionPath } from "@/lib/contracts/product-collection";
+import { imageSetMethods, imageSetPath, imageSetRoutes } from "@/lib/contracts/product-image-set";
 import { NextRequest } from "next/server";
 
 import { serverAuth } from "@/auth";
@@ -17,6 +18,8 @@ export const dynamic = "force-dynamic";
 
 const UPSTREAM_TIMEOUT_MS = 15_000;
 const ACQUISITION_TIMEOUT_MS = 22_000;
+// Preserve the backend's 30s image window plus bounded proxy transport time.
+const IMAGE_SET_TIMEOUT_MS = 32_000;
 
 type AuthenticatedWorkbenchRequest = NextRequest & { auth?: unknown };
 type WorkbenchDispatchState = {
@@ -133,8 +136,9 @@ async function handleWorkbenchRequest(
   request.signal.addEventListener("abort", abort, { once: true });
   if (request.signal.aborted) abort();
   const path = new URL(request.url).pathname.split("/").filter(Boolean).slice(2);
+  const imageSetRequest = imageSetRoutes.some((action) => imageSetMethods[action] === request.method && imageSetPath(path, action) !== null);
   const agentRequest=agentPath(path)!==null || ["message", "confirm", "task-start", "task-resume", "task-review"].includes(aiWorkbenchPath(request.method, path) ?? "");
-  const timeout = setTimeout(abort, agentRequest?125000:dispatchState.acquisitionRequest ? ACQUISITION_TIMEOUT_MS : UPSTREAM_TIMEOUT_MS);
+  const timeout = setTimeout(abort, imageSetRequest ? IMAGE_SET_TIMEOUT_MS : agentRequest?125000:dispatchState.acquisitionRequest ? ACQUISITION_TIMEOUT_MS : UPSTREAM_TIMEOUT_MS);
   try {
     const scopedRequest = new NextRequest(request, { signal: controller.signal });
     const result = await Promise.race([

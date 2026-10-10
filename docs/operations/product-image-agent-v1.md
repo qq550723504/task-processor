@@ -1,0 +1,72 @@
+# 完整商品图片智能体 v1 运行与使用
+
+对应 #612 / PR #616，Design Basis 为 [完整图片架构](../architecture/product-image-agent-v1.md)。这是实现交接；真实 provider、平台发布和用户验收分别保留 NOT_RUN，不能由 CI 或合成响应代替。
+
+## 使用入口
+
+1. 正常登录并选择当前企业，在 `/workbench/agents/mine/product.image.agent` 显式启用图片智能体，创建并选择精确版本的图片模板。标题智能体保留自己的配置和审核路径。
+2. 在已保存的采集商品 `/workbench/supply/acquisition/operation/<operationId>`，或“我的供应链 → 商品资料与平台适配”打开完整图片面板。也可在图片智能体的最近任务中读取原任务。
+3. 选择主图/轮播与详情内容、真实原始素材。共用只表示共用原图，两组仍逐图调用和计费。八项详情是可选内容库；缺少规格、说明或配件依据的任务须补充商品资料或取消。
+4. 通用素材可直接准备。平台素材从已经保存的实际店铺/站点/叶子类目/商品类型/属性/变体/应用模式读取当前官方图片要求，再为各项选择合法位置。首版开放 SHEIN 美国站；不能把 8+8 当作平台统一图片数量。当前输出为 1024×1024，界面标出不适用的类型；不调用额外放大模型。
+5. 准备只冻结配方、原图字节哈希、配置和报价，不调用生成模型。确认真实总点数上限后才启动原 Temporal 任务。每张分别执行与结算，进度来自实际 Slot；部分成功和已产生费用保留。
+6. 对照原图与结果，明确勾选最终采用的图片，安排主图/详情组内顺序并预览完整集合，再人工批准保存。可保留当前正式素材、采用已批准的通用素材到当前平台，或使用已有文件上传能力人工替换。文件替换由服务端读取真实不可变文件；浏览器不提供批准 URL、尺寸或计费证明。
+7. 保存到唯一 Product Asset owner 后，当前供应链重新读取正式库存。正式发布仍逐项检查该平台所有必须位置；批准部分素材本身不意味着能够发布。
+
+## 配置与启动
+
+沿用 [企业智能体配置](organization-agent-configuration-v1.md)。通用素材模式直接消费当前采集 Product/Review 与 IAM，不要求 Store 官方应用或 Supply worker。接入实际平台后，再按 [当前供应链运行配置](my-supply-chain-shein-v1.md) 装配平台来源、店铺授权和官方规则；未装配的目标拒绝生成与批准。当前默认 Account Compose 不自动启用完整图片 worker、付费 provider 或正式应用。已有单图试验 overlay 的 OpenAI 合成协议不是本实现的 GRSAI 接线；不要同时运行其旧 worker 来消费完整集合任务。
+
+维护者在已经获准的全新业务环境准备私有 current-application JSON 和现有 worker YAML。服务启动验证已有 schema/grant，不安装或迁移业务表，也不自动启用企业。
+
+| 私有配置 | 必要事实 |
+| --- | --- |
+| `productAcquisitionDatabase` / `productCollections` | 当前 Product owner 和现有采集/Review schema，真实原始发布与 Apply 读取；完整模式显式启用 `RuntimeCapabilities.ImageSets`，仅增加 `product_title_proposals SELECT`，不授予 Review 写或 operations 读取。通用采集模式可关闭 Collections；Supply 仍要求 Collections |
+| `productAgent.database` | 已安装 `agent_configuration` 的当前配置 owner；仅图片配置可用 `enabled:false`，无需启用标题执行 |
+| `imageAgent.assetDatabase` | 与 `imageAgent.database` 同一物理 Image/Asset 数据库，使用独立 `supply_asset_runtime` pool，最多8连接；通用模式也必须明确配置 |
+| 可选 `supplyChain` | 仅在实际接入平台时提供当前 Product/Store ports、官方规则及 Supply Temporal。通用模式不提供伪造的应用配置 |
+| `supplyChain.assetDatabase`（接入平台时） | 完整配置必须与 `imageAgent.assetDatabase` 相同；运行时共用上述一个窄 Asset pool，只关闭一次 |
+| `imageAgent.database` | `image_agent_runtime` 独立 HTTP pool，最多8连接；当前 Organization Image schema。候选核验须只读 `image_agent_v3_slot_external_effects` 的原生成/物化事实，不授予该表写权限 |
+| `imageAgent.workerConfigFile` | 受保护的绝对路径，指向现有 worker YAML，例如 `C:\private\image-set-worker.yaml`；提供相同物理 Image DB 的 `image_agent_worker_runtime` pool，1–8连接 |
+| 两份配置的 generation | 同一个真实 `priceVersion` 与已确认正整数 `pointsPerImage`；无默认价格，不能用美元 costMicros 代替点数 |
+| 两份配置的 admission | enabled、相同企业 allowlist；实际企业仍须显式启用配置，原 actor/member 每次派发重新授权 |
+| 两份配置的 artifactStore | 相同公开 base 与 bucket；worker YAML 含既有 S3 私有凭据、region/endpoint 与不可覆盖模式。API manifest 不含 worker 的存储凭据 |
+| `commercialOwnerDatabase` | 当前 orgresource owner 的窄权限 pool，实际点数与成员月限；无需另建账本 |
+| 企业模型 credential owner | 当前企业的 `image_gpt_image_2` route；HTTPS submit URL、`api_style=grsai`、`model=gpt-image-2.5`、有效私有 credential，超时最多5分钟 |
+| 当前 IAM | `identity.tenantDirectoryToken` 与当前授权 API，逐次核对实际企业、成员与来源权限；通用模式同样必须提供 |
+| 可选 `sourceMedia` | 依赖当前 Product collections 与既有不可变存储，提供商品 JPEG/PNG 文件上传和读回，无需官方应用。缺少该 port 时只关闭人工上传替换 |
+
+JSON 的 `imageAgent` 除上述 database/assetDatabase/workerConfigFile/generation 还须提供 `temporalAddress`（literal IPv4 loopback）、`temporalNamespace`、`allowedOrganizationIds`、`publicBase`、`bucket`。worker YAML 使用现有 `imageagent.generation`、`imageagent.admission`、`imageagent.artifactStore` 字段；两份配置不一致拒绝启动。模型密钥只由现有企业 credential owner 提供，模板不能改变模型、凭据、权限或价格。
+
+全新空 Product 数据库的既有 `product-acquisition-init` 私有 manifest 使用 `imageSets:true` 安装当前 schema 和上述窄授权；需要商品集合时再设 `collections:true`，同时启用 Supply 时须设 `collections:true, supplyChain:true`。这些标志不是既有环境的自动迁移/权限修复入口。报价与逐图执行共用现 worker 角色的企业凭据读取能力，HTTP Image 角色仍没有密钥表读取权限。完整 GRSAI worker 无需配置未使用的全局 OpenAI key。
+
+新配置 schema 通过已有 `cmd/agent-configuration-schema-init` 安装；Image schema 与窄 HTTP/worker grant 通过已有 `cmd/product-listing-api-schema-migrate` 的 Organization Image 初始化选项安装；Image 空库初始化已同时安装当前 Asset schema；随后用已有 `cmd/supply-asset-init` 对同一物理 owner 补 `supply_asset_runtime` 授权，省略 `-install-empty-schema`。只能对获准的新环境执行维护命令。旧的单图配置/状态不迁移、不包装到新流程。
+
+```powershell
+# 后端：仓库根目录，私有 manifest 已包含上表实际依赖。
+go run ./cmd/current-application -config C:\private\image-set-current-application.json
+# 前端：沿用正常 Auth.js/ZITADEL 登录配置与真实 service API base。
+Set-Location web/listingkit-ui
+$env:LISTINGKIT_PRODUCT_ACQUISITION_ENABLED = "true"
+pnpm.cmd build
+pnpm.cmd exec next start --hostname 127.0.0.1 --port 3000
+```
+
+不需要新增 worker 命令：current-application 装配完整 Set 专用 worker，监听成功后启动，停止服务时先停 worker，再关闭原 DB/Temporal 连接。同一 organization task queue 只能由本完整装配的 worker 消费；不要再启动旧单图独立 worker。Docker 部署需把 workerConfigFile 指向的私有文件只读挂载到 current-application；不把 storage credential 放入浏览器或仓库。
+
+受控试用的同站点 MinIO 公开图片路由只转发精确对象 key 的 GET/HEAD，并移除发往存储的 Cookie 与 Authorization。这样浏览器登录 Cookie 不会作为存储请求元数据导致 `MetadataTooLarge`，也不会把登录凭据传给公开对象服务。目录拒绝、bucket 政策和正常 TLS 校验保持；默认应用与身份路由不应用此 middleware。
+
+## 刷新、核实与保留
+
+页面在发送前保存当前企业/身份/商品作用域下的原命令。刷新后只读同一 Run、原准备键或原不可变批准回执。准备/批准 ACK 未明时不会因为当前库存变化而推断成功。已准入但 Temporal Start ACK 丢失时，显式“继续原确认”使用相同确认动作与 workflow ID。未知 provider 结果只核实原 effect，不重新 POST。未找到不能视为未执行证明。
+
+如果 Temporal 启动一直不可用，直到原生成期限已过，“继续原确认”仍把完整匹配的原回执交给同一个工作流，期限与预算不延长。原 owner 将从未派发的项记录为预算超期；已有成功保留原图片和结算，已有未明调用保留原核实入口，不能因为期限已过就声称未执行。已经阻止、失败或等待人工审核的工作流进度不会通过确认动作重新启动生成。
+
+所有原 effect 已知收束后，可以选定部分内容创建新的 Run/新报价/新确认；原成功结果仍持有原 ID，不复制生成或重复扣点。停用阻止新准入；已准入任务、读取和人工审核保留，实际领域权限仍实时检查。
+
+意外失败且仍有未完成图片时，使用“恢复原失败任务”，沿用原 Run、准入、点数预算、期限与副作用身份。期限内可以继续尚未派发的图片；原调用未明时只核实原调用，超过期限后不派发新图片。恢复响应丢失后先只读核实原任务，仍未明确时可显式“继续原操作”。待保存命令使用原“继续核实原保存操作”；已经全部收束的失败任务直接审核可用结果或创建新的部分重生成计划。
+
+生成候选只可来自当前批准任务或其已记录的重生成祖先。预览与保存使用同一校验：每条重生成关系匹配原收束证明，商品来源及店铺/站点/类目/属性/变体/应用目标一致。重新选择原素材和刷新官方规则版本沿既有准备合同；同一商品下无关任务的候选不能直接混入。已批准正式素材仍走独立的明确素材复用入口。
+
+原图与集合/Apply 在 Product DB，模板与准入回执在 ProductAgentDB，Run/Plan/effect 与批准图片在各自同一物理 Image/Asset owner 的事实表，点数在 orgresource owner，图片字节在既有不可变 object storage，workflow 在原 Temporal namespace。停止或重启沿用原私有配置和数据；不重新初始化，不使用 `down -v`。
+
+本批次开发自检覆盖真实领域/持久化测试、原 effect 收束、配置准入和原动作恢复，以及 Console/BFF 的完整交互。具体最终 HEAD、CI、独立检查和可运行实例情况记录在 PR #616；此说明不声称已经启动含真实付费模型和正式平台的实例。

@@ -8,8 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"task-processor/internal/agentconfig"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
+	productasset "task-processor/internal/product/asset"
 )
 
 const (
@@ -37,6 +39,7 @@ const (
 	activityExecuteSlot                 = "imageagent.execute_slot.v2"
 	activityPersistSlotResult           = "imageagent.persist_slot_result.v2"
 	activityPersistSlotResultV3         = "imageagent.persist_slot_result.v3"
+	activityPersistImageSetSlotResult   = "imageagent.persist_image_set_slot_result.v1"
 	activityPersistRunState             = "imageagent.persist_run_state.v2"
 	activityPersistWorkflowFailure      = "imageagent.persist_workflow_failure.v1"
 	activityPersistWorkflowFailureV2    = "imageagent.persist_workflow_failure.v2"
@@ -50,6 +53,7 @@ const (
 	activityPersistRecoveryBlockedV3    = "imageagent.persist_recovery_blocked.v3"
 	activityReconcileEffectRecoveryV3   = "imageagent.reconcile_effect_recovery.v3"
 	activityPublishApprovedV3           = "imageagent.publish_approved.v3"
+	activityPublishApprovedImageSet     = "imageagent.publish_approved_image_set.v1"
 	workflowNameCompatibilityCanary     = "ImageAgentCompatibilityCanaryWorkflow"
 	signalApproveResults                = "approve_results"
 	signalEffectRecoveryCompleted       = "effect_recovery_completed"
@@ -90,6 +94,7 @@ func (mode WorkerWireMode) DefaultTaskQueue() (string, error) {
 }
 
 type WorkflowInput struct {
+	ImageAdmission      *agentconfig.ImageRunAdmissionReceipt `json:",omitempty"`
 	RunID               string
 	TargetPlatform      string                         `json:",omitempty"`
 	ImagePolicyContext  *imageagent.ImagePolicyContext `json:",omitempty"`
@@ -137,6 +142,7 @@ type SlotWorkflowInput struct {
 }
 
 type SlotWorkflowResult struct {
+	Closure   *imageagent.ImageSlotClosure `json:",omitempty"`
 	Execution imageagent.SlotExecutionResult
 	Status    imageagent.SlotStatus
 	ErrorCode string
@@ -148,6 +154,7 @@ type SlotWorkflowResult struct {
 // SlotWorkflowV3Input is additive and is not registered by the Task 4 worker.
 // Task 6 owns selecting this child workflow on the production wire.
 type SlotWorkflowV3Input struct {
+	ImageSet           *imageagent.ImageSetPlan `json:",omitempty"`
 	RunID              string
 	TargetPlatform     string                         `json:",omitempty"`
 	ImagePolicyContext *imageagent.ImagePolicyContext `json:",omitempty"`
@@ -176,6 +183,7 @@ type SlotWorkflowV3Result struct {
 }
 
 type EffectRecoveryWorkflowInput struct {
+	ImageSet           *imageagent.ImageSetPlan `json:",omitempty"`
 	RunID              string
 	TargetPlatform     string                         `json:",omitempty"`
 	ImagePolicyContext *imageagent.ImagePolicyContext `json:",omitempty"`
@@ -201,10 +209,12 @@ const (
 )
 
 type EffectRecoveryResult struct {
-	Outcome     EffectRecoveryOutcome
-	Published   imageagent.SlotEffectV3PublishedResult
-	EffectPhase imageagent.SlotEffectV3Phase
-	BlockedCode string
+	Closure         *imageagent.ImageSlotClosure     `json:",omitempty"`
+	GenerationProof *imageagent.ImageGenerationProof `json:",omitempty"`
+	Outcome         EffectRecoveryOutcome
+	Published       imageagent.SlotEffectV3PublishedResult
+	EffectPhase     imageagent.SlotEffectV3Phase
+	BlockedCode     string
 }
 
 // EffectRecoveryCompletedSignal is emitted after the recovery workflow has
@@ -232,6 +242,7 @@ type ExecuteSlotActivityInput struct {
 // ExecuteSlotV3ActivityInput is additive until Task 6 selects the v3 wire.
 // Keep ExecuteSlotActivityInput frozen for imageagent.execute_slot.v2 replay.
 type ExecuteSlotV3ActivityInput struct {
+	ImageSet                   *imageagent.ImageSetPlan `json:",omitempty"`
 	RunID                      string
 	TargetPlatform             string                         `json:",omitempty"`
 	ImagePolicyContext         *imageagent.ImagePolicyContext `json:",omitempty"`
@@ -390,11 +401,20 @@ type PublishApprovedV3ActivityInput struct {
 }
 
 type ApproveResultsSignal struct {
+	Selection    *productasset.ImageSetCommand `json:",omitempty"`
 	RunID        string
 	PlanRevision int64
 	ResultDigest string
 	ActorID      string
 	ActionID     string
+}
+
+type PublishImageSetActivityInput struct {
+	RunID        string
+	Identity     imageagent.ExecutionIdentity
+	PlanRevision int64
+	ResultDigest string
+	Selection    productasset.ImageSetCommand
 }
 
 type RetrySlotSignal struct {
@@ -440,7 +460,7 @@ func WorkflowID(tenantID, ownerUserID, runID string) string {
 }
 
 func slotAttemptKey(planRevision int64, slot imageagent.Slot, attempt int) string {
-	return fmt.Sprintf("%s:plan:%d:attempt:%d", slot.IdempotencyKey, planRevision, attempt)
+	return imageagent.SlotAttemptKey(planRevision, slot, attempt)
 }
 
 func publicationKey(runID string, revision int64) string {

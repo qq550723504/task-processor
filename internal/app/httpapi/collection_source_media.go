@@ -3,17 +3,19 @@ package httpapi
 import (
 	"context"
 	"gorm.io/gorm"
+	imageapp "task-processor/internal/app/imageagent"
 	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	kernelmodule "task-processor/internal/kernel/module"
+	"task-processor/internal/product/asset"
 	"task-processor/internal/product/collection"
 	collectionhttp "task-processor/internal/product/collection/httpapi"
 	"time"
 )
 
-func buildProductCollectionModuleWithSourceMedia(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, permissions *authz.ListingKitAuthorizer, cfg *config.Config, supply bool, media *collectionSourceMediaDependencies, marketPOD ...bool) (kernelmodule.Module, error) {
-	service, err := buildProductCollectionService(ctx, db, dependencies, permissions, append([]bool{supply}, marketPOD...)...)
+func buildProductCollectionModuleWithSourceMedia(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, permissions *authz.ListingKitAuthorizer, cfg *config.Config, supply bool, media *collectionSourceMediaDependencies, marketPODImages ...bool) (kernelmodule.Module, error) {
+	service, err := buildProductCollectionService(ctx, db, dependencies, permissions, append([]bool{supply}, marketPODImages...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -41,4 +43,8 @@ func WithCollectionSourceMedia(storage productsourcing.SourceMediaStorage) Curre
 		o.collectionSourceMedias++
 		o.collectionSourceMedia = &collectionSourceMediaDependencies{Storage: storage}
 	}
+}
+
+func newImageSetManualMedia(media *collectionSourceMediaDependencies, authority imageMediaScopeAuthority) asset.ManualImageReader {
+	return imageapp.ImageSetManualMedia{Media: productsourcing.SourceMedia{Storage: media.Storage, Authorization: authority}}
 }

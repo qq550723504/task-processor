@@ -87,13 +87,21 @@ type ImageEditRequest struct {
 	Prompt           string
 	Image            []byte
 	ImageContentType string
-	ImageURL         string
-	ImageURLs        []string
-	Mask             []byte
-	Size             string
-	Quality          string
-	ResponseFormat   string
-	N                int
+	// ReferenceImages are exact additional source bytes in their approved order.
+	// A transport must explicitly support this field or reject before dispatch.
+	ReferenceImages []ImageInlineReference `json:"-"`
+	ImageURL        string
+	ImageURLs       []string
+	Mask            []byte
+	Size            string
+	Quality         string
+	ResponseFormat  string
+	N               int
+}
+
+type ImageInlineReference struct {
+	Bytes     []byte `json:"-"`
+	MediaType string
 }
 
 type ImageData struct {

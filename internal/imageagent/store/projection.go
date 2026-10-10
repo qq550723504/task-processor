@@ -198,6 +198,10 @@ func (r *memoryRepository) applyMemoryProjectionMutation(input imageagent.Projec
 		run.CurrentNode = input.RunMutation.CurrentNode
 		run.ActivePlanRevision = input.RunMutation.ActivePlanRevision
 		run.Block = cloneBlock(input.RunMutation.Block)
+		if input.RunMutation.ImageAdmission != nil {
+			run.ImageAdmission = imageagent.CloneImageAdmission(input.RunMutation.ImageAdmission)
+			run.StartedAt = run.ImageAdmission.AdmittedAt
+		}
 		run.Version++
 		r.runs[key] = run
 	}
@@ -362,6 +366,9 @@ func (r *gormRepository) GetProjection(ctx context.Context, scope imageagent.Run
 	result.Run.Budget = authoritativeRun.Budget
 	result.Run.Usage = authoritativeRun.Usage
 	result.Run.StartedAt = authoritativeRun.StartedAt
+	if !reflect.DeepEqual(result.Run.ImageAdmission, authoritativeRun.ImageAdmission) {
+		return imageagent.RunProjection{}, imageagent.ErrRevisionConflict
+	}
 	if result.Run.ScopeProtocol != authoritativeRun.ScopeProtocol {
 		return imageagent.RunProjection{}, imageagent.ErrRevisionConflict
 	}
@@ -535,6 +542,16 @@ func validateProjectionMutation(current imageagent.RunProjection, input imageage
 		expectedRun.CurrentNode = input.RunMutation.CurrentNode
 		expectedRun.ActivePlanRevision = input.RunMutation.ActivePlanRevision
 		expectedRun.Block = cloneBlock(input.RunMutation.Block)
+		if input.RunMutation.ImageAdmission != nil {
+			if current.Run.ImageAdmission != nil || current.Run.Status != imageagent.RunStatusAwaitingPlanApproval || current.Plan.Set == nil || input.PlanMutation != nil || len(mutations) != 0 || input.RunMutation.Status != imageagent.RunStatusExecuting || input.RunMutation.CurrentNode != "execute_slots" || input.RunMutation.ActivePlanRevision != current.Plan.Revision {
+				return imageagent.ErrRevisionConflict
+			}
+			expectedRun.ImageAdmission = imageagent.CloneImageAdmission(input.RunMutation.ImageAdmission)
+			expectedRun.StartedAt = expectedRun.ImageAdmission.AdmittedAt
+			if err := imageagent.ValidateImageSetAdmission(expectedRun, current.Plan); err != nil {
+				return err
+			}
+		}
 		expectedRun.Version++
 	}
 	expectedPlan := current.Plan
@@ -588,11 +605,35 @@ func orderedSlotProjectionMutations(input imageagent.ProjectionCommit) ([]imagea
 }
 
 func validateSlotProjectionMutationIdentity(input imageagent.ProjectionCommit, currentSlot imageagent.SlotProjection, mutation imageagent.SlotProjectionMutation) error {
+	if input.Snapshot.Plan.Set != nil {
+		closure := mutation.Projection.Closure
+		if closure != nil && !closure.Valid(mutation.Result.Attempt) || currentSlot.Closure != nil && !reflect.DeepEqual(currentSlot.Closure, closure) {
+			return imageagent.ErrRevisionConflict
+		}
+		if mutation.Result.Status == imageagent.SlotStatusAccepted {
+			recipe := mutation.Projection.Slot.Recipe
+			if closure == nil || closure.Kind != "settled" || recipe == nil || closure.Points != recipe.Quote.Points || len(mutation.Projection.Candidates) != 1 {
+				return imageagent.ErrRevisionConflict
+			}
+			candidate := mutation.Projection.Candidates[0]
+			proof := candidate.GenerationProof
+			if proof == nil || *proof != (imageagent.ImageGenerationProof{IntentID: closure.IntentID, Fingerprint: closure.Fingerprint, SettlementProofDigest: closure.SettlementProofDigest, Points: closure.Points}) {
+				return imageagent.ErrRevisionConflict
+			}
+			if _, err := imageagent.NormalizeDurableAssetIdentity(candidate.DurableAsset); err != nil {
+				return imageagent.ErrRevisionConflict
+			}
+		}
+	}
+	unstarted := input.Snapshot.Plan.Set != nil && currentSlot.Attempt == 0 && (currentSlot.Slot.Status == imageagent.SlotStatusPending || currentSlot.Slot.Status == "") && mutation.Result.Attempt == 0 && mutation.Result.Status == imageagent.SlotStatusBlocked && len(mutation.Projection.Candidates) == 0 && mutation.Projection.Closure != nil && *mutation.Projection.Closure == (imageagent.ImageSlotClosure{Kind: "not_dispatched"}) && mutation.Projection.ErrorCode != ""
+	if !reflect.DeepEqual(mutation.Result.Closure, mutation.Projection.Closure) || input.Snapshot.Plan.Set == nil && mutation.Result.Closure != nil {
+		return imageagent.ErrRevisionConflict
+	}
 	if mutation.PlanRevision != input.Snapshot.Plan.Revision || mutation.PlanRevision != input.Snapshot.Run.ActivePlanRevision ||
 		mutation.Attempt.PlanRevision != mutation.PlanRevision ||
 		mutation.Attempt.TenantID != input.Scope.TenantID || mutation.Attempt.OwnerUserID != input.Scope.OwnerUserID || mutation.Attempt.RunID != input.Scope.RunID ||
 		mutation.Result.SlotID == "" || mutation.Result.SlotID != mutation.Attempt.SlotID || mutation.Result.SlotID != mutation.Projection.Slot.ID ||
-		mutation.Result.Attempt <= 0 || mutation.Result.Attempt != mutation.Attempt.Attempt || mutation.Result.Attempt != mutation.Projection.Attempt {
+		mutation.Result.Attempt <= 0 && !unstarted || mutation.Result.Attempt != mutation.Attempt.Attempt || mutation.Result.Attempt != mutation.Projection.Attempt {
 		return fmt.Errorf("%w: slot mutation identity does not match the active run", imageagent.ErrRevisionConflict)
 	}
 	candidateIDs := make([]string, 0, len(mutation.Projection.Candidates))
@@ -602,7 +643,7 @@ func validateSlotProjectionMutationIdentity(input imageagent.ProjectionCommit, c
 	if !slices.Equal(candidateIDs, mutation.Result.CandidateAssetIDs) {
 		return fmt.Errorf("%w: slot mutation candidate identity does not match", imageagent.ErrRevisionConflict)
 	}
-	if mutation.Result.Attempt == currentSlot.Attempt+1 {
+	if unstarted || mutation.Result.Attempt == currentSlot.Attempt+1 {
 		expectedSlot := cloneSlot(currentSlot.Slot)
 		expectedSlot.Status = mutation.Result.Status
 		if !reflect.DeepEqual(mutation.Projection.Slot, expectedSlot) || mutation.Projection.ErrorCode != mutation.Result.ErrorCode {
@@ -621,8 +662,9 @@ func validateSlotProjectionMutationIdentity(input imageagent.ProjectionCommit, c
 		return fmt.Errorf("%w: recovery slot mutation metadata does not match the projection commit", imageagent.ErrRevisionConflict)
 	}
 	if mutation.Result.Status == imageagent.SlotStatusBlocked {
+		knownSetClosure := input.Snapshot.Plan.Set != nil && mutation.Result.Closure != nil && mutation.Result.Closure.Valid(mutation.Result.Attempt) && (mutation.Result.ErrorCode == imageagent.InvalidGeneratedOutputCode || mutation.Result.ErrorCode == imageagent.SlotProviderNotDispatchedCode)
 		if !reflect.DeepEqual(mutation.Projection.Slot, currentSlot.Slot) || !reflect.DeepEqual(mutation.Projection.Candidates, currentSlot.Candidates) ||
-			!imageagent.IsRecoverableEffectBlockCode(mutation.Result.ErrorCode) || mutation.Projection.ErrorCode != mutation.Result.ErrorCode ||
+			(!imageagent.IsRecoverableEffectBlockCode(mutation.Result.ErrorCode) && !knownSetClosure) || mutation.Projection.ErrorCode != mutation.Result.ErrorCode ||
 			mutation.Attempt.Outcome != "blocked" || mutation.Attempt.ErrorCategory != mutation.Result.ErrorCode {
 			return fmt.Errorf("%w: recovery slot mutation may only refresh the existing blocked attempt code", imageagent.ErrRevisionConflict)
 		}
@@ -677,7 +719,15 @@ func (r *gormRepository) applyGormProjectionMutation(ctx context.Context, tx *go
 		if err != nil {
 			return err
 		}
-		updates := scopedRunWhere(tx.Model(&runRecord{}), input.Scope).Where("version = ?", input.ExpectedRunVersion).Updates(map[string]any{"status": string(input.RunMutation.Status), "current_node": input.RunMutation.CurrentNode, "active_plan_revision": input.RunMutation.ActivePlanRevision, "block_json": blockJSON, "version": input.ExpectedRunVersion + 1})
+		values := map[string]any{"status": string(input.RunMutation.Status), "current_node": input.RunMutation.CurrentNode, "active_plan_revision": input.RunMutation.ActivePlanRevision, "block_json": blockJSON, "version": input.ExpectedRunVersion + 1}
+		if input.RunMutation.ImageAdmission != nil {
+			admissionJSON, err := marshalJSON(input.RunMutation.ImageAdmission)
+			if err != nil || len(admissionJSON) > 8192 {
+				return imageagent.ErrRevisionConflict
+			}
+			values["admission_json"] = admissionJSON
+		}
+		updates := scopedRunWhere(tx.Model(&runRecord{}), input.Scope).Where("version = ?", input.ExpectedRunVersion).Updates(values)
 		if updates.Error != nil {
 			return updates.Error
 		}
@@ -729,7 +779,14 @@ func (r *gormRepository) applyGormProjectionMutation(ctx context.Context, tx *go
 			candidateIDs = append(candidateIDs, candidate.AssetID)
 		}
 		candidates, _ := marshalJSON(candidateIDs)
-		updated := scopedWhere(tx.Model(&slotRecord{}), input.Scope).Where("plan_revision = ? AND id = ? AND attempt = ?", mutation.PlanRevision, mutation.Result.SlotID, stored.Attempt).Updates(map[string]any{"attempt": mutation.Result.Attempt, "status": string(mutation.Result.Status), "candidate_asset_ids": candidates, "error_code": mutation.Result.ErrorCode})
+		var closure []byte
+		if mutation.Result.Closure != nil {
+			closure, err = marshalJSON(mutation.Result.Closure)
+			if err != nil {
+				return err
+			}
+		}
+		updated := scopedWhere(tx.Model(&slotRecord{}), input.Scope).Where("plan_revision = ? AND id = ? AND attempt = ?", mutation.PlanRevision, mutation.Result.SlotID, stored.Attempt).Updates(map[string]any{"attempt": mutation.Result.Attempt, "status": string(mutation.Result.Status), "candidate_asset_ids": candidates, "error_code": mutation.Result.ErrorCode, "closure_json": closure})
 		if updated.Error != nil {
 			return updated.Error
 		}

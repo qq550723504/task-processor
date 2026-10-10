@@ -2,16 +2,196 @@ package currentapplication
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/mocks"
 	"gorm.io/gorm"
 	coreconfig "task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
 )
+
+func TestFullImageGenericManifestNeedsCurrentOwnersWithoutOfficialPlatform(t *testing.T) {
+	cfg := fullImageGenericRuntimeConfig(t)
+	require.Nil(t, cfg.SupplyChain)
+	require.Nil(t, cfg.StoreCenter)
+	require.NoError(t, cfg.validate(), "generic image sets must not require an official platform application")
+	for name, mutate := range map[string]func(*Config){
+		"no Asset":           func(c *Config) { c.ImageAgent.AssetDatabase = DatabaseConfig{} },
+		"HTTP role":          func(c *Config) { c.ImageAgent.AssetDatabase.User = "image_agent_runtime" },
+		"worker role":        func(c *Config) { c.ImageAgent.AssetDatabase.User = "image_agent_worker_runtime" },
+		"different owner":    func(c *Config) { c.ImageAgent.AssetDatabase.Database = "other_assets" },
+		"unbounded pool":     func(c *Config) { c.ImageAgent.AssetDatabase.MaxConnections = 9 },
+		"no live membership": func(c *Config) { c.Identity.TenantDirectoryToken = "" },
+		"configuration owner with disabled title": func(c *Config) {
+			c.ImageAgent.Database.Database = c.ProductAgent.Database.Database
+			c.ImageAgent.AssetDatabase.Database = c.ProductAgent.Database.Database
+		},
+		"Money owner": func(c *Config) {
+			money := c.ImageAgent.Database
+			money.User = "money_owner_runtime"
+			c.MoneyOwnerDatabase = &money
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := fullImageGenericRuntimeConfig(t)
+			mutate(changed)
+			require.Error(t, changed.validate())
+		})
+	}
+	platform := supplyRuntimeConfig(t)
+	platform.ImageAgent, platform.ProductAgent = cfg.ImageAgent, cfg.ProductAgent
+	platform.SupplyChain.AssetDatabase = cfg.ImageAgent.AssetDatabase
+	require.NoError(t, platform.validate())
+	platform.SupplyChain.AssetDatabase.Password = "another-pool-password"
+	require.Error(t, platform.validate(), "two configurations cannot silently open competing Asset pools")
+}
+
+func fullImageGenericRuntimeConfig(t *testing.T) *Config {
+	t.Helper()
+	cfg := acquisitionRuntimeConfig()
+	cfg.Identity.TenantDirectoryToken = "isolated-membership-reader"
+	cfg.ProductAgent = &ProductAgentConfig{Database: DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "product_agent_runtime", Password: "fixture", Database: "product_agent", MaxConnections: 4}}
+	cfg.ImageAgent = &ImageAgentConfig{
+		WorkerConfigFile: filepath.Join(t.TempDir(), "private-worker.yaml"),
+		Generation:       coreconfig.ImageAgentGenerationConfig{PriceVersion: "isolated-price", PointsPerImage: 12},
+		Database:         DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "image_agent_runtime", Password: "fixture", Database: "image_agent", MaxConnections: 4},
+		TemporalAddress:  "127.0.0.1:7233", TemporalNamespace: "default", AllowedOrganizationIDs: []string{"org-a"},
+		PublicBase: "https://images.example.test", Bucket: "image-agent-assets",
+		AssetDatabase: DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "supply_asset_runtime", Password: "fixture", Database: "image_agent", MaxConnections: 4},
+	}
+	return cfg
+}
+
+func TestFullImageGenericRuntimeOpensOnlyItsNarrowAssetPool(t *testing.T) {
+	for _, mode := range []string{"independent", "reject HTTP pool", "shared with Supply", "report independent", "reject report image assets", "reject report worker"} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := fullImageGenericRuntimeConfig(t)
+			platform := mode == "shared with Supply"
+			if platform {
+				platformConfig := supplyRuntimeConfig(t)
+				cfg.StoreCenter, cfg.SupplyChain = platformConfig.StoreCenter, platformConfig.SupplyChain
+				cfg.ProductCollections = true
+				cfg.SupplyChain.AssetDatabase = cfg.ImageAgent.AssetDatabase
+				app := cfg.StoreCenter.OfficialApplications[0]
+				require.NoError(t, os.WriteFile(app.AppSecretFile, []byte(strings.Repeat("synthetic", 4)), 0600))
+				require.NoError(t, os.WriteFile(app.CredentialKeyFile, []byte(base64.StdEncoding.EncodeToString(make([]byte, 32))), 0600))
+				privatizeSyntheticTestFile(t, app.AppSecretFile)
+				privatizeSyntheticTestFile(t, app.CredentialKeyFile)
+			}
+			source, product, configuration, points, imageDB, workerDB, assets, store := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
+			if mode == "reject HTTP pool" {
+				assets = imageDB
+			}
+			reports := &gorm.DB{}
+			reportEnabled := strings.Contains(mode, "report")
+			if reportEnabled {
+				cfg.ReportCenter = reportRuntimeConfig().ReportCenter
+			}
+			if mode == "reject report image assets" {
+				reports = assets
+			}
+			if mode == "reject report worker" {
+				reports = workerDB
+			}
+			var closed []*gorm.DB
+			var workflowClosed, supplyClosed bool
+			supplyDials := 0
+			assetOpens := 0
+			workflow := &mocks.Client{}
+			stop := errors.New("fixture full image construction boundary")
+			err := Run(context.Background(), cfg, logrus.New(), Dependencies{
+				IdentityPreflight:      func(context.Context, IdentityConfig) error { return nil },
+				OpenSourceAccount:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+				OpenProductAcquisition: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return product, nil },
+				OpenProductAgent:       func(context.Context, DatabaseConfig) (*gorm.DB, error) { return configuration, nil },
+				OpenCommercialOwner:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return points, nil },
+				OpenStoreCenter:        func(context.Context, DatabaseConfig) (*gorm.DB, error) { return store, nil },
+				OpenImageAgent:         func(context.Context, DatabaseConfig) (*gorm.DB, error) { return imageDB, nil },
+				OpenReportCenter:       func(context.Context, DatabaseConfig) (*gorm.DB, error) { return reports, nil },
+				OpenImageSetWorker: func(context.Context, string, DatabaseConfig) (*coreconfig.Config, *gorm.DB, error) {
+					return &coreconfig.Config{}, workerDB, nil
+				},
+				DialImageSetWorkflow: func(context.Context, string, string) (client.Client, func() error, error) {
+					return workflow, func() error { workflowClosed = true; return nil }, nil
+				},
+				OpenSupplyAssets: func(_ context.Context, got DatabaseConfig) (*gorm.DB, error) {
+					assetOpens++
+					require.Equal(t, cfg.ImageAgent.AssetDatabase, got)
+					return assets, nil
+				},
+				DialSupplyWorkflow: func(context.Context, string, string) (client.Client, func() error, error) {
+					supplyDials++
+					return workflow, func() error { supplyClosed = true; return nil }, nil
+				},
+				NewApplicationWithFeatures: func(_ context.Context, _ *gorm.DB, f ApplicationFeatures, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+					require.Same(t, assets, f.ImageSetAssetDB)
+					if platform {
+						require.Same(t, assets, f.SupplyAssetDB)
+						require.Same(t, workflow, f.SupplyWorkflow)
+						require.NotNil(t, f.OfficialStoreApplications)
+					} else {
+						require.Nil(t, f.SupplyAssetDB)
+						require.Nil(t, f.SupplyWorkflow)
+						require.Nil(t, f.OfficialStoreApplications)
+					}
+					require.Same(t, workerDB, f.ImageSetWorkerDB)
+					if reportEnabled {
+						require.Same(t, reports, f.ReportCenterDB)
+					}
+					return nil, stop
+				},
+				CloseDatabase: func(db *gorm.DB) error { closed = append(closed, db); return nil },
+			})
+			require.Equal(t, 1, assetOpens, "runtime error: %v", err)
+			require.True(t, workflowClosed)
+			require.Equal(t, platform, supplyClosed)
+			if platform {
+				require.Equal(t, 1, supplyDials)
+			} else {
+				require.Zero(t, supplyDials)
+			}
+			if mode == "reject HTTP pool" {
+				require.ErrorContains(t, err, "narrow independently opened pool")
+			} else if strings.HasPrefix(mode, "reject report") {
+				require.ErrorContains(t, err, "report center requires its independent owner pool")
+			} else {
+				require.ErrorIs(t, err, stop)
+				assetCloses := 0
+				for _, pool := range closed {
+					if pool == assets {
+						assetCloses++
+					}
+				}
+				require.Equal(t, 1, assetCloses, "shared Asset owner closes exactly once")
+			}
+			owned := []*gorm.DB{source, product, configuration, points, imageDB, workerDB}
+			if mode == "report independent" {
+				owned = append(owned, reports)
+			}
+			if platform {
+				owned = append(owned, store)
+			}
+			for _, pool := range owned {
+				count := 0
+				for _, got := range closed {
+					if got == pool {
+						count++
+					}
+				}
+				require.Equal(t, 1, count, "every owned pool closes once")
+			}
+		})
+	}
+}
 
 func TestCurrentImageAgentRequiresExplicitOwnedRuntimeAndNeverFallsBack(t *testing.T) {
 	cfg := acquisitionRuntimeConfig()

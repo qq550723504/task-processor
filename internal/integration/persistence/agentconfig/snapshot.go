@@ -27,6 +27,9 @@ func snapshotView(row snapshotRow) (agentconfig.Snapshot, error) {
 	return v, nil
 }
 func (s *Store) Prepare(ctx context.Context, c agentconfig.StartCommand) (agentconfig.Snapshot, error) {
+	if c.AgentID == agentconfig.ImageAgentID {
+		return agentconfig.Snapshot{}, agentconfig.ErrInvalid
+	}
 	if !scopeOK(c.Scope) || !agentconfig.UUID(c.Request.Key) || !c.Request.Binding.Valid() || !agentconfig.Platform(c.Request.Binding.TargetPlatform) || !agent.ValidID(c.AgentID) || !agent.ValidID(c.AgentVersion) || !c.Request.Limits.Valid() || !agent.ValidGoalSummary(c.Request.GoalSummary) || !agent.ValidID(c.Request.PolicyVersion) || !agent.ValidID(c.Request.PromptVersion) || !c.Request.ContextSnapshotRef.Absent() || !c.Request.ConfigurationSnapshotRef.Absent() || c.ExecutionModelProfile.Validate() != nil || (c.KnowledgeBaseID != "" && !agentconfig.UUID(c.KnowledgeBaseID)) {
 		return agentconfig.Snapshot{}, agentconfig.ErrInvalid
 	}

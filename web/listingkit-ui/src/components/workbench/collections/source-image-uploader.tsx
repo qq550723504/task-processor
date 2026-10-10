@@ -5,11 +5,11 @@ import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {useWorkbenchContext} from "@/components/providers/workbench-context-provider";
 import {CollectionAPIError,uploadSourceImage,readSourceImage,type CollectionScope,type MediaIntent} from "@/lib/api/product-collection";
-import {mediaHashSchema} from "@/lib/contracts/product-collection";
+import {mediaHashSchema,type mediaImageSchema} from "@/lib/contracts/product-collection";
 const key="shuomi_source_media_intent";
 const pendingSchema=z.object({userId:z.string().min(1).max(128),organizationId:z.string().min(1).max(128),hash:mediaHashSchema,bytes:z.number().int().positive().max(3*1024*1024)}).strict();
 function load():MediaIntent|null{try{if(typeof window==="undefined")return null;const raw=localStorage.getItem(key);return raw?pendingSchema.parse(JSON.parse(raw)):null;}catch{return null;}}
-export function SourceImageUploader({scope,disabled,onImage,onBlocked}:{scope:CollectionScope;disabled:boolean;onImage:(url:string)=>void;onBlocked:(v:boolean)=>void}){
+export function SourceImageUploader({scope,disabled,onImage,onBlocked,onMedia}:{scope:CollectionScope;disabled:boolean;onImage:(url:string)=>void;onBlocked:(v:boolean)=>void;onMedia?:(image:z.infer<typeof mediaImageSchema>)=>void}){
  const context=useWorkbenchContext(),flight=useRef(false),abort=useRef<AbortController|null>(null),raw=useRef<ArrayBuffer|null>(null);
  const [pending,setPending]=useState<MediaIntent|null>(load),[selected,setSelected]=useState<MediaIntent|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(""),[missing,setMissing]=useState(false),[fileName,setFileName]=useState("");
  const foreign=!!pending&&(pending.userId!==scope.userId||pending.organizationId!==scope.organizationId);
@@ -33,7 +33,7 @@ export function SourceImageUploader({scope,disabled,onImage,onBlocked}:{scope:Co
    if(!verify){localStorage.setItem(key,JSON.stringify(intent));setPending(intent);}
    const result=verify?await readSourceImage(intent,controller.signal):await uploadSourceImage(intent,raw.current!,controller.signal);
    if(controller.signal.aborted)return;
-   localStorage.removeItem(key);setPending(null);setSelected(null);raw.current=null;setFileName("");setMissing(false);onImage(result.url);
+   localStorage.removeItem(key);setPending(null);setSelected(null);raw.current=null;setFileName("");setMissing(false);onImage(result.url);onMedia?.(result);
   }catch(e){
    if(controller.signal.aborted)return;
    if(e instanceof CollectionAPIError){setMissing(verify&&e.code==="NOT_FOUND");if(!verify&&e.status>=400&&e.status<500&&e.code!=="OUTCOME_UNKNOWN"){localStorage.removeItem(key);setPending(null);}

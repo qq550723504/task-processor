@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/commercetool"
 	"task-processor/internal/httproute"
+	"task-processor/internal/imageagent"
 	texteino "task-processor/internal/integration/agent/einomodel"
 	"task-processor/internal/integration/knowledgeauth"
 	configstore "task-processor/internal/integration/persistence/agentconfig"
@@ -36,14 +37,28 @@ func productTitleRegistration() (commercetool.AgentDefinition, []commercetool.De
 
 type productAgentCatalog struct{}
 
+func productImageRegistration() commercetool.AgentDefinition {
+	return commercetool.AgentDefinition{ID: agentconfig.ImageAgentID, Version: agentconfig.ImageAgentVersion}
+}
+
 func (productAgentCatalog) ReadCatalog(context.Context) ([]agentconfig.CatalogEntry, error) {
 	d, _ := productTitleRegistration()
-	return []agentconfig.CatalogEntry{{Definition: d, Name: "商品标题优化智能体", Description: "读取商品证据生成标题建议，经过人工审核后显式应用。", ParameterSchema: agentconfig.ParameterSchema}}, nil
+	return []agentconfig.CatalogEntry{
+		{Definition: productImageRegistration(), Name: "商品图片智能体", Description: "基于真实商品素材规划整套主图和详情图，确认点数后分别生成，人工选择并批准商品图片。", ParameterSchema: agentconfig.ImageParameterSchema},
+		{Definition: d, Name: "商品标题优化智能体", Description: "读取商品证据生成标题建议，经过人工审核后显式应用。", ParameterSchema: agentconfig.ParameterSchema},
+	}, nil
 }
 func WithAgentConfiguration(db *gorm.DB) CurrentApplicationOption {
 	return func(o *currentApplicationOptions) { o.agentConfigurationDB = db }
 }
-func buildAgentConfigurationModule(ctx context.Context, db *gorm.DB, resolver organizationIdentityResolver, auth *authz.ListingKitAuthorizer, k *knowledge.Service, runtime *productAgentApplication) (kernelmodule.Module, error) {
+func buildAgentConfigurationModule(ctx context.Context, db *gorm.DB, resolver organizationIdentityResolver, auth *authz.ListingKitAuthorizer, k *knowledge.Service, runtime *productAgentApplication, images ...*fullImageApplication) (kernelmodule.Module, error) {
+	if len(images) > 1 {
+		return nil, agentconfig.ErrUnavailable
+	}
+	var imageRuntime *fullImageApplication
+	if len(images) == 1 {
+		imageRuntime = images[0]
+	}
 	if runtime != nil && (runtime.config.RunDB != db || runtime.store == nil || !runtime.store.UsesPool(db)) {
 		return nil, agentconfig.ErrUnavailable
 	}
@@ -92,10 +107,46 @@ func buildAgentConfigurationModule(ctx context.Context, db *gorm.DB, resolver or
 		}
 		return nil
 	}
-	h.Capabilities = func(ctx context.Context, _ agentconfig.CatalogEntry) []agentconfig.Capability {
+	h.Capabilities = func(ctx context.Context, entry agentconfig.CatalogEntry) []agentconfig.Capability {
+		if entry.Definition.ID == agentconfig.ImageAgentID {
+			capabilities := productImageAgentCapabilities(ctx, h.Authorize)
+			if imageRuntime != nil {
+				capability := &capabilities[0]
+				id, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+				_, authorization := h.Authorize(ctx, authz.PermissionImageAgentWrite)
+				if !ok || authorization != nil {
+					capability.Readiness = "REQUIRES_AUTHORIZATION"
+					capability.Reason = "需要当前企业图片生成权限"
+				} else if !imageRuntime.gate.AllowTenantStart(ctx, id.TenantID) {
+					capability.Reason = "当前企业尚未开放图片生成"
+				} else {
+					_, err := imageRuntime.quotes.ReadImageGenerationQuote(ctx, imageagent.ExecutionIdentity{ScopeProtocol: imageagent.OrganizationScopeProtocol, TenantID: id.TenantID, UserID: id.UserID, MemberID: id.EffectiveMemberID})
+					if err == nil {
+						capability.Readiness = "AVAILABLE"
+						capability.Reason = "可准备整套计划，确认点数后生成"
+					} else {
+						capability.Readiness = "NEEDS_CONFIGURATION"
+						capability.Reason = "需要有效的企业图片模型配置与凭据"
+					}
+				}
+			}
+			return capabilities
+		}
 		return productAgentCapabilities(ctx, resolver, h.Authorize, k, runtime)
 	}
+	h.RunsAvailable = func(_ context.Context, entry agentconfig.CatalogEntry) bool {
+		if entry.Definition.ID == agentconfig.ImageAgentID {
+			return imageRuntime != nil && imageRuntime.recent != nil
+		}
+		return runtime != nil
+	}
 	h.Recent = func(ctx context.Context, scope agent.Scope, id, cursor string, size int) (any, string, error) {
+		if id == agentconfig.ImageAgentID {
+			if imageRuntime == nil {
+				return nil, "", agentconfig.ErrUnavailable
+			}
+			return imageRuntime.readRecent(ctx, "", cursor, size)
+		}
 		if runtime == nil {
 			return nil, "", agentconfig.ErrUnavailable
 		}
@@ -110,6 +161,21 @@ func buildAgentConfigurationModule(ctx context.Context, db *gorm.DB, resolver or
 		return repo.Recent(ctx, scope, id, cursor, size, runtime.store, func(b agent.Binding) error { _, e := runtime.Authorize(ctx, b); return e })
 	}
 	return confighttp.NewModule(h), nil
+}
+
+func productImageAgentCapabilities(ctx context.Context, authorize func(context.Context, ...string) (agent.Scope, error)) []agentconfig.Capability {
+	now := time.Now().UTC()
+	evidence := agentconfig.Capability{ID: "product.source-evidence", Support: "REQUIRED", Readiness: "REQUIRES_AUTHORIZATION", Reason: "生成需要当前商品素材的读取权限", ObservedAt: now}
+	if _, err := authorize(ctx, authz.PermissionProductSourcingWrite); err == nil {
+		evidence.Readiness, evidence.Reason = "AVAILABLE", "可读取当前企业已保存的采集素材，执行时重新核实权限与素材版本"
+	}
+	return []agentconfig.Capability{
+		{ID: "image.generate", Support: "REQUIRED", Readiness: "UNAVAILABLE", Reason: "当前环境尚未接入完整图片执行", ObservedAt: now},
+		evidence,
+		{ID: "text.generate", Support: "NOT_SUPPORTED", Readiness: "UNAVAILABLE", Reason: "标题优化由商品标题智能体执行", ObservedAt: now},
+		{ID: "knowledge.context", Support: "NOT_SUPPORTED", Readiness: "UNAVAILABLE", Reason: "图片配置使用真实商品事实与原始素材", ObservedAt: now},
+		{ID: "platform.write", Support: "NOT_SUPPORTED", Readiness: "UNAVAILABLE", Reason: "批准图片保存为商品资产，远端发布由刊登流程执行", ObservedAt: now},
+	}
 }
 
 func productAgentCapabilities(ctx context.Context, resolver organizationIdentityResolver, authorize func(context.Context, ...string) (agent.Scope, error), k *knowledge.Service, runtime *productAgentApplication) []agentconfig.Capability {

@@ -18,6 +18,8 @@ func AllowedActions(run Run) []Action {
 		return nil
 	}
 	switch run.Status {
+	case RunStatusAwaitingPlanApproval:
+		return []Action{ActionCancel}
 	case RunStatusBlocked:
 		if run.Block == nil || strings.TrimSpace(run.Block.Code) == "" || strings.TrimSpace(run.Block.SlotID) == "" {
 			return []Action{ActionCancel}
