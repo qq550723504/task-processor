@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, cleanup, within } from "@testing-library/react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { DataServicesPage, CustomDetails } from "./data-services-page";
+import { SpecialistPage } from "./specialist-page";
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => ({ user: { id: "user" }, effectiveOrganization: { id: "org" }, registerOrganizationSwitchGuard: () => () => { } }) }));
 vi.mock("@/components/workbench/collections/collection-page", () => ({ CollectionDialog: ({ title, children, onClose }: {
         title: string;
@@ -13,6 +14,58 @@ const job = { id, commandKey: id, query: { site: "us", mode: "asin", asins: ["B0
 const json = (value: unknown, status = 200) => Response.json(value, { status });
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals(); });
 describe("data service product paths", () => {
+    it.each(["2026-10-20T15:00:00Z", new Date(Date.now() + 3600000).toISOString()])("preserves the exact existing expiry %s when only limits change", async expiresAt => {
+        const key = { id, suffix: "test", state: "ACTIVE", revision: 1, createdAt: job.createdAt, limits: { name: "fixture", expiresAt, dailyRows: 10, monthlyCostFen: 100, permissions: ["amazon.acquire", "amazon.result.read"] } };
+        const mutations: unknown[] = [];
+        vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+            if (init?.method === "POST") {
+                const body = JSON.parse(String(init.body));
+                mutations.push(body);
+                return json({ ...key, limits: body.patch.limits, revision: 2 });
+            }
+            void url;
+            return json({ options, keys: [key], jobs: [], keyQuotas: [], usage: { dayRows: 0, monthConfirmedFen: 0, monthPendingFen: 0, finishedJobs: 0, succeededJobs: 0, successRate: null, window: "UTC month" } });
+        }));
+        render(<DataServicesPage mode="api"/>);
+        fireEvent.click(await screen.findByRole("button", { name: "管理密钥" }));
+        fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+        fireEvent.change(screen.getByLabelText("每日最大成功条数"), { target: { value: "20" } });
+        fireEvent.click(screen.getByRole("button", { name: "保存限制" }));
+        await waitFor(() => expect(mutations).toHaveLength(1));
+        expect(mutations[0]).toMatchObject({ patch: { limits: { expiresAt, dailyRows: 20 } } });
+    });
+    it("rejects a key name exceeding the existing 80 UTF-8 bytes before dispatch", async () => {
+        vi.stubGlobal("fetch", vi.fn(async () => json({ options, keys: [], jobs: [], keyQuotas: [], usage: { dayRows: 0, monthConfirmedFen: 0, monthPendingFen: 0, finishedJobs: 0, succeededJobs: 0, successRate: null, window: "UTC month" } })));
+        render(<DataServicesPage mode="api"/>);
+        const create = await screen.findByRole("button", { name: "创建API密钥" });
+        await waitFor(() => expect(create).toBeEnabled());
+        fireEvent.click(create);
+        const field = screen.getByLabelText("密钥名称");
+        fireEvent.change(field, { target: { value: "中".repeat(27) } });
+        expect(field).toHaveAttribute("aria-invalid", "true");
+        expect(screen.getByRole("button", { name: "创建密钥" })).toBeDisabled();
+        fireEvent.change(field, { target: { value: "中".repeat(26) } });
+        expect(field).toHaveAttribute("aria-invalid", "false");
+        expect(screen.getByRole("button", { name: "创建密钥" })).toBeEnabled();
+        expect(sessionStorage.length).toBe(0);
+    });
+    it.each([["进度说明", 2000], ["已确认的规格", 4000], ["线下报价记录", 2000], ["线下确认记录", 2000]])("enforces specialist UTF-8 limits for %s", async (label, maximum) => {
+        const request = { id, input: { name: "specialist fixture", query: job.query, purpose: "fixture", format: "json" }, state: "EVALUATING", revision: 1, specRevision: 0, deliveredRows: 0, createdAt: job.createdAt, events: [], applicant: { organizationId: "org", actorId: "user" } };
+        const fetcher = vi.fn(async (url: string, init?: RequestInit) => { void init; return json(url.endsWith(id) ? request : { items: [{ id, name: request.input.name, site: "us", mode: "asin", state: "EVALUATING", createdAt: job.createdAt, applicant: request.applicant }] }); });
+        vi.stubGlobal("fetch", fetcher);
+        render(<SpecialistPage userId="user"/>);
+        fireEvent.click(await screen.findByRole("button", { name: /specialist fixture/ }));
+        const field = await screen.findByLabelText(label);
+        expect(field).toHaveAttribute("maxlength", String(maximum));
+        fireEvent.change(field, { target: { value: "中".repeat(Math.floor(Number(maximum) / 3) + 1) } });
+        expect(field).toHaveAttribute("aria-invalid", "true");
+        expect(screen.getByRole("button", { name: "保存进度与确认记录" })).toBeDisabled();
+        fireEvent.change(field, { target: { value: "中".repeat(Math.floor(Number(maximum) / 3)) } });
+        expect(field).toHaveAttribute("aria-invalid", "false");
+        expect(screen.getByRole("button", { name: "保存进度与确认记录" })).toBeEnabled();
+        expect(fetcher.mock.calls.every(([, init]) => !init || init.method !== "POST")).toBe(true);
+        expect(sessionStorage.length).toBe(0);
+    });
     it.each([
         ["需求名称", 200], ["用途与业务场景", 1000], ["时间范围／更新需求", 1000], ["其他说明", 4000],
     ])("enforces the accepted UTF-8 byte limit for %s", async (label, maximum) => {

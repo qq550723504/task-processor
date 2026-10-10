@@ -12,7 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { CollectionDialog } from "@/components/workbench/collections/collection-page";
 import { dataRequest, DataAPIError, type DataScope } from "@/lib/api/data-services";
-import { CUSTOM_INPUT_BYTE_LIMITS, optionsSchema, customSummarySchema, overviewSchema, jobSchema, keySchema, keyCreatedSchema, keyHistorySchema, resultPageSchema, customSchema, querySchema, keyLimitsSchema, type DataOptions, type DataQuery, type DataKey, type DataJob, type CustomRequest, type Overview } from "@/lib/contracts/data-services";
+import { CUSTOM_INPUT_BYTE_LIMITS, KEY_NAME_MAX_BYTES, dataTextBytes, optionsSchema, customSummarySchema, overviewSchema, jobSchema, keySchema, keyCreatedSchema, keyHistorySchema, resultPageSchema, customSchema, querySchema, keyLimitsSchema, type DataOptions, type DataQuery, type DataKey, type DataJob, type CustomRequest, type Overview } from "@/lib/contracts/data-services";
 import { useDataCommand } from "./use-data-command";
 import styles from "./data-services.module.css";
 export const stateNames: Record<string, string> = { ADMITTED: "已提交", RUNNING: "抓取中", SUCCEEDED: "已完成", PARTIAL: "部分完成", FAILED: "失败", CANCELED: "已取消", ACTIVE: "启用", DISABLED: "禁用", REVOKED: "已撤销", SUBMITTED: "已提交", EVALUATING: "需求评估", SPEC_CONFIRMED: "规格已确认", PREPARING: "数据制作中", DELIVERED: "已交付", CLOSED: "已关闭", SAVED: "已保存", PREPARED: "等待抓取", FETCHING: "抓取中", PREPARED_EVIDENCE: "等待保存" };
@@ -23,6 +23,10 @@ export function Field({ title, children }: {
     title: string;
     children: ReactNode;
 }) { return <label className="grid gap-2 text-sm font-medium">{title}{children}</label>; }
+export function ByteLimitHint({ id, value, maximum }: { id: string; value: string; maximum: number }) {
+    const length = dataTextBytes(value);
+    return <span id={id} className="text-xs font-normal text-muted-foreground">当前 {length} / {maximum} 字节{length > maximum ? <span className="block text-amber-700">超出字节上限，请缩短内容。</span> : null}</span>;
+}
 export function DataNotice({ error }: {
     error: string;
 }) { return error ? <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{failureNames[error] ?? "请求未完成，请刷新或核实原请求。"}</p> : null; }
@@ -152,10 +156,10 @@ function QueryForm({ options, custom = false, disabled, onSubmit }: {
     const [site, setSite] = useState(sites[0]?.code ?? "us"), [mode, setMode] = useState<DataQuery["mode"]>("asin"), [asins, setASINs] = useState(""), [keyword, setKeyword] = useState(""), [node, setNode] = useState(""), [limit, setLimit] = useState("10"), [fields, setFields] = useState<string[]>(options.fields), [error, setError] = useState("");
     const [name, setName] = useState(""), [purpose, setPurpose] = useState(""), [format, setFormat] = useState("csv"), [timeRange, setTimeRange] = useState(""), [notes, setNotes] = useState("");
     const customBytes = { name, purpose, timeRange, notes };
-    const customLength = (field: keyof typeof customBytes) => new TextEncoder().encode(customBytes[field]).byteLength;
+    const customLength = (field: keyof typeof customBytes) => dataTextBytes(customBytes[field]);
     const exceedsLimit = (field: keyof typeof customBytes) => customLength(field) > CUSTOM_INPUT_BYTE_LIMITS[field];
     const customTooLong = custom && (Object.keys(customBytes) as (keyof typeof customBytes)[]).some(exceedsLimit);
-    const lengthHint = (field: keyof typeof customBytes) => <span id={`custom-${field}-limit`} className="text-xs font-normal text-muted-foreground">当前 {customLength(field)} / {CUSTOM_INPUT_BYTE_LIMITS[field]} 字节{exceedsLimit(field) ? <span className="block text-amber-700">超出字节上限，请缩短内容。</span> : null}</span>;
+    const lengthHint = (field: keyof typeof customBytes) => <ByteLimitHint id={`custom-${field}-limit`} value={customBytes[field]} maximum={CUSTOM_INPUT_BYTE_LIMITS[field]}/>;
     return <form className="space-y-4" onSubmit={e => {
             e.preventDefault();
             const input = { site, mode, ...(mode === "asin" ? { asins: asins.split(/[\s,，]+/).filter(Boolean) } : { ...(mode === "keyword" && keyword.trim() ? { keyword: keyword.trim() } : {}), ...(node ? { categoryNode: node } : {}) }), limit: Number(limit), fields };
@@ -310,15 +314,18 @@ function KeyForm({ initial, disabled, onSubmit }: {
     disabled: boolean;
     onSubmit: (input: DataKey["limits"]) => void;
 }) {
-    const [name, setName] = useState(initial?.name ?? ""), [expiry, setExpiry] = useState(initial?.expiresAt.slice(0, 10) ?? ""), [rows, setRows] = useState(initial ? String(initial.dailyRows) : ""), [budget, setBudget] = useState(initial ? String(initial.monthlyCostFen / 100) : ""), [permissions, setPermissions] = useState<string[]>(initial?.permissions ?? ["amazon.acquire", "amazon.result.read"]), [cidrs, setCIDRs] = useState(initial?.cidrs?.join("\n") ?? ""), [error, setError] = useState("");
+    const originalExpiryDate = initial ? new Date(initial.expiresAt).toISOString().slice(0, 10) : "";
+    const [name, setName] = useState(initial?.name ?? ""), [expiry, setExpiry] = useState(originalExpiryDate), [rows, setRows] = useState(initial ? String(initial.dailyRows) : ""), [budget, setBudget] = useState(initial ? String(initial.monthlyCostFen / 100) : ""), [permissions, setPermissions] = useState<string[]>(initial?.permissions ?? ["amazon.acquire", "amazon.result.read"]), [cidrs, setCIDRs] = useState(initial?.cidrs?.join("\n") ?? ""), [error, setError] = useState("");
+    const nameTooLong = dataTextBytes(name) > KEY_NAME_MAX_BYTES;
     return <form className="space-y-4" onSubmit={e => {
             e.preventDefault();
-            if (!/^\d+(\.\d{1,2})?$/.test(budget)) {
+            if (nameTooLong || !/^\d+(\.\d{1,2})?$/.test(budget)) {
                 setError("INVALID_DATA_REQUEST");
                 return;
             }
             ;
-            const parsed = keyLimitsSchema.safeParse({ name, expiresAt: `${expiry}T00:00:00Z`, dailyRows: Number(rows), monthlyCostFen: Math.round(Number(budget) * 100), permissions, cidrs: cidrs.split(/\r?\n/).map(s => s.trim()).filter(Boolean) });
+            const expiresAt = initial && expiry === originalExpiryDate ? initial.expiresAt : `${expiry}T00:00:00Z`;
+            const parsed = keyLimitsSchema.safeParse({ name, expiresAt, dailyRows: Number(rows), monthlyCostFen: Math.round(Number(budget) * 100), permissions, cidrs: cidrs.split(/\r?\n/).map(s => s.trim()).filter(Boolean) });
             if (!parsed.success) {
                 setError("INVALID_DATA_REQUEST");
                 return;
@@ -326,6 +333,6 @@ function KeyForm({ initial, disabled, onSubmit }: {
             ;
             onSubmit(parsed.data);
         }}>
-  <Field title="密钥名称"><Input required maxLength={80} value={name} onChange={e => setName(e.target.value)}/></Field><Field title="到期日（UTC，最多 365 天）"><Input required type="date" value={expiry} onChange={e => setExpiry(e.target.value)}/></Field><div className="grid gap-4 sm:grid-cols-2"><Field title="每日最大成功条数"><Input required type="number" min={1} max={1e9} step={1} value={rows} onChange={e => setRows(e.target.value)}/></Field><Field title="月费用上限（元）"><Input required type="number" min="0.01" max={1e9} step="0.01" value={budget} onChange={e => setBudget(e.target.value)}/></Field></div><fieldset className="space-y-2"><legend className="mb-2 text-sm font-medium">密钥能力</legend>{[["amazon.acquire", "创建 Amazon 抓取任务"], ["amazon.result.read", "读取此密钥创建的任务与结果"]].map(([value, label]) => <label className="flex gap-2 text-sm" key={value}><input type="checkbox" checked={permissions.includes(value)} onChange={e => setPermissions(p => e.target.checked ? [...p, value] : p.filter(x => x !== value))}/>{label}</label>)}</fieldset><Field title="IP 白名单（可选，每行一个 CIDR，最多 20 条）"><Textarea rows={3} value={cidrs} onChange={e => setCIDRs(e.target.value)} placeholder="203.0.113.0/24"/></Field><p className="text-xs text-muted-foreground">额度包含正在执行任务的预留量，不能降低到现有占用以下。密钥的能力始终受创建者当前企业权限约束。</p><DataNotice error={error}/><Button disabled={disabled} type="submit">{disabled ? "正在保存…" : initial ? "保存限制" : "创建密钥"}</Button>
+  <Field title="密钥名称"><Input required aria-label="密钥名称" aria-describedby="key-name-limit" aria-invalid={nameTooLong} maxLength={KEY_NAME_MAX_BYTES} value={name} onChange={e => setName(e.target.value)}/><ByteLimitHint id="key-name-limit" value={name} maximum={KEY_NAME_MAX_BYTES}/></Field><Field title="到期日（UTC，最多 365 天）"><Input required type="date" value={expiry} onChange={e => setExpiry(e.target.value)}/></Field>{initial ? <p className="text-xs text-muted-foreground">原到期时间（UTC）：{new Date(initial.expiresAt).toISOString()}。日期未改动时保留原时刻。</p> : null}<div className="grid gap-4 sm:grid-cols-2"><Field title="每日最大成功条数"><Input required type="number" min={1} max={1e9} step={1} value={rows} onChange={e => setRows(e.target.value)}/></Field><Field title="月费用上限（元）"><Input required type="number" min="0.01" max={1e9} step="0.01" value={budget} onChange={e => setBudget(e.target.value)}/></Field></div><fieldset className="space-y-2"><legend className="mb-2 text-sm font-medium">密钥能力</legend>{[["amazon.acquire", "创建 Amazon 抓取任务"], ["amazon.result.read", "读取此密钥创建的任务与结果"]].map(([value, label]) => <label className="flex gap-2 text-sm" key={value}><input type="checkbox" checked={permissions.includes(value)} onChange={e => setPermissions(p => e.target.checked ? [...p, value] : p.filter(x => x !== value))}/>{label}</label>)}</fieldset><Field title="IP 白名单（可选，每行一个 CIDR，最多 20 条）"><Textarea rows={3} value={cidrs} onChange={e => setCIDRs(e.target.value)} placeholder="203.0.113.0/24"/></Field><p className="text-xs text-muted-foreground">额度包含正在执行任务的预留量，不能降低到现有占用以下。密钥的能力始终受创建者当前企业权限约束。</p><DataNotice error={error}/><Button disabled={disabled || nameTooLong} type="submit">{disabled ? "正在保存…" : initial ? "保存限制" : "创建密钥"}</Button>
  </form>;
 }

@@ -8,8 +8,8 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { CollectionDialog } from "@/components/workbench/collections/collection-page";
 import { dataRequest, DataAPIError, encodeDataFile } from "@/lib/api/data-services";
-import { adminCustomSchema, adminSummarySchema, adminPageSchema, customSpecSchema, type CustomRequest } from "@/lib/contracts/data-services";
-import { CustomDetails, Field, DataNotice, stateNames, moment } from "./data-services-page";
+import { CUSTOM_SPEC_BYTE_LIMITS, CUSTOM_CHANGE_NOTE_BYTES, dataTextBytes, adminCustomSchema, adminSummarySchema, adminPageSchema, customSpecSchema, type CustomRequest } from "@/lib/contracts/data-services";
+import { ByteLimitHint, CustomDetails, Field, DataNotice, stateNames, moment } from "./data-services-page";
 import { useDataCommand } from "./use-data-command";
 export function SpecialistPage({ userId }: {
     userId: string;
@@ -86,8 +86,17 @@ function SpecialistActions({ request, disabled, onChange, onDeliver }: {
     onDeliver: (file: File) => void;
 }) {
     const [state, setState] = useState(request.state === "SUBMITTED" ? "EVALUATING" : request.state === "EVALUATING" ? "SPEC_CONFIRMED" : request.state === "SPEC_CONFIRMED" ? "PREPARING" : "PREPARING"), [note, setNote] = useState(""), [description, setDescription] = useState(request.spec?.description ?? ""), [quote, setQuote] = useState(request.spec?.quoteNote ?? ""), [confirmation, setConfirmation] = useState(request.spec?.confirmationNote ?? ""), [format, setFormat] = useState(request.spec?.format ?? request.input.format), [rows, setRows] = useState(String(request.spec?.maximumRows ?? request.input.query.limit)), [file, setFile] = useState<File | null>(null), [error, setError] = useState("");
+    const noteTooLong = dataTextBytes(note) > CUSTOM_CHANGE_NOTE_BYTES;
+    const descriptionTooLong = dataTextBytes(description) > CUSTOM_SPEC_BYTE_LIMITS.description;
+    const quoteTooLong = dataTextBytes(quote) > CUSTOM_SPEC_BYTE_LIMITS.quoteNote;
+    const confirmationTooLong = dataTextBytes(confirmation) > CUSTOM_SPEC_BYTE_LIMITS.confirmationNote;
+    const textTooLong = noteTooLong || (state === "SPEC_CONFIRMED" && (descriptionTooLong || quoteTooLong || confirmationTooLong));
     return <div className="space-y-5 border-t pt-5"><form className="space-y-4" onSubmit={e => {
             e.preventDefault();
+            if (textTooLong) {
+                setError("INVALID_DATA_REQUEST");
+                return;
+            }
             let spec: z.infer<typeof customSpecSchema> | undefined;
             if (state === "SPEC_CONFIRMED") {
                 const parsed = customSpecSchema.safeParse({ description, quoteNote: quote, confirmationNote: confirmation, format, maximumRows: Number(rows) });
@@ -99,7 +108,7 @@ function SpecialistActions({ request, disabled, onChange, onDeliver }: {
                 spec = parsed.data;
             }
             onChange({ state, note, ...(spec ? { spec } : {}) });
-        }}><Field title="记录下一步进度"><Select value={state} onChange={e => setState(e.target.value)}>{(request.state === "SUBMITTED" ? ["EVALUATING", "CLOSED"] : request.state === "EVALUATING" ? ["EVALUATING", "SPEC_CONFIRMED", "CLOSED"] : request.state === "SPEC_CONFIRMED" ? ["SPEC_CONFIRMED", "PREPARING", "CLOSED"] : ["PREPARING", "CLOSED"]).map(s => <option value={s} key={s}>{stateNames[s]}</option>)}</Select></Field><Field title="进度说明"><Textarea required maxLength={4000} value={note} onChange={e => setNote(e.target.value)}/></Field>{state === "SPEC_CONFIRMED" ? <><Field title="已确认的规格"><Textarea required maxLength={8000} value={description} onChange={e => setDescription(e.target.value)}/></Field><Field title="线下报价记录"><Textarea required maxLength={4000} value={quote} onChange={e => setQuote(e.target.value)}/></Field><Field title="线下确认记录"><Textarea required maxLength={4000} value={confirmation} onChange={e => setConfirmation(e.target.value)}/></Field><div className="grid gap-4 sm:grid-cols-2"><Field title="交付格式"><Select value={format} onChange={e => setFormat(e.target.value as typeof format)}>{["csv", "json", "xlsx"].map(f => <option key={f}>{f}</option>)}</Select></Field><Field title="确认最大条数"><Input required type="number" min={1} max={200} value={rows} onChange={e => setRows(e.target.value)}/></Field></div></> : null}<DataNotice error={error}/><Button disabled={disabled} type="submit">保存进度与确认记录</Button></form>
+        }}><Field title="记录下一步进度"><Select value={state} onChange={e => setState(e.target.value)}>{(request.state === "SUBMITTED" ? ["EVALUATING", "CLOSED"] : request.state === "EVALUATING" ? ["EVALUATING", "SPEC_CONFIRMED", "CLOSED"] : request.state === "SPEC_CONFIRMED" ? ["SPEC_CONFIRMED", "PREPARING", "CLOSED"] : ["PREPARING", "CLOSED"]).map(s => <option value={s} key={s}>{stateNames[s]}</option>)}</Select></Field><Field title="进度说明"><Textarea required aria-label="进度说明" aria-describedby="specialist-note-limit" aria-invalid={noteTooLong} maxLength={CUSTOM_CHANGE_NOTE_BYTES} value={note} onChange={e => setNote(e.target.value)}/><ByteLimitHint id="specialist-note-limit" value={note} maximum={CUSTOM_CHANGE_NOTE_BYTES}/></Field>{state === "SPEC_CONFIRMED" ? <><Field title="已确认的规格"><Textarea required aria-label="已确认的规格" aria-describedby="specialist-description-limit" aria-invalid={descriptionTooLong} maxLength={CUSTOM_SPEC_BYTE_LIMITS.description} value={description} onChange={e => setDescription(e.target.value)}/><ByteLimitHint id="specialist-description-limit" value={description} maximum={CUSTOM_SPEC_BYTE_LIMITS.description}/></Field><Field title="线下报价记录"><Textarea required aria-label="线下报价记录" aria-describedby="specialist-quote-limit" aria-invalid={quoteTooLong} maxLength={CUSTOM_SPEC_BYTE_LIMITS.quoteNote} value={quote} onChange={e => setQuote(e.target.value)}/><ByteLimitHint id="specialist-quote-limit" value={quote} maximum={CUSTOM_SPEC_BYTE_LIMITS.quoteNote}/></Field><Field title="线下确认记录"><Textarea required aria-label="线下确认记录" aria-describedby="specialist-confirmation-limit" aria-invalid={confirmationTooLong} maxLength={CUSTOM_SPEC_BYTE_LIMITS.confirmationNote} value={confirmation} onChange={e => setConfirmation(e.target.value)}/><ByteLimitHint id="specialist-confirmation-limit" value={confirmation} maximum={CUSTOM_SPEC_BYTE_LIMITS.confirmationNote}/></Field><div className="grid gap-4 sm:grid-cols-2"><Field title="交付格式"><Select value={format} onChange={e => setFormat(e.target.value as typeof format)}>{["csv", "json", "xlsx"].map(f => <option key={f}>{f}</option>)}</Select></Field><Field title="确认最大条数"><Input required type="number" min={1} max={200} value={rows} onChange={e => setRows(e.target.value)}/></Field></div></> : null}<DataNotice error={error}/><Button disabled={disabled || textTooLong} type="submit">保存进度与确认记录</Button></form>
   {request.state === "PREPARING" && request.spec ? <form className="space-y-4 rounded-lg border p-4" onSubmit={e => {
                 e.preventDefault();
                 if (file)
