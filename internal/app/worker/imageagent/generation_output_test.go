@@ -53,12 +53,12 @@ func TestGenerationOutputRecoveryOnlyFetchesBoundOriginalResult(t *testing.T) {
 	fact, err = fact.RecordSuccess(proof)
 	require.NoError(t, err)
 	responseStatuses := map[string]int{"forbidden_set": http.StatusForbidden, "gone_set": http.StatusGone, "not_found_set": http.StatusNotFound, "timeout_set": http.StatusRequestTimeout, "throttle_set": http.StatusTooManyRequests, "unavailable_set": http.StatusServiceUnavailable}
-	for _, mode := range []string{"valid", "image_set", "changed_set", "bad_set", "truncated_pixels", "wrong_size", "empty_set", "oversized_declared", "oversized_streamed", "fetch_failure_set", "forbidden_set", "gone_set", "not_found_set", "timeout_set", "throttle_set", "unavailable_set", "canceled_set", "private", "oversized_locator", "member", "catalog", "unknown", "bad_image", "fetch_failure"} {
+	for _, mode := range []string{"valid", "image_set", "changed_set", "bad_set", "truncated_pixels", "wrong_size", "empty_set", "oversized_declared", "oversized_streamed", "fetch_failure_set", "forbidden_set", "gone_set", "not_found_set", "timeout_set", "throttle_set", "unavailable_set", "canceled_set", "unavailable_locator_set", "malformed_locator_set", "private_locator_set", "oversized_locator_set", "changed_unavailable_set", "private", "oversized_locator", "member", "catalog", "unknown", "bad_image", "fetch_failure"} {
 		t.Run(mode, func(t *testing.T) {
 			calls := 0
 			in, current := input, fact
 			switch mode {
-			case "image_set", "changed_set", "bad_set", "truncated_pixels", "wrong_size", "empty_set", "oversized_declared", "oversized_streamed", "fetch_failure_set", "forbidden_set", "gone_set", "not_found_set", "timeout_set", "throttle_set", "unavailable_set", "canceled_set":
+			case "image_set", "changed_set", "bad_set", "truncated_pixels", "wrong_size", "empty_set", "oversized_declared", "oversized_streamed", "fetch_failure_set", "forbidden_set", "gone_set", "not_found_set", "timeout_set", "throttle_set", "unavailable_set", "canceled_set", "unavailable_locator_set", "malformed_locator_set", "private_locator_set", "oversized_locator_set", "changed_unavailable_set":
 				hash := strings.Repeat("a", 64)
 				in.ImageSet = &imageagent.ImageSetPlan{Schema: imageagent.ImageSetSchema, Source: imageagent.ImageSourceBinding{ContextKind: imageagent.ImageSourceAcquisition, ProductID: "product-1", OperationID: "source-operation", OriginalPublicationID: "publication-1", OriginalVersion: 1, EffectiveVersion: 1, CatalogHash: catalog.Manifest.Hash}, Target: imageagent.ImageTarget{Platform: "product"}, Configuration: agent.ConfigurationSnapshotRef{Kind: "agent-configuration-v1", ID: "9e7afaa9-a9f9-48ba-a11a-b5bb377f08e9", Digest: hash}, ConfigurationEpoch: "1", ParametersDigest: hash, InputDigest: hash, MaxPoints: 12}
 				in.TargetPlatform = "product"
@@ -80,9 +80,20 @@ func TestGenerationOutputRecoveryOnlyFetchesBoundOriginalResult(t *testing.T) {
 				require.NoError(t, err)
 				current, _, err = current.BeginDispatch()
 				require.NoError(t, err)
-				current, err = current.RecordSuccess(proof)
+				observed := proof
+				switch mode {
+				case "unavailable_locator_set", "changed_unavailable_set":
+					observed = proof.WithResultLocator("", "invalid_result")
+				case "malformed_locator_set":
+					observed = proof.WithResultLocator("not-a-url", "")
+				case "private_locator_set":
+					observed = proof.WithResultLocator("https://127.0.0.1/secret", "")
+				case "oversized_locator_set":
+					observed = proof.WithResultLocator("https://output.example/"+strings.Repeat("x", 4096), "")
+				}
+				current, err = current.RecordSuccess(observed)
 				require.NoError(t, err)
-				if mode == "changed_set" {
+				if mode == "changed_set" || mode == "changed_unavailable_set" {
 					in.Slot.Recipe.Prompt = "changed purpose"
 				}
 			case "private":
@@ -151,7 +162,7 @@ func TestGenerationOutputRecoveryOnlyFetchesBoundOriginalResult(t *testing.T) {
 				require.NotContains(t, err.Error(), "signature")
 				require.Empty(t, got.Assets)
 			}
-			if mode == "bad_set" || mode == "truncated_pixels" || mode == "wrong_size" || mode == "empty_set" || mode == "oversized_declared" || mode == "oversized_streamed" || mode == "forbidden_set" || mode == "gone_set" {
+			if mode == "bad_set" || mode == "truncated_pixels" || mode == "wrong_size" || mode == "empty_set" || mode == "oversized_declared" || mode == "oversized_streamed" || mode == "forbidden_set" || mode == "gone_set" || mode == "unavailable_locator_set" || mode == "malformed_locator_set" || mode == "private_locator_set" || mode == "oversized_locator_set" {
 				require.ErrorIs(t, err, imageagent.ErrInvalidGeneratedOutput)
 			} else if mode != "bad_image" {
 				require.NotErrorIs(t, err, imageagent.ErrInvalidGeneratedOutput)

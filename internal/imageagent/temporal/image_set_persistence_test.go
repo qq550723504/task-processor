@@ -218,7 +218,7 @@ func TestExpiredImageSetProjectionPreservesPersistedBlockedEffectPolicy(t *testi
 }
 
 func TestSetSlotClosureBindsTheOriginalSettledEconomics(t *testing.T) {
-	for _, mode := range []string{"invalid_locator", "invalid_bytes", "invalid_bytes_execute", "transient", "unsettled_invalid_bytes", "price_drift"} {
+	for _, mode := range []string{"invalid_locator", "invalid_locator_execute", "invalid_bytes", "invalid_bytes_execute", "transient", "unsettled_invalid_bytes", "price_drift"} {
 		t.Run(mode, func(t *testing.T) {
 			drift := mode == "price_drift"
 			a, repo, input := imageSetPersistenceFixture(t)
@@ -270,7 +270,7 @@ func TestSetSlotClosureBindsTheOriginalSettledEconomics(t *testing.T) {
 			}
 			recovery := EffectRecoveryWorkflowInput{RunID: input.RunID, Identity: input.Identity, PlanRevision: 1, Slot: input.Slot, Attempt: 1, ImageSet: input.ImageSet, TargetPlatform: input.TargetPlatform, AssetCatalog: input.AssetCatalog}
 			gets := 0
-			if proof.ResultURL != "" {
+			if proof.ResultURL != "" || mode == "invalid_locator" || mode == "invalid_locator_execute" {
 				a.generationOutputRecovery = func(_ context.Context, original imageagent.SlotExecutionInput, persisted imageagent.GenerationFact) (imageagent.SlotGeneratedOutput, error) {
 					gets++
 					require.Equal(t, input.Slot.ID, original.Slot.ID)
@@ -280,7 +280,7 @@ func TestSetSlotClosureBindsTheOriginalSettledEconomics(t *testing.T) {
 					}
 					return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
 				}
-				if mode == "invalid_bytes_execute" {
+				if mode == "invalid_bytes_execute" || mode == "invalid_locator_execute" {
 					_, err = a.ExecuteSlotV3(context.Background(), input)
 					require.ErrorContains(t, err, imageagent.SlotProviderOutcomeUnknownCode)
 				} else if mode == "transient" {
@@ -289,6 +289,9 @@ func TestSetSlotClosureBindsTheOriginalSettledEconomics(t *testing.T) {
 				} else {
 					_, err = a.RecoverEffectV3(context.Background(), recovery)
 					require.NoError(t, err, "known invalid output must reach original durable reconciliation")
+				}
+				if mode == "invalid_locator" || mode == "invalid_locator_execute" {
+					require.Equal(t, 1, gets, "empty immutable locator must reach the bound output recovery")
 				}
 			}
 			result, err := a.ReconcileEffectRecoveryV3(context.Background(), recovery)
@@ -309,7 +312,7 @@ func TestSetSlotClosureBindsTheOriginalSettledEconomics(t *testing.T) {
 			replay, err := a.ReconcileEffectRecoveryV3(context.Background(), recovery)
 			require.NoError(t, err, "lost acknowledgement must read the original reconciled result")
 			require.Equal(t, result, replay)
-			if proof.ResultURL != "" {
+			if proof.ResultURL != "" || mode == "invalid_locator" || mode == "invalid_locator_execute" {
 				closedGets := gets
 				_, err = a.RecoverEffectV3(context.Background(), recovery)
 				require.NoError(t, err)

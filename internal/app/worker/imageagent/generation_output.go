@@ -23,7 +23,7 @@ func generationOutputRecovery(fetch func(context.Context, string) ([]byte, error
 			return imageagent.SlotGeneratedOutput{}, imageagent.ErrValidation
 		}
 		id := imageagent.SlotExternalEffectIdentity{RunScope: imageagent.RunScope{TenantID: input.TenantID, OwnerUserID: input.UserID, RunID: input.RunID}, PlanRevision: input.PlanRevision, SlotID: input.Slot.ID, Attempt: input.Attempt}
-		if fact.Validate() != nil || fact.State != imageagent.GenerationSucceeded || fact.Intent.Identity != id || fact.Intent.MemberID != input.OrganizationIdentity.MemberID || fact.Intent.CatalogHash != input.AssetCatalog.Manifest.Hash || fact.Success.ResultURL == "" || len(input.Slot.SourceAssetIDs) < 1 {
+		if fact.Validate() != nil || fact.State != imageagent.GenerationSucceeded || fact.Intent.Identity != id || fact.Intent.MemberID != input.OrganizationIdentity.MemberID || fact.Intent.CatalogHash != input.AssetCatalog.Manifest.Hash || len(input.Slot.SourceAssetIDs) < 1 {
 			return bad()
 		}
 		operation := productimage.SourceWhiteBackgroundOperation
@@ -48,7 +48,12 @@ func generationOutputRecovery(fetch func(context.Context, string) ([]byte, error
 		if _, err := imageagent.ValidateSafeImageURL(sourceURL); err != nil {
 			return bad()
 		}
-		if _, err := imageagent.ValidateSafeImageURL(fact.Success.ResultURL); err != nil {
+		if _, err := imageagent.ValidateSafeImageURL(fact.Success.ResultURL); err != nil || fact.Success.ResultUnavailable != "" {
+			// Only after binding the immutable success to this original input
+			// may an unusable locator close the charged image-set failure.
+			if input.ImageSet != nil {
+				return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
+			}
 			return bad()
 		}
 		data, err := fetch(ctx, fact.Success.ResultURL)

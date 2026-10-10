@@ -62,7 +62,7 @@ func (a *Activities) recoverSucceededGenerationOutput(ctx context.Context, input
 		if !errors.Is(err, objectstore.ErrArtifactUnavailable) {
 			return effect, imageagent.ErrValidation
 		}
-		if fact.Success.ResultURL == "" {
+		if fact.Success.ResultURL == "" && input.ImageSet == nil {
 			return effect, blockedSlotEffectV3Error(slotProviderOutcomeUnknownCode)
 		}
 		generated, getErr := a.generationOutputRecovery(ctx, input, fact)

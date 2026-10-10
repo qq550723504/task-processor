@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/sync/errgroup"
 	sigjson "sigs.k8s.io/json"
 	"task-processor/internal/agent"
 	"task-processor/internal/agentconfig"
@@ -495,13 +496,19 @@ func (a *fullImageApplication) readRecent(ctx context.Context, contextID, cursor
 	if !ok || a == nil || a.recent == nil {
 		return nil, "", imageagent.ErrIdentityRequired
 	}
+	if size < 1 || size > 40 {
+		return nil, "", imageagent.ErrValidation
+	}
 	exec := imageagent.ExecutionIdentity{ScopeProtocol: imageagent.OrganizationScopeProtocol, TenantID: id.TenantID, UserID: id.UserID, MemberID: id.EffectiveMemberID, BusinessTaskID: contextID}
 	items, next, err := a.recent.ListImageSets(ctx, exec, contextID, cursor, size)
 	if err != nil {
 		return nil, "", err
 	}
-	result := make([]imageagent.ImageSetRunSummary, 0, len(items))
-	for _, item := range items {
+	if len(items) > size {
+		return nil, "", imageagent.ErrValidation
+	}
+	inputs := make([]imageagent.PrepareImageSetInput, len(items))
+	for index, item := range items {
 		p, e := a.service.Get(ctx, item.RunID)
 		if e != nil {
 			return nil, "", e
@@ -510,13 +517,40 @@ func (a *fullImageApplication) readRecent(ctx context.Context, contextID, cursor
 			return nil, "", e
 		}
 		source := p.Plan.Set.Source
-		exec.BusinessTaskID = item.ContextID
-		_, e = a.readSources.ReadImageSetSource(ctx, exec, imageagent.PrepareImageSetInput{ContextKind: item.ContextKind, ContextID: item.ContextID, EffectiveCatalogVersion: source.EffectiveVersion, ApplyReceiptID: source.ApplyReceiptID, Target: imageagent.ImageTargetSelection{Platform: p.Plan.Set.Target.Platform}})
-		if e != nil {
-			continue
+		inputs[index] = imageagent.PrepareImageSetInput{ContextKind: item.ContextKind, ContextID: item.ContextID, EffectiveCatalogVersion: source.EffectiveVersion, ApplyReceiptID: source.ApplyReceiptID, Target: imageagent.ImageTargetSelection{Platform: p.Plan.Set.Target.Platform}}
+		items[index].Status = p.Run.Status
+	}
+	// Each bounded page item still gets its own live source/permission check.
+	// Validate every stored scope first, and preserve pagination order below.
+	group, liveContext := errgroup.WithContext(ctx)
+	group.SetLimit(40)
+	visible := make([]bool, len(items))
+	for index := range items {
+		group.Go(func() error {
+			if err := liveContext.Err(); err != nil {
+				return err
+			}
+			itemIdentity := exec
+			itemIdentity.BusinessTaskID = items[index].ContextID
+			_, err := a.readSources.ReadImageSetSource(liveContext, itemIdentity, inputs[index])
+			if liveContext.Err() != nil {
+				return liveContext.Err()
+			}
+			visible[index] = err == nil
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, "", err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
+	result := make([]imageagent.ImageSetRunSummary, 0, len(items))
+	for index, item := range items {
+		if visible[index] {
+			result = append(result, item)
 		}
-		item.Status = p.Run.Status
-		result = append(result, item)
 	}
 	return result, next, nil
 }
