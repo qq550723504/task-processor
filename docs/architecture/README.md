@@ -77,6 +77,10 @@ Use these as the main source of truth for structural work:
   - tenant self-service subscription offer/quote/order, source-bound subscription activation, settlement and recovery contract for #478/#479
 - `store-center-current-application-v1.md`
   - #552 current Console Store record management, owner pools, quota, authorization and single-state hard-cut; service activation remains a separate unopened capability
+- `store-center-platform-observations-v1.md`
+  - #614 IMPLEMENTATION_READY readonly SHEIN products, consumer orders and logistics;
+    scoped observations, original-member sync receipts and bounded recovery. Shared
+    runtime readiness and real merchant/user acceptance remain separate evidence.
 - `httpapi-assembly-boundaries.md`
   - HTTP API ownership, route/module builder boundaries, and app/httpapi limits
 - `app-assembly-boundaries.md`

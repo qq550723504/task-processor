@@ -63,10 +63,21 @@ type ProductExecutionReader interface {
 }
 
 func (r *MemberScopedStoreRepository) ReadProductExecution(ctx context.Context, subject ProductExecutionSubject, storeID string, authorization ProductExecutionAuthorizer, now time.Time) (ProductExecutionMaterial, error) {
+	if isNilDependency(authorization) || (subject.Purpose != ProductPurposeRules && subject.Purpose != ProductPurposePublish && subject.Purpose != ProductPurposeImage) {
+		return ProductExecutionMaterial{}, ErrNotFound
+	}
+	return r.readOfficialMaterial(ctx, StoreMemberAccess{OrganizationID: subject.OrganizationID, ActorID: subject.ActorID, MemberID: subject.MemberID}, storeID, now, func(ctx context.Context) (ProductExecutionAuthorization, error) {
+		return authorization.AuthorizeProductExecution(ctx, subject)
+	})
+}
+
+// Borrow the same current Store transaction and material checks for each
+// explicitly admitted purpose. The callback is live, never a durable proof.
+func (r *MemberScopedStoreRepository) readOfficialMaterial(ctx context.Context, subject StoreMemberAccess, storeID string, now time.Time, authorize func(context.Context) (ProductExecutionAuthorization, error)) (ProductExecutionMaterial, error) {
 	if ctx != nil && ctx.Err() != nil {
 		return ProductExecutionMaterial{}, ErrDependencyUnavailable
 	}
-	if ctx == nil || r == nil || r.db == nil || isNilDependency(authorization) || now.IsZero() {
+	if ctx == nil || r == nil || r.db == nil || authorize == nil || now.IsZero() {
 		return ProductExecutionMaterial{}, ErrNotFound
 	}
 	if _, ok := ctx.Deadline(); !ok {
@@ -80,10 +91,7 @@ func (r *MemberScopedStoreRepository) ReadProductExecution(ctx context.Context, 
 			return ProductExecutionMaterial{}, ErrNotFound
 		}
 	}
-	if subject.Purpose != ProductPurposeRules && subject.Purpose != ProductPurposePublish && subject.Purpose != ProductPurposeImage {
-		return ProductExecutionMaterial{}, ErrNotFound
-	}
-	approved, err := authorization.AuthorizeProductExecution(ctx, subject)
+	approved, err := authorize(ctx)
 	if err != nil {
 		return ProductExecutionMaterial{}, productExecutionReadError(err)
 	}

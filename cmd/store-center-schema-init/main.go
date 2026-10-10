@@ -23,15 +23,16 @@ import (
 
 func main() {
 	path := flag.String("config", "", "absolute private Store schema-owner JSON config")
+	observations := flag.Bool("observations", false, "install readonly platform observations on an authorized fresh empty Store instance")
 	flag.Parse()
-	if err := run(*path); err != nil {
+	if err := run(*path, *observations); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	fmt.Println("current Store schema installed and narrow runtime roles granted")
 }
 
-func run(storePath string) error {
+func run(storePath string, observations bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	storeCfg, err := loadOwnerConfig(storePath, "store_center_owner")
@@ -48,6 +49,11 @@ func run(storePath string) error {
 	}
 	if err := grantStoreRuntime(ctx, records); err != nil {
 		return err
+	}
+	if observations {
+		if err := storeschema.InstallObservations(ctx, records); err != nil {
+			return fmt.Errorf("initialize Store observation schema: %w", err)
+		}
 	}
 	return nil
 }

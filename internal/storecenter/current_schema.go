@@ -239,7 +239,14 @@ const storeRuntimePermissionQuery = `SELECT current_user,
  AND has_table_privilege(current_user,'public.workbench_store_service_operations','SELECT') AND has_table_privilege(current_user,'public.workbench_store_service_operations','INSERT') AND has_table_privilege(current_user,'public.workbench_store_service_operations','UPDATE')
  AND has_table_privilege(current_user,'public.workbench_store_connections','SELECT') AND has_table_privilege(current_user,'public.workbench_store_connections','INSERT') AND has_table_privilege(current_user,'public.workbench_store_connections','UPDATE')
  AND has_table_privilege(current_user,'public.workbench_store_connection_attempts','SELECT') AND has_table_privilege(current_user,'public.workbench_store_connection_attempts','INSERT') AND has_table_privilege(current_user,'public.workbench_store_connection_attempts','UPDATE')
- AND has_table_privilege(current_user,'public.workbench_store_merchant_bindings','SELECT') AND has_table_privilege(current_user,'public.workbench_store_merchant_bindings','INSERT'),
+ AND has_table_privilege(current_user,'public.workbench_store_merchant_bindings','SELECT') AND has_table_privilege(current_user,'public.workbench_store_merchant_bindings','INSERT')
+ AND CASE WHEN $1 THEN
+ coalesce(has_schema_privilege(current_user,(SELECT oid FROM pg_namespace WHERE nspname='shein_observations'),'USAGE'),false)
+ AND coalesce(has_table_privilege(current_user,to_regclass('shein_observations.commands'),'SELECT') AND has_table_privilege(current_user,to_regclass('shein_observations.commands'),'INSERT'),false)
+ AND coalesce(has_table_privilege(current_user,to_regclass('shein_observations.syncs'),'SELECT') AND has_table_privilege(current_user,to_regclass('shein_observations.syncs'),'INSERT') AND has_table_privilege(current_user,to_regclass('shein_observations.syncs'),'UPDATE'),false)
+ AND coalesce(has_table_privilege(current_user,to_regclass('shein_observations.records'),'SELECT') AND has_table_privilege(current_user,to_regclass('shein_observations.records'),'INSERT') AND has_table_privilege(current_user,to_regclass('shein_observations.records'),'UPDATE'),false)
+ AND coalesce(has_table_privilege(current_user,to_regclass('shein_observations.heads'),'SELECT') AND has_table_privilege(current_user,to_regclass('shein_observations.heads'),'INSERT') AND has_table_privilege(current_user,to_regclass('shein_observations.heads'),'UPDATE'),false)
+ ELSE true END,
  has_database_privilege(current_user,current_database(),'CREATE') OR has_database_privilege(current_user,current_database(),'TEMP') OR has_schema_privilege(current_user,'public','CREATE')
  OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname !~ '^pg_' AND has_schema_privilege(current_user,n.oid,'CREATE'))
  OR EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname=current_user AND (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls))
@@ -248,9 +255,17 @@ const storeRuntimePermissionQuery = `SELECT current_user,
  CROSS JOIN LATERAL pg_catalog.aclexplode(pg_catalog.acldefault('r',r.relowner)) p
  WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname !~ '^pg_' AND r.relkind IN ('r','p','v','m','f')
  AND CASE WHEN p.privilege_type IN ('SELECT','INSERT','UPDATE','REFERENCES') THEN pg_catalog.has_any_column_privilege(current_user,r.oid,p.privilege_type) ELSE pg_catalog.has_table_privilege(current_user,r.oid,p.privilege_type) END
- AND NOT (n.nspname='public' AND (r.relname,p.privilege_type) IN (('workbench_stores','SELECT'),('workbench_stores','INSERT'),('workbench_stores','UPDATE'),('workbench_store_audit_logs','SELECT'),('workbench_store_audit_logs','INSERT'),('workbench_store_member_grants','SELECT'),('workbench_store_member_grants','INSERT'),('workbench_store_member_grants','UPDATE'),('workbench_store_member_grant_operations','SELECT'),('workbench_store_member_grant_operations','INSERT'),('workbench_store_service_operations','SELECT'),('workbench_store_service_operations','INSERT'),('workbench_store_service_operations','UPDATE'),('workbench_store_connections','SELECT'),('workbench_store_connections','INSERT'),('workbench_store_connections','UPDATE'),('workbench_store_connection_attempts','SELECT'),('workbench_store_connection_attempts','INSERT'),('workbench_store_connection_attempts','UPDATE'),('workbench_store_merchant_bindings','SELECT'),('workbench_store_merchant_bindings','INSERT'))))`
+ AND NOT (n.nspname='public' AND (r.relname,p.privilege_type) IN (('workbench_stores','SELECT'),('workbench_stores','INSERT'),('workbench_stores','UPDATE'),('workbench_store_audit_logs','SELECT'),('workbench_store_audit_logs','INSERT'),('workbench_store_member_grants','SELECT'),('workbench_store_member_grants','INSERT'),('workbench_store_member_grants','UPDATE'),('workbench_store_member_grant_operations','SELECT'),('workbench_store_member_grant_operations','INSERT'),('workbench_store_service_operations','SELECT'),('workbench_store_service_operations','INSERT'),('workbench_store_service_operations','UPDATE'),('workbench_store_connections','SELECT'),('workbench_store_connections','INSERT'),('workbench_store_connections','UPDATE'),('workbench_store_connection_attempts','SELECT'),('workbench_store_connection_attempts','INSERT'),('workbench_store_connection_attempts','UPDATE'),('workbench_store_merchant_bindings','SELECT'),('workbench_store_merchant_bindings','INSERT')) OR ($1 AND n.nspname='shein_observations' AND ((r.relname='commands' AND p.privilege_type IN ('SELECT','INSERT')) OR (r.relname IN ('syncs','records','heads') AND p.privilege_type IN ('SELECT','INSERT','UPDATE'))))))`
+
+// RuntimeCapabilities admits only the explicitly enabled observation tables.
+// The default Store boundary continues to reject every additional privilege.
+type RuntimeCapabilities struct{ Observations bool }
 
 func VerifyRuntimePermissions(ctx context.Context, db *gorm.DB) error {
+	return VerifyRuntimePermissionsForCapabilities(ctx, db, RuntimeCapabilities{})
+}
+
+func VerifyRuntimePermissionsForCapabilities(ctx context.Context, db *gorm.DB, capabilities RuntimeCapabilities) error {
 	if db == nil {
 		return errors.New("store runtime pool unavailable")
 	}
@@ -260,7 +275,7 @@ func VerifyRuntimePermissions(ctx context.Context, db *gorm.DB) error {
 	}
 	var role string
 	var required, forbidden bool
-	if err := sqlDB.QueryRowContext(ctx, storeRuntimePermissionQuery).Scan(&role, &required, &forbidden); err != nil {
+	if err := sqlDB.QueryRowContext(ctx, storeRuntimePermissionQuery, capabilities.Observations).Scan(&role, &required, &forbidden); err != nil {
 		return err
 	}
 	if role != "store_center_runtime" || !required || forbidden {

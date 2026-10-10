@@ -2042,6 +2042,15 @@ func TestDataServicesDesignPreservesOriginalScopeFundsAndDelivery(t *testing.T) 
 	})
 }
 
+func TestStoreObservationDesignPreservesReadOnlyPlatformAndScopedFacts(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "store-center-platform-observations-v1.md"), []string{
+		"IMPLEMENTATION_READY / FROZEN", "PD-STORE-CENTER-READONLY-COMMERCE-2026-10-09",
+		"internal/marketplace/shein/observations", "只读句柄仅暴露 Products/Orders/OrderDetails/Track",
+		"父命令回执", "比较checkpoint revision", "terminal状态和head原子提交", "单调generation",
+		"原成员", "allowlist", "queryType=1/queryOrderType=4", "page≤50", "NOT_RUN", "Legacy decision: RETIRE",
+	})
+}
+
 func TestEcoservicesDesignPreservesOriginalFundsAndPrivateDomainOwners(t *testing.T) {
 	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "ecosystem-services-v1.md"), []string{
 		"IMPLEMENTATION_READY", "internal/ecoservices", "internal/commercial/billing", "money",

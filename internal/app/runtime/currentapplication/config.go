@@ -491,6 +491,9 @@ func (cfg *Config) validate() error {
 			return errors.New("image agent public base must be a safe public URL")
 		}
 	}
+	if err := cfg.validateStoreObservations(); err != nil {
+		return err
+	}
 	if err := cfg.validateStoreCenter(); err != nil {
 		return err
 	}
