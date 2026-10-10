@@ -107,6 +107,12 @@ API 使用专属 `Authorization: DataKey <public-id>.<secret>`，HTTPS、no-stor
 
 所有API读取、新job、每个Fetch前及发布前均实时核对原grant和当前permission。worker冻结原actor/member，绝不使用专员或runtime service user充当商品owner。key的禁用/撤销在ProductDB锁定相同key row，与job admission和publication guard排序；撤销完成后不能创建新item/publication，已保存结果只由正常Console本人读取，原key无权读回。
 
+结果读取实现边界（2026-10-10，原 Must 的窄补齐，独立增量准入已确认）：外部三个 GET（by-command、job、results）由原 DataAcquisition Read/Results → `Repository.WithResultRead` → 同 ProductDB PostgreSQL adapter 消费。认证后的原 Principal 不是可缓存的读授权。原 key row 取得 `FOR SHARE` 后重新检查精确 scope、key ID/revision、ACTIVE、expiry 与 result capability，并保留锁直到原授权结果已完整 materialize；返回前再次检查 expiry/context。既有 Change 的 `FOR UPDATE` 与之互斥：撤销先提交则旧 Principal 读取拒绝；读取先持锁则其读取在线性化顺序中先于撤销，撤销等待该有界读结束。网络已交付内容不作可撤回保证。
+
+`WithResultRead` 回调只取得绑定持锁事务的窄 `ResultReadRepository`（Read/Items）和 `CapturedResultReader`；app 注入的 `ResultReaderFactory(tx)` 沿现有 SRC `NewTransactionReader` 与原 exact-evidence Verify，job/items/SRC/Catalog 都复用同一事务连接，允许 Product pool `MaxConnections=1`，不得回调 root pool。回调不调用 Product mutation、不获取 actor/quota/job/item 写锁；原 Live.CheckRead/归属、只读 projection/已有 Temporal Ensure 受同一最长10秒 context，失败丢弃结果并释放锁。创建仍沿原 admission key→quota→job，Console 读仍按原身份权限；不增加 schema、state、事实 owner、连接治理平台或恢复协议。取消只经原 Live.CheckRead 后调用 scope-qualified Repository.Cancel，同 Product事务fence/quota释放不前置EnsureExecution；Resource仍由原proof/RecoverDue处理原reservation。
+
+独立Reviewer `/root/architecture_review` 在生产修复前只读确认上述最小补齐及单连接合同成立，冻结 `IMPLEMENTATION_READY` 维持。依据代码候选 `81bca1062e87a5a5f09c16ebc1ccdcae97dff0dc`：原结果读取缺口分类 BLOCKER（错误授权），原取消启动耦合分类 IMPLEMENTATION_TEST；实际双库 HTTP 已分别 RED（撤销后结果200而非403、取消503而非200）。每个外部 GET 只进入一次守卫，Results 内用私有绑定读取，Ensure 只核实原 ID、不等待worker。实际修复及锁排序、单连接/失败释放回归和最终增量复核完成前，不把设计准入当作 BLOCKER 已关闭。
+
 IP白名单可选最多20条CIDR；只取socket peer或安装配置的trusted proxy链，不信任任意X-Forwarded-For。绑定的合法permission交集也参与请求hash，范围不能在重放时扩大。
 
 ## 7. Job、item、事务与 quota

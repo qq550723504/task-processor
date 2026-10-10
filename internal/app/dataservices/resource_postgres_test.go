@@ -40,6 +40,14 @@ type executionFixture struct {
 	executionChecks int
 	startErr        error
 	starts          int
+	credentialCheck func(context.Context, collection.Scope, string) error
+}
+
+func (f *executionFixture) Check(ctx context.Context, scope collection.Scope, permission string) error {
+	if f.credentialCheck != nil {
+		return f.credentialCheck(ctx, scope, permission)
+	}
+	return nil
 }
 
 func (f *executionFixture) CheckExecution(ctx context.Context, _ dataacquisition.Principal, _ orgresource.ResourceFunding) error {
@@ -278,8 +286,20 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 		require.Equal(t, http.StatusAccepted, w.Code, "terminal command replay uses the original result")
 		require.Equal(t, starts, fixture.starts)
 		fixture.startErr = nil
-		_, err = module.keys.Change(ctx, created.Key.ID, uuid.NewString(), 1, dataservice.KeyPatch{State: "REVOKED"})
-		require.NoError(t, err)
+		t.Run("saved result read observes committed revocation", func(t *testing.T) {
+			fixture.credentialCheck = func(ctx context.Context, _ collection.Scope, permission string) error {
+				if permission == dataservice.PermissionResult {
+					fixture.credentialCheck = nil
+					_, err := module.keys.Change(ctx, created.Key.ID, uuid.NewString(), 1, dataservice.KeyPatch{State: "REVOKED"})
+					return err
+				}
+				return nil
+			}
+			t.Cleanup(func() { fixture.credentialCheck = nil })
+			w = send("GET", APIBase+"/"+externalJob.ID+"/results", "", keyHeader, "")
+			require.Equal(t, 403, w.Code, "a revoke committed after authentication's key snapshot must prevent saved-result disclosure")
+			require.NotContains(t, w.Body.String(), "controlled fixture")
+		})
 		w = send("GET", APIBase+"/"+externalJob.ID, "", keyHeader, "")
 		require.Equal(t, 403, w.Code)
 		w = send("GET", ConsoleBase+"/amazon/jobs/"+externalJob.ID, "", "", "")
@@ -329,8 +349,15 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &recovered))
 			require.Equal(t, originalID, recovered.ID)
 			checkQuota(1, 5)
-			_, err = repo.Cancel(ctx, scope, originalID, uuid.NewString())
-			require.NoError(t, err)
+			fixture.startErr = dataacquisition.ErrUnavailable
+			starts := fixture.starts
+			cancelCommand := uuid.NewString()
+			for attempt := 0; attempt < 2; attempt++ {
+				w = send("POST", ConsoleBase+"/amazon/jobs/"+originalID+"/cancel", `{}`, "", cancelCommand)
+				require.Equal(t, 200, w.Code, "cancel must not require workflow startup")
+				require.Contains(t, w.Body.String(), "CANCELED")
+			}
+			require.Equal(t, starts, fixture.starts, "cancel does not start an admitted job")
 			require.NoError(t, module.Runner().Run(ctx, scope, originalID))
 			checkQuota(0, 0)
 			fixture.startErr = dataacquisition.ErrUnavailable
