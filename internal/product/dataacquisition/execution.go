@@ -61,7 +61,15 @@ type Charges interface {
 	orgresource.ConsumerChargePort
 	Lookup(context.Context, orgresource.ConsumerChargeIdentity) (orgresource.ConsumerChargeReceipt, error)
 }
+
+// ResultReadRepository exposes only reads bound to the credential guard's
+// Product transaction; callbacks must not return to the root connection pool.
+type ResultReadRepository interface {
+	Read(context.Context, collection.Scope, string) (Job, error)
+	Items(context.Context, Job) ([]Item, error)
+}
 type Repository interface {
+	WithResultRead(context.Context, Principal, func(context.Context, ResultReadRepository, CapturedResultReader) error) error
 	Admit(context.Context, Principal, string, Query, orgresource.ResourceFunding) (Job, error)
 	Read(context.Context, collection.Scope, string) (Job, error)
 	List(context.Context, collection.Scope, int) ([]Job, error)
@@ -118,10 +126,25 @@ func (s *Service) Read(ctx context.Context, p Principal, id string) (Job, error)
 	if p.Scope.Validate() != nil || !collection.ValidID(id) {
 		return Job{}, ErrInvalid
 	}
+	if p.CredentialID != "" {
+		var job Job
+		err := s.repo.WithResultRead(ctx, p, func(ctx context.Context, repo ResultReadRepository, _ CapturedResultReader) error {
+			var err error
+			job, err = s.read(ctx, p, id, repo)
+			return err
+		})
+		if err != nil {
+			return Job{}, err
+		}
+		return job, nil
+	}
+	return s.read(ctx, p, id, s.repo)
+}
+func (s *Service) read(ctx context.Context, p Principal, id string, repo ResultReadRepository) (Job, error) {
 	if err := s.live.CheckRead(ctx, p); err != nil {
 		return Job{}, err
 	}
-	job, err := s.repo.Read(ctx, p.Scope, id)
+	job, err := repo.Read(ctx, p.Scope, id)
 	if err != nil {
 		return Job{}, err
 	}

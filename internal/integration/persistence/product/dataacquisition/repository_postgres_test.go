@@ -34,6 +34,15 @@ func (a *testAccess) CheckExecution(context.Context, dataacquisition.Principal, 
 }
 func (a *testAccess) CheckRead(context.Context, dataacquisition.Principal) error { return nil }
 
+type testResultReader struct{}
+
+func (testResultReader) Verify(context.Context, collection.Scope, collection.Source, dataacquisition.Evidence) error {
+	return nil
+}
+func newTestResultReader(*gorm.DB) (dataacquisition.CapturedResultReader, error) {
+	return testResultReader{}, nil
+}
+
 func TestPostgresJobQuotaFencingPublicationAndOriginalChargeProof(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -80,7 +89,7 @@ func TestPostgresJobQuotaFencingPublicationAndOriginalChargeProof(t *testing.T) 
 		}
 		return collection.Source{ProductKey: published.Identity.ProductKey, PublicationID: item.ID, Version: published.Version, OperationID: item.ID, Kind: "amazon_data"}, nil
 	}
-	repo, err := NewRepository(ctx, db, access, publish)
+	repo, err := NewRepository(ctx, db, access, publish, newTestResultReader)
 	require.NoError(t, err)
 	scope := collection.Scope{OrganizationID: "org", ActorID: "creator", MemberID: "original-grant"}
 	keys, err := keystore.NewCredentialRepository(ctx, db)
@@ -179,7 +188,7 @@ func TestPostgresJobQuotaFencingPublicationAndOriginalChargeProof(t *testing.T) 
 	// Terminal proof remains available for the original reservation after revocation.
 	_, err = repo.ChargeProof(ctx, charge)
 	require.NoError(t, err)
-	restarted, err := NewRepository(ctx, db, access, publish)
+	restarted, err := NewRepository(ctx, db, access, publish, newTestResultReader)
 	require.NoError(t, err)
 	read, err := restarted.Read(ctx, scope, job.ID)
 	require.NoError(t, err)
@@ -319,5 +328,136 @@ func TestPostgresJobQuotaFencingPublicationAndOriginalChargeProof(t *testing.T) 
 		var remaining int64
 		require.NoError(t, db.Raw("SELECT sum(reserved_rows) FROM data_service_quota WHERE key_id=? AND window_start<date_trunc(window_kind,now() AT TIME ZONE 'UTC')::date", k.ID).Scan(&remaining).Error)
 		require.Zero(t, remaining)
+	})
+	t.Run("result read guard orders credential changes and releases failed reads", func(t *testing.T) {
+		newKey := func() dataservice.Credential {
+			k := key
+			k.ID = uuid.NewString()
+			k.Scope.ActorID = "guard-" + uuid.NewString()
+			k.State, k.Revision = "ACTIVE", 1
+			k.Input.ExpiresAt = time.Now().UTC().Truncate(time.Microsecond).Add(time.Hour)
+			k.Input.Permissions = []string{dataservice.PermissionAcquire, dataservice.PermissionResult}
+			stored, _, err := keys.Create(ctx, k, uuid.NewString(), collection.Digest(k.Input))
+			require.NoError(t, err)
+			return stored
+		}
+		k := newKey()
+		p := dataacquisition.Principal{Scope: k.Scope, CredentialID: k.ID, CredentialRevision: 1}
+		original, err := repo.Admit(ctx, p, uuid.NewString(), q, orgresource.FundingMember)
+		require.NoError(t, err)
+		entered, release := make(chan struct{}), make(chan struct{})
+		var releaseOnce sync.Once
+		defer releaseOnce.Do(func() { close(release) })
+		readDone := make(chan error, 1)
+		go func() {
+			readDone <- repo.WithResultRead(ctx, p, func(ctx context.Context, reader dataacquisition.ResultReadRepository, _ dataacquisition.CapturedResultReader) error {
+				job, err := reader.Read(ctx, k.Scope, original.ID)
+				if err != nil || job.ID != original.ID {
+					return dataacquisition.ErrUnavailable
+				}
+				close(entered)
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-release:
+					return nil
+				}
+			})
+		}()
+		select {
+		case <-entered:
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+		changeDone := make(chan error, 1)
+		go func() {
+			_, err := keys.Change(ctx, k.Scope, k.ID, uuid.NewString(), collection.Digest("revoke read guard"), 1, dataservice.KeyPatch{State: "REVOKED"})
+			changeDone <- err
+		}()
+		require.Eventually(t, func() bool {
+			var waiting int64
+			result := db.Raw("SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%data_service_credentials%' AND query LIKE '%FOR UPDATE%'").Scan(&waiting)
+			return result.Error == nil && waiting > 0
+		}, time.Second, 10*time.Millisecond, "revoke must wait on the result read's real PostgreSQL row lock")
+		select {
+		case err := <-changeDone:
+			t.Fatalf("credential change completed before result read: %v", err)
+		default:
+		}
+		releaseOnce.Do(func() { close(release) })
+		require.NoError(t, <-readDone)
+		require.NoError(t, <-changeDone)
+		called := false
+		err = repo.WithResultRead(ctx, p, func(context.Context, dataacquisition.ResultReadRepository, dataacquisition.CapturedResultReader) error {
+			called = true
+			return nil
+		})
+		require.ErrorIs(t, err, dataacquisition.ErrForbidden)
+		require.False(t, called, "revocation completed before this read")
+
+		for _, scenario := range []string{"disabled", "stale revision", "result removed", "foreign member"} {
+			t.Run(scenario, func(t *testing.T) {
+				k := newKey()
+				p := dataacquisition.Principal{Scope: k.Scope, CredentialID: k.ID, CredentialRevision: 1}
+				patch := dataservice.KeyPatch{State: "ACTIVE"}
+				if scenario == "disabled" {
+					patch.State = "DISABLED"
+				}
+				if scenario == "result removed" {
+					limits := k.Input
+					limits.Permissions = []string{dataservice.PermissionAcquire}
+					patch.Limits = &limits
+				}
+				if scenario == "foreign member" {
+					p.Scope.MemberID = "different-grant"
+				} else {
+					changed, err := keys.Change(ctx, k.Scope, k.ID, uuid.NewString(), collection.Digest(patch), 1, patch)
+					require.NoError(t, err)
+					if scenario != "stale revision" {
+						p.CredentialRevision = changed.Revision
+					}
+				}
+				called := false
+				err := repo.WithResultRead(ctx, p, func(context.Context, dataacquisition.ResultReadRepository, dataacquisition.CapturedResultReader) error {
+					called = true
+					return nil
+				})
+				require.ErrorIs(t, err, dataacquisition.ErrForbidden)
+				require.False(t, called)
+			})
+		}
+		t.Run("expiry during result materialization rejects output", func(t *testing.T) {
+			k := newKey()
+			limits := k.Input
+			limits.ExpiresAt = time.Now().UTC().Truncate(time.Microsecond).Add(250 * time.Millisecond)
+			changed, err := keys.Change(ctx, k.Scope, k.ID, uuid.NewString(), collection.Digest(limits), 1, dataservice.KeyPatch{State: "ACTIVE", Limits: &limits})
+			require.NoError(t, err)
+			p := dataacquisition.Principal{Scope: k.Scope, CredentialID: k.ID, CredentialRevision: changed.Revision}
+			err = repo.WithResultRead(ctx, p, func(ctx context.Context, _ dataacquisition.ResultReadRepository, _ dataacquisition.CapturedResultReader) error {
+				timer := time.NewTimer(time.Until(limits.ExpiresAt.Add(time.Millisecond)))
+				defer timer.Stop()
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-timer.C:
+					return nil
+				}
+			})
+			require.ErrorIs(t, err, dataacquisition.ErrForbidden)
+		})
+		t.Run("canceled read releases its credential lock", func(t *testing.T) {
+			k := newKey()
+			p := dataacquisition.Principal{Scope: k.Scope, CredentialID: k.ID, CredentialRevision: 1}
+			readCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			err := repo.WithResultRead(readCtx, p, func(ctx context.Context, _ dataacquisition.ResultReadRepository, _ dataacquisition.CapturedResultReader) error {
+				cancel()
+				<-ctx.Done()
+				return ctx.Err()
+			})
+			require.ErrorIs(t, err, context.Canceled)
+			_, err = keys.Change(ctx, k.Scope, k.ID, uuid.NewString(), collection.Digest("after canceled read"), 1, dataservice.KeyPatch{State: "REVOKED"})
+			require.NoError(t, err, "no surviving row lock after the read fails")
+		})
 	})
 }

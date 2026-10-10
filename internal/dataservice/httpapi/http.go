@@ -233,10 +233,9 @@ func (m *handler) handle(c *gin.Context, action, permission string, special, ext
 		var input struct{}
 		err = readJSON(c.Request, &input)
 		if err == nil {
-			var job dataacquisition.Job
-			job, err = m.Acquisition.Read(ctx, principal, c.Param("id"))
+			err = m.Live.CheckRead(ctx, principal)
 			if err == nil {
-				value, err = m.Repository.Cancel(ctx, principal.Scope, job.ID, command)
+				value, err = m.Repository.Cancel(ctx, principal.Scope, c.Param("id"), command)
 			}
 		}
 	case "custom-submit":

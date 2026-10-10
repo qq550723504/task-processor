@@ -18,14 +18,16 @@ import (
 // Publisher participates in the caller's Product transaction. Its implementation
 // composes the current SRC/Catalog writers; it must never commit independently.
 type Publisher func(context.Context, *gorm.DB, dataacquisition.Job, dataacquisition.Item) (collection.Source, error)
+type ResultReaderFactory func(*gorm.DB) (dataacquisition.CapturedResultReader, error)
 type Repository struct {
-	db      *gorm.DB
-	live    dataacquisition.LiveAccess
-	publish Publisher
+	db           *gorm.DB
+	live         dataacquisition.LiveAccess
+	publish      Publisher
+	resultReader ResultReaderFactory
 }
 
-func NewRepository(ctx context.Context, db *gorm.DB, live dataacquisition.LiveAccess, publish Publisher) (*Repository, error) {
-	if live == nil || publish == nil {
+func NewRepository(ctx context.Context, db *gorm.DB, live dataacquisition.LiveAccess, publish Publisher, resultReader ResultReaderFactory) (*Repository, error) {
+	if live == nil || publish == nil || resultReader == nil {
 		return nil, dataacquisition.ErrUnavailable
 	}
 	if err := VerifySchema(ctx, db); err != nil {
@@ -37,7 +39,53 @@ func NewRepository(ctx context.Context, db *gorm.DB, live dataacquisition.LiveAc
 	if err := collectionstore.VerifySchema(ctx, db); err != nil {
 		return nil, err
 	}
-	return &Repository{db, live, publish}, nil
+	return &Repository{db: db, live: live, publish: publish, resultReader: resultReader}, nil
+}
+
+// WithResultRead serializes complete API result materialization with credential
+// changes. All supplied readers reuse this transaction's connection, including
+// installations with a one-connection Product pool.
+func (r *Repository) WithResultRead(ctx context.Context, p dataacquisition.Principal, read func(context.Context, dataacquisition.ResultReadRepository, dataacquisition.CapturedResultReader) error) error {
+	if p.Scope.Validate() != nil || !collection.ValidID(p.CredentialID) || p.CredentialRevision < 1 || read == nil {
+		return dataacquisition.ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		key, err := readKeyForLock(tx, p.Scope, p.CredentialID, "FOR SHARE")
+		if err != nil {
+			return err
+		}
+		allowed := false
+		for _, permission := range key.Input.Permissions {
+			allowed = allowed || permission == dataservice.PermissionResult
+		}
+		check := func() error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			var current time.Time
+			if err := tx.Raw("SELECT clock_timestamp()").Scan(&current).Error; err != nil {
+				return err
+			}
+			if key.ID != p.CredentialID || key.Scope != p.Scope || key.Revision != p.CredentialRevision || key.State != "ACTIVE" || !current.Before(key.Input.ExpiresAt) || !allowed {
+				return dataacquisition.ErrForbidden
+			}
+			return nil
+		}
+		if err = check(); err != nil {
+			return err
+		}
+		reader, err := r.resultReader(tx)
+		if err != nil || reader == nil {
+			return dataacquisition.ErrUnavailable
+		}
+		bound := &Repository{db: tx, live: r.live, publish: r.publish, resultReader: r.resultReader}
+		if err = read(ctx, bound, reader); err != nil {
+			return err
+		}
+		return check()
+	})
 }
 
 type jobRow struct {
@@ -194,6 +242,9 @@ func (r *Repository) List(ctx context.Context, s collection.Scope, limit int) ([
 }
 
 func lockKey(tx *gorm.DB, s collection.Scope, id string) (dataservice.Credential, error) {
+	return readKeyForLock(tx, s, id, "FOR UPDATE")
+}
+func readKeyForLock(tx *gorm.DB, s collection.Scope, id, lock string) (dataservice.Credential, error) {
 	if id == "" {
 		return dataservice.Credential{}, nil
 	}
@@ -203,7 +254,7 @@ func lockKey(tx *gorm.DB, s collection.Scope, id string) (dataservice.Credential
 		ConfigJSON      []byte
 		ExpiresAt       time.Time
 	}
-	result := tx.Raw("SELECT member_id,state,revision,config_json,expires_at FROM data_service_credentials WHERE organization_id=? AND actor_id=? AND id=? FOR UPDATE", s.OrganizationID, s.ActorID, id).Scan(&raw)
+	result := tx.Raw("SELECT member_id,state,revision,config_json,expires_at FROM data_service_credentials WHERE organization_id=? AND actor_id=? AND id=? "+lock, s.OrganizationID, s.ActorID, id).Scan(&raw)
 	if result.Error != nil {
 		return dataservice.Credential{}, result.Error
 	}

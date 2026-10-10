@@ -58,7 +58,7 @@ func TestAmazonPublicationUsesCurrentSourceCatalogCollectionTransaction(t *testi
 	live := authorizedFixture{}
 	publisher, err := NewProductPublisher(live)
 	require.NoError(t, err)
-	repo, err := jobstore.NewRepository(ctx, db, live, publisher)
+	repo, err := jobstore.NewRepository(ctx, db, live, publisher, transactionResultReader)
 	require.NoError(t, err)
 	scope := collection.Scope{OrganizationID: "org", ActorID: "creator", MemberID: "member"}
 	q := dataacquisition.Query{Site: "jp", Mode: "asin", ASINs: []string{"B000123456"}, Limit: 1}

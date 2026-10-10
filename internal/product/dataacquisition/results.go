@@ -39,14 +39,29 @@ type CapturedResultReader interface {
 }
 
 func (s *Service) Results(ctx context.Context, p Principal, id, cursor string, limit int, reader CapturedResultReader) (ResultPage, error) {
-	if reader == nil || (cursor != "" && !collection.ValidID(cursor)) || limit < 1 || limit > 100 {
+	if reader == nil || p.Scope.Validate() != nil || !collection.ValidID(id) || (cursor != "" && !collection.ValidID(cursor)) || limit < 1 || limit > 100 {
 		return ResultPage{}, ErrInvalid
 	}
-	job, err := s.Read(ctx, p, id)
+	if p.CredentialID != "" {
+		var page ResultPage
+		err := s.repo.WithResultRead(ctx, p, func(ctx context.Context, repo ResultReadRepository, reader CapturedResultReader) error {
+			var err error
+			page, err = s.results(ctx, p, id, cursor, limit, repo, reader)
+			return err
+		})
+		if err != nil {
+			return ResultPage{}, err
+		}
+		return page, nil
+	}
+	return s.results(ctx, p, id, cursor, limit, s.repo, reader)
+}
+func (s *Service) results(ctx context.Context, p Principal, id, cursor string, limit int, repo ResultReadRepository, reader CapturedResultReader) (ResultPage, error) {
+	job, err := s.read(ctx, p, id, repo)
 	if err != nil {
 		return ResultPage{}, err
 	}
-	items, err := s.repo.Items(ctx, job)
+	items, err := repo.Items(ctx, job)
 	if err != nil {
 		return ResultPage{}, err
 	}

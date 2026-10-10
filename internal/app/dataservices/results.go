@@ -3,12 +3,22 @@ package dataservicesapp
 import (
 	"context"
 	"encoding/json"
+	"gorm.io/gorm"
+	sourcestore "task-processor/internal/integration/persistence/product/sourcing"
 	"task-processor/internal/product/collection"
 	"task-processor/internal/product/dataacquisition"
 	"task-processor/internal/product/sourcing"
 )
 
 type capturedResultReader struct{ store sourcing.PublicationReadStore }
+
+func transactionResultReader(tx *gorm.DB) (dataacquisition.CapturedResultReader, error) {
+	reader, err := sourcestore.NewTransactionReader(tx, newCatalogBridge)
+	if err != nil {
+		return nil, err
+	}
+	return capturedResultReader{reader}, nil
+}
 
 func (r capturedResultReader) Verify(ctx context.Context, scope collection.Scope, source collection.Source, evidence dataacquisition.Evidence) error {
 	if scope.Validate() != nil || source.Kind != "amazon_data" || source.PublicationID != source.OperationID || !collection.ValidID(source.PublicationID) || evidence.Validate() != nil {

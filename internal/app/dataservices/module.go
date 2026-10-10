@@ -67,7 +67,7 @@ func NewModule(ctx context.Context, d Dependencies) (*Module, error) {
 	if err != nil {
 		return nil, err
 	}
-	repo, err := jobstore.NewRepository(ctx, d.ProductDB, d.Live, publisher)
+	repo, err := jobstore.NewRepository(ctx, d.ProductDB, d.Live, publisher, transactionResultReader)
 	if err != nil {
 		return nil, err
 	}

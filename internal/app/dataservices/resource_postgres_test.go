@@ -165,7 +165,7 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 	fixture := &executionFixture{}
 	publisher, err := NewProductPublisher(fixture)
 	require.NoError(t, err)
-	repo, err := jobstore.NewRepository(ctx, productDB, fixture, publisher)
+	repo, err := jobstore.NewRepository(ctx, productDB, fixture, publisher, transactionResultReader)
 	require.NoError(t, err)
 	resourceRepo, err := resourceadapter.NewGormConsumerChargeRepository(resourceDB, resourceadapter.TransactionConfig{})
 	require.NoError(t, err)
@@ -271,8 +271,12 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 		var externalJob dataacquisition.Job
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &externalJob))
 		require.NoError(t, module.Runner().Run(ctx, scope, externalJob.ID))
+		productPool, err := productDB.DB()
+		require.NoError(t, err)
+		productPool.SetMaxOpenConns(1)
+		t.Cleanup(func() { productPool.SetMaxOpenConns(0) })
 		w = send("GET", APIBase+"/"+externalJob.ID+"/results", "", keyHeader, "")
-		require.Equal(t, 200, w.Code)
+		require.Equal(t, 200, w.Code, "job/items/SRC/Catalog reads must reuse the credential guard's single transaction connection")
 		require.Contains(t, w.Body.String(), "controlled fixture")
 		fixture.startErr = dataacquisition.ErrUnavailable
 		t.Cleanup(func() { fixture.startErr = nil })
@@ -285,6 +289,7 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 		w = send("POST", APIBase, `{"query":{"site":"us","mode":"asin","asins":["B000123456"],"limit":1},"maximumRows":1,"maximumCostFen":5}`, keyHeader, jobCommand)
 		require.Equal(t, http.StatusAccepted, w.Code, "terminal command replay uses the original result")
 		require.Equal(t, starts, fixture.starts)
+		productPool.SetMaxOpenConns(0)
 		fixture.startErr = nil
 		t.Run("saved result read observes committed revocation", func(t *testing.T) {
 			fixture.credentialCheck = func(ctx context.Context, _ collection.Scope, permission string) error {
@@ -310,6 +315,40 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 		w = send("GET", ConsoleBase+"/overview", "", "", "")
 		require.Equal(t, 200, w.Code)
 		require.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+		for _, state := range []string{"DISABLED", "REVOKED"} {
+			for _, action := range []string{"job", "command", "results"} {
+				t.Run("completed credential change rejects "+state+" "+action, func(t *testing.T) {
+					created, err := module.keys.Create(ctx, uuid.NewString(), dataservice.KeyInput{Name: "read race", ExpiresAt: time.Now().UTC().Add(time.Hour), DailyRows: 2, MonthlyCostFen: 10, Permissions: []string{dataservice.PermissionAcquire, dataservice.PermissionResult}})
+					require.NoError(t, err)
+					principal := dataacquisition.Principal{Scope: scope, CredentialID: created.Key.ID, CredentialRevision: 1}
+					command := uuid.NewString()
+					original, err := module.Runner().Start(ctx, principal, command, q, orgresource.FundingEnterprise, 5)
+					require.NoError(t, err)
+					_, err = repo.Cancel(ctx, scope, original.ID, uuid.NewString())
+					require.NoError(t, err)
+					fixture.credentialCheck = func(ctx context.Context, _ collection.Scope, permission string) error {
+						if permission == dataservice.PermissionResult {
+							fixture.credentialCheck = nil
+							_, err := module.keys.Change(ctx, created.Key.ID, uuid.NewString(), 1, dataservice.KeyPatch{State: state})
+							return err
+						}
+						return nil
+					}
+					t.Cleanup(func() { fixture.credentialCheck = nil })
+					path := APIBase + "/" + original.ID
+					if action == "command" {
+						path = APIBase + "/by-command/" + command
+					} else if action == "results" {
+						path += "/results"
+					}
+					w := send("GET", path, "", "DataKey "+created.Key.ID+"."+created.Secret, "")
+					require.Equal(t, 403, w.Code)
+					require.NotContains(t, w.Body.String(), original.ID)
+					w = send("GET", ConsoleBase+"/amazon/jobs/"+original.ID, "", "", "")
+					require.Equal(t, 200, w.Code, "original Console ownership remains readable")
+				})
+			}
+		}
 		t.Run("committed admission returns UNKNOWN and recovers the same command and quota", func(t *testing.T) {
 			created, err := module.keys.Create(ctx, uuid.NewString(), dataservice.KeyInput{Name: "startup outage", ExpiresAt: time.Now().UTC().Add(time.Hour), DailyRows: 2, MonthlyCostFen: 10, Permissions: []string{dataservice.PermissionAcquire, dataservice.PermissionResult}})
 			require.NoError(t, err)
