@@ -44,7 +44,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang="zh-CN" className="h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full bg-background text-foreground">
-        <ApplicationFrame ecoservicesAvailable={isEcoservicesAvailable()} supplyChainAvailable={process.env.LISTINGKIT_PRODUCT_COLLECTIONS_ENABLED === "true" && process.env.LISTINGKIT_SUPPLY_CHAIN_ENABLED === "true"} productCollectionsAvailable={process.env.LISTINGKIT_PRODUCT_COLLECTIONS_ENABLED === "true"} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={isKnowledgeAvailable()} productReviewAvailable={configuredProductReviewOrigin() !== null} sheinRecordsAvailable={isSheinRecordsAvailable()} notificationCenterAvailable={isNotificationCenterAvailable()}>{children}</ApplicationFrame>
+        <ApplicationFrame toolMarketAvailable={process.env.LISTINGKIT_TOOL_MARKET_ENABLED === "true"} ecoservicesAvailable={isEcoservicesAvailable()} supplyChainAvailable={process.env.LISTINGKIT_PRODUCT_COLLECTIONS_ENABLED === "true" && process.env.LISTINGKIT_SUPPLY_CHAIN_ENABLED === "true"} productCollectionsAvailable={process.env.LISTINGKIT_PRODUCT_COLLECTIONS_ENABLED === "true"} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={isKnowledgeAvailable()} productReviewAvailable={configuredProductReviewOrigin() !== null} sheinRecordsAvailable={isSheinRecordsAvailable()} notificationCenterAvailable={isNotificationCenterAvailable()}>{children}</ApplicationFrame>
       </body>
     </html>
   );

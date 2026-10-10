@@ -22,10 +22,26 @@ const switchOrganizationRequestBodyMaxBytes = 4096
 type Handler struct {
 	workbenchAuthorizer          *authz.ListingKitAuthorizer
 	profileReader                authidentity.SelfProfileReader
+	storeObservationsReadiness   func() bool
 	aiWorkbenchAvailable         bool
+	projectCenterAvailable       bool
 	aiWorkbenchAdmission         func(string) bool
 	aiWorkbenchPlanningReadiness func(context.Context, string) string
 	aiWorkbenchTitleReadiness    func(context.Context, string) string
+}
+
+func (h *Handler) SetProjectCenterAvailable(v bool) {
+	if h != nil {
+		h.projectCenterAvailable = v
+	}
+}
+
+// The runtime installs this callback before serving. Its worker readiness is
+// atomic; module admission and display permissions alone cannot make it true.
+func (h *Handler) SetStoreObservationsReadiness(ready func() bool) {
+	if h != nil {
+		h.storeObservationsReadiness = ready
+	}
 }
 
 // SetAIWorkbenchAvailable is called during composition, before HTTP serving.
@@ -198,13 +214,24 @@ func (h *Handler) writeContext(c *gin.Context) {
 			}
 		}
 	}
+	observationsAvailable := false
+	if h.storeObservationsReadiness != nil && h.storeObservationsReadiness() {
+		for _, organization := range organizations {
+			if effectiveOrganizationID != nil && organization.ID == *effectiveOrganizationID && slices.Contains(organization.Permissions, authz.PermissionWorkbenchStoreRead) && (slices.Contains(organization.Permissions, authz.PermissionWorkbenchStoreProductsRead) || slices.Contains(organization.Permissions, authz.PermissionWorkbenchStoreOrdersRead)) {
+				observationsAvailable = true
+				break
+			}
+		}
+	}
 	c.JSON(http.StatusOK, contextResponse{
+		StoreObservationsAvailable:   observationsAvailable,
 		User:                         userResponse{ID: identity.UserID},
 		HomeOrganizationID:           identity.HomeOrganizationID,
 		EffectiveOrganizationID:      effectiveOrganizationID,
 		SelectionRequired:            effectiveOrganizationID == nil && len(organizations) > 1,
 		Organizations:                organizations,
 		AIWorkbenchAvailable:         available,
+		ProjectCenterAvailable:       h.projectCenterAvailable,
 		AIWorkbenchPlanningReadiness: planningReadiness,
 		AIWorkbenchTitleReadiness:    titleReadiness,
 	})
@@ -220,11 +247,13 @@ func containsRole(roles []string, want string) bool {
 }
 
 type contextResponse struct {
+	StoreObservationsAvailable   bool                   `json:"storeObservationsAvailable,omitempty"`
 	User                         userResponse           `json:"user"`
 	HomeOrganizationID           string                 `json:"homeOrganizationId"`
 	EffectiveOrganizationID      *string                `json:"effectiveOrganizationId"`
 	SelectionRequired            bool                   `json:"selectionRequired"`
 	Organizations                []organizationResponse `json:"organizations"`
+	ProjectCenterAvailable       bool                   `json:"projectCenterAvailable,omitempty"`
 	AIWorkbenchAvailable         bool                   `json:"aiWorkbenchAvailable,omitempty"`
 	AIWorkbenchPlanningReadiness string                 `json:"aiWorkbenchPlanningReadiness,omitempty"`
 	AIWorkbenchTitleReadiness    string                 `json:"aiWorkbenchTitleReadiness,omitempty"`

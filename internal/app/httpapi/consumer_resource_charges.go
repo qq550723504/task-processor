@@ -11,9 +11,9 @@ import (
 )
 
 func buildProductResourceCharges(ctx context.Context, productDB, resourceDB *gorm.DB) (*orgresource.ConsumerChargeService, error) {
-	return buildCurrentResourceCharges(ctx, productDB, nil, resourceDB, nil)
+	return buildCurrentResourceCharges(ctx, productDB, nil, resourceDB, nil, storecenter.RuntimeCapabilities{})
 }
-func buildCurrentResourceCharges(ctx context.Context, productDB, storeDB, resourceDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (*orgresource.ConsumerChargeService, error) {
+func buildCurrentResourceCharges(ctx context.Context, productDB, storeDB, resourceDB *gorm.DB, authorizer *authz.ListingKitAuthorizer, capabilities storecenter.RuntimeCapabilities) (*orgresource.ConsumerChargeService, error) {
 	if resourceDB == nil || productDB == resourceDB || storeDB == resourceDB || (productDB == nil && storeDB == nil) || (storeDB != nil && storeDB == productDB) {
 		return nil, orgresource.ErrInvalidInput
 	}
@@ -35,7 +35,7 @@ func buildCurrentResourceCharges(ctx context.Context, productDB, storeDB, resour
 		if err := storecenter.VerifyCurrentSchema(ctx, storeDB); err != nil {
 			return nil, err
 		}
-		if err := storecenter.VerifyRuntimePermissions(ctx, storeDB); err != nil {
+		if err := storecenter.VerifyRuntimePermissionsForCapabilities(ctx, storeDB, capabilities); err != nil {
 			return nil, err
 		}
 		stores, err := storecenter.NewMemberScopedStoreRepository(storeDB, currentStoreMemberAuthorizer{authorizer: authorizer})

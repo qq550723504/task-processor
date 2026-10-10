@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	observationruntime "task-processor/internal/app/runtime/storeobservations"
 	supplyruntime "task-processor/internal/app/runtime/supplychain"
 	"time"
 
@@ -56,8 +57,11 @@ func execute() error {
 	}
 	return currentapplication.Run(ctx, cfg, logger, currentapplication.Dependencies{
 		IdentityPreflight: currentapplication.VerifyIdentityProvider,
-		NewKnowledge:      prepareKnowledge,
-		NewEcoservices:    prepareEcoservices,
+		OpenToolMarket: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
+		NewKnowledge:   prepareKnowledge,
+		NewEcoservices: prepareEcoservices,
 		OpenEcoservices: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
@@ -90,17 +94,15 @@ func execute() error {
 		OpenSupplyAssets: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
-		DialSupplyWorkflow: func(ctx context.Context, address, namespace string) (client.Client, func() error, error) {
-			current, err := client.DialContext(ctx, client.Options{HostPort: address, Namespace: namespace})
-			if err != nil {
-				return nil, nil, err
-			}
-			return current, func() error { current.Close(); return nil }, nil
-		},
+		DialSupplyWorkflow:            dialCurrentWorkflow,
+		DialStoreObservationsWorkflow: dialCurrentWorkflow,
 		OpenAccountAuditUsage: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingReadOnlyContext(ctx, databaseConfig(cfg))
 		},
 		OpenProductAgent: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
+		OpenProjectCenter: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
 		OpenAIWorkbench: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
@@ -120,6 +122,9 @@ func execute() error {
 		},
 		NewApplicationWithFeatures: func(ctx context.Context, source *gorm.DB, features currentapplication.ApplicationFeatures, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
 			options := make([]httpapi.CurrentApplicationOption, 0, 6)
+			if features.ProjectCenterDB != nil {
+				options = append(options, httpapi.WithProjectCenter(features.ProjectCenterDB))
+			}
 			if features.Ecoservices != nil {
 				e := features.Ecoservices
 				options = append(options, httpapi.WithEcoservices(httpapi.EcoservicesDependencies{DB: e.DB, Objects: e.Objects, Channel: e.Channel, Protection: e.Protection, MerchantProtection: e.MerchantProtection}))
@@ -153,6 +158,9 @@ func execute() error {
 					options = append(options, httpapi.WithStoreOfficialApplications(features.OfficialStoreApplications))
 				}
 			}
+			if features.StoreObservationsWorkflow != nil {
+				options = append(options, httpapi.WithStoreObservations(httpapi.StoreObservationsDependencies{Starter: observationruntime.Starter{Client: features.StoreObservationsWorkflow}, Lifecycle: features.StoreObservationsLifecycle, NewWorker: observationruntime.WorkerFactory(features.StoreObservationsWorkflow, features.StoreObservationsLifecycle)}))
+			}
 			if features.LocalTrialDB != nil {
 				options = append(options, httpapi.WithIssue36Trial(features.LocalTrialDB))
 			}
@@ -162,6 +170,9 @@ func execute() error {
 			if features.ProductAcquisitionDB != nil {
 				options = append(options, httpapi.WithProductAcquisition(features.ProductAcquisitionDB))
 				options = append(options, httpapi.WithBrowserCapture())
+			}
+			if features.ToolMarketDB != nil && features.ToolMarket != nil {
+				options = append(options, httpapi.WithToolMarket(httpapi.ToolMarketDependencies{DB: features.ToolMarketDB, Package: features.ToolMarket.PackageConfig()}))
 			}
 			if features.ProductCollections {
 				options = append(options, httpapi.WithProductCollections())
@@ -205,4 +216,12 @@ func databaseConfig(cfg currentapplication.DatabaseConfig) *platformdatabase.Con
 		Host: cfg.Host, Port: cfg.Port, User: cfg.User, Password: cfg.Password, Database: cfg.Database,
 		MaxConnections: cfg.MaxConnections, MaxIdleConnections: cfg.MaxConnections, ConnectionMaxLifetime: time.Hour,
 	}
+}
+
+func dialCurrentWorkflow(ctx context.Context, address, namespace string) (client.Client, func() error, error) {
+	current, err := client.DialContext(ctx, client.Options{HostPort: address, Namespace: namespace})
+	if err != nil {
+		return nil, nil, err
+	}
+	return current, func() error { current.Close(); return nil }, nil
 }

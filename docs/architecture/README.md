@@ -77,6 +77,10 @@ Use these as the main source of truth for structural work:
   - #552 current Console Store record management, owner pools, quota, authorization and single-state hard-cut; service activation remains a separate unopened capability
 - `supply-market-v1.md`
   - #622 frozen IMPLEMENTATION_READY market disclosure, manual qualification and shared-account SDS design contract; current implementation and protocol evidence do not imply runtime or user acceptance
+- `store-center-platform-observations-v1.md`
+  - #614 IMPLEMENTATION_READY readonly SHEIN products, consumer orders and logistics;
+    scoped observations, original-member sync receipts and bounded recovery. Shared
+    runtime readiness and real merchant/user acceptance remain separate evidence.
 - `httpapi-assembly-boundaries.md`
   - HTTP API ownership, route/module builder boundaries, and app/httpapi limits
 - `app-assembly-boundaries.md`
@@ -127,6 +131,7 @@ source of truth for long-lived rules.
 ## Supporting Context
 
 - [`tool-market-v1.md`](./tool-market-v1.md)
+  - Native composition and local installation limits: [current-tool-market operations](../operations/current-tool-market.md).
   - #613 frozen IMPLEMENTATION_READY feature Design Basis for enterprise-shared enablement and manual customization progress; existing capture permissions and offline quote/payment owners remain unchanged. This feature contract does not introduce repository-wide structural rules.
 - [`my-supply-chain-shein-v1.md`](./my-supply-chain-shein-v1.md): #605 的已评审冻结 Design Basis，Collection → Preparation → Target → Submission 完整交付及三种官方应用类型；运行说明见 [operations](../operations/my-supply-chain-shein-v1.md)。
 - [`notification-center-v1.md`](./notification-center-v1.md)
@@ -142,6 +147,11 @@ source of truth for long-lived rules.
   - IMPLEMENTATION_READY #36 bounded completed-work v2 projection of Listing's
     historical Store ID and local preparation action; no Store name read,
     remote publication claim, or Product Review dependency.
+- [`ai-workbench-project-center-v1.md`](./ai-workbench-project-center-v1.md)
+  - APPROVED / IMPLEMENTATION_READY #624: creator-private current-enterprise
+    long-term projects, manually authorized references and personal templates;
+    independent persistence/runtime, receipt-first replay and slot removal.
+    Does not own execution, source facts or shared project permissions.
 - [`ai-workbench-chat-business-task-v1.md`](./ai-workbench-chat-business-task-v1.md)
   - APPROVED / IMPLEMENTATION_READY #576 Slice E: owner-scoped Conversation,
     no-tool Eino/eino-ext planning, immutable execution proposals and BusinessTask,

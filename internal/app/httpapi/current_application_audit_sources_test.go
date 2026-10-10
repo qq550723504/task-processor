@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/core/config"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/ledger/orgresource"
+	"task-processor/internal/storecenter"
 )
 
 func TestCurrentApplicationAdmitsProductExecutionWithImageAuditReader(t *testing.T) {
@@ -22,7 +23,7 @@ func TestCurrentApplicationAdmitsProductExecutionWithImageAuditReader(t *testing
 		},
 		buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, stop },
 		buildCommercial:    func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, stop },
-		buildResourceCharges: func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (*orgresource.ConsumerChargeService, error) {
+		buildResourceCharges: func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer, storecenter.RuntimeCapabilities) (*orgresource.ConsumerChargeService, error) {
 			return &orgresource.ConsumerChargeService{}, nil
 		},
 	}

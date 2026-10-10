@@ -15,8 +15,10 @@ import (
 	"gorm.io/gorm"
 
 	confighttp "task-processor/internal/agentconfig/httpapi"
+	ph "task-processor/internal/aiworkbench/projectcenter/httpapi"
 	registration "task-processor/internal/app/referralregistration"
 	storeapp "task-processor/internal/app/storecenter"
+	observationhttp "task-processor/internal/app/storeobservations/httpapi"
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
@@ -33,7 +35,11 @@ import (
 	"task-processor/internal/ledger/orgresource"
 	notificationhttp "task-processor/internal/notificationcenter/httpapi"
 	collectionhttp "task-processor/internal/product/collection/httpapi"
+	"task-processor/internal/product/sourcing"
+	"task-processor/internal/storecenter"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
+	tm "task-processor/internal/toolmarket"
+	tmhttp "task-processor/internal/toolmarket/httpapi"
 	"task-processor/internal/workbenchcontext"
 )
 
@@ -92,9 +98,9 @@ var currentCommercialBillingApplicationRoutes = []currentApplicationRoute{
 }
 
 type currentApplicationFactories struct {
-	buildStoreCenter         func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, *storeapp.OfficialApplicationRegistry) (kernelmodule.Module, error)
+	buildStoreCenter         func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, *storeapp.OfficialApplicationRegistry, storecenter.RuntimeCapabilities) (kernelmodule.Module, error)
 	buildLocalTrial          func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
-	buildResourceCharges     func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (*orgresource.ConsumerChargeService, error)
+	buildResourceCharges     func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer, storecenter.RuntimeCapabilities) (*orgresource.ConsumerChargeService, error)
 	buildCommercialResources func(context.Context, *gorm.DB) (kernelmodule.Module, error)
 	buildWorkbench           workbenchContextModuleBuilder
 	buildSourceAccount       func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
@@ -114,44 +120,50 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
-	ecoservicesConfigs        int
-	ecoservices               *EcoservicesDependencies
-	notifications             int
-	notificationDB            *gorm.DB
-	agentConfigurationDB      *gorm.DB
-	knowledgeServices         int
-	knowledge                 *knowledge.Service
-	storeCenters              int
-	storeCenterDB             *gorm.DB
-	localTrials               int
-	localTrialDB              *gorm.DB
-	officialStoreApplications *storeapp.OfficialApplicationRegistry
-	officialStoreConfigs      int
-	runtimeContext            context.Context
-	commercialOwnerDB         *gorm.DB
-	moneyOwnerDB              *gorm.DB
-	referralDB                *gorm.DB
-	productAcquisitionDB      *gorm.DB
-	imageAgentDB              *gorm.DB
-	accountAuditImageDB       *gorm.DB
-	accountAuditProductDB     *gorm.DB
-	accountAuditSources       int
-	imageAgentWorkflows       imageagent.WorkflowClient
-	membership                *MembershipDependencies
-	referrals                 int
-	productAcquisitions       int
-	collectionSourceMedias    int
-	collectionSourceMedia     *collectionSourceMediaDependencies
-	productCollections        int
-	supplyChains              int
-	supplyChain               *SupplyChainDependencies
-	imageAgents               int
-	memberships               int
-	browserCaptures           int
-	productAgent              *ProductAgentDependencies
-	productAgents             int
-	aiWorkbench               *AIWorkbenchDependencies
-	aiWorkbenches             int
+	toolMarketConfigs            int
+	toolMarket                   *ToolMarketDependencies
+	ecoservicesConfigs           int
+	ecoservices                  *EcoservicesDependencies
+	notifications                int
+	notificationDB               *gorm.DB
+	agentConfigurationDB         *gorm.DB
+	knowledgeServices            int
+	knowledge                    *knowledge.Service
+	storeObservations            int
+	storeObservationDependencies *StoreObservationsDependencies
+	storeCenters                 int
+	storeCenterDB                *gorm.DB
+	localTrials                  int
+	localTrialDB                 *gorm.DB
+	officialStoreApplications    *storeapp.OfficialApplicationRegistry
+	officialStoreConfigs         int
+	runtimeContext               context.Context
+	commercialOwnerDB            *gorm.DB
+	moneyOwnerDB                 *gorm.DB
+	referralDB                   *gorm.DB
+	productAcquisitionDB         *gorm.DB
+	imageAgentDB                 *gorm.DB
+	accountAuditImageDB          *gorm.DB
+	accountAuditProductDB        *gorm.DB
+	accountAuditSources          int
+	imageAgentWorkflows          imageagent.WorkflowClient
+	membership                   *MembershipDependencies
+	referrals                    int
+	productAcquisitions          int
+	collectionSourceMedias       int
+	collectionSourceMedia        *collectionSourceMediaDependencies
+	productCollections           int
+	supplyChains                 int
+	supplyChain                  *SupplyChainDependencies
+	imageAgents                  int
+	memberships                  int
+	browserCaptures              int
+	productAgent                 *ProductAgentDependencies
+	productAgents                int
+	aiWorkbench                  *AIWorkbenchDependencies
+	aiWorkbenches                int
+	projectCenterDB              *gorm.DB
+	projectCenters               int
 }
 
 // WithRuntimeContext supplies the long-lived application context for bounded
@@ -323,12 +335,16 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		option(&supplied)
 	}
-	if supplied.storeCenters > 1 || supplied.localTrials > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.productCollections > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 || supplied.accountAuditSources > 1 {
+	if supplied.storeObservations > 1 || supplied.storeCenters > 1 || supplied.localTrials > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.productCollections > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 || supplied.projectCenters > 1 || supplied.projectCenters == 1 && supplied.projectCenterDB == nil || supplied.accountAuditSources > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
 	}
 	if supplied.collectionSourceMedias > 1 || cfg.ProductCollectionSourceMedia.Enabled != (supplied.collectionSourceMedias == 1) || supplied.collectionSourceMedias == 1 && (supplied.productCollections != 1 || supplied.collectionSourceMedia == nil || supplied.collectionSourceMedia.Storage == nil) {
 		return nil, errors.New("source media requires its explicit current storage port and collections")
 	}
+	if supplied.storeObservations > 0 && (supplied.storeCenters != 1 || supplied.storeObservationDependencies == nil || supplied.storeObservationDependencies.Starter == nil || supplied.storeObservationDependencies.NewWorker == nil || supplied.storeObservationDependencies.Lifecycle == nil || supplied.officialStoreApplications == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "") {
+		return nil, errors.New("Store observations require current Store, official registry, exact authorization and worker lifecycle")
+	}
+	storeCapabilities := storecenter.RuntimeCapabilities{Observations: supplied.storeObservations == 1}
 	if supplied.productCollections > 0 && supplied.productAcquisitionDB == nil {
 		return nil, errors.New("collections require their current Product owner pool")
 	}
@@ -354,6 +370,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	}
 	if supplied.ecoservicesConfigs > 1 || supplied.ecoservicesConfigs > 0 && (supplied.ecoservices == nil || supplied.ecoservices.DB == nil || supplied.ecoservices.Channel == nil || supplied.ecoservices.Objects == nil || supplied.ecoservices.Protection == nil || supplied.commercialOwnerDB == nil || supplied.moneyOwnerDB == nil) {
 		return nil, errors.New("ecoservices dependencies unavailable or supplied more than once")
+	}
+	if supplied.toolMarketConfigs > 1 || supplied.toolMarketConfigs > 0 && (supplied.toolMarket == nil || supplied.toolMarket.DB == nil) {
+		return nil, errors.New("tool market dependencies unavailable or supplied more than once")
 	}
 	if supplied.ecoservices != nil {
 		if supplied.supplyChain != nil && supplied.ecoservices.DB == supplied.supplyChain.AssetDB {
@@ -420,7 +439,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		if builder == nil {
 			builder = buildCurrentResourceCharges
 		}
-		consumerCharges, err = builder(ctx, supplied.productAcquisitionDB, supplied.storeCenterDB, supplied.commercialOwnerDB, authorizer)
+		consumerCharges, err = builder(ctx, supplied.productAcquisitionDB, supplied.storeCenterDB, supplied.commercialOwnerDB, authorizer, storeCapabilities)
 		if err != nil {
 			return nil, err
 		}
@@ -520,7 +539,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, knowledgehttp.NewModule(handler))
 	}
 	if supplied.storeCenters > 0 {
-		stores, err := factories.buildStoreCenter(ctx, supplied.storeCenterDB, authorizer, consumerCharges, supplied.officialStoreApplications)
+		stores, err := factories.buildStoreCenter(ctx, supplied.storeCenterDB, authorizer, consumerCharges, supplied.officialStoreApplications, storeCapabilities)
 		if err != nil {
 			return nil, fmt.Errorf("build current store center: %w", err)
 		}
@@ -528,6 +547,16 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 			return nil, errors.New("current store center unavailable")
 		}
 		modules = append(modules, stores)
+	}
+	if supplied.storeObservations > 0 {
+		module, err := buildCurrentStoreObservations(ctx, supplied.storeCenterDB, *supplied.storeObservationDependencies, *workbench.authDependencies, authorizer, supplied.officialStoreApplications, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("build current Store observations: %w", err)
+		}
+		modules = append(modules, module)
+		if workbench.handler != nil {
+			workbench.handler.SetStoreObservationsReadiness(module.application.Available)
+		}
 	}
 	if supplied.localTrials > 0 {
 		trial, err := factories.buildLocalTrial(ctx, supplied.localTrialDB, authorizer, *workbench.authDependencies)
@@ -640,6 +669,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, image)
 	}
 	var productRuntime *productAgentApplication
+	if supplied.toolMarket != nil {
+		module, err := buildToolMarket(ctx, *supplied.toolMarket, *workbench.authDependencies, authorizer, tm.Readiness{LocalCapture: factories.buildBrowserCapture != nil, OnlineCapture: factories.buildAcquisition != nil})
+		if err != nil {
+			return nil, fmt.Errorf("build current tool market: %w", err)
+		}
+		modules = append(modules, module)
+	}
 	var supplyRuntime *supplyChainModule
 	if supplied.productAgent != nil {
 		agentConfig := *supplied.productAgent
@@ -654,7 +690,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		productRuntime = agentModule.(productAgentModule).application
 	}
 	if supplied.supplyChain != nil {
-		module, e := buildSupplyChainModule(ctx, supplied.productAcquisitionDB, supplied.storeCenterDB, *supplied.supplyChain, *workbench.authDependencies, authorizer, supplied.officialStoreApplications, cfg, productRuntime)
+		module, e := buildSupplyChainModule(ctx, supplied.productAcquisitionDB, supplied.storeCenterDB, *supplied.supplyChain, *workbench.authDependencies, authorizer, supplied.officialStoreApplications, cfg, productRuntime, storeCapabilities)
 		if e != nil {
 			return nil, fmt.Errorf("build current supply chain: %w", e)
 		}
@@ -668,17 +704,45 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		modules = append(modules, m)
 	}
+	var projectChat *aiWorkbenchApplication
 	if supplied.aiWorkbench != nil {
 		module, e := buildAIWorkbenchModule(ctx, *supplied.aiWorkbench, productRuntime)
 		if e != nil {
 			return nil, fmt.Errorf("build AI Workbench: %w", e)
 		}
 		modules = append(modules, module)
+		projectChat = module.(aiWorkbenchModule).application
 		if workbench.handler != nil {
 			workbench.handler.SetAIWorkbenchAvailable(true)
 			workbench.handler.SetAIWorkbenchAdmission(module.(aiWorkbenchModule).AdmittedOrganization)
 			workbench.handler.SetAIWorkbenchPlanningReadiness(module.(aiWorkbenchModule).PlanningReadiness)
 			workbench.handler.SetAIWorkbenchTitleReadiness(module.(aiWorkbenchModule).TitleReadiness)
+		}
+	}
+	if supplied.projectCenterDB != nil {
+		for _, other := range []*gorm.DB{sourceAccountDB, supplied.commercialOwnerDB, supplied.storeCenterDB, supplied.productAcquisitionDB} {
+			if other == supplied.projectCenterDB {
+				return nil, errors.New("project center requires its own pool")
+			}
+		}
+		if supplied.aiWorkbench != nil && supplied.aiWorkbench.DB == supplied.projectCenterDB {
+			return nil, errors.New("project and chat pools must be distinct")
+		}
+		var products sourcing.PublishedAcquisitionReader
+		if supplied.productAcquisitionDB != nil {
+			var e error
+			products, e = buildPublishedAcquisitionReader(ctx, supplied.productAcquisitionDB, cfg, *workbench.authDependencies, authorizer)
+			if e != nil {
+				return nil, e
+			}
+		}
+		module, e := buildProjectCenter(ctx, supplied.projectCenterDB, *workbench.authDependencies, authorizer, projectChat, supplied.knowledge, supplied.storeCenterDB, products)
+		if e != nil {
+			return nil, e
+		}
+		modules = append(modules, module)
+		if workbench.handler != nil {
+			workbench.handler.SetProjectCenterAvailable(true)
 		}
 	}
 	if factories.buildBrowserCapture != nil {
@@ -768,17 +832,20 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, err
 	}
 	routeFeatures := currentApplicationOptionalRoutes{
+		ToolMarket:          supplied.toolMarket != nil,
 		Ecoservices:         supplied.ecoservices != nil,
 		SupplyChain:         supplied.supplyChains > 0,
 		Collections:         supplied.productCollections > 0,
 		NotificationCenter:  supplied.notifications > 0,
 		ZitadelSMS:          true,
 		StoreCenter:         supplied.storeCenters > 0,
+		StoreObservations:   supplied.storeObservations > 0,
 		LocalTrial:          supplied.localTrials > 0,
 		Knowledge:           supplied.knowledgeServices > 0,
 		AcquisitionImage:    factories.buildAcquisitionImage != nil,
 		ProductAgent:        supplied.productAgent != nil,
 		AIWorkbench:         supplied.aiWorkbench != nil,
+		ProjectCenter:       supplied.projectCenterDB != nil,
 		AgentConfiguration:  supplied.agentConfigurationDB != nil,
 		MemberPoints:        includeMemberPoints,
 		MemberResources:     includeMemberResources,
@@ -870,6 +937,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	ToolMarket          bool
 	Ecoservices         bool
 	SupplyChain         bool
 	Collections         bool
@@ -877,6 +945,7 @@ type currentApplicationOptionalRoutes struct {
 	AgentConfiguration  bool
 	Knowledge           bool
 	StoreCenter         bool
+	StoreObservations   bool
 	LocalTrial          bool
 	Resources           bool
 	ZitadelSMS          bool
@@ -884,12 +953,18 @@ type currentApplicationOptionalRoutes struct {
 	AcquisitionImage    bool
 	ProductAgent        bool
 	AIWorkbench         bool
+	ProjectCenter       bool
 	MemberPoints        bool
 	MemberResources     bool
 }
 
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if optional.ToolMarket {
+		for _, r := range tmhttp.Routes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
 	if optional.Ecoservices {
 		for _, r := range ehttp.Routes(nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
@@ -930,6 +1005,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	if optional.StoreCenter {
 		for _, r := range currentStoreCenterRoutes {
 			admitted = append(admitted, currentApplicationRoute{Method: r.method, Path: r.path})
+		}
+	}
+	if optional.StoreObservations {
+		if !optional.StoreCenter {
+			return errors.New("Store observations require current Store routes")
+		}
+		for _, route := range observationhttp.Routes(nil, nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: route.Method, Path: route.Path})
 		}
 	}
 	if optional.LocalTrial {
@@ -1003,6 +1086,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
 		}
 	}
+	if optional.ProjectCenter {
+		for _, r := range ph.Routes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
 	if optional.AIWorkbench {
 		for _, r := range aiWorkbenchRoutes(nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
@@ -1042,6 +1130,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {
+		if descriptor.Path == tmhttp.Base || strings.HasPrefix(descriptor.Path, tmhttp.Base+"/") || descriptor.Path == tmhttp.AdminBase || strings.HasPrefix(descriptor.Path, tmhttp.AdminBase+"/") {
+			if !optional.ToolMarket {
+				return errors.New("tool market feature not admitted")
+			}
+			if err := tmhttp.ValidateDescriptor(descriptor); err != nil {
+				return err
+			}
+		}
 		if descriptor.Path == ehttp.NotifyPath || descriptor.Path == ehttp.Base || strings.HasPrefix(descriptor.Path, ehttp.Base+"/") || descriptor.Path == ehttp.AdminBase || strings.HasPrefix(descriptor.Path, ehttp.AdminBase+"/") {
 			if !optional.Ecoservices {
 				return errors.New("ecoservices feature not admitted")
@@ -1137,6 +1233,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 				return errors.New("member resources route loses live permission boundary")
 			}
 		}
+		if strings.HasPrefix(descriptor.Path, observationhttp.BasePath) {
+			if !optional.StoreObservations {
+				return errors.New("Store observation feature not admitted")
+			}
+			if err := validateCurrentObservationDescriptor(descriptor); err != nil {
+				return err
+			}
+		}
 		if descriptor.Path == "/api/v1/workbench/stores" || strings.HasPrefix(descriptor.Path, "/api/v1/workbench/stores/") {
 			if !optional.StoreCenter {
 				return errors.New("store center feature not admitted")
@@ -1150,6 +1254,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 		}
 		if strings.HasPrefix(descriptor.Path, productAgentBase) && (descriptor.Module != "product-agent" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionLocalAgentWrite || descriptor.RequestTimeout != 2*time.Minute) {
 			return errors.New("product agent loses fresh permission boundary")
+		}
+		if strings.HasPrefix(descriptor.Path, ph.Base) {
+			if !optional.ProjectCenter {
+				return errors.New("project center not admitted")
+			}
+			if e := ph.ValidateDescriptor(descriptor); e != nil {
+				return e
+			}
 		}
 		if strings.HasPrefix(descriptor.Path, workbenchChatBase) || strings.HasPrefix(descriptor.Path, workbenchTaskBase) {
 			if !optional.AIWorkbench || descriptor.Module != "ai-workbench" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Handler == nil {

@@ -4003,8 +4003,22 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	// #613 admits only the reviewed Tool Market HTTP adapter, not its contracts.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "toolmarket", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "app", "supplychain", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	// #614 admits only the observations feature-local HTTP adapter.
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "app", "storeobservations", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "product", "collection", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	// #624 admits only Project Center's HTTP adapter; its domain stays framework-free.
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "aiworkbench", "projectcenter", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	return allowedHTTPPackages
+}
+
+func TestProjectCenterHTTPBoundaryRegistration(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowed := businessHTTPPackages(root)
+	for path, want := range map[string]bool{"aiworkbench/projectcenter/httpapi/handler.go": true, "aiworkbench/projectcenter/service.go": false, "aiworkbench/projectcenter/httpapi_extra/handler.go": false} {
+		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(path)), allowed); got != want {
+			t.Errorf("HTTP boundary allows %s = %v, want %v", path, got, want)
+		}
+	}
 }
 
 func TestEcoservicesHTTPBoundaryRegistration(t *testing.T) {
@@ -5793,6 +5807,9 @@ func supplyAdapterBusinessPorts() map[string][]string {
 		filepath.Join(base, "shein", "official_goods.go"):                                       {"task-processor/internal/marketplace/shein/goods", "task-processor/internal/marketplace/shein/model"},
 		filepath.Join(base, "shein", "official_goods_rules.go"):                                 {"task-processor/internal/marketplace/shein/model"},
 		filepath.Join(base, "shein", "official_readback.go"):                                    {"task-processor/internal/marketplace/shein/goods", "task-processor/internal/marketplace/shein/model"},
+		filepath.Join(base, "shein", "official_observations.go"):                                {"task-processor/internal/marketplace/shein/observations"},
+		filepath.Join(base, "persistence", "sheinobservations", "repository.go"):                {"task-processor/internal/marketplace/shein/observations"},
+		filepath.Join(base, "persistence", "sheinobservations", "schema.go"):                    {"task-processor/internal/marketplace/shein/observations"},
 	}
 }
 func supplyAdapterPortAllowed(path, imported string) bool {

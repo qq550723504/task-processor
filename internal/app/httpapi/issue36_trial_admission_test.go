@@ -17,6 +17,7 @@ import (
 	"task-processor/internal/ledger/orgresource"
 	"task-processor/internal/listing/record"
 	"task-processor/internal/product/review"
+	"task-processor/internal/storecenter"
 )
 
 func trialRouteDescriptors() []httproute.Descriptor {
@@ -75,10 +76,10 @@ func TestIssue36TrialOptionalAssembly(t *testing.T) {
 				},
 				buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
 				buildCommercial:    func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
-				buildResourceCharges: func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (*orgresource.ConsumerChargeService, error) {
+				buildResourceCharges: func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer, storecenter.RuntimeCapabilities) (*orgresource.ConsumerChargeService, error) {
 					return orgresource.NewConsumerChargeService(currentStoreChargeFixture{}, map[orgresource.ResourceConsumer]orgresource.ConsumerChargeOwner{orgresource.ConsumerStoreService: currentStoreChargeFixture{}})
 				},
-				buildStoreCenter: func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, *storeapp.OfficialApplicationRegistry) (kernelmodule.Module, error) {
+				buildStoreCenter: func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer, orgresource.ConsumerChargePort, *storeapp.OfficialApplicationRegistry, storecenter.RuntimeCapabilities) (kernelmodule.Module, error) {
 					return currentStoreRouteFixture{routes: currentStoreTestRoutes(t)}, nil
 				},
 				buildLocalTrial: func(_ context.Context, got *gorm.DB, _ *authz.ListingKitAuthorizer, _ routeAuthDependencies) (kernelmodule.Module, error) {

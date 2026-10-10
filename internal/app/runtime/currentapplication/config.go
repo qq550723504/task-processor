@@ -32,6 +32,8 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
+	ProjectCenter              *ProjectCenterConfig                      `json:"projectCenter,omitempty"`
+	ToolMarket                 *ToolMarketConfig                         `json:"toolMarket,omitempty"`
 	Ecoservices                *EcoservicesConfig                        `json:"ecoservices,omitempty"`
 	NotificationCenterDatabase *DatabaseConfig                           `json:"notificationCenterDatabase,omitempty"`
 	Knowledge                  *KnowledgeConfig                          `json:"knowledge,omitempty"`
@@ -290,6 +292,12 @@ func (cfg *Config) validate() error {
 	if cfg == nil || cfg.SchemaVersion != manifestSchemaVersion {
 		return fmt.Errorf("unsupported current application manifest schema version")
 	}
+	if err := cfg.validateProjectCenter(); err != nil {
+		return err
+	}
+	if err := cfg.validateToolMarket(); err != nil {
+		return err
+	}
 	if cfg.NotificationCenterDatabase != nil {
 		if err := cfg.NotificationCenterDatabase.validate("notificationCenterDatabase"); err != nil {
 			return err
@@ -486,6 +494,9 @@ func (cfg *Config) validate() error {
 		} else if _, err := imageagent.ValidateSafeImageURL(image.PublicBase); err != nil {
 			return errors.New("image agent public base must be a safe public URL")
 		}
+	}
+	if err := cfg.validateStoreObservations(); err != nil {
+		return err
 	}
 	if err := cfg.validateStoreCenter(); err != nil {
 		return err

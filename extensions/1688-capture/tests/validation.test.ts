@@ -37,6 +37,20 @@ describe('frozen wire and resource admission', () => {
     expect(appURL('http://127.0.0.1:4399/capture/1688', true)).toBe('http://127.0.0.1:4399/capture/1688');
     expect(() => appURL('https://app.example.com/capture/1688?target=https://evil.test')).toThrow();
   });
+  it('admits the installed HTTPS receiver without granting local image access', () => {
+    expect(appURL('https://localhost:31544/capture/1688')).toBe('https://localhost:31544/capture/1688');
+    expect(appURL('https://app.example.com:8443/capture/1688')).toBe('https://app.example.com:8443/capture/1688');
+    expect(publicImage('https://localhost:31544/capture/1688')).toBe(false);
+    for (const url of [
+      'http://localhost:31544/capture/1688', 'https://localhost/capture/1688',
+      'https://127.0.0.1:31544/capture/1688', 'https://192.168.1.1:31544/capture/1688',
+      'https://[::1]:31544/capture/1688', 'https://app.local:31544/capture/1688',
+      'https://user:password@localhost:31544/capture/1688',
+      'https://localhost:31544/other', 'https://localhost:31544/capture/1688?target=x',
+      'https://localhost:31544/capture/1688#target',
+    ]) expect(() => appURL(url)).toThrow();
+    expect(() => appURL('https://localhost:31544/capture/1688', true)).toThrow();
+  });
   it('rejects aggregate budget excess and multibyte strings over the byte ceiling', () => {
     const e = minimalCapture().evidence;
     expect(() => validateCapture({ captureVersion: 1, evidence: { ...e, title: '棉'.repeat(3000) } })).toThrow();
