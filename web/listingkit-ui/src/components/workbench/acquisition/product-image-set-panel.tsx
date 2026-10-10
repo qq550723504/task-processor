@@ -43,6 +43,7 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
  const [runTemplate,setRunTemplate]=useState<ImageAgentTemplate>();
  const [priorRuns,setPriorRuns]=useState<ImageSetRun[]>([]);
  const [recent,setRecent]=useState<z.infer<typeof imageSetRecentSchema>["items"]>([]),[inventory,setInventory]=useState<ImageSetInventory>();
+ const [recentCursor,setRecentCursor]=useState("");
  const [requirements,setRequirements]=useState<ImageSetRequirements>(),[platform,setPlatform]=useState<"product"|"shein">("product");
  const [restoredTarget,setRestoredTarget]=useState<ImageSetPrepare["target"]>();
  const editorTarget=restoredTarget??target;
@@ -119,7 +120,7 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
     const defaultRef=agent.agent.defaultTemplate;
     if(defaultRef){try{const pinned=await configurationRequest(stableScope,`product.image.agent/templates/${defaultRef.templateId}/revisions/${defaultRef.revision}`,imageTemplateSchema,{signal:controller.signal});if(controller.signal.aborted)return;installTemplate(pinned,source.evidence)}catch(e){if(!controller.signal.aborted)fail(e)}}
     if(controller.signal.aborted)return;
-    const pageRuns=await imageSetRequest(stableScope,"recent",imageSetRecentSchema,{signal:controller.signal});if(controller.signal.aborted)return;setRecent(pageRuns.items);
+    const pageRuns=await imageSetRequest(stableScope,"recent",imageSetRecentSchema,{signal:controller.signal});if(controller.signal.aborted)return;setRecent(pageRuns.items);setRecentCursor(pageRuns.nextCursor);
    }catch(e){if(!controller.signal.aborted)fail(e)}finally{if(!controller.signal.aborted)setLoading(false)}
   })();return()=>controller.abort();
  },[stableScope,storageKey,effectiveVersion,applyReceiptId,initialRunId,readRun,fail]);
@@ -208,6 +209,17 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
    const value=await imageSetRequest(stableScope,"requirements",imageSetRequirementsSchema,{body:{target:editorTarget,effectiveCatalogVersion:source.EffectiveVersion,...source.ApplyReceiptID?{applyReceiptId:source.ApplyReceiptID}:{}},signal:controller.signal});if(!controller.signal.aborted){setRequirements(value);setPositions({});setPreview(null)}
   }catch(e){if(!controller.signal.aborted)fail(e)}finally{if(!controller.signal.aborted)setBusy(false)}
  }
+ async function loadMoreRuns(){
+  if(locked||flight.current||!active.current||!recentCursor)return;
+  const controller=new AbortController();abort.current=controller;flight.current=true;setBusy(true);setError("");
+  try{
+   const page=await imageSetRequest(stableScope,"recent",imageSetRecentSchema,{query:new URLSearchParams({cursor:recentCursor}).toString(),signal:controller.signal});
+   if(!controller.signal.aborted&&active.current){
+    setRecent(old=>{const merged=new Map(old.map(item=>[item.runId,item]));for(const item of page.items){if(!merged.has(item.runId))merged.set(item.runId,item)}return [...merged.values()]});
+    setRecentCursor(page.nextCursor);
+   }
+  }catch(e){if(!controller.signal.aborted&&active.current)fail(e)}finally{flight.current=false;if(!controller.signal.aborted&&active.current)setBusy(false)}
+ }
  const available=entry?.agent.activation==="ENABLED"&&entry.canUse&&entry.capabilities.some(c=>c.id==="image.generate"&&c.readiness==="AVAILABLE");
  const allTasks=template?[...template.image.carousel.map(t=>({...t,group:"carousel" as const})),...template.image.detail.map(t=>({...t,group:"detail" as const}))]:[];
  const canPrepare=available&&!!template&&tasks.length>0&&(template.image.shareOriginals?shared.length>0:(!template.image.carousel.some(t=>tasks.includes(t.id))||carousel.length>0)&&(!template.image.detail.some(t=>tasks.includes(t.id))||detail.length>0))&&(platform==="product"||!!requirements&&tasks.every(id=>!!positions[id]));
@@ -229,6 +241,7 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
    })}</section>)}</div><p className="text-xs text-slate-500">背景：{template.image.background} · 文字：{template.image.language} · {template.image.shareOriginals?"两组共用原始素材，分别生成与计费":"两组分别选择原始素材，分别生成与计费"}</p>{template.image.shareOriginals?originalChoices("共用原始素材",shared,setShared):<div className="grid gap-4 md:grid-cols-2">{originalChoices("主图素材",carousel,setCarousel)}{originalChoices("详情素材",detail,setDetail)}</div>}<Button disabled={locked||!canPrepare} onClick={()=>newPreparation()}>准备整套图片计划（{tasks.length} 项）</Button></>:<p className="text-sm">请在智能体配置中创建图片模板并设为默认，或选择已有模板。</p>}
   </>:null}
   {recent.length?<label className="block space-y-2 text-sm">本商品最近任务<Select disabled={locked} value={run?.runId??""} onChange={e=>{if(e.target.value){setPreview(null);setSelected([]);void readRun(e.target.value).catch(fail)}}}><option value="">选择原任务</option>{recent.map(item=><option key={item.runId} value={item.runId}>{stateNames[item.status]??item.status} · {new Date(item.createdAt).toLocaleString()}</option>)}</Select></label>:null}
+  {recentCursor?<Button variant="outline" disabled={locked} onClick={()=>void loadMoreRuns()}>加载更多图片任务</Button>:null}
   {run?<section className="space-y-4 border-t border-slate-200 pt-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold">{stateNames[run.status]??run.status}</h3><p className="text-xs text-slate-500">任务 {run.runId} · {run.slots.filter(s=>s.status==="accepted").length}/{run.images} 张已生成 · 已确认用量 {run.settledPoints} 点</p></div><Button variant="outline" disabled={busy} onClick={()=>void readRun(run.runId).catch(fail)}>刷新原任务</Button></div>
    {run.status==="awaiting_plan_approval"?<div className="space-y-3 rounded-xl bg-emerald-50 p-4"><p>本次生成 {run.images} 张，点数上限 <strong className="text-orange-600">{run.points}</strong> 点。主图与详情图分别调用模型；原图及正式素材复用不调用模型。</p><Button disabled={locked||!available} onClick={()=>void send({action:"confirm",runId:run.runId,body:{actionId:crypto.randomUUID(),planRevision:run.planRevision,planDigest:run.planDigest,quoteDigest:run.quoteDigest}})}>确认点数并生成</Button></div>:null}
    {run.block?<p className="text-sm text-amber-700">任务暂时停止：{run.block.Code}</p>:null}

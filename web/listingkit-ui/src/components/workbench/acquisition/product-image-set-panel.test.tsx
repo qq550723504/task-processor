@@ -47,6 +47,76 @@ it("shows all eight exact references used by a generated slot",async()=>{
  expect(images.map(image=>image.getAttribute("src"))).toEqual(originals.map(image=>image.DisplayURL));
  expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
 });
+it("loads the next bounded recent-run page and reopens an older run with GET only",async()=>{
+ state=projection("awaiting_final_approval",templateId);
+ const cursor="older&after=20",item=(id:string)=>({runId:id,contextKind:"acquisition",contextId:operation,status:"awaiting_final_approval",targetPlatform:"product",createdAt:now});
+ const first=Array.from({length:20},(_,i)=>item(`00000000-0000-4000-8000-${String(i+1).padStart(12,"0")}`));
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation(async(url,init)=>{
+  const parsed=new URL(String(url),"https://app.test");
+  if(parsed.pathname.endsWith("/images/runs"))return Response.json(parsed.searchParams.has("cursor")?{items:[first[0],item(runId)],nextCursor:""}:{items:first,nextCursor:cursor});
+  return real(url,init);
+ });
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"加载更多图片任务"}));
+ const select=screen.getByRole("combobox",{name:"本商品最近任务"}) as HTMLSelectElement;
+ await waitFor(()=>expect(select.options).toHaveLength(22));
+ expect(screen.queryByRole("button",{name:"加载更多图片任务"})).not.toBeInTheDocument();
+ fireEvent.change(select,{target:{value:runId}});
+ expect(await screen.findAllByRole("button",{name:"选择采用"})).toHaveLength(2);
+ const pages=fetch.mock.calls.filter(([url])=>new URL(String(url),"https://app.test").pathname.endsWith("/images/runs"));
+ expect(pages).toHaveLength(2);expect(new URL(String(pages[1][0]),"https://app.test").searchParams.get("cursor")).toBe(cursor);
+ expect(pages.every(([,init])=>init?.method==="GET")).toBe(true);
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+});
+it("keeps the original recent-run cursor and list after a page failure and retries the same GET",async()=>{
+ const cursor="original-page-cursor",item={runId,contextKind:"acquisition",contextId:operation,status:"awaiting_final_approval",targetPlatform:"product",createdAt:now};
+ const real=fetch.getMockImplementation()!;let pages=0;
+ fetch.mockImplementation(async(url,init)=>{
+  const parsed=new URL(String(url),"https://app.test");
+  if(parsed.pathname.endsWith("/images/runs")){
+   if(!parsed.searchParams.has("cursor"))return Response.json({items:[item],nextCursor:cursor});
+   if(++pages===1)return Response.json({code:"IMAGE_UNAVAILABLE"},{status:503});
+   return Response.json({items:[],nextCursor:""});
+  }
+  return real(url,init);
+ });
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"加载更多图片任务"}));
+ await screen.findByRole("alert");
+ const select=screen.getByRole("combobox",{name:"本商品最近任务"}) as HTMLSelectElement;
+ expect(select.options).toHaveLength(2);
+ const more=screen.getByRole("button",{name:"加载更多图片任务"});await waitFor(()=>expect(more).toBeEnabled());fireEvent.click(more);
+ await waitFor(()=>expect(screen.queryByRole("button",{name:"加载更多图片任务"})).not.toBeInTheDocument());
+ expect(select.options).toHaveLength(2);
+ const requests=fetch.mock.calls.filter(([url])=>new URL(String(url),"https://app.test").searchParams.has("cursor"));
+ expect(requests).toHaveLength(2);expect(requests.map(([url])=>new URL(String(url),"https://app.test").searchParams.get("cursor"))).toEqual([cursor,cursor]);
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+});
+it("aborts a recent-run page and ignores its late items after switching enterprise",async()=>{
+ const item={runId,contextKind:"acquisition",contextId:operation,status:"awaiting_final_approval",targetPlatform:"product",createdAt:now};
+ let resolve!:(response:Response)=>void;
+ const late=new Promise<Response>(ok=>{resolve=ok}),real=fetch.getMockImplementation()!;
+ fetch.mockImplementation(async(url,init)=>{
+  const parsed=new URL(String(url),"https://app.test");
+  if(parsed.pathname.endsWith("/images/runs")){
+   if(parsed.searchParams.has("cursor"))return late;
+   return Response.json(new Headers(init?.headers).get("X-Expected-Organization-ID")==="other"?{items:[],nextCursor:""}:{items:[item],nextCursor:"older-page"});
+  }
+  return real(url,init);
+ });
+ const view=render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"加载更多图片任务"}));
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>new URL(String(url),"https://app.test").searchParams.has("cursor"))).toBe(true));
+ const request=fetch.mock.calls.find(([url])=>new URL(String(url),"https://app.test").searchParams.has("cursor"))!;
+ calls.context={...calls.context,effectiveOrganization:{id:"other"}};view.rerender(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ expect(request[1]!.signal?.aborted).toBe(true);
+ await act(async()=>resolve(Response.json({items:[item],nextCursor:"another-old-page"})));
+ await screen.findByRole("button",{name:"准备整套图片计划（2 项）"});
+ expect(screen.queryByRole("combobox",{name:"本商品最近任务"})).not.toBeInTheDocument();
+ expect(screen.queryByRole("button",{name:"加载更多图片任务"})).not.toBeInTheDocument();
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+});
 it("can select an untouched source original outside the generation references without generating again",async()=>{
  state=projection("awaiting_final_approval",templateId);
  const real=fetch.getMockImplementation()!;
