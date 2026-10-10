@@ -50,7 +50,7 @@ Out of Scope：自动抓取财务、汇率换算、平台资金结算、Commerci
 | 钱包、资源、费用、订阅、AI调用与Product事实 | 原owner，本批不复制/修改 |
 | 数据库/官方观察消费/身份adapter | feature-local integration；app只组合 |
 
-链路：Console/BFF → CurrentIdentity + live Effective Organization/module permission → Cockpit usecase（scope只来自服务端）→ 当前member-scoped Store窄reader → Cockpit repository → 纯计算projection → 最后live权限/店铺重查 → 当前企业响应。
+链路：Console/BFF → CurrentIdentity + live Effective Organization/module permission → Cockpit usecase（scope只来自服务端）→ 当前member-scoped Store窄reader → Cockpit repository → 纯计算projection → 最后live权限/店铺重查 → 当前企业响应。每次请求只捕获一次UTC+8日期基准；目标revision、当前事实revisions、coverage、列表及汇总在同一SQL读取快照中取得，不能拼装不同时间版本的依据。退出该快照后再重查live权限，不能在旧快照中“重验”撤权；平台观察保留自身独立generation/time，不声称跨owner全局原子快照。
 
 Domain不importGin/GORM/app/SDK。Repository只访问自己的schema，当前Store reader消费既有owner；禁止直接联表读Store/Commercial/Product绕过授权。SHEIN观察通过现有已授权Service读取，不直读观察SQL，不发新的官方API调用；缺观察permission单独标不可用，不能因此删掉已授权人工经营数据。
 
@@ -126,4 +126,8 @@ Legacy decision: N/A。已有合格Store、observations、Console/authz合同按
 
 ## 10. Architecture Review
 
-第1轮独立评审待执行。设计未经准入不能写正式生产路径。
+2026-10-10 第1轮只读独立Reviewer `/root/cockpit_architecture_review` 检查设计候选 `0a6d7e1b44dc7b84d48897b6022b79927978a310` 及直接相关Store/member/schema/授权合同，结论 **NOT_READY**。唯一剩余架构准入阻碍是目标归属产品决定，命中当前AGENTS“核心happy path按当前设计无法完成”及潜在“错误授权”：企业singleton旧head不可读时无安全CAS来源，不能允许盲覆盖。
+
+目标决定后只复核head/revision/receipt scope、读写权限及安全失效重配这部分增量，不重复全局审查。共享路径唯一Writer责任仍须协调，它是接线gate，不由Reviewer替用户指定。
+
+其余五项为IMPLEMENTATION_TEST，均是当前Must的实现义务，不重开架构：当前Store owner提供同tx窄锁读并live重查admin；稳定record ID日期纠错/并发重叠/保留revision；同SQL快照覆盖和目标/数据依据；checked金额和math/big阈值边界；启用schema时全部Store consumers使用同一最小capability/preflight清单。相关最低合同已写入正文，必须实现并验证后才能交付。无新增Accepted Risk或额外验收平台。运行/真实数据/用户验收NOT_RUN，未改生产代码。
