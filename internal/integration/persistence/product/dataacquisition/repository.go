@@ -461,10 +461,10 @@ func (r *Repository) Admit(ctx context.Context, p dataacquisition.Principal, com
 // Every mutation follows key -> original UTC quota buckets -> job -> item.
 // Proof/binding/fencing deliberately do not require continuing execution rights.
 func (r *Repository) withJob(ctx context.Context, job dataacquisition.Job, active bool, action func(*gorm.DB, *jobRow, dataacquisition.Job) error) error {
-	return r.withJobCommand(ctx, job, active, "", action)
+	return r.withJobCommand(ctx, job, active, job.Scope, "", action)
 }
 
-func (r *Repository) withJobCommand(ctx context.Context, job dataacquisition.Job, active bool, command string, action func(*gorm.DB, *jobRow, dataacquisition.Job) error) error {
+func (r *Repository) withJobCommand(ctx context.Context, job dataacquisition.Job, active bool, commandScope collection.Scope, command string, action func(*gorm.DB, *jobRow, dataacquisition.Job) error) error {
 	if job.Scope.Validate() != nil || !collection.ValidID(job.ID) {
 		return dataacquisition.ErrInvalid
 	}
@@ -519,7 +519,7 @@ func (r *Repository) withJobCommand(ctx context.Context, job dataacquisition.Job
 		if command == "" {
 			err = apply(tx)
 		} else {
-			err = keystore.ApplyCancellationCommand(tx, job.Scope, command, job.ID, apply)
+			err = keystore.ApplyCancellationCommand(tx, commandScope, command, job.ID, apply)
 			if errors.Is(err, dataservice.ErrConflict) {
 				err = dataacquisition.ErrConflict
 			}
@@ -872,7 +872,7 @@ func (r *Repository) Cancel(ctx context.Context, s collection.Scope, id, command
 	if err != nil {
 		return job, err
 	}
-	err = r.withJobCommand(ctx, job, false, command, func(tx *gorm.DB, row *jobRow, current dataacquisition.Job) error {
+	err = r.withJobCommand(ctx, job, false, s, command, func(tx *gorm.DB, row *jobRow, current dataacquisition.Job) error {
 		if row.Canceled {
 			return nil
 		}
