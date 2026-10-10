@@ -4,8 +4,8 @@
 - Design Basis: **Independent Architecture**, limited to the discovered native
   authorization composition blocker. Other boundaries reuse the frozen
   [Data Services v1 design](data-services-v1.md).
-- Admission: **DESIGNING — independent review pending**. Do not change the
-  production authorizer to this contract before IMPLEMENTATION_READY.
+- Admission: **IMPLEMENTATION_READY**. Independent R1 reviewed design SHA
+  `0956ad2ff54ef07caae086876bc75ea8741771c8` before production auth changes.
 - Design baseline: `7e0a5e31a65490dd36784d9a1990f447f9b536a7`.
 
 ## Product authority and result
@@ -44,5 +44,12 @@ After independent admission, first add tests proving nil local policy permits cu
 Reuse existing DataKey revocation/private-result, worker authorization and Resource proof tests. Use current normal Compose plus the new-empty Data Services profile for actual startup/login/API read-only verification. No real Amazon/paid calls or synthetic fixtures will be presented as business acceptance. A retained runnable local handoff follows successful prerequisites; old instance data remains untouched.
 
 ## Independent review checkpoint
+
+R1: `/root/native_auth_review` independently read the actual design and affected
+consumers at the design SHA above, with no design BLOCKER. The superseded
+mandatory local-status requirement is NOT_APPLICABLE to the user's current phase.
+Cancellation/deadline checking outside the optional status branch is
+IMPLEMENTATION_TEST and must pass before merge/trial; no design reopening needed.
+This admission does not claim implementation, runtime or user acceptance PASS.
 
 Review only this actual authorization boundary and affected sibling consumers against the approved product decision, unchanged Must and current diff. Classify findings before changes; a real wrong-authorization/core-happy-path defect is BLOCKER, hypothetical local suspension functionality is out of this phase. Maximum two normal architecture review rounds; no new governance/validation platform. Record independent reviewed design SHA and explicit IMPLEMENTATION_READY before production auth edits.
