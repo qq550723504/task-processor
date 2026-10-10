@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/agent"
 	"task-processor/internal/agentconfig"
 	"task-processor/internal/authidentity"
+	"task-processor/internal/authz"
 	"task-processor/internal/httproute"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/product/asset"
@@ -58,6 +59,84 @@ func TestFullImageHTTPBindsActualRequestCredentialAndRejectsInvalidSessions(t *t
 			require.Equal(t, test.status, response.Code, response.Body.String())
 			require.Equal(t, test.calls, source.calls)
 		})
+	}
+}
+
+func TestFullImageReadOnlyGrantCanReadRequirementsButCannotMutate(t *testing.T) {
+	const sourceID = "d1abe8da-b381-4924-8d15-d79bdbfacf70"
+	for _, base := range []string{
+		"/api/v1/workbench/sourcing/1688/acquisitions/" + sourceID + "/images/",
+		"/api/v1/workbench/supply-preparations/sources/" + sourceID + "/images/",
+	} {
+		t.Run(base, func(t *testing.T) {
+			source := &imageSetRequestCapabilitySource{}
+			service, err := imageagent.NewService(imageSetHTTPRepository{}, imageSetHTTPWorkflow{}, closedImageSetCatalog{}, imageagent.WithOrganizationScope())
+			require.NoError(t, err)
+			module := fullImageModule{application: &fullImageApplication{service: service, readSources: source}, bind: (productReviewCapabilityBinder{now: time.Now}).Bind}
+			events := []string{}
+			server := buildIsolatedApplicationHTTPServer(module.routes(), routeAuthDependencies{
+				workbenchVerifier:    mountedVerifierStub{identity: authidentity.AuthenticatedIdentity{UserID: "actor", EffectiveMemberID: "member", TokenExpiresAt: time.Now().Add(time.Hour)}},
+				organizationResolver: mountedOrganizationResolverStub{events: &events},
+				// Model a read-only permission grant at the existing policy boundary.
+				// The enterprise menu currently grants read and write together.
+				roleMiddleware: func(route httproute.Descriptor) gin.HandlerFunc {
+					return func(c *gin.Context) {
+						if route.Permission != authz.PermissionImageAgentRead {
+							c.AbortWithStatus(http.StatusForbidden)
+							return
+						}
+						c.Next()
+					}
+				},
+			}, 30*time.Second)
+			call := func(method, suffix string) *httptest.ResponseRecorder {
+				r := httptest.NewRequest(method, base+suffix, strings.NewReader(`{"target":{"Platform":"product"},"effectiveCatalogVersion":"1"}`))
+				if method == http.MethodGet {
+					r.Body = http.NoBody
+					r.ContentLength = 0
+				}
+				r.Header.Set("Authorization", "Bearer controlled-request-token")
+				r.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				server.Handler.ServeHTTP(w, r)
+				return w
+			}
+			w := call(http.MethodGet, "sources")
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			w = call(http.MethodPost, "requirements")
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			require.Equal(t, 2, source.calls)
+			for _, suffix := range []string{"prepare", "runs/30d26689-30b6-4358-b0f5-c310d7ab2e58/confirm", "runs/30d26689-30b6-4358-b0f5-c310d7ab2e58/regenerate", "runs/30d26689-30b6-4358-b0f5-c310d7ab2e58/restart", "runs/30d26689-30b6-4358-b0f5-c310d7ab2e58/preview", "runs/30d26689-30b6-4358-b0f5-c310d7ab2e58/approve", "runs/30d26689-30b6-4358-b0f5-c310d7ab2e58/cancel", "runs/30d26689-30b6-4358-b0f5-c310d7ab2e58/recover", "runs/30d26689-30b6-4358-b0f5-c310d7ab2e58/resume"} {
+				w = call(http.MethodPost, suffix)
+				require.Equal(t, http.StatusForbidden, w.Code, suffix)
+				require.Equal(t, 2, source.calls, suffix)
+			}
+			require.Len(t, events, 11)
+		})
+	}
+}
+
+func TestFullImageRequirementsReadPermissionIsRequiredByAdmission(t *testing.T) {
+	routes := []httproute.Descriptor{}
+	for _, route := range currentWorkbenchApplicationRoutes {
+		routes = append(routes, httproute.Descriptor{Method: route.Method, Path: route.Path})
+	}
+	full := fullImageModule{}.routes()
+	for _, route := range full {
+		if route.Method == http.MethodPost && strings.HasSuffix(route.Path, "/requirements") {
+			require.Equal(t, authz.PermissionImageAgentRead, route.Permission)
+		}
+	}
+	routes = append(routes, full...)
+	require.NoError(t, validateCurrentApplicationRoutesInternal(routes, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{FullImageSet: true}))
+	for i := range full {
+		changed := append([]httproute.Descriptor(nil), routes...)
+		if full[i].Permission == authz.PermissionImageAgentRead {
+			changed[len(currentWorkbenchApplicationRoutes)+i].Permission = authz.PermissionImageAgentWrite
+		} else {
+			changed[len(currentWorkbenchApplicationRoutes)+i].Permission = authz.PermissionImageAgentRead
+		}
+		require.Error(t, validateCurrentApplicationRoutesInternal(changed, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{FullImageSet: true}), full[i].Path)
 	}
 }
 

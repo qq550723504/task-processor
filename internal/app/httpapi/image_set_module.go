@@ -115,7 +115,7 @@ func (m fullImageModule) routes() []httproute.Descriptor {
 		} {
 			owner, action := owner, action
 			permission := authz.PermissionImageAgentWrite
-			if action.method == http.MethodGet {
+			if action.method == http.MethodGet || action.name == "requirements" {
 				permission = authz.PermissionImageAgentRead
 			}
 			routes = append(routes, httproute.Descriptor{Method: action.method, Path: owner.base + action.suffix, Module: m.Name(), Permission: permission, AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: 30 * time.Second, Handler: func(c *gin.Context) { m.handle(c, owner.kind, c.Param(owner.param), action.name) }})

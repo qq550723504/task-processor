@@ -562,6 +562,12 @@ set -euo pipefail
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Bash SECONDS has whole-second precision; parallel Python/jq fixtures
+	// must have time to reach an availability observation before the deadline.
+	timeoutSeconds := "5"
+	if scenario.staleAvailableGeneration {
+		timeoutSeconds = "1"
+	}
 	command := exec.Command(preflightBash(t), filepath.ToSlash(script),
 		"--namespace", "task-processor",
 		"--manifest", filepath.ToSlash(manifestPath),
@@ -569,7 +575,7 @@ set -euo pipefail
 		"--image", releaseGateTestImage,
 		"--run-id", scenario.runID,
 		"--run-attempt", scenario.runAttempt,
-		"--timeout-seconds", "1")
+		"--timeout-seconds", timeoutSeconds)
 	command.Env = append(os.Environ(),
 		"PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"FAKE_KUBECTL_LOG="+logPath,

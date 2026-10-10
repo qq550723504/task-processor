@@ -1286,7 +1286,8 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			if !optional.FullImageSet {
 				return errors.New("full image application not admitted")
 			}
-			if descriptor.Module != "product-image-set" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.RequestTimeout != 30*time.Second || descriptor.Permission != map[bool]string{true: authz.PermissionImageAgentRead, false: authz.PermissionImageAgentWrite}[descriptor.Method == http.MethodGet] {
+			readPermission := descriptor.Method == http.MethodGet || descriptor.Method == http.MethodPost && (descriptor.Path == acquisitionImageSetBase+"/requirements" || descriptor.Path == supplyImageSetBase+"/requirements")
+			if descriptor.Module != "product-image-set" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.RequestTimeout != 30*time.Second || descriptor.Permission != map[bool]string{true: authz.PermissionImageAgentRead, false: authz.PermissionImageAgentWrite}[readPermission] {
 				return errors.New("full image route loses live permission boundary")
 			}
 		}
