@@ -104,6 +104,8 @@ source kind、publication 和 operation；未定制 SDS 模板须先生成并核
 首次发送前的临时读取失败仅在原 Kernel 确认 OSS attempt 不存在时，在同一
 固定工作流内等待重查，最长15分钟。已有 attempt 或读取结果不明确时不重试。
 前置等待超时/工作流关闭后显示 UNKNOWN，保留原操作和 fence，不新建工作流。
+固定工作流总超时35分钟，覆盖前置重查和完整核实窗口；单项activity的排队时间
+计入其3分钟/30秒上限，不扩大任何已发送操作的重试权限。
 
 平台专员通过 `/workbench/supply/operator` 及原申请 UUID 详情执行人工评估、发布。
 该入口独立使用现有 server session 身份，后台每次核对 verified global platform

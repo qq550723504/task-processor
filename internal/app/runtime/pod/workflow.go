@@ -27,7 +27,7 @@ func DesignWorkflow(ctx workflow.Context, in podapp.Execution) error {
 	if in.Scope.Validate() != nil || !collection.ValidID(in.OperationID) {
 		return temporal.NewNonRetryableApplicationError("invalid POD identity", "invalid", nil)
 	}
-	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{StartToCloseTimeout: 3 * time.Minute, RetryPolicy: &temporal.RetryPolicy{MaximumAttempts: 1}})
+	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{StartToCloseTimeout: 3 * time.Minute, ScheduleToCloseTimeout: 3 * time.Minute, RetryPolicy: &temporal.RetryPolicy{MaximumAttempts: 1}})
 	var result podapp.ExecutionResult
 	preSendDeadline := workflow.Now(ctx).Add(15 * time.Minute)
 	for {
@@ -53,7 +53,7 @@ func DesignWorkflow(ctx workflow.Context, in podapp.Execution) error {
 	if result.Done || result.Unknown {
 		return nil
 	}
-	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{StartToCloseTimeout: 30 * time.Second, RetryPolicy: &temporal.RetryPolicy{MaximumAttempts: 1}})
+	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{StartToCloseTimeout: 30 * time.Second, ScheduleToCloseTimeout: 30 * time.Second, RetryPolicy: &temporal.RetryPolicy{MaximumAttempts: 1}})
 	deadline := workflow.Now(ctx).Add(15 * time.Minute)
 	for workflow.Now(ctx).Before(deadline) {
 		if e := workflow.Sleep(ctx, 5*time.Second); e != nil {
@@ -91,7 +91,9 @@ func (s TemporalStarter) Ensure(ctx context.Context, in podapp.Execution) error 
 	if !errors.As(e, &missing) {
 		return pod.ErrUnknown
 	}
-	_, e = s.Client.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: id, TaskQueue: TaskQueue, WorkflowExecutionTimeout: 30 * time.Minute, WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING, WorkflowIDReusePolicy: enums.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE}, WorkflowName, in)
+	// Cover 15m pre-send + its final 3m activity + 15m observation + the final
+	// 30s observe activity, with headroom. ScheduleToClose includes queue time.
+	_, e = s.Client.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: id, TaskQueue: TaskQueue, WorkflowExecutionTimeout: 35 * time.Minute, WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING, WorkflowIDReusePolicy: enums.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE}, WorkflowName, in)
 	var exists *serviceerror.WorkflowExecutionAlreadyStarted
 	if e != nil && !errors.As(e, &exists) {
 		return pod.ErrUnknown

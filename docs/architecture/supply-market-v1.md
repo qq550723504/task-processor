@@ -452,6 +452,8 @@ tokenless窄执行入口，不能传递已清空组织scope的平台HTTP context
   凭据、模板和图案。不能把已有attempt、读取UNKNOWN、OSS后续步骤或缺失回执归入未发送。
   超过前置预算使原workflow失败，查询显示UNKNOWN而非无限QUEUED，原事实和fence保留；
   不替换或重跑已关闭workflow。后续只读Observe按15分钟wall-clock预算结束，UNKNOWN保留事实和锁。
+  每项activity的ScheduleToClose把排队也计入上限；原workflow总超时35分钟覆盖前置15分钟、
+  最后一项Process最多3分钟、核实15分钟及最后Observe最多30秒，不在允许窗口内提前中断核实。
   已完成workflow不重跑；原操作无OSS attempt时，原成员查询可Ensure原ID，补齐SQL提交后
   workflow未启动的缺口；任何已有attempt均不得据此重新发送。
 - Console使用既有私有BFF、scope切换保护和原操作pending记录；SDS pages为
