@@ -53,6 +53,8 @@ pnpm.cmd exec next start --hostname 127.0.0.1 --port 3000
 
 不需要新增 worker 命令：current-application 装配完整 Set 专用 worker，监听成功后启动，停止服务时先停 worker，再关闭原 DB/Temporal 连接。同一 organization task queue 只能由本完整装配的 worker 消费；不要再启动旧单图独立 worker。Docker 部署需把 workerConfigFile 指向的私有文件只读挂载到 current-application；不把 storage credential 放入浏览器或仓库。
 
+受控试用的同站点 MinIO 公开图片路由只转发精确对象 key 的 GET/HEAD，并移除发往存储的 Cookie 与 Authorization。这样浏览器登录 Cookie 不会作为存储请求元数据导致 `MetadataTooLarge`，也不会把登录凭据传给公开对象服务。目录拒绝、bucket 政策和正常 TLS 校验保持；默认应用与身份路由不应用此 middleware。
+
 ## 刷新、核实与保留
 
 页面在发送前保存当前企业/身份/商品作用域下的原命令。刷新后只读同一 Run、原准备键或原不可变批准回执。准备/批准 ACK 未明时不会因为当前库存变化而推断成功。已准入但 Temporal Start ACK 丢失时，显式“继续原确认”使用相同确认动作与 workflow ID。未知 provider 结果只核实原 effect，不重新 POST。未找到不能视为未执行证明。
