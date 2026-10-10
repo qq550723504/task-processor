@@ -290,6 +290,7 @@ function toPosition(p:OfficialPosition):NonNullable<ImageSetChoice["official_pla
 function fromPosition(p:NonNullable<ImageSetChoice["official_placement"]>):OfficialPosition{return {Group:p.group,SKC:p.skc,SKU:p.sku,Type:p.type,Sort:p.sort,Site:p.site}}
 function currentGeneratedPosition(value:OfficialPosition|undefined,requirements:ImageSetRequirements|undefined){
  if(!value||!requirements||value.Site!==requirements.site||!Number.isInteger(value.Sort)||value.Sort<1||value.Sort>100)return false;
+ if((value.Type===1||value.Group==="sku")&&value.Sort!==1)return false;
  return requirements.groups.some(group=>group.group===value.Group&&group.skc===value.SKC&&group.sku===value.SKU&&group.types.some(type=>type.type===value.Type&&type.maximum>0&&type.nativeCompatible));
 }
 function currentGeneratedPositions(values:(OfficialPosition|undefined)[],requirements:ImageSetRequirements|undefined){
