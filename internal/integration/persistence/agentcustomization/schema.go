@@ -68,7 +68,7 @@ func GrantRuntime(ctx context.Context, db *sql.DB, role string) error {
 	}
 	defer tx.Rollback()
 	var unsafe bool
-	e = tx.QueryRowContext(ctx, "SELECT rolsuper OR rolcreaterole OR rolbypassrls OR pg_has_role(oid,'agent_customization_owner','MEMBER') FROM pg_roles WHERE rolname=$1", role).Scan(&unsafe)
+	e = tx.QueryRowContext(ctx, "SELECT rolsuper OR rolcreatedb OR rolcreaterole OR rolbypassrls OR pg_has_role(oid,'agent_customization_owner','MEMBER') FROM pg_roles WHERE rolname=$1", role).Scan(&unsafe)
 	if e != nil {
 		return e
 	}

@@ -181,3 +181,31 @@ func TestGrantRejectsInheritedRequestIdentityMutation(t *testing.T) {
 	require.NoError(t, err)
 	require.ErrorIs(t, GrantRuntime(ctx, db, role), d.ErrInvalid)
 }
+
+func TestGrantRejectsCreatedDBServingRoleWithoutGrantingPrivileges(t *testing.T) {
+	db, _ := fixture(t)
+	ctx := context.Background()
+	role := "grant611_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	_, err := db.Exec("CREATE ROLE " + role + " NOLOGIN CREATEDB")
+	require.NoError(t, err)
+	defer func() { db.Exec("DROP OWNED BY " + role); db.Exec("DROP ROLE " + role) }()
+	db.SetMaxOpenConns(1)
+	_, err = db.Exec("SET ROLE " + role)
+	require.NoError(t, err)
+	defer db.Exec("RESET ROLE")
+	require.ErrorIs(t, VerifySchema(ctx, db), d.ErrUnavailable)
+	_, err = db.Exec("RESET ROLE")
+	require.NoError(t, err)
+
+	require.ErrorIs(t, GrantRuntime(ctx, db, role), d.ErrInvalid)
+	var granted bool
+	require.NoError(t, db.QueryRow("SELECT has_schema_privilege($1,'agent_customization','USAGE') OR has_table_privilege($1,'agent_customization.requests','SELECT,INSERT')", role).Scan(&granted))
+	require.False(t, granted, "rejected role must not retain runtime grants")
+
+	_, err = db.Exec("ALTER ROLE " + role + " NOCREATEDB")
+	require.NoError(t, err)
+	require.NoError(t, GrantRuntime(ctx, db, role))
+	_, err = db.Exec("SET ROLE " + role)
+	require.NoError(t, err)
+	require.NoError(t, VerifySchema(ctx, db), "corrected restricted role can serve")
+}
