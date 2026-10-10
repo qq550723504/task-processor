@@ -329,6 +329,84 @@ func TestPostgresJobQuotaFencingPublicationAndOriginalChargeProof(t *testing.T) 
 		require.NoError(t, db.Raw("SELECT sum(reserved_rows) FROM data_service_quota WHERE key_id=? AND window_start<date_trunc(window_kind,now() AT TIME ZONE 'UTC')::date", k.ID).Scan(&remaining).Error)
 		require.Zero(t, remaining)
 	})
+	t.Run("cancellation commands bind one target atomically", func(t *testing.T) {
+		access.denied = false
+		for _, concurrent := range []bool{false, true} {
+			t.Run(map[bool]string{false: "sequential", true: "concurrent"}[concurrent], func(t *testing.T) {
+				s := collection.Scope{OrganizationID: "cancel-" + uuid.NewString(), ActorID: "creator", MemberID: "original-grant"}
+				k := key
+				k.ID, k.Scope = uuid.NewString(), s
+				k.Input.DailyRows, k.Input.MonthlyCostFen = 3, 15
+				_, _, err := keys.Create(ctx, k, uuid.NewString(), collection.Digest(k.Input))
+				require.NoError(t, err)
+				p := dataacquisition.Principal{Scope: s, CredentialID: k.ID, CredentialRevision: 1}
+				jobs := make([]dataacquisition.Job, 2)
+				for index := range jobs {
+					jobs[index], err = repo.Admit(ctx, p, uuid.NewString(), changed, orgresource.FundingEnterprise)
+					require.NoError(t, err)
+					jobs[index], err = repo.Discover(ctx, jobs[index], []string{"B000123456"})
+					require.NoError(t, err)
+				}
+				command := uuid.NewString()
+				outcomes := make([]error, 2)
+				if concurrent {
+					var wg sync.WaitGroup
+					start := make(chan struct{})
+					for index := range jobs {
+						wg.Add(1)
+						go func(index int) {
+							defer wg.Done()
+							<-start
+							_, outcomes[index] = repo.Cancel(ctx, s, jobs[index].ID, command)
+						}(index)
+					}
+					close(start)
+					wg.Wait()
+				} else {
+					_, outcomes[0] = repo.Cancel(ctx, s, jobs[0].ID, command)
+					_, outcomes[1] = repo.Cancel(ctx, s, jobs[1].ID, command)
+				}
+				winner := 0
+				if outcomes[0] != nil {
+					winner = 1
+				}
+				require.NoError(t, outcomes[winner])
+				require.ErrorIs(t, outcomes[1-winner], dataacquisition.ErrConflict, "one cancellation command cannot fence another job")
+				loser, err := repo.Read(ctx, s, jobs[1-winner].ID)
+				require.NoError(t, err)
+				require.Equal(t, "RUNNING", loser.State)
+				items, err := repo.Items(ctx, loser)
+				require.NoError(t, err)
+				require.Len(t, items, 1)
+				require.Equal(t, "DISCOVERED", items[0].State)
+				quotas, err := repo.KeyQuotas(ctx, s)
+				require.NoError(t, err)
+				require.Len(t, quotas, 1)
+				require.Equal(t, int64(1), quotas[0].DayReservedRows)
+				require.Equal(t, int64(5), quotas[0].MonthReservedFen)
+				pool.SetMaxOpenConns(1)
+				t.Cleanup(func() { pool.SetMaxOpenConns(0) })
+				restarted, err := NewRepository(ctx, db, access, publish, newTestResultReader)
+				require.NoError(t, err)
+				replayed, err := restarted.Cancel(ctx, s, jobs[winner].ID, command)
+				require.NoError(t, err)
+				require.Equal(t, "CANCELED", replayed.State)
+				failedCommand := uuid.NewString()
+				_, err = restarted.Cancel(ctx, s, uuid.NewString(), failedCommand)
+				require.ErrorIs(t, err, dataacquisition.ErrNotFound)
+				var count int64
+				require.NoError(t, db.Raw("SELECT count(*) FROM data_service_commands WHERE organization_id=? AND actor_id=? AND command_key=?", s.OrganizationID, s.ActorID, failedCommand).Scan(&count).Error)
+				require.Zero(t, count)
+				_, err = restarted.Cancel(ctx, s, loser.ID, failedCommand)
+				require.NoError(t, err, "a rejected command must remain unbound")
+				quotas, err = repo.KeyQuotas(ctx, s)
+				require.NoError(t, err)
+				require.Zero(t, quotas[0].DayReservedRows)
+				require.Zero(t, quotas[0].MonthReservedFen)
+				pool.SetMaxOpenConns(0)
+			})
+		}
+	})
 	t.Run("result read guard orders credential changes and releases failed reads", func(t *testing.T) {
 		access.denied = false
 		newKey := func() dataservice.Credential {

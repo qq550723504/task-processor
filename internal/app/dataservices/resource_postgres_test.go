@@ -41,6 +41,7 @@ type executionFixture struct {
 	startErr        error
 	starts          int
 	credentialCheck func(context.Context, collection.Scope, string) error
+	enabledSites    []dataacquisition.Site
 }
 
 func (f *executionFixture) Check(ctx context.Context, scope collection.Scope, permission string) error {
@@ -73,8 +74,13 @@ func (f *executionFixture) EnsureExecution(context.Context, dataacquisition.Job)
 func (f *executionFixture) Funding(context.Context, collection.Scope) (orgresource.ResourceFunding, error) {
 	return orgresource.FundingEnterprise, nil
 }
-func (f *executionFixture) Ready(context.Context) error   { return nil }
-func (f *executionFixture) Sites() []dataacquisition.Site { return dataacquisition.Sites() }
+func (f *executionFixture) Ready(context.Context) error { return nil }
+func (f *executionFixture) Sites() []dataacquisition.Site {
+	if f.enabledSites != nil {
+		return append([]dataacquisition.Site{}, f.enabledSites...)
+	}
+	return dataacquisition.Sites()
+}
 func (f *executionFixture) Discover(_ context.Context, q dataacquisition.Query) ([]string, error) {
 	return q.ASINs, nil
 }
@@ -265,6 +271,43 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &created))
 		require.Len(t, created.Secret, 43)
 		keyHeader := "DataKey " + created.Key.ID + "." + created.Secret
+		t.Run("unopened sites have no admission effects", func(t *testing.T) {
+			t.Cleanup(func() { fixture.enabledSites = nil })
+			for _, route := range []struct{ path, header string }{{ConsoleBase + "/amazon/jobs", ""}, {APIBase, keyHeader}} {
+				for _, sites := range [][]dataacquisition.Site{dataacquisition.Sites()[:1], {}} {
+					t.Run(route.path+"/enabled-"+strconv.Itoa(len(sites)), func(t *testing.T) {
+						fixture.enabledSites = sites
+						command := uuid.NewString()
+						starts := fixture.starts
+						w := send("POST", route.path, `{"query":{"site":"br","mode":"asin","asins":["B000123456"],"limit":1},"maximumRows":1,"maximumCostFen":5}`, route.header, command)
+						require.Equal(t, 400, w.Code, "unopened site must be rejected before durable admission")
+						require.Contains(t, w.Body.String(), "DATA_INVALID")
+						require.Equal(t, starts, fixture.starts)
+						var count, reserved int64
+						require.NoError(t, productDB.Raw("SELECT count(*) FROM data_acquisition_jobs WHERE organization_id=? AND actor_id=? AND command_key=?", scope.OrganizationID, scope.ActorID, command).Scan(&count).Error)
+						require.Zero(t, count)
+						require.NoError(t, productDB.Raw("SELECT COALESCE(sum(reserved_rows),0) FROM data_service_quota WHERE key_id=?", created.Key.ID).Scan(&reserved).Error)
+						require.Zero(t, reserved)
+						fixture.enabledSites = dataacquisition.Sites()[:1]
+						w = send("POST", route.path, `{"query":{"site":"us","mode":"asin","asins":["B000123456"],"limit":1},"maximumRows":1,"maximumCostFen":5}`, route.header, command)
+						require.Equal(t, http.StatusAccepted, w.Code, "rejection must not bind the unused command")
+						var admitted dataacquisition.Job
+						require.NoError(t, json.Unmarshal(w.Body.Bytes(), &admitted))
+						_, err := repo.Cancel(ctx, scope, admitted.ID, uuid.NewString())
+						require.NoError(t, err)
+					})
+				}
+			}
+			fixture.enabledSites = dataacquisition.Sites()[:1]
+			w := send("GET", ConsoleBase+"/options", "", "", "")
+			require.Equal(t, 200, w.Code)
+			var options struct{ Sites, CustomSites []dataacquisition.Site }
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &options))
+			require.Len(t, options.Sites, 1)
+			require.Len(t, options.CustomSites, 14)
+			w = send("POST", ConsoleBase+"/custom", `{"name":"unopened real-time site","query":{"site":"br","mode":"asin","asins":["B000123456"],"limit":1},"purpose":"offline confirmation","format":"json"}`, "", uuid.NewString())
+			require.Equal(t, 200, w.Code, "customization may still request any product site for offline confirmation")
+		})
 		jobCommand := uuid.NewString()
 		w = send("POST", APIBase, `{"query":{"site":"us","mode":"asin","asins":["B000123456"],"limit":1},"maximumRows":1,"maximumCostFen":5}`, keyHeader, jobCommand)
 		require.Equal(t, http.StatusAccepted, w.Code)

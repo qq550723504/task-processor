@@ -83,6 +83,8 @@ DataService 的凭据、需求、job/item 与 quota reservations 放在当前 Pr
 
 首版站点表消费现有有效 region/domain 行为：us、uk、de、fr、it、es、ca、jp、au、mx、br、in、ae、sa；只有实际启用的 provider/站点进入可选列表。未知站点、与 URL 不一致的站点、空站点全部拒绝，绝不默认美国。
 
+启用站点准入（2026-10-10，原 Must 的实现补齐）：HTTP Provider 消费已有 `Sites()` 合同，Console/DataKey 共用创建路径在 admission、quota 与 starter 前按实际 provider 列表核验 query.site。仅全局合法不代表本部署已开放；空列表或未启用站点返回 INVALID，不保存 job 或占额度。定制沿完整14站点供线下确认，不从实时 provider 开放范围推导其限制。
+
 请求为强类型 `Query{site, mode, keyword?, categoryNode?, asins?, limit, fields}`。mode 明确为 ASIN / keyword / category；关键词允许与类目过滤组合。类目为站点原生数字 browse node，由固定说明输入，不声称有完整分类目录。ASIN 为去重的 10 位大写字母数字；允许固定 Amazon HTTPS 商品链接经 canonicalization 得到 ASIN，不接受 URL 作为 provider 目的地。keyword最多200字符、node最多20位、ASIN最多200个、requested limit为1–200、fields最多32个已批准字段。拒绝 unknown字段/重复JSON keys/超大数字。
 
 Search URL仅由adapter按固定site与URL编码构造，限定 `/s` 与受控page/node/query；product路径固定 `/dp/{asin}`。最多10个发现页，最多200个去重ASIN，达到请求数量停止；不从广告、recommended、第三方URL或详情变体继续无限遍历。空结果可成功结束但不消费任何DATA_ROW。原查询及发现集合在任何商品Fetch前持久化，重启不改用新搜索结果补齐旧请求。
@@ -126,6 +128,10 @@ job admission在单一Product事务锁key→quota day/month→job，原key/hash�
 发现集合写入同事务后，为每item派生稳定operation ID/command hash；未使用的requested quota释放。每商品在Fetch前将1 DATA_ROW intent（原scope/member/funding/rowID/queryhash/source/5分价格）持久化，调用Resource reserve，再在Product记录准确reservation；未确认reservation不Fetch。admin使用enterprise-unallocated，成员使用member-allocated，消费既有规则；funding选择冻结，权限降低不能重选资金来源。
 
 所有写命令采用统一锁顺序 key→quota（day/month）→job→item，取消、撤销、改限额及发布不能逆序。成功item的一个Product UoW：按该顺序锁定fence与限制→重新核对scope/未取消→current SRC publication、Catalog bridge、Collection append同事务→exact publication receipt→item `SAVED` 与可验证成功proof。任一步失败回滚；不得先签发success再append Collection。此UoW是唯一成功来源，Collection只保存refs。提交未知不重新Fetch/重新发布另一key，核实原item/publication/collection receipt。
+
+取消幂等准入（2026-10-10，原 Must 的实现补齐）：原 Data Services command receipt owner 提供窄 `ApplyCancellationCommand(tx, verified scope, command, target, apply)`，仅接受真实 Product 事务。沿已有 actor advisory lock→key→quota→job→item；member/action/hash/target 绑定原命令，同目标重放不再执行，不同目标冲突且不得 fence 或释放另一任务额度。首次 apply 原取消与 receipt 写入同一事务，失败一起回滚、不绑定失败命令。DataAcquisition 私有 `withJobCommand` 只给取消加入此 receipt 分支，不增加公共领域合同、schema、owner 或通用命令框架；callback 保持原事务连接，支持单连接 pool。仅 apply 与 receipt 全部成功后标记已完成，COMMIT 或提交后回读未知仍返回原 UNKNOWN、保持原命令恢复。
+
+原独立 Reviewer `/root/architecture_review` 已在生产修改前确认两项为 IMPLEMENTATION_TEST、以上窄补齐可实施、冻结 IMPLEMENTATION_READY 维持；只复核实际增量。实际 RED：Console/DataKey×仅US/空配置的br请求均202而非400；顺序及并发同取消命令作用A/B，第二次均成功而非Conflict。设计准入不等于实现验证通过。
 
 Resource `Reconcile`消费immutable terminal proof，将原reservation committed/released。已保存但结算未知展示 `SAVED / CHARGE_PENDING`，不称余额扣减完成；UI/API实际费用只计已commit owner receipts，pending金额单列且继续占quota。成功quota转consumed与终结proof在同一Product事务，Resource COMMIT未知时保留原reservation，不释放或再reserve。后台沿既有RecoverDue只核实相同owner，不新增第二reconciler。
 
