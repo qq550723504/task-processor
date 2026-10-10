@@ -101,6 +101,8 @@ Console 创建/编辑/禁用/撤销密钥需当前 LiveWrite、本人data-api.ma
 
 状态 `ACTIVE → DISABLED → ACTIVE` 与 `ACTIVE/DISABLED → REVOKED`，revoked终态。更新受expected revision与原command key/hash约束；轮换为创建新key、用户显式撤销旧key，不偷偷重置原 key ID。digest不可重新绑定scope。
 
+此处scope指原企业、创建者及canonical grant身份绑定。原创建者可以用明确的新命令编辑限定能力及限制，仍须满足当前管理权限和逐项能力授权；能力编辑不改变digest或原身份归属，DataKey本身不能授权Console编辑。
+
 API 使用专属 `Authorization: DataKey <public-id>.<secret>`，HTTPS、no-store；不接受Cookie、query token或客户端org/actor header。先校验key状态/expiry/可选IP CIDR，再通过已有 `ReadExactServiceProjectAuthorization` 准确读取当前subject+project+org、member ID、active grant和native RoleModules。另用ZITADEL官方GetUserByID确认主体active；企业deny-only suspension overlay沿原owner。服务凭据仅server-side，不储存/refresh用户bearer token。依赖故障fail closed，grant重新创建为新member ID也不能使旧key复活。
 
 所有API读取、新job、每个Fetch前及发布前均实时核对原grant和当前permission。worker冻结原actor/member，绝不使用专员或runtime service user充当商品owner。key的禁用/撤销在ProductDB锁定相同key row，与job admission和publication guard排序；撤销完成后不能创建新item/publication，已保存结果只由正常Console本人读取，原key无权读回。
