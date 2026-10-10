@@ -49,6 +49,8 @@ type Config struct {
 	ProductAcquisitionDatabase *DatabaseConfig                           `json:"productAcquisitionDatabase,omitempty"`
 	ProductCollections         bool                                      `json:"productCollections,omitempty"`
 	SupplyChain                *SupplyChainConfig                        `json:"supplyChain,omitempty"`
+	SupplyMarket               *SupplyMarketConfig                       `json:"supplyMarket,omitempty"`
+	POD                        *PODConfig                                `json:"pod,omitempty"`
 	SourceMedia                *coreconfig.ImageAgentArtifactStoreConfig `json:"sourceMedia,omitempty"`
 	ImageAgent                 *ImageAgentConfig                         `json:"imageAgent,omitempty"`
 	ProductAgent               *ProductAgentConfig                       `json:"productAgent,omitempty"`
@@ -291,6 +293,9 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 func (cfg *Config) validate() error {
 	if cfg == nil || cfg.SchemaVersion != manifestSchemaVersion {
 		return fmt.Errorf("unsupported current application manifest schema version")
+	}
+	if err := cfg.validateSupplyMarket(); err != nil {
+		return err
 	}
 	if err := cfg.validateProjectCenter(); err != nil {
 		return err

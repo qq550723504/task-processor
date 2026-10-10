@@ -13,7 +13,7 @@ import {listOwnProducts} from "@/lib/api/product-collection";
 import {listMarketRecords,readMarketChoice,type MarketScope} from "@/lib/api/supply-market";
 import {MarketBoundary,MarketLinks,MarketReadError,CursorButtons,marketStages,useMarketCommands} from "./shared";
 import {Qualifications} from "./qualifications";
-export function SupplyApplicationsPage({admin=false}:{admin?:boolean}){return <MarketBoundary admin={admin}>{scope=><Applications scope={scope} admin={admin}/>}</MarketBoundary>}
+export function SupplyApplicationsPage({admin=false,expectedUserId}:{admin?:boolean;expectedUserId?:string}){return <MarketBoundary admin={admin} expectedUserId={expectedUserId}>{scope=><Applications scope={scope} admin={admin}/>}</MarketBoundary>}
 function Applications({scope,admin}:{scope:MarketScope;admin:boolean}){
  const [ended,setEnded]=useState(false),[kind,setKind]=useState<"selected"|"official"|"connection">("selected"),[after,setAfter]=useState<string>();
  const q=useQuery({queryKey:["supply-market",scope.userId,scope.organizationId,"records",admin,kind,ended,after],queryFn:({signal})=>listMarketRecords(scope,{kind,ended,after},admin,signal),retry:false});

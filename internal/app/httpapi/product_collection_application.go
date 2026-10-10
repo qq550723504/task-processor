@@ -23,10 +23,14 @@ func buildProductCollectionService(ctx context.Context, db *gorm.DB, dependencie
 	if dependencies.organizationResolver == nil || permissions == nil {
 		return nil, collection.ErrUnavailable
 	}
-	if len(supply) > 1 {
+	if len(supply) > 3 {
 		return nil, collection.ErrUnavailable
 	}
-	if err := acquisitionstore.VerifyRuntimePermissions(ctx, db, acquisitionstore.RuntimeCapabilities{Collections: true, SupplyChain: len(supply) == 1 && supply[0]}); err != nil {
+	capability, _, err := collectionAcquisitionOptions(append([]bool{true}, supply...))
+	if err != nil {
+		return nil, err
+	}
+	if err := acquisitionstore.VerifyRuntimePermissions(ctx, db, capability); err != nil {
 		return nil, err
 	}
 	live := &productReviewLiveOrganizationAccess{resolver: dependencies.organizationResolver, now: time.Now}

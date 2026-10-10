@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	podhttp "task-processor/internal/app/pod/httpapi"
 	supplyhttp "task-processor/internal/app/supplychain/httpapi"
 	billinghttp "task-processor/internal/commercial/billing/httpapi"
+	markethttp "task-processor/internal/product/supplymarket/httpapi"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -155,6 +157,10 @@ type currentApplicationOptions struct {
 	productCollections           int
 	supplyChains                 int
 	supplyChain                  *SupplyChainDependencies
+	supplyMarkets                int
+	supplyMarket                 *SupplyMarketDependencies
+	pods                         int
+	pod                          *PODDependencies
 	imageAgents                  int
 	memberships                  int
 	browserCaptures              int
@@ -345,6 +351,12 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, errors.New("Store observations require current Store, official registry, exact authorization and worker lifecycle")
 	}
 	storeCapabilities := storecenter.RuntimeCapabilities{Observations: supplied.storeObservations == 1}
+	if supplied.supplyMarkets > 1 || supplied.supplyMarkets == 1 && (supplied.supplyMarket == nil || supplied.supplyMarket.Storage == nil || supplied.productCollections != 1 || supplied.productAcquisitionDB == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "") {
+		return nil, errors.New("supply market requires current Product, collections, private storage and live authorization")
+	}
+	if supplied.pods > 1 || supplied.pods == 1 && (supplied.supplyMarkets != 1 || supplied.pod == nil || supplied.pod.AssetDB == nil || supplied.pod.Credentials == nil || supplied.pod.HTTP == nil || supplied.pod.Starter == nil || supplied.pod.NewWorker == nil || supplied.pod.Worker == nil) {
+		return nil, errors.New("POD requires explicit current market, canonical Asset, credentials and worker lifecycle")
+	}
 	if supplied.productCollections > 0 && supplied.productAcquisitionDB == nil {
 		return nil, errors.New("collections require their current Product owner pool")
 	}
@@ -462,7 +474,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 			if err != nil {
 				return nil, err
 			}
-			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges, supplied.productCollections > 0, supplied.supplyChains > 0)
+			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges, supplied.productCollections > 0, supplied.supplyChains > 0, supplied.supplyMarkets > 0, supplied.pods > 0)
 		}
 	}
 	if supplied.browserCaptures > 1 {
@@ -477,7 +489,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		browserDB := supplied.productAcquisitionDB
 		factories.buildBrowserCapture = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer, supplied.productCollections > 0, supplied.supplyChains > 0)
+			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer, supplied.productCollections > 0, supplied.supplyChains > 0, supplied.supplyMarkets > 0, supplied.pods > 0)
 		}
 	}
 	if supplied.imageAgents > 0 {
@@ -652,7 +664,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, acquisition)
 	}
 	if supplied.productCollections > 0 {
-		collections, err := buildProductCollectionModuleWithSourceMedia(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, cfg, supplied.supplyChains > 0, supplied.collectionSourceMedia)
+		collections, err := buildProductCollectionModuleWithSourceMedia(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, cfg, supplied.supplyChains > 0, supplied.collectionSourceMedia, supplied.supplyMarkets > 0, supplied.pods > 0)
 		if err != nil {
 			return nil, fmt.Errorf("build current product collections: %w", err)
 		}
@@ -677,6 +689,15 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, module)
 	}
 	var supplyRuntime *supplyChainModule
+	var marketRuntime *supplyMarketModule
+	if supplied.supplyMarket != nil {
+		module, e := buildSupplyMarketModule(ctx, supplied.productAcquisitionDB, *supplied.supplyMarket, supplied.pod, *workbench.authDependencies, authorizer, cfg, supplied.supplyChains > 0)
+		if e != nil {
+			return nil, fmt.Errorf("build current supply market: %w", e)
+		}
+		modules = append(modules, module)
+		marketRuntime = &module
+	}
 	if supplied.productAgent != nil {
 		agentConfig := *supplied.productAgent
 		agentConfig.Knowledge = supplied.knowledge
@@ -690,7 +711,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		productRuntime = agentModule.(productAgentModule).application
 	}
 	if supplied.supplyChain != nil {
-		module, e := buildSupplyChainModule(ctx, supplied.productAcquisitionDB, supplied.storeCenterDB, *supplied.supplyChain, *workbench.authDependencies, authorizer, supplied.officialStoreApplications, cfg, productRuntime, storeCapabilities)
+		module, e := buildSupplyChainModule(ctx, supplied.productAcquisitionDB, supplied.storeCenterDB, *supplied.supplyChain, *workbench.authDependencies, authorizer, supplied.officialStoreApplications, cfg, productRuntime, storeCapabilities, supplied.supplyMarkets > 0, supplied.pods > 0)
 		if e != nil {
 			return nil, fmt.Errorf("build current supply chain: %w", e)
 		}
@@ -835,6 +856,8 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		ToolMarket:          supplied.toolMarket != nil,
 		Ecoservices:         supplied.ecoservices != nil,
 		SupplyChain:         supplied.supplyChains > 0,
+		SupplyMarket:        supplied.supplyMarkets > 0,
+		POD:                 supplied.pods > 0,
 		Collections:         supplied.productCollections > 0,
 		NotificationCenter:  supplied.notifications > 0,
 		ZitadelSMS:          true,
@@ -865,6 +888,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	}
 	if supplyRuntime != nil {
 		*supplied.supplyChain.Worker = supplyRuntime.worker
+	}
+	if marketRuntime != nil && supplied.pod != nil {
+		*supplied.pod.Worker = marketRuntime.worker
 	}
 	if resourceRecovery != nil {
 		runtimeContext := supplied.runtimeContext
@@ -937,6 +963,8 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	SupplyMarket        bool
+	POD                 bool
 	ToolMarket          bool
 	Ecoservices         bool
 	SupplyChain         bool
@@ -960,6 +988,16 @@ type currentApplicationOptionalRoutes struct {
 
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if optional.SupplyMarket {
+		for _, r := range markethttp.Routes(nil, nil, nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
+	if optional.POD {
+		for _, r := range podhttp.Routes(nil, nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
 	if optional.ToolMarket {
 		for _, r := range tmhttp.Routes(nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
@@ -1130,6 +1168,15 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {
+		if marketPODRoute(descriptor.Path) {
+			isPOD := descriptor.Path == podhttp.BasePath || strings.HasPrefix(descriptor.Path, podhttp.BasePath+"/")
+			if isPOD && !optional.POD || !isPOD && !optional.SupplyMarket {
+				return errors.New("market/POD feature not admitted")
+			}
+			if err := validateMarketPODDescriptor(descriptor); err != nil {
+				return err
+			}
+		}
 		if descriptor.Path == tmhttp.Base || strings.HasPrefix(descriptor.Path, tmhttp.Base+"/") || descriptor.Path == tmhttp.AdminBase || strings.HasPrefix(descriptor.Path, tmhttp.AdminBase+"/") {
 			if !optional.ToolMarket {
 				return errors.New("tool market feature not admitted")

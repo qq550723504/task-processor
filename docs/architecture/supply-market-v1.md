@@ -479,3 +479,14 @@ PR候选8e32c6564的首次CI发现结构接线与未使用导出问题，已按�
 登记本设计的两个HTTP adapter和exact当前httpimage文件/API。沿用既有HTTP/current-leaf
 登记机制及否定测试；历史ceiling=8、全tracked/OS/build-tag扫描、depguard和必需CI策略不变。
 本增量不修改CI workflow、保护规则或引入legacy例外；候选CI结果绑定后续准确HEAD单列。
+
+2026-10-10 共享接线进度：用户已明确允许将接线交给协调会话并在原 PR #625 完成。
+当前唯一 Writer 消费上述冻结 ports，已接入正常 currentapplication 配置/HTTP admission、
+Product 空库 installer 和 narrow grants、现有私有 S3 adapter、逐 revision 实际 merchant
+核实的 CredentialSource、canonical Asset、POD worker lifecycle，以及成员导航和独立
+server session 的专员入口。没有新增 owner、恢复协议或 legacy fallback。
+接线和操作说明见 [正常程序交接](../engineering/supply-market-runtime-handoff.md)。
+本轮受限角色 disposable PostgreSQL composition 与相关 Go/UI/BFF 检查通过；最终
+准确候选 CI/独立最终评审仍由 PR 记录。31544 保留实例未修改，追加真实 SDS 写入、
+正常实际 runtime、正式浏览器路径与用户验收仍 NOT_RUN。先前真实 qualification
+只证明当时原 operation 的 provider 协议，不重新解释为本次产品验收。

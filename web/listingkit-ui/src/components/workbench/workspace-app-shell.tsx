@@ -12,13 +12,14 @@ import { Button } from "@/components/ui/button";
 import { ConsoleNavigation } from "@/components/workbench/console/console-navigation";
 import { parseCaptureEntry } from "@/app/capture/1688/capture-handoff";
 import { NotificationPopover } from "@/components/workbench/notifications/notification-center";
+import { isAcquisitionUUID } from "@/lib/contracts/product-acquisition";
 
 const NO_ORGANIZATION_ROUTE = "/workbench/no-organization";
 const MOBILE_NAVIGATION_ID = "workbench-mobile-navigation";
 const subscribeToHydration = () => () => {};
 const getClientHydrationSnapshot = () => true;
 const getServerHydrationSnapshot = () => false;
-export function WorkspaceAppShell({ children, toolMarketAvailable = false, productAcquisitionAvailable = false, productCollectionsAvailable = false, supplyChainAvailable = false, knowledgeAvailable = false, productReviewAvailable = false, ecoservicesAvailable = false, sheinRecordsAvailable = false, notificationCenterAvailable = false }: { children: ReactNode; toolMarketAvailable?: boolean; productAcquisitionAvailable?: boolean; productCollectionsAvailable?: boolean; supplyChainAvailable?: boolean; knowledgeAvailable?: boolean; productReviewAvailable?: boolean; ecoservicesAvailable?: boolean; sheinRecordsAvailable?: boolean; notificationCenterAvailable?: boolean }) {
+export function WorkspaceAppShell({ children, toolMarketAvailable = false, supplyMarketAvailable = false, productAcquisitionAvailable = false, productCollectionsAvailable = false, supplyChainAvailable = false, knowledgeAvailable = false, productReviewAvailable = false, ecoservicesAvailable = false, sheinRecordsAvailable = false, notificationCenterAvailable = false }: { children: ReactNode; toolMarketAvailable?: boolean; supplyMarketAvailable?: boolean; productAcquisitionAvailable?: boolean; productCollectionsAvailable?: boolean; supplyChainAvailable?: boolean; knowledgeAvailable?: boolean; productReviewAvailable?: boolean; ecoservicesAvailable?: boolean; sheinRecordsAvailable?: boolean; notificationCenterAvailable?: boolean }) {
   const pathname = usePathname() ?? "/workbench";
   const router = useRouter();
   const context = useWorkbenchContext();
@@ -34,7 +35,8 @@ export function WorkspaceAppShell({ children, toolMarketAvailable = false, produ
     "/workbench/notifications",
   ].includes(pathname) || /^\/workbench\/notifications\/(official|business)\/[A-Za-z0-9_-]{1,2048}$/.test(pathname);
   const isBrowserCaptureRoute = pathname === "/capture/1688";
-  const hasIndependentIdentityRoute=isPersonalAccountRoute || ecoservicesAvailable&&pathname==="/workbench/services/review" || toolMarketAvailable&&pathname==="/workbench/tools/custom/review";
+  const marketOperatorRoute = pathname === "/workbench/supply/operator" || pathname.startsWith("/workbench/supply/operator/") && isAcquisitionUUID(pathname.slice("/workbench/supply/operator/".length));
+  const hasIndependentIdentityRoute=isPersonalAccountRoute || ecoservicesAvailable&&pathname==="/workbench/services/review" || toolMarketAvailable&&pathname==="/workbench/tools/custom/review" || supplyMarketAvailable && marketOperatorRoute;
   const authenticationError = [context.blockingError, context.error].find(error => error?.code === "AUTHENTICATION_REQUIRED");
 
   const shouldRedirectToNoOrganization =
@@ -119,7 +121,7 @@ export function WorkspaceAppShell({ children, toolMarketAvailable = false, produ
   }
 
   return (
-    <WorkbenchFrame toolMarketAvailable={toolMarketAvailable} key={pathname} pathname={pathname} productCollectionsAvailable={productCollectionsAvailable} supplyChainAvailable={supplyChainAvailable} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable} productReviewAvailable={productReviewAvailable} ecoservicesAvailable={ecoservicesAvailable} sheinRecordsAvailable={sheinRecordsAvailable} notificationCenterAvailable={notificationCenterAvailable}>
+    <WorkbenchFrame toolMarketAvailable={toolMarketAvailable} supplyMarketAvailable={supplyMarketAvailable} key={pathname} pathname={pathname} productCollectionsAvailable={productCollectionsAvailable} supplyChainAvailable={supplyChainAvailable} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable} productReviewAvailable={productReviewAvailable} ecoservicesAvailable={ecoservicesAvailable} sheinRecordsAvailable={sheinRecordsAvailable} notificationCenterAvailable={notificationCenterAvailable}>
       {context.selectionRequired && !hasIndependentIdentityRoute && !isBrowserCaptureRoute ? (
         <section
           className="flex min-h-[40vh] items-center justify-center px-6 text-center"
@@ -139,7 +141,7 @@ export function WorkspaceAppShell({ children, toolMarketAvailable = false, produ
   );
 }
 
-function WorkbenchFrame({ children, pathname, toolMarketAvailable, productAcquisitionAvailable, productCollectionsAvailable, supplyChainAvailable, knowledgeAvailable, productReviewAvailable, ecoservicesAvailable, sheinRecordsAvailable, notificationCenterAvailable }: { children: ReactNode; pathname: string; toolMarketAvailable: boolean; productAcquisitionAvailable: boolean; productCollectionsAvailable: boolean; supplyChainAvailable: boolean; knowledgeAvailable: boolean; productReviewAvailable: boolean; ecoservicesAvailable: boolean; sheinRecordsAvailable: boolean; notificationCenterAvailable: boolean }) {
+function WorkbenchFrame({ children, pathname, toolMarketAvailable, supplyMarketAvailable, productAcquisitionAvailable, productCollectionsAvailable, supplyChainAvailable, knowledgeAvailable, productReviewAvailable, ecoservicesAvailable, sheinRecordsAvailable, notificationCenterAvailable }: { children: ReactNode; pathname: string; toolMarketAvailable: boolean; supplyMarketAvailable: boolean; productAcquisitionAvailable: boolean; productCollectionsAvailable: boolean; supplyChainAvailable: boolean; knowledgeAvailable: boolean; productReviewAvailable: boolean; ecoservicesAvailable: boolean; sheinRecordsAvailable: boolean; notificationCenterAvailable: boolean }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const context = useWorkbenchContext();
@@ -153,7 +155,7 @@ function WorkbenchFrame({ children, pathname, toolMarketAvailable, productAcquis
     <div className="console-frame">
       <aside className="console-sidebar">
         <Link href="/workbench" className="console-brand" prefetch={false}><Image src="/console/sumi-logo.png" alt="" width={42} height={42} unoptimized /><span><strong>硕米智能引擎</strong><small>SUMI AI ENGINE</small></span></Link>
-        <Suspense fallback={null}><ConsoleNavigation toolMarketAvailable={toolMarketAvailable} key={pathname} pathname={pathname} ariaLabel="工作台导航" productCollectionsAvailable={productCollectionsAvailable} supplyChainAvailable={supplyChainAvailable} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable} storeProductsAvailable={context.storeObservationsAvailable && context.effectiveOrganization?.permissions.includes("workbench.store.read") === true && context.effectiveOrganization.permissions.includes("workbench.store.products.read")} storeOrdersAvailable={context.storeObservationsAvailable && context.effectiveOrganization?.permissions.includes("workbench.store.read") === true && context.effectiveOrganization.permissions.includes("workbench.store.orders.read")} projectCenterAvailable={context.projectCenterAvailable} aiWorkbenchAvailable={context.aiWorkbenchAvailable} productReviewAvailable={productReviewAvailable} ecoservicesAvailable={ecoservicesAvailable} sheinRecordsAvailable={sheinRecordsAvailable} userId={context.user?.id} /></Suspense>
+        <Suspense fallback={null}><ConsoleNavigation toolMarketAvailable={toolMarketAvailable} supplyMarketAvailable={supplyMarketAvailable} key={pathname} pathname={pathname} ariaLabel="工作台导航" productCollectionsAvailable={productCollectionsAvailable} supplyChainAvailable={supplyChainAvailable} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable} storeProductsAvailable={context.storeObservationsAvailable && context.effectiveOrganization?.permissions.includes("workbench.store.read") === true && context.effectiveOrganization.permissions.includes("workbench.store.products.read")} storeOrdersAvailable={context.storeObservationsAvailable && context.effectiveOrganization?.permissions.includes("workbench.store.read") === true && context.effectiveOrganization.permissions.includes("workbench.store.orders.read")} projectCenterAvailable={context.projectCenterAvailable} aiWorkbenchAvailable={context.aiWorkbenchAvailable} productReviewAvailable={productReviewAvailable} ecoservicesAvailable={ecoservicesAvailable} sheinRecordsAvailable={sheinRecordsAvailable} userId={context.user?.id} /></Suspense>
         <p className="console-sidebar-footer">SUMI AI ENGINE</p>
       </aside>
       <div className="console-body">
@@ -168,7 +170,7 @@ function WorkbenchFrame({ children, pathname, toolMarketAvailable, productAcquis
           </div>
         </header>
         {contextConfirmed && context.effectiveOrganization && context.effectiveOrganization.id !== context.homeOrganizationId ? <div className="console-delegation"><DelegatedOperationIndicator effectiveOrganization={context.effectiveOrganization} homeOrganizationId={context.homeOrganizationId} organizations={context.organizations} /></div> : null}
-        {mobileOpen ? <div className="console-mobile-nav" id={MOBILE_NAVIGATION_ID}><Suspense fallback={null}><ConsoleNavigation toolMarketAvailable={toolMarketAvailable} key={pathname} pathname={pathname} ariaLabel="移动工作台导航" onNavigate={closeNavigation} productCollectionsAvailable={productCollectionsAvailable} supplyChainAvailable={supplyChainAvailable} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable} storeProductsAvailable={context.storeObservationsAvailable && context.effectiveOrganization?.permissions.includes("workbench.store.read") === true && context.effectiveOrganization.permissions.includes("workbench.store.products.read")} storeOrdersAvailable={context.storeObservationsAvailable && context.effectiveOrganization?.permissions.includes("workbench.store.read") === true && context.effectiveOrganization.permissions.includes("workbench.store.orders.read")} projectCenterAvailable={context.projectCenterAvailable} aiWorkbenchAvailable={context.aiWorkbenchAvailable} productReviewAvailable={productReviewAvailable} ecoservicesAvailable={ecoservicesAvailable} sheinRecordsAvailable={sheinRecordsAvailable} userId={context.user?.id} /></Suspense></div> : null}
+        {mobileOpen ? <div className="console-mobile-nav" id={MOBILE_NAVIGATION_ID}><Suspense fallback={null}><ConsoleNavigation toolMarketAvailable={toolMarketAvailable} supplyMarketAvailable={supplyMarketAvailable} key={pathname} pathname={pathname} ariaLabel="移动工作台导航" onNavigate={closeNavigation} productCollectionsAvailable={productCollectionsAvailable} supplyChainAvailable={supplyChainAvailable} productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable} storeProductsAvailable={context.storeObservationsAvailable && context.effectiveOrganization?.permissions.includes("workbench.store.read") === true && context.effectiveOrganization.permissions.includes("workbench.store.products.read")} storeOrdersAvailable={context.storeObservationsAvailable && context.effectiveOrganization?.permissions.includes("workbench.store.read") === true && context.effectiveOrganization.permissions.includes("workbench.store.orders.read")} projectCenterAvailable={context.projectCenterAvailable} aiWorkbenchAvailable={context.aiWorkbenchAvailable} productReviewAvailable={productReviewAvailable} ecoservicesAvailable={ecoservicesAvailable} sheinRecordsAvailable={sheinRecordsAvailable} userId={context.user?.id} /></Suspense></div> : null}
         <main className="console-content" id="console-main" tabIndex={-1}>{children}</main>
       </div>
     </div>

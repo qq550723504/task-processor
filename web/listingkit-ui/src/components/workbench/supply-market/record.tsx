@@ -11,7 +11,7 @@ import type {MarketCommand} from "@/lib/contracts/supply-market";
 import {MarketBoundary,MarketLinks,MarketReadError,CursorButtons,marketStages,marketError,useMarketCommands} from "./shared";
 import {Qualifications} from "./qualifications";
 const actionNames:Record<string,string>={submit_selected:"提交优选申请",create_official_draft:"建立发布草稿",submit_connection:"提交货盘对接",evaluate:"开始评估",request_supplement:"要求补充",supplement:"补充资料",approve:"审核通过",reject:"未通过",publish:"明确发布",revoke:"撤销发布",confirm_plan:"线下方案已确认",close:"结束对接"};
-export function SupplyRecordPage({id,admin=false}:{id:string;admin?:boolean}){return <MarketBoundary admin={admin}>{scope=><RecordDetail scope={scope} id={id} admin={admin}/>}</MarketBoundary>}
+export function SupplyRecordPage({id,admin=false,expectedUserId}:{id:string;admin?:boolean;expectedUserId?:string}){return <MarketBoundary admin={admin} expectedUserId={expectedUserId}>{scope=><RecordDetail scope={scope} id={id} admin={admin}/>}</MarketBoundary>}
 function RecordDetail({scope,id,admin}:{scope:MarketScope;id:string;admin:boolean}){
  const [after,setAfter]=useState<string>(),[releaseAfter,setReleaseAfter]=useState<string>(),[note,setNote]=useState(""),[cooperation,setCooperation]=useState(false),[files,setFiles]=useState<string[]>([]),[uploadLocked,setUploadLocked]=useState(false),[downloadError,setDownloadError]=useState("");
  const q=useQuery({queryKey:["supply-market",scope.userId,scope.organizationId,"record",admin,id],queryFn:({signal})=>readMarketRecord(scope,id,admin,signal),retry:false});

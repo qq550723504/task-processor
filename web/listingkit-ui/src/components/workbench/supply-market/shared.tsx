@@ -11,10 +11,19 @@ import {MarketAPIError,marketIntentSchema,writeMarket,resolveMarket,type MarketS
 import type {MarketCommand,MarketReceipt} from "@/lib/contracts/supply-market";
 export const marketStages={DRAFT:"待发布",SUBMITTED:"已提交",EVALUATING:"人工评估中",SUPPLEMENT_REQUIRED:"待补充资料",APPROVED:"审核通过",REJECTED:"未通过",PLAN_CONFIRMED:"对接方案已确认",CLOSED:"已结束"};
 export function marketError(e:unknown){const code=e instanceof MarketAPIError?e.code:"";return ({PERMISSION_DENIED:"当前身份没有这项权限。",NOT_FOUND:"记录不存在、已撤销或不属于当前成员。",REVISION_CONFLICT:"商品或申请已变化，请刷新后重新确认。",INVALID_REQUEST:"请检查商品、供货声明和附件。",OUTCOME_UNKNOWN:"结果尚未确认，已保留原操作。请先核实。",IDENTITY_CONTEXT_CHANGED:"登录身份已变化，请重新登录。",ORGANIZATION_CONTEXT_CHANGED:"企业已变化，请重新确认。"} as Record<string,string>)[code]??"供应市场暂时不可用，请稍后重新读取。"}
-export function MarketBoundary({children,admin=false}:{children:(scope:MarketScope)=>ReactNode;admin?:boolean}){
- const c=useWorkbenchContext();if(c.isLoading||c.isSwitching||c.error||c.blockingError)return <ConsoleState kind="loading" title="正在确认当前身份"/>;
+export function MarketBoundary({children,admin=false,expectedUserId}:{children:(scope:MarketScope)=>ReactNode;admin?:boolean;expectedUserId?:string}){
+ const c=useWorkbenchContext();
+ if(admin)return <PlatformMarketBoundary expectedUserId={expectedUserId}>{children}</PlatformMarketBoundary>;
+ if(c.isLoading||c.isSwitching||c.error||c.blockingError)return <ConsoleState kind="loading" title="正在确认当前身份"/>;
  if(!c.user||!admin&&!c.effectiveOrganization)return <ConsoleState kind="unavailable" title="请先登录并选择企业"><Button onClick={()=>void c.retry()}>重新确认</Button></ConsoleState>;
  const scope={userId:c.user.id,organizationId:admin?"":c.effectiveOrganization!.id};return <div key={JSON.stringify(scope)}>{children(scope)}</div>;
+}
+function PlatformMarketBoundary({children,expectedUserId}:{children:(scope:MarketScope)=>ReactNode;expectedUserId?:string}){
+ const c=useWorkbenchContext();
+ // Server session bootstrap is independent of customer enterprise grants.
+ // Every BFF request verifies this expected actor and the live platform gate.
+ if(!expectedUserId || [c.error,c.blockingError].some(e=>e?.code==="AUTHENTICATION_REQUIRED") || c.user && c.user.id!==expectedUserId)return <ConsoleState kind="unavailable" title="请重新登录平台专员身份"/>;
+ const scope={userId:expectedUserId,organizationId:""};return <div key={JSON.stringify(scope)}>{children(scope)}</div>;
 }
 export function useMarketCommands(scope:MarketScope,admin=false){
  const context=useWorkbenchContext(),client=useQueryClient();const live=useRef(context),active=useRef(false),controller=useRef<AbortController|null>(null),alive=useRef(true);
@@ -22,7 +31,7 @@ export function useMarketCommands(scope:MarketScope,admin=false){
  const pending=useResourcePending({expectedUserId:scope.userId,expectedOrganizationId:scope.organizationId},["supply-market",admin?"platform":"member"],marketIntentSchema,{storage:"local",maxLength:131072});
  const [busy,setBusy]=useState(false),[error,setError]=useState<unknown>(null),[saved,setSaved]=useState<MarketReceipt|null>(null);
  const register=context.registerOrganizationSwitchGuard;useEffect(()=>register(()=>!active.current&&!pending.command&&!pending.error),[register,pending.command,pending.error]);
- function current(){const c=live.current;if(c.user?.id!==scope.userId)throw new MarketAPIError("IDENTITY_CONTEXT_CHANGED",409);if(c.isLoading||c.isSwitching||c.error||c.blockingError||!admin&&c.effectiveOrganization?.id!==scope.organizationId)throw new MarketAPIError("ORGANIZATION_CONTEXT_CHANGED",409)}
+ function current(){const c=live.current;if(admin){if(c.user&&c.user.id!==scope.userId||[c.error,c.blockingError].some(e=>e?.code==="AUTHENTICATION_REQUIRED"))throw new MarketAPIError("IDENTITY_CONTEXT_CHANGED",409);return}if(c.user?.id!==scope.userId)throw new MarketAPIError("IDENTITY_CONTEXT_CHANGED",409);if(c.isLoading||c.isSwitching||c.error||c.blockingError||c.effectiveOrganization?.id!==scope.organizationId)throw new MarketAPIError("ORGANIZATION_CONTEXT_CHANGED",409)}
  async function dispatch(i:MarketIntent,verify:boolean){
   if(active.current||!pending.ready)return;const abort=new AbortController();controller.current=abort;active.current=true;setBusy(true);setError(null);
   try{current();if(i.admin!==admin)throw new MarketAPIError("INVALID_REQUEST",400);if(!verify)pending.persist(i);const result=await(verify?resolveMarket(scope,i,abort.signal):writeMarket(scope,i,abort.signal));if(!alive.current)return;current();pending.clear(i);setSaved(result);void client.invalidateQueries({queryKey:["supply-market",scope.userId,scope.organizationId]});return result;

@@ -36,6 +36,13 @@ type Application struct {
 	Processor *Processor
 }
 
+// The serving root owns start/stop; constructing a worker never starts it.
+type Worker interface {
+	Start() error
+	Stop()
+}
+type WorkerFactory func(*Processor) (Worker, error)
+
 func NewApplication(ctx context.Context, d Dependencies) (*Application, error) {
 	if ctx == nil || d.ProductDB == nil || d.AssetDB == nil || d.Authorization == nil || d.OriginalAuthorization == nil || d.DesignAuthorization == nil || d.Collections == nil || d.Credentials == nil || d.HTTP == nil || d.Starter == nil || d.ReceiveProduct == nil || collectionstore.VerifyReceiverSchema(ctx, d.ProductDB) != nil {
 		return nil, pod.ErrUnavailable

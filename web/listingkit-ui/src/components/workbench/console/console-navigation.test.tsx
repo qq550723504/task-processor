@@ -7,6 +7,13 @@ import { ConsoleNavigation } from "./console-navigation";
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 
 const query=vi.hoisted(()=>({value:""}));
+it("opens current market entries only with the serving feature",()=>{
+ const view=render(<ConsoleNavigation pathname="/workbench/supply/official" ariaLabel="主导航"/>);
+ expect(screen.getByRole("link",{name:"硕米自营"})).toHaveAttribute("title","硕米自营：业务暂未启用");
+ view.rerender(<ConsoleNavigation pathname="/workbench/supply/official" ariaLabel="主导航" supplyMarketAvailable/>);
+ expect(screen.getByRole("link",{name:"硕米自营"})).toHaveAttribute("title","硕米自营");
+ expect(screen.getByRole("link",{name:"优选申请"})).toHaveAttribute("title","优选申请");
+});
 it("advertises each Store observation entry only with ready runtime and its read permission", () => {
   const view=render(<ConsoleNavigation pathname="/workbench/store-orders" ariaLabel="主导航" storeProductsAvailable={false} storeOrdersAvailable={false}/>);
   expect(screen.getByRole("link",{name:"订单履约"})).toHaveAttribute("title","订单履约：业务暂未启用");
