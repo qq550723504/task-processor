@@ -14,6 +14,63 @@ const job = { id, commandKey: id, query: { site: "us", mode: "asin", asins: ["B0
 const json = (value: unknown, status = 200) => Response.json(value, { status });
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals(); });
 describe("data service product paths", () => {
+    it.each([
+        ["amazon/jobs", 403], ["amazon/jobs", 503], ["custom", 403], ["custom", 503],
+    ])("submits both market flows independently of %s history failure %s", async (historyPath, status) => {
+        const mutations: { path: string; body: unknown; key: string | null }[] = [];
+        vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+            if (init?.method === "POST") {
+                const body = JSON.parse(String(init.body));
+                const key = new Headers(init.headers).get("Idempotency-Key");
+                mutations.push({ path: url, body, key });
+                expect(new Headers(init.headers).get("X-Expected-User-ID")).toBe("user");
+                expect(new Headers(init.headers).get("X-Expected-Organization-ID")).toBe("org");
+                return url.endsWith("custom")
+                    ? json({ id, input: body, state: "SUBMITTED", revision: 1, specRevision: 0, deliveredRows: 0, createdAt: job.createdAt, events: [] })
+                    : json({ ...job, commandKey: key }, 202);
+            }
+            if (url.endsWith("/options")) return json(options);
+            if (url.endsWith(`/${historyPath}`)) return json({ error: { code: status === 403 ? "FORBIDDEN" : "DATA_UNAVAILABLE" } }, Number(status));
+            if (url.endsWith("/results")) return json({ items: [] });
+            if (url.endsWith(id)) return json(job);
+            return json([]);
+        }));
+        render(<DataServicesPage mode="market"/>);
+        const start = screen.getByRole("button", { name: "开始抓取" });
+        await waitFor(() => expect(start).toBeEnabled());
+        expect(screen.getByRole("button", { name: "提交定制需求" })).toBeEnabled();
+        const historyName = historyPath === "custom" ? "定制历史" : "抓取历史";
+        expect(await screen.findByText(status === 403 ? `当前身份没有${historyName}读取权限。` : `${historyName}暂不可用，请稍后刷新。`)).toBeInTheDocument();
+        expect(screen.queryByText("暂无记录，提交后会在这里显示真实进度。")).not.toBeInTheDocument();
+        fireEvent.click(start);
+        fireEvent.change(screen.getByLabelText(/ASIN 或当前站点/), { target: { value: "B000123456" } });
+        fireEvent.change(screen.getByLabelText("最大数据条数"), { target: { value: "1" } });
+        fireEvent.click(screen.getByRole("button", { name: "确认并开始抓取" }));
+        const result = await screen.findByRole("dialog", { name: "抓取任务与结果" });
+        fireEvent.click(within(result).getByRole("button", { name: "关闭" }));
+        const custom = screen.getByRole("button", { name: "提交定制需求" });
+        await waitFor(() => expect(custom).toBeEnabled());
+        fireEvent.click(custom);
+        fireEvent.change(screen.getByLabelText("需求名称"), { target: { value: "history-independent request" } });
+        fireEvent.change(screen.getByLabelText("用途与业务场景"), { target: { value: "选品分析" } });
+        fireEvent.change(screen.getByLabelText(/ASIN 或当前站点/), { target: { value: "B000123456" } });
+        fireEvent.change(screen.getByLabelText("最大数据条数"), { target: { value: "1" } });
+        fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "提交定制需求" }));
+        await waitFor(() => expect(mutations).toHaveLength(2));
+        expect(mutations[0]).toMatchObject({ body: { maximumRows: 1, maximumCostFen: 5, query: { asins: ["B000123456"] } } });
+        expect(mutations[1]).toMatchObject({ body: { name: "history-independent request", purpose: "选品分析", query: { asins: ["B000123456"], limit: 1 } } });
+        expect(mutations[0].key).toMatch(/^[a-f0-9-]{36}$/);
+        expect(mutations[1].key).not.toBe(mutations[0].key);
+        await waitFor(() => expect(sessionStorage.length).toBe(0));
+    });
+    it("keeps market submission closed when options fail despite readable histories", async () => {
+        vi.stubGlobal("fetch", vi.fn(async (url: string) => url.endsWith("/options") ? json({ error: { code: "FORBIDDEN" } }, 403) : json([])));
+        render(<DataServicesPage mode="market"/>);
+        await screen.findByText("当前身份或权限已失效，请确认登录及企业。");
+        expect(screen.getByRole("button", { name: "开始抓取" })).toBeDisabled();
+        expect(screen.getByRole("button", { name: "提交定制需求" })).toBeDisabled();
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
     it.each([403, 503])("keeps key management usable when optional overview returns %s", async status => {
         const expiresAt = new Date(Date.now() + 3600000).toISOString();
         let key = { id, suffix: "test", state: "ACTIVE", revision: 1, createdAt: job.createdAt, limits: { name: "manage fixture", expiresAt, dailyRows: 10, monthlyCostFen: 100, permissions: ["amazon.acquire", "amazon.result.read"] } };

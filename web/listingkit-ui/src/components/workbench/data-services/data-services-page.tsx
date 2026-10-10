@@ -63,19 +63,51 @@ function Recovery({ command, onRecovered }: {
 function Market({ scope }: {
     scope: DataScope;
 }) {
-    const [options, setOptions] = useState<DataOptions | null>(null), [jobs, setJobs] = useState<DataJob[]>([]), [customs, setCustoms] = useState<z.infer<typeof customSummarySchema>[]>([]), [error, setError] = useState("");
+    const [options, setOptions] = useState<DataOptions | null>(null), [jobs, setJobs] = useState<DataJob[] | null>(null), [customs, setCustoms] = useState<z.infer<typeof customSummarySchema>[] | null>(null), [jobsError, setJobsError] = useState(""), [customsError, setCustomsError] = useState(""), [error, setError] = useState("");
     const [dialog, setDialog] = useState<"realtime" | "custom" | null>(null), [job, setJob] = useState<DataJob | null>(null), [custom, setCustom] = useState<CustomRequest | null>(null), [refresh, setRefresh] = useState(0);
     const command = useDataCommand(scope);
     const { registerOrganizationSwitchGuard } = useWorkbenchContext();
     useEffect(() => registerOrganizationSwitchGuard(() => !command.pending && !command.busy), [registerOrganizationSwitchGuard, command.pending, command.busy]);
     useEffect(() => {
         const controller = new AbortController();
-        Promise.all([dataRequest(scope, "options", optionsSchema, undefined, controller.signal), dataRequest(scope, "amazon/jobs", z.array(jobSchema).max(100), undefined, controller.signal), dataRequest(scope, "custom", z.array(customSummarySchema).max(100), undefined, controller.signal)]).then(([o, j, c]) => { setOptions(o); setJobs(j); setCustoms(c); }).catch(e => {
+        dataRequest(scope, "options", optionsSchema, undefined, controller.signal).then(value => {
             if (!controller.signal.aborted)
+                setOptions(value);
+        }).catch(e => {
+            if (!controller.signal.aborted) {
+                setOptions(null);
                 setError(e instanceof DataAPIError ? e.code : "DATA_UNAVAILABLE");
+            }
+        });
+        dataRequest(scope, "amazon/jobs", z.array(jobSchema).max(100), undefined, controller.signal).then(value => {
+            if (!controller.signal.aborted)
+                setJobs(value);
+        }).catch(e => {
+            if (!controller.signal.aborted) {
+                setJobs(null);
+                setJobsError(e instanceof DataAPIError ? e.code : "DATA_UNAVAILABLE");
+            }
+        });
+        dataRequest(scope, "custom", z.array(customSummarySchema).max(100), undefined, controller.signal).then(value => {
+            if (!controller.signal.aborted)
+                setCustoms(value);
+        }).catch(e => {
+            if (!controller.signal.aborted) {
+                setCustoms(null);
+                setCustomsError(e instanceof DataAPIError ? e.code : "DATA_UNAVAILABLE");
+            }
         });
         return () => controller.abort();
     }, [scope, refresh]);
+    const reload = () => {
+        setOptions(null);
+        setJobs(null);
+        setCustoms(null);
+        setJobsError("");
+        setCustomsError("");
+        setError("");
+        setRefresh(n => n + 1);
+    };
     const received = (value: unknown, path: string) => {
         if (path === "custom") {
             const r = customSchema.safeParse(value);
@@ -88,13 +120,13 @@ function Market({ scope }: {
                 setJob(r.data);
         }
         setDialog(null);
-        setRefresh(n => n + 1);
+        reload();
     };
     const disabled = command.busy || !!command.pending;
     return <Frame title="数据市场" subtitle="汇集电商平台产品数据，当前提供 Amazon 实时抓取与数据集定制。" actions={<><Button variant="outline" asChild><Link href="/workbench/data/api">API管理</Link></Button><Button variant="outline" asChild><Link href="/workbench/data/mine">我的数据</Link></Button></>}>
   <DataNotice error={error}/><Recovery command={command} onRecovered={received}/>
   <Card className={`${styles.card} ${styles.platform}`}>
-    <div><span className={`${styles.badge} ${!options?.acquisitionReady ? styles.neutralBadge : ""}`}>{options ? options.acquisitionReady ? "已配置 1 个来源" : "实时抓取待配置" : "正在读取配置"}</span><h2>选择数据来源</h2><p>当前支持 Amazon 产品数据，按业务场景选择获取方式。</p><div className={styles.platformTags}><span>数据平台</span><span className={styles.badge}>Amazon · 当前选择</span><span className={`${styles.badge} ${styles.neutralBadge}`}>其他平台暂未开放</span></div></div>
+    <div><span className={`${styles.badge} ${!options?.acquisitionReady ? styles.neutralBadge : ""}`}>{options ? options.acquisitionReady ? "已配置 1 个来源" : "实时抓取待配置" : error ? "配置未读取" : "正在读取配置"}</span><h2>选择数据来源</h2><p>当前支持 Amazon 产品数据，按业务场景选择获取方式。</p><div className={styles.platformTags}><span>数据平台</span><span className={styles.badge}>Amazon · 当前选择</span><span className={`${styles.badge} ${styles.neutralBadge}`}>其他平台暂未开放</span></div></div>
     <dl className={styles.platformFacts}>{[["当前选择", "Amazon"], ["数据类型", "产品数据"], ["获取方式", "实时抓取 / 数据集定制"], ["交付格式", "Excel / CSV / JSON"]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
   </Card>
   <section className={styles.serviceArea}><div className={styles.sectionTitle}><h2>Amazon 产品数据获取方式</h2><p>按需求选择，获取结果统一保存到“我的数据”</p></div><div className={styles.services}>
@@ -102,7 +134,10 @@ function Market({ scope }: {
     <Card className={`${styles.card} ${styles.service} ${styles.purple}`}><div className={styles.serviceBadges}><span className={`${styles.badge} ${styles.purpleBadge}`}>获取方式 02 · 数据集定制</span><span className={`${styles.badge} ${styles.purpleBadge}`}>根据需求单独报价</span></div><h3>数据集定制</h3><p>适合指定范围、指定字段与批量数据交付。</p><ServiceBullets purple items={["描述用途、数据范围与交付要求", "平台专员线下确认规格与报价", "在系统中查看制作与交付进度", "交付数据保存到申请者“我的数据”"]}/><div className={styles.serviceFooter}><p>报价与规格线下确认 · 系统记录进度与交付</p><Button disabled={disabled || !options} onClick={() => setDialog("custom")}>提交定制需求</Button></div></Card>
   </div></section>
   <Card className={`${styles.card} ${styles.process}`}><div className={styles.cardHeading}><h2>购买与交付流程</h2><p>两种方式都交付到“我的数据”，方便后续查看与使用</p></div><ProcessRow label="实时抓取" steps={["配置抓取条件", "确认预估费用", "确认并开始抓取", "保存到我的数据"]}/><ProcessRow purple label="数据集定制" steps={["提交定制需求", "确认规格与报价", "数据制作与交付", "保存到我的数据"]}/></Card>
-  <Card className="gap-4 p-6"><div className="flex justify-between"><h2 className="font-semibold">我的抓取与定制记录</h2><Button variant="ghost" size="sm" onClick={() => setRefresh(n => n + 1)}>刷新</Button></div><p className="text-xs text-muted-foreground">展示最近 100 条抓取任务和定制申请。</p>{jobs.length === 0 && customs.length === 0 ? <p className="py-5 text-center text-sm text-muted-foreground">暂无记录，提交后会在这里显示真实进度。</p> : <div className="grid gap-3 md:grid-cols-2">{jobs.map(j => <button key={j.id} className="rounded-lg border p-4 text-left hover:bg-muted/50" onClick={() => setJob(j)}><p className="font-medium">Amazon {j.query.site.toUpperCase()} · {j.query.mode}</p><p className="mt-1 text-sm text-muted-foreground">{stateNames[j.state]} · 已保存 {j.saved} 条 · {moment(j.createdAt)}</p></button>)}{customs.map(c => <button key={c.id} className="rounded-lg border p-4 text-left hover:bg-muted/50" onClick={async () => {
+  <Card className="gap-4 p-6"><div className="flex justify-between"><h2 className="font-semibold">我的抓取与定制记录</h2><Button variant="ghost" size="sm" onClick={reload}>刷新</Button></div><p className="text-xs text-muted-foreground">展示最近 100 条抓取任务和定制申请。</p>
+    {[["抓取历史", jobsError], ["定制历史", customsError]].map(([label, code]) => code ? <p key={label} role="alert" className="text-sm text-amber-700">{code === "FORBIDDEN" ? `当前身份没有${label}读取权限。` : `${label}暂不可用，请稍后刷新。`}</p> : null)}
+    {(jobs === null && !jobsError) || (customs === null && !customsError) ? <p role="status" className="text-sm text-muted-foreground">正在读取历史记录…</p> : null}
+    {jobs !== null && customs !== null && jobs.length === 0 && customs.length === 0 ? <p className="py-5 text-center text-sm text-muted-foreground">暂无记录，提交后会在这里显示真实进度。</p> : <div className="grid gap-3 md:grid-cols-2">{jobs?.map(j => <button key={j.id} className="rounded-lg border p-4 text-left hover:bg-muted/50" onClick={() => setJob(j)}><p className="font-medium">Amazon {j.query.site.toUpperCase()} · {j.query.mode}</p><p className="mt-1 text-sm text-muted-foreground">{stateNames[j.state]} · 已保存 {j.saved} 条 · {moment(j.createdAt)}</p></button>)}{customs?.map(c => <button key={c.id} className="rounded-lg border p-4 text-left hover:bg-muted/50" onClick={async () => {
                     try {
                         setCustom(await dataRequest(scope, `custom/${c.id}`, customSchema));
                     }
@@ -120,7 +155,7 @@ function Market({ scope }: {
                 const value = await command.run(`amazon/jobs/${j.id}/cancel`, {});
                 if (value !== undefined) {
                     setJob(jobSchema.parse(value));
-                    setRefresh(n => n + 1);
+                    reload();
                 }
             }} disabled={disabled}/> : null}
   {custom ? <CollectionDialog title={custom.input.name} onClose={() => setCustom(null)}><CustomDetails request={custom}/><Button variant="outline" onClick={async () => {
