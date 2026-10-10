@@ -12,11 +12,8 @@ import (
 // The existing private worker YAML supplies storage credentials and the
 // bounded worker role. The HTTP pool cannot be promoted into a worker pool.
 func openImageSetWorker(ctx context.Context, path string, expected currentapplication.DatabaseConfig) (*config.Config, *gorm.DB, error) {
-	cfg, err := config.LoadConfigFromFile(path)
+	cfg, err := loadImageSetWorkerConfig(path, expected)
 	if err != nil {
-		return nil, nil, errors.New("load private image worker configuration failed")
-	}
-	if err = validateImageSetWorkerDatabase(cfg, expected); err != nil {
 		return nil, nil, err
 	}
 	db := cfg.Database
@@ -25,6 +22,20 @@ func openImageSetWorker(ctx context.Context, path string, expected currentapplic
 		return nil, nil, errors.New("open image worker role failed")
 	}
 	return cfg, pool, nil
+}
+
+func loadImageSetWorkerConfig(path string, expected currentapplication.DatabaseConfig) (*config.Config, error) {
+	// Full mode validates its own database here and its generation/admission/
+	// immutable-storage contract in buildFullImageApplication. The broad core
+	// validator requires an unused process-wide OpenAI key for other consumers.
+	cfg, err := config.LoadConfigFromFileWithoutValidation(path)
+	if err != nil {
+		return nil, errors.New("load private image worker configuration failed")
+	}
+	if err = validateImageSetWorkerDatabase(cfg, expected); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
 
 func validateImageSetWorkerDatabase(cfg *config.Config, expected currentapplication.DatabaseConfig) error {

@@ -11,7 +11,7 @@ const template={templateId,agentId:"product.image.agent",lifecycle:"ACTIVE",revi
 const entry={agent:{agentId:"product.image.agent",activation:"ENABLED",revision:"1",activationEpoch:"1",defaultTemplate:{templateId,revision:"1"},updatedAt:now},name:"Images",description:"Full images",definitionVersion:"v1.0.0",parameterSchema:"image-config-v1",canConfigure:true,canUse:true,canReadRuns:true,capabilities:[{id:"image.generate",support:"REQUIRED",readiness:"AVAILABLE",reason:"",observedAt:now}]};
 const source={ContextKind:"acquisition",ProductID:"p",OperationID:operation,OriginalPublicationID:"publication",OriginalVersion:1,EffectiveVersion:1};
 function projection(status="awaiting_plan_approval",confirmationActionId=""){
- return {runId,status,confirmationActionId,generationAdmitted:!!confirmationActionId,planRevision:1,planDigest:sha,quoteDigest:digest,images:2,points:20,settledPoints:status==="awaiting_plan_approval"?0:20,resultDigest:status==="awaiting_plan_approval"?"":sha,approvalAvailable:status==="awaiting_final_approval",candidateSelectionAvailable:["awaiting_final_approval","completed","failed","blocked","cancelled"].includes(status),regenerationAvailable:status==="awaiting_final_approval",plan:{Source:source,Target:{Platform:"product",StoreID:"",Site:"",CategoryID:0}},slots:["main","detail"].map((slotId,i)=>({slotId,status:status==="awaiting_plan_approval"?"pending":"accepted",attempt:status==="awaiting_plan_approval"?0:1,errorCode:"",recipe:{Purpose:i?"detail_closeup":"product_identity",Background:"white",Language:"en",Placement:{Group:i?"detail":"carousel",Order:1},References:[{AssetID:"original"}],Quote:{Points:10}},candidates:status==="awaiting_plan_approval"?[]:[{assetId:`generated-${i}`,url:`https://images.test/generated-${i}.png`,width:1024,height:1024}],closure:status==="awaiting_plan_approval"?null:{Kind:"generated",Points:10}})),originals:[{ID:"original",DisplayURL:"https://images.test/original.png",Width:1024,Height:1024}],recoverableEffects:null,pendingCommand:null,block:null};
+ return {runId,status,template:{templateId,revision:"1"},confirmationActionId,generationAdmitted:!!confirmationActionId,planRevision:1,planDigest:sha,quoteDigest:digest,images:2,points:20,settledPoints:status==="awaiting_plan_approval"?0:20,resultDigest:status==="awaiting_plan_approval"?"":sha,approvalAvailable:status==="awaiting_final_approval",candidateSelectionAvailable:["awaiting_final_approval","completed","failed","blocked","cancelled"].includes(status),regenerationAvailable:status==="awaiting_final_approval",plan:{Source:source,Target:{Platform:"product",StoreID:"",Site:"",CategoryID:0}},slots:["main","detail"].map((slotId,i)=>({slotId,status:status==="awaiting_plan_approval"?"pending":"accepted",attempt:status==="awaiting_plan_approval"?0:1,errorCode:"",recipe:{Purpose:i?"detail_closeup":"product_identity",Background:"white",Language:"en",Placement:{Group:i?"detail":"carousel",Order:1},References:[{AssetID:"original"}],Quote:{Points:10}},candidates:status==="awaiting_plan_approval"?[]:[{assetId:`generated-${i}`,url:`https://images.test/generated-${i}.png`,width:1024,height:1024}],closure:status==="awaiting_plan_approval"?null:{Kind:"generated",Points:10}})),originals:[{ID:"original",DisplayURL:"https://images.test/original.png",Width:1024,Height:1024}],recoverableEffects:null,pendingCommand:null,block:null};
 }
 let state:ReturnType<typeof projection>,approved:boolean,fetch:ReturnType<typeof vi.fn<(input:unknown,init?:RequestInit)=>Promise<Response>>>;
 beforeEach(()=>{
@@ -134,9 +134,23 @@ it(`can combine new subset output with successful ${parentStatus} parent outputs
  expect(choices.map((v:{run_id:string,slot_id:string})=>[v.run_id,v.slot_id])).toEqual([[runId,"main"],[parentId,"detail"]]);
  expect(fetch.mock.calls.some(([url])=>/\/(prepare|regenerate|confirm)$/.test(String(url)))).toBe(false);
 });
-
-
 }
+it("uses the restored custom parent template rather than the current default for subset regeneration",async()=>{
+ const parentTemplateId="55555555-5555-4555-8555-555555555555";
+ const parentTemplate={...template,templateId:parentTemplateId,name:"Old custom",revision:"4",version:"2",image:{...template.image,mode:"custom",carousel:[{id:"old-custom",purpose:"custom",brief:"Original custom instruction"}],detail:[]}};
+ state={...projection("awaiting_final_approval",operation),template:{templateId:parentTemplateId,revision:"2"},slots:[{...projection("awaiting_final_approval").slots[0]!,slotId:"old-custom"}]} as typeof state;
+ localStorage.setItem(`product-image-set:actor:org:acquisition:${operation}:run`,runId);
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation((url,init)=>String(url).includes(`/templates/${parentTemplateId}/revisions/2`)?Promise.resolve(Response.json(parentTemplate)):String(url).endsWith("/regenerate")?Promise.resolve(Response.json(state,{status:201})):real(url,init));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("checkbox",{name:"重新生成此项，另行确认点数"}));
+ fireEvent.click(screen.getByRole("checkbox",{name:"共用原始素材 素材 1"}));
+ const button=screen.getByRole("button",{name:"准备所选 1 项的新计划"});await waitFor(()=>expect(button).toBeEnabled());fireEvent.click(button);
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/regenerate"))).toBe(true));
+ const request=fetch.mock.calls.find(([url])=>String(url).endsWith("/regenerate"))!;
+ expect(JSON.parse(String(request[1]!.body)).template).toEqual({templateId:parentTemplateId,revision:"2"});
+ expect(JSON.parse(String(request[1]!.body)).selectedTaskIds).toEqual(["old-custom"]);
+});
 it("loads both legal near-limit templates through bounded pages",async()=>{
  const image={schema:"image-config-v1",mode:"custom",shareOriginals:true,background:"",language:"en",carousel:Array.from({length:32},(_,i)=>({id:`task-${i}`,purpose:"custom",brief:"x".repeat(1990)})),detail:[]};
  image.background="x".repeat(65520-new TextEncoder().encode(JSON.stringify(image)).length);

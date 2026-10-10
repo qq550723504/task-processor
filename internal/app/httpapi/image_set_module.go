@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	sigjson "sigs.k8s.io/json"
+	"task-processor/internal/agent"
 	"task-processor/internal/agentconfig"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
@@ -24,6 +25,7 @@ import (
 	"task-processor/internal/marketplace/shein/goods"
 	"task-processor/internal/product/asset"
 	"task-processor/internal/product/collection"
+	"task-processor/internal/product/review"
 )
 
 const acquisitionImageSetBase = productAcquisitionBase + "/:operation_id/images"
@@ -115,7 +117,7 @@ func (m fullImageModule) handle(c *gin.Context, kind imageagent.ImageSourceConte
 		writeFullImageError(c, imageagent.ErrValidation, false)
 		return
 	}
-	ctx, err := m.bind(c.Request.Context(), contextID)
+	ctx, err := m.bind(c.Request.Context(), c.GetHeader("Authorization"))
 	if err != nil {
 		writeFullImageError(c, err, false)
 		return
@@ -171,7 +173,7 @@ func (m fullImageModule) handle(c *gin.Context, kind imageagent.ImageSourceConte
 			writeFullImageError(c, e, false)
 			return
 		}
-		response, e := a.response(p)
+		response, e := a.response(ctx, p)
 		if e != nil {
 			writeFullImageError(c, e, false)
 			return
@@ -272,7 +274,7 @@ func (m fullImageModule) handle(c *gin.Context, kind imageagent.ImageSourceConte
 			writeFullImageError(c, e, true)
 			return
 		}
-		response, e := a.response(prepared.Projection)
+		response, e := a.response(ctx, prepared.Projection)
 		if e != nil {
 			writeFullImageError(c, e, false)
 			return
@@ -336,7 +338,7 @@ func (m fullImageModule) handle(c *gin.Context, kind imageagent.ImageSourceConte
 		if !emptyAcquisitionImageBody(c) {
 			return
 		}
-		response, e := a.response(p)
+		response, e := a.response(ctx, p)
 		if e != nil {
 			writeFullImageError(c, e, false)
 			return
@@ -490,8 +492,19 @@ func fullImageSelection(p imageagent.RunProjection, body fullImageSelectionBody)
 	return command, nil
 }
 
-func (a *fullImageApplication) response(p imageagent.RunProjection) (gin.H, error) {
+func (a *fullImageApplication) response(ctx context.Context, p imageagent.RunProjection) (gin.H, error) {
 	prepared, err := imageagent.PreparedImageSetFromProjection(p)
+	if err != nil {
+		return nil, err
+	}
+	if a.configuration == nil {
+		return nil, imageagent.ErrCommandBlocked
+	}
+	snapshot, err := a.configuration.LoadImageConfiguration(ctx, agent.Scope{OrganizationID: p.Run.TenantID, ActorID: p.Run.UserID}, p.Plan.Set.Configuration)
+	if err != nil {
+		return nil, err
+	}
+	template, err := imageSetTemplateReference(p, snapshot)
 	if err != nil {
 		return nil, err
 	}
@@ -530,10 +543,18 @@ func (a *fullImageApplication) response(p imageagent.RunProjection) (gin.H, erro
 		response["resultDigest"] = candidateDigest
 	}
 	response["confirmationActionId"], response["generationAdmitted"] = "", p.Run.ImageAdmission != nil
+	response["template"] = template
 	if p.Run.ImageAdmission != nil {
 		response["confirmationActionId"] = p.Run.ImageAdmission.Command.ConfirmActionID
 	}
 	return response, nil
+}
+
+func imageSetTemplateReference(p imageagent.RunProjection, snapshot agentconfig.ImageConfigurationSnapshot) (agentconfig.TemplateRef, error) {
+	if p.Plan.Set == nil || snapshot.Ref() != p.Plan.Set.Configuration || snapshot.Scope.OrganizationID != p.Run.TenantID || snapshot.Scope.ActorID != p.Run.UserID || snapshot.MemberID != p.Run.MemberID || snapshot.RunID != p.Run.ID || snapshot.ContextID != p.Run.BusinessTaskID || !agentconfig.UUID(snapshot.Template.TemplateID) {
+		return agentconfig.TemplateRef{}, imageagent.ErrCommandBlocked
+	}
+	return snapshot.Template, nil
 }
 
 func readFullImageJSON(request *http.Request, target any) error {
@@ -554,7 +575,7 @@ func readFullImageJSON(request *http.Request, target any) error {
 
 func writeFullImageError(c *gin.Context, err error, mutation bool) {
 	switch {
-	case errors.Is(err, collection.ErrForbidden), errors.Is(err, record.ErrForbidden), errors.Is(err, asset.ErrSourceApprovalForbidden):
+	case errors.Is(err, review.ErrForbidden), errors.Is(err, collection.ErrForbidden), errors.Is(err, record.ErrForbidden), errors.Is(err, asset.ErrSourceApprovalForbidden):
 		c.JSON(http.StatusForbidden, gin.H{"code": "FORBIDDEN"})
 	case errors.Is(err, collection.ErrInvalid), errors.Is(err, record.ErrInvalid), errors.Is(err, record.ErrTooLarge):
 		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_IMAGE_REQUEST"})

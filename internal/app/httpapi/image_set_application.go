@@ -21,6 +21,7 @@ import (
 	imagestore "task-processor/internal/imageagent/store"
 	configstore "task-processor/internal/integration/persistence/agentconfig"
 	assetstore "task-processor/internal/integration/persistence/product/asset"
+	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	"task-processor/internal/listing/preparation"
 	"task-processor/internal/product/asset"
 	"task-processor/internal/product/collection"
@@ -147,7 +148,7 @@ func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB
 	if err != nil {
 		return nil, empty, err
 	}
-	quotes, err := imageworker.NewImageGenerationQuoteReader(imageDB, current.ImageAgent.Generation)
+	quotes, err := imageworker.NewImageGenerationQuoteReader(workerDB, current.ImageAgent.Generation)
 	if err != nil {
 		return nil, empty, err
 	}
@@ -240,11 +241,15 @@ func buildFullImageProducts(db *gorm.DB, deps routeAuthDependencies, permissions
 	if !ok || resolver == nil || permissions == nil || cfg == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "" {
 		return products, authorization, imageagent.ErrCommandBlocked
 	}
-	reviews, err := buildProductReviewCore(db, resolver, permissions)
+	snapshots, err := catalogstore.NewBoundedSnapshotReader(db, 2<<20)
 	if err != nil {
 		return products, authorization, err
 	}
-	products = imageapp.EffectiveImageProductReader{Snapshots: reviews.reader, Applied: reviews.store}
+	applied, err := newProductAppliedPublicationReader(db)
+	if err != nil {
+		return products, authorization, err
+	}
+	products = imageapp.EffectiveImageProductReader{Snapshots: snapshots, Applied: applied}
 	authorization = supplyapp.OrganizationExecutionAuthorizer{Client: zitadel.NewAuthorizationClient(cfg.ListingKit.Zitadel.AuthorizationAPIURL, &http.Client{Timeout: 5 * time.Second}), ServiceToken: func(context.Context) (string, error) { return cfg.ListingKit.Zitadel.TenantDirectoryToken, nil }, ProjectID: cfg.ListingKit.Zitadel.ProjectID, Permissions: permissions, OrganizationStatus: resolver.BusinessStatusChecker()}
 	return products, authorization, nil
 }

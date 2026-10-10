@@ -14,8 +14,11 @@ import (
 	"time"
 )
 
-func buildProductCollectionModuleWithSourceMedia(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, permissions *authz.ListingKitAuthorizer, cfg *config.Config, supply bool, media *collectionSourceMediaDependencies) (kernelmodule.Module, error) {
-	service, err := buildProductCollectionService(ctx, db, dependencies, permissions, supply)
+func buildProductCollectionModuleWithSourceMedia(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, permissions *authz.ListingKitAuthorizer, cfg *config.Config, supply bool, media *collectionSourceMediaDependencies, images ...bool) (kernelmodule.Module, error) {
+	if len(images) > 1 {
+		return nil, collection.ErrUnavailable
+	}
+	service, err := buildProductCollectionService(ctx, db, dependencies, permissions, supply, len(images) == 1 && images[0])
 	if err != nil {
 		return nil, err
 	}

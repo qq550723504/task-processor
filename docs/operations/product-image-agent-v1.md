@@ -20,7 +20,7 @@
 
 | 私有配置 | 必要事实 |
 | --- | --- |
-| `productAcquisitionDatabase` / `productCollections` | 当前 Product owner 和现有集合/采集/Review schema，真实原始发布与 Apply 读取 |
+| `productAcquisitionDatabase` / `productCollections` | 当前 Product owner 和现有采集/Review schema，真实原始发布与 Apply 读取；完整模式显式启用 `RuntimeCapabilities.ImageSets`，仅增加 `product_title_proposals SELECT`，不授予 Review 写或 operations 读取。通用采集模式可关闭 Collections；Supply 仍要求 Collections |
 | `productAgent.database` | 已安装 `agent_configuration` 的当前配置 owner；仅图片配置可用 `enabled:false`，无需启用标题执行 |
 | `imageAgent.assetDatabase` | 与 `imageAgent.database` 同一物理 Image/Asset 数据库，使用独立 `supply_asset_runtime` pool，最多8连接；通用模式也必须明确配置 |
 | 可选 `supplyChain` | 仅在实际接入平台时提供当前 Product/Store ports、官方规则及 Supply Temporal。通用模式不提供伪造的应用配置 |
@@ -37,6 +37,8 @@
 
 JSON 的 `imageAgent` 除上述 database/assetDatabase/workerConfigFile/generation 还须提供 `temporalAddress`（literal IPv4 loopback）、`temporalNamespace`、`allowedOrganizationIds`、`publicBase`、`bucket`。worker YAML 使用现有 `imageagent.generation`、`imageagent.admission`、`imageagent.artifactStore` 字段；两份配置不一致拒绝启动。模型密钥只由现有企业 credential owner 提供，模板不能改变模型、凭据、权限或价格。
 
+全新空 Product 数据库的既有 `product-acquisition-init` 私有 manifest 使用 `imageSets:true` 安装当前 schema 和上述窄授权；需要商品集合时再设 `collections:true`，同时启用 Supply 时须设 `collections:true, supplyChain:true`。这些标志不是既有环境的自动迁移/权限修复入口。报价与逐图执行共用现 worker 角色的企业凭据读取能力，HTTP Image 角色仍没有密钥表读取权限。完整 GRSAI worker 无需配置未使用的全局 OpenAI key。
+
 新配置 schema 通过已有 `cmd/agent-configuration-schema-init` 安装；Image schema 与窄 HTTP/worker grant 通过已有 `cmd/product-listing-api-schema-migrate` 的 Organization Image 初始化选项安装；Image 空库初始化已同时安装当前 Asset schema；随后用已有 `cmd/supply-asset-init` 对同一物理 owner 补 `supply_asset_runtime` 授权，省略 `-install-empty-schema`。只能对获准的新环境执行维护命令。旧的单图配置/状态不迁移、不包装到新流程。
 
 ```powershell
@@ -44,6 +46,7 @@ JSON 的 `imageAgent` 除上述 database/assetDatabase/workerConfigFile/generati
 go run ./cmd/current-application -config C:\private\image-set-current-application.json
 # 前端：沿用正常 Auth.js/ZITADEL 登录配置与真实 service API base。
 Set-Location web/listingkit-ui
+$env:LISTINGKIT_PRODUCT_ACQUISITION_ENABLED = "true"
 pnpm.cmd build
 pnpm.cmd exec next start --hostname 127.0.0.1 --port 3000
 ```

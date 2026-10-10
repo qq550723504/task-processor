@@ -263,3 +263,20 @@ Legacy decision: **EXTRACT | RETIRE**。抽取当前合格计划/逐图 effect/�
 复用当前 Image/Asset 候选核验、原不可变批准回执、canonical published-key 与 ImmutableObjectStore.ReadObject。MaterialTargetResolver 对已经 service 核实的生成候选/已批准生成物走独立只读 owner port：source tenant、原 Run/revision/slot/attempt/hash 与规范 published key、配置 PublicBase 精确匹配后，从当前 immutable owner 读取真实字节，继续原大小、完整解码、hash/尺寸校验。已批准素材可能由同企业其它成员生成，原 URL/身份必须来自已核实批准回执，不以当前 actor 重写原 owner key。API 预览和 worker 保存注入同一 port；没有 port 或证据拒绝，不回落到 URL 下载。原图仍走公共 HTTPS/SSRF 读取；手动素材保留已有 immutable storage 读取。没有任意 key/URL 的用户入口，也没有 localhost 下载豁免。
 
 仅补当前用户完整受控试用所需读取接线；不改变 schema、canonical owner、权限政策、批准事务、生成/计费状态、UNKNOWN、恢复或 provider POST。复用现 S3 uploader/worker object-store bridge；不得增加存储框架或验收 runner。验证为原 local generated URL 拒绝 RED，精确 key 读取/跨企业及身份/hash/key漂移拒绝、原图私网拒绝、真实字节损坏拒绝的有界 GREEN，以及 API/worker 同 port 和实际受控完整流程。独立评审已给上述最小边界，Issue 记录为 Reuse Existing Architecture / Ready 后实施；真实模型质量和用户验收保留 NOT_RUN。
+### 8.3 受控启动发现的配置和报价接线修复
+
+Design Basis: Reuse Existing Architecture / Ready。完整 GRSAI 模式只消费当前企业凭据 owner；通用 worker 配置的全局 OpenAI 密钥校验不属于这条运行路径。专用配置加载仅检查当前 Image worker 数据库目标和有界角色，Generation/Admission/immutable storage 的完整校验仍由现有完整模式组合承担。计划报价读取同一已批准 worker 只读凭据能力，再返回已绑定的配置元数据；不增加 API 数据库凭据权限，不向客户端返回密钥，不创建新 owner、schema、状态、恢复或计费规则。验证：无全局 OpenAI key 的专用配置可加载；错 owner/角色仍拒绝；用真实隔离角色复现旧报价失败，并跑通原计划确认路径。
+
+### 8.4 当前 Product 只读消费者的启动阻碍（IMPLEMENTATION_READY）
+
+受控实例实际启动失败于 `build full image Product context: review unavailable`。§8.1 所需快照/AppliedPublicationLookup 被误装配为完整 Review 写服务，且 acquisition 的 capability grants 只有 Supply 能获得 `product_title_proposals` SELECT。这是核心通用完整路径无法启动的 BLOCKER；不代表需要开放标题写操作或平台功能。
+
+最小修正复用已批准当前 Product owner 的两个只读合同：有界 Catalog snapshot reader 和 Review repository 的 AppliedPublicationLookup，不构造 Review producer/service，也不要求读取 `product_title_operations`。现 acquisition RuntimeCapabilities 增加显式 ImageSets 标志，仅在完整图片消费者存在时准入现有 `product_title_proposals` SELECT；所有共用 Product pool 的现消费者按一致 capability 校验。Supply 的原权限不变；ImageSets 不授予 Review INSERT/UPDATE、operations SELECT 或平台表权限。初始化仍只对明确空专用数据库安装已有 Review schema；无请求时 DDL、无新表/owner/事实/状态/迁移。
+
+原 live source 权限、actor/member、Apply lineage、bounded bytes 与租户检查保持；同一个冻结完整图片 Must 所需只读接线，没有新产品范围。先以真实隔离 narrow role 复现启动失败，再检查原始快照与现 Apply lineage 可读、额外写权限和未准入读取拒绝，最后完成实际页面流程。本增量经对应高风险边界检查后才修改正式接线，不重开全局架构。
+
+2026-10-10 现独立 Reviewer 对 §8.3/§8.4 的对应高风险边界检查明确达到 IMPLEMENTATION_READY，无新 BLOCKER。检查文档 SHA256 为 7B615DACCB6B7ED5DA5BAAB1474AB96DDB9CCEF5BB62F468DD3FBD4AAFF69D5B；本状态标记不改变合同。仅准入上述最小实现，权限测试、受控完整流程和用户验收分别取得实际证据。
+
+### 8.5 刷新后的部分重生成模板读取（Reuse Existing Architecture / Ready）
+
+评审 finding 4235681299 分类 IMPLEMENTATION_TEST，受影响 Must 为刷新后原任务的明确部分重生成。仅补已有只读合同：Run HTTP projection 从其绑定的现配置快照读取精确 TemplateRef，按原企业/actor/member/Run/context/ref 核验；浏览器读取该不可变模板版本，部分重生成使用原任务模板和对应任务 ID、原图配方，不被当前默认模板或模板 head 覆盖。新整套计划仍沿当前显式模板选择。不改变模板事实、准入/启停、Run 状态、生成/计费/UNKNOWN 或恢复；缺少原模板读取则拒绝重生成，原审核仍可用。验证为旧自定义/旧版本与当前默认不一致时的页面 RED→GREEN，以及实际刷新后的单项新计划。

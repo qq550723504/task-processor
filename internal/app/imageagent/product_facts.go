@@ -87,6 +87,28 @@ func ImageProductEvidence(product catalog.ProductSnapshot) (map[string]string, e
 			}
 		}
 	}
+	// Captured Catalog attributes are current Product facts too. Only explicitly
+	// named evidence fields qualify; keep their text without interpreting it.
+	attributeEvidence := map[string][]string{}
+	for _, attribute := range product.Attributes {
+		key := ""
+		switch strings.TrimSpace(attribute.Name) {
+		case "specifications", "规格尺寸":
+			key = "specifications"
+		case "instructions", "使用步骤":
+			key = "instructions"
+		case "accessories", "包装配件":
+			key = "accessories"
+		}
+		if key != "" && strings.TrimSpace(attribute.Value) != "" {
+			attributeEvidence[key] = append(attributeEvidence[key], attribute.Value)
+		}
+	}
+	for key, values := range attributeEvidence {
+		if evidence[key] == "" {
+			evidence[key] = strings.Join(values, "\n")
+		}
+	}
 	total := 0
 	for _, value := range evidence {
 		total += len(value)

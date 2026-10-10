@@ -3,11 +3,42 @@ package imageagentworker
 import (
 	"context"
 	"testing"
+	"time"
 
 	"task-processor/internal/imageagent"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestGenerationCatalogAcceptsTimestampPrecisionButRejectsChangedContent(t *testing.T) {
+	persisted, err := imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/image.png", Metadata: map[string]string{"capture": "original"}}}, ProductContext: imageagent.ProductContextRef{ProductID: "product-1", Title: "Captured title", Attributes: map[string]string{"color": "blue"}}})
+	require.NoError(t, err)
+	persisted.Manifest.CreatedAt = time.Date(2026, 10, 10, 2, 9, 37, 579124000, time.UTC)
+	for _, mode := range []string{"timestamp_precision", "url", "attribute", "metadata", "version"} {
+		t.Run(mode, func(t *testing.T) {
+			supplied := persisted
+			supplied.Manifest.CreatedAt = supplied.Manifest.CreatedAt.Add(782 * time.Nanosecond)
+			supplied.Assets = append([]imageagent.AuthorizedAsset(nil), persisted.Assets...)
+			supplied.ProductContext.Attributes = map[string]string{"color": "blue"}
+			switch mode {
+			case "url":
+				supplied.Assets[0].URL = "https://other.example/image.png"
+			case "attribute":
+				supplied.ProductContext.Attributes["color"] = "red"
+			case "metadata":
+				supplied.Assets[0].Metadata = map[string]string{"capture": "changed"}
+			case "version":
+				supplied.Manifest.Version++
+			}
+			err := validateGenerationSourceCatalog(persisted, supplied)
+			if mode == "timestamp_precision" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+			}
+		})
+	}
+}
 
 type generationProjectionReader struct {
 	imageagent.Repository

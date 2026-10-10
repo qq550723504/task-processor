@@ -95,6 +95,14 @@ type productReviewCore struct {
 	store        *reviewstore.Repository
 }
 
+// Read consumers reuse the current Review owner without constructing its
+// producer, mutation service or operation inventory.
+func newProductAppliedPublicationReader(db *gorm.DB) (review.AppliedPublicationLookup, error) {
+	return reviewstore.NewRepository(db, func(tx *gorm.DB) (review.SourcePublicationReader, error) {
+		return productsourcing.NewTransactionReader(tx)
+	})
+}
+
 func buildProductReviewCore(db *gorm.DB, resolver *workbenchcontext.Resolver, auth *authz.ListingKitAuthorizer) (productReviewCore, error) {
 	if db == nil || resolver == nil || auth == nil || !productReviewSchemaReady(db) {
 		return productReviewCore{}, review.ErrUnavailable

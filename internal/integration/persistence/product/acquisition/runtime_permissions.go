@@ -17,6 +17,7 @@ const RuntimeRole = "source_acquisition_runtime"
 type RuntimeCapabilities struct {
 	Collections bool
 	SupplyChain bool
+	ImageSets   bool
 }
 
 const collectionPrivileges = `,('product_collection_batches','SELECT'),('product_collection_batches','INSERT'),('product_collection_batches','UPDATE'),
@@ -30,6 +31,9 @@ func runtimePermissionsFor(capability RuntimeCapabilities) string {
 	}
 	if capability.SupplyChain {
 		admitted += supplyPrivileges
+	}
+	if capability.ImageSets && !capability.SupplyChain {
+		admitted += ",('product_title_proposals','SELECT')"
 	}
 	admitted += ")"
 	return strings.Replace(runtimePermissionQuery, admittedPrivileges, admitted, 1)
@@ -148,6 +152,7 @@ func GrantRuntimePermissions(ctx context.Context, db *gorm.DB, capabilities ...R
 		}
 		enabled := len(capabilities) == 1 && capabilities[0].Collections
 		supply := len(capabilities) == 1 && capabilities[0].SupplyChain
+		images := len(capabilities) == 1 && capabilities[0].ImageSets
 		if supply && !enabled {
 			return sourcing.ErrAcquisitionUnavailable
 		}
@@ -185,6 +190,9 @@ func GrantRuntimePermissions(ctx context.Context, db *gorm.DB, capabilities ...R
 			statements = append(statements, "GRANT SELECT,INSERT ON public.listing_preparations,public.listing_preparation_sources,public.listing_target_records,public.listing_target_record_commands,public.listing_submission_official_intents,public.listing_submission_official_receipts TO source_acquisition_runtime",
 				"GRANT SELECT,INSERT,UPDATE ON public.listing_preparation_targets,public.listing_preparation_operations,public.listing_preparation_operation_items,public.listing_submission_execution_attempts,public.listing_submission_target_fences TO source_acquisition_runtime",
 				"GRANT SELECT ON public.product_title_proposals TO source_acquisition_runtime")
+		}
+		if images && !supply {
+			statements = append(statements, "GRANT SELECT ON public.product_title_proposals TO source_acquisition_runtime")
 		}
 		for _, statement := range statements {
 			if err := tx.Exec(statement).Error; err != nil {

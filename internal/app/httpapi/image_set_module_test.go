@@ -8,12 +8,78 @@ import (
 	"net/http/httptest"
 	"strings"
 	"task-processor/internal/agent"
+	"task-processor/internal/agentconfig"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/httproute"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/product/asset"
 	"testing"
+	"time"
 )
+
+type imageSetRequestCapabilitySource struct{ calls int }
+
+func (s *imageSetRequestCapabilitySource) ReadImageSetSource(ctx context.Context, id imageagent.ExecutionIdentity, input imageagent.PrepareImageSetInput) (imageagent.ImageSetPreparation, error) {
+	s.calls++
+	capability, ok := ctx.Value(productReviewCapabilityContextKey{}).(productReviewRequestCapability)
+	if !ok || capability.bearerToken != "controlled-request-token" || capability.actorID != id.UserID || capability.effectiveOrganizationID != id.TenantID || input.ContextID != id.BusinessTaskID {
+		return imageagent.ImageSetPreparation{}, imageagent.ErrIdentityRequired
+	}
+	return imageagent.ImageSetPreparation{Source: imageagent.ImageSourceBinding{OperationID: input.ContextID}}, nil
+}
+
+func TestFullImageHTTPBindsActualRequestCredentialAndRejectsInvalidSessions(t *testing.T) {
+	const sourceID = "d1abe8da-b381-4924-8d15-d79bdbfacf70"
+	now := time.Now()
+	for _, test := range []struct {
+		name, authorization string
+		expires             time.Time
+		status, calls       int
+	}{
+		{"valid", "Bearer controlled-request-token", now.Add(time.Hour), 200, 1},
+		{"missing", "", now.Add(time.Hour), 403, 0},
+		{"expired", "Bearer controlled-request-token", now, 403, 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := &imageSetRequestCapabilitySource{}
+			service, err := imageagent.NewService(imageSetHTTPRepository{}, imageSetHTTPWorkflow{}, closedImageSetCatalog{}, imageagent.WithOrganizationScope())
+			require.NoError(t, err)
+			module := fullImageModule{application: &fullImageApplication{service: service, readSources: source}, bind: (productReviewCapabilityBinder{now: func() time.Time { return now }}).Bind}
+			router := gin.New()
+			for _, route := range module.routes() {
+				router.Handle(route.Method, route.Path, route.Handler)
+			}
+			request := httptest.NewRequest(http.MethodGet, "/api/v1/workbench/sourcing/1688/acquisitions/"+sourceID+"/images/sources", nil)
+			request.Header.Set("Authorization", test.authorization)
+			request = request.WithContext(authidentity.WithAuthenticatedIdentity(request.Context(), authidentity.AuthenticatedIdentity{TenantID: "org", EffectiveOrganizationID: "org", UserID: "actor", EffectiveMemberID: "member", TokenExpiresAt: test.expires}))
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			require.Equal(t, test.status, response.Code, response.Body.String())
+			require.Equal(t, test.calls, source.calls)
+		})
+	}
+}
+
+func TestFullImageTemplateReferenceUsesTheOriginalScopedSnapshot(t *testing.T) {
+	snapshot := agentconfig.ImageConfigurationSnapshot{ID: "33333333-3333-4333-8333-333333333333", Digest: strings.Repeat("a", 64), Scope: agent.Scope{OrganizationID: "org", ActorID: "actor"}, MemberID: "member", RunID: "run", ContextID: "source", Template: agentconfig.TemplateRef{TemplateID: "55555555-5555-4555-8555-555555555555", Revision: "2"}}
+	p := imageagent.RunProjection{Run: imageagent.Run{ID: "run", TenantID: "org", UserID: "actor", MemberID: "member", BusinessTaskID: "source"}, Plan: imageagent.Plan{Set: &imageagent.ImageSetPlan{Configuration: snapshot.Ref()}}}
+	ref, err := imageSetTemplateReference(p, snapshot)
+	require.NoError(t, err)
+	require.Equal(t, snapshot.Template, ref)
+	for _, alter := range []func(*agentconfig.ImageConfigurationSnapshot){
+		func(s *agentconfig.ImageConfigurationSnapshot) { s.Scope.OrganizationID = "other" },
+		func(s *agentconfig.ImageConfigurationSnapshot) { s.Scope.ActorID = "other" },
+		func(s *agentconfig.ImageConfigurationSnapshot) { s.MemberID = "other" },
+		func(s *agentconfig.ImageConfigurationSnapshot) { s.RunID = "other" },
+		func(s *agentconfig.ImageConfigurationSnapshot) { s.ContextID = "other" },
+		func(s *agentconfig.ImageConfigurationSnapshot) { s.Digest = strings.Repeat("b", 64) },
+	} {
+		changed := snapshot
+		alter(&changed)
+		_, err = imageSetTemplateReference(p, changed)
+		require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
+	}
+}
 
 func TestFullImageRunRequiresOriginalMemberAndExplicitSourceOwner(t *testing.T) {
 	identity := authidentity.AuthenticatedIdentity{TenantID: "org", EffectiveOrganizationID: "org", UserID: "actor", EffectiveMemberID: "member"}

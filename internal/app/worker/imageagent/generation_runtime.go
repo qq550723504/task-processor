@@ -90,13 +90,23 @@ func buildOrganizationGeneration(cfg config.ImageAgentGenerationConfig, db, comm
 			if err != nil {
 				return nil, err
 			}
-			if !reflect.DeepEqual(catalog, input.AssetCatalog) {
-				return nil, imageagent.ErrRevisionConflict
+			if err := validateGenerationSourceCatalog(catalog, input.AssetCatalog); err != nil {
+				return nil, err
 			}
 			return readGenerationSource(ctx, input)
 		},
 	})
 	return executor, recovery, err
+}
+
+func validateGenerationSourceCatalog(persisted, supplied imageagent.AssetCatalog) error {
+	canonical, err := imageagent.NormalizeAssetCatalog(supplied)
+	// The content hash binds every asset and product input. CreatedAt is
+	// bookkeeping: PostgreSQL stores fewer fractional digits than Temporal JSON.
+	if err != nil || persisted.Manifest.Version != canonical.Manifest.Version || persisted.Manifest.Hash != canonical.Manifest.Hash {
+		return imageagent.ErrRevisionConflict
+	}
+	return nil
 }
 
 func revalidateGenerationImageSet(ctx context.Context, repository imageagent.Repository, contexts imageagent.ImageSetSourceGuard, input imageagent.SlotExecutionInput) error {
