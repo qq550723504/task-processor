@@ -128,6 +128,10 @@ source of truth for long-lived rules.
 
 ## Supporting Context
 
+- [`ai-workbench-reports-v1.md`](./ai-workbench-reports-v1.md)
+  - #628 frozen IMPLEMENTATION_READY personal report snapshots, favorites and
+    exact source-version capture. Shared runtime wiring and actual user acceptance
+    remain separate from feature-local implementation and fixture evidence.
 - [`tool-market-v1.md`](./tool-market-v1.md)
   - Native composition and local installation limits: [current-tool-market operations](../operations/current-tool-market.md).
   - #613 frozen IMPLEMENTATION_READY feature Design Basis for enterprise-shared enablement and manual customization progress; existing capture permissions and offline quote/payment owners remain unchanged. This feature contract does not introduce repository-wide structural rules.
