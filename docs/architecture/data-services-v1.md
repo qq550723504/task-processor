@@ -109,6 +109,10 @@ API 使用专属 `Authorization: DataKey <public-id>.<secret>`，HTTPS、no-stor
 
 所有API读取、新job、每个Fetch前及发布前均实时核对原grant和当前permission。worker冻结原actor/member，绝不使用专员或runtime service user充当商品owner。key的禁用/撤销在ProductDB锁定相同key row，与job admission和publication guard排序；撤销完成后不能创建新item/publication，已保存结果只由正常Console本人读取，原key无权读回。
 
+创建命令重放授权修正（2026-10-10，BLOCKER：错误授权）：旧 Authenticate 快照不能绕过 canonical key 已完成的禁用/撤销、过期、原scope变化、acquire移除或CIDR配置收紧。Admit 取得原key FOR UPDATE 后，在任何原命令重放／返回点核对当前scope/ACTIVE/acquire、以clock_timestamp核验expiry，并要求当前key revision等于此次认证Principal revision；在锁等待与原job materialization后、事务返回前再次检查。相同revision检查覆盖首次准入与两个replay分支。认证revision与command hash分开：revision/限额/CIDR不加入原hash，客户端重新认证得到当前revision后仍可用同UUID/完整payload返回同job，绝不再次占quota或建job。首次CAS、现有实时IAM、提交UNKNOWN及原worker核实/fence/release保持；错误不输出job。无需新增owner/schema/缓存或另一恢复协议。
+
+原独立Reviewer确认该新BLOCKER仅重开此§6窄边界，上述条件记录后IMPLEMENTATION_READY恢复；实施与合并BLOCKER须等真实RED→GREEN及独立增量复核后关闭。已复现PG RED：禁用/撤销/过期/变更grant、limits/CIDR stale revision和key锁等待跨expiry均仍返回原job。旧测试用旧认证revision重放配置变更不再是授权依据，改为当前重新认证revision后仍复用同命令的有效业务不变量。
+
 结果读取实现边界（2026-10-10，原 Must 的窄补齐，独立增量准入已确认）：外部三个 GET（by-command、job、results）由原 DataAcquisition Read/Results → `Repository.WithResultRead` → 同 ProductDB PostgreSQL adapter 消费。认证后的原 Principal 不是可缓存的读授权。原 key row 取得 `FOR SHARE` 后重新检查精确 scope、key ID/revision、ACTIVE、expiry 与 result capability，并保留锁直到原授权结果已完整 materialize；返回前再次检查 expiry/context。既有 Change 的 `FOR UPDATE` 与之互斥：撤销先提交则旧 Principal 读取拒绝；读取先持锁则其读取在线性化顺序中先于撤销，撤销等待该有界读结束。网络已交付内容不作可撤回保证。
 
 `WithResultRead` 回调只取得绑定持锁事务的窄 `ResultReadRepository`（Read/Items）和 `CapturedResultReader`；app 注入的 `ResultReaderFactory(tx)` 沿现有 SRC `NewTransactionReader` 与原 exact-evidence Verify，job/items/SRC/Catalog 都复用同一事务连接，允许 Product pool `MaxConnections=1`，不得回调 root pool。回调不调用 Product mutation、不获取 actor/quota/job/item 写锁；原 Live.CheckRead/归属、只读 projection/已有 Temporal Ensure 受同一最长10秒 context，失败丢弃结果并释放锁。创建仍沿原 admission key→quota→job，Console 读仍按原身份权限；不增加 schema、state、事实 owner、连接治理平台或恢复协议。取消只经原 Live.CheckRead 后调用 scope-qualified Repository.Cancel，同 Product事务fence/quota释放不前置EnsureExecution；Resource仍由原proof/RecoverDue处理原reservation。

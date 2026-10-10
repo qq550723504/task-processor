@@ -114,8 +114,9 @@ func TestPostgresJobQuotaFencingPublicationAndOriginalChargeProof(t *testing.T) 
 	require.NoError(t, err)
 	_, err = repo.Admit(ctx, dataacquisition.Principal{Scope: scope, CredentialID: key.ID, CredentialRevision: changedKey.Revision}, command, q, orgresource.FundingEnterprise)
 	require.ErrorIs(t, err, dataacquisition.ErrConflict, "permission changes cannot replay a different admission contract")
-	_, err = keys.Change(ctx, scope, key.ID, uuid.NewString(), collection.Digest(key.Input), changedKey.Revision, dataservice.KeyPatch{State: "ACTIVE", Limits: &key.Input})
+	restoredKey, err := keys.Change(ctx, scope, key.ID, uuid.NewString(), collection.Digest(key.Input), changedKey.Revision, dataservice.KeyPatch{State: "ACTIVE", Limits: &key.Input})
 	require.NoError(t, err)
+	principal.CredentialRevision = restoredKey.Revision // A replay authenticates against the current configuration.
 	replay, err = repo.Admit(ctx, principal, command, q, orgresource.FundingEnterprise)
 	require.NoError(t, err)
 	require.Equal(t, job.ID, replay.ID)
@@ -214,6 +215,105 @@ func TestPostgresJobQuotaFencingPublicationAndOriginalChargeProof(t *testing.T) 
 	foreignStats, err := repo.Usage(ctx, other)
 	require.NoError(t, err)
 	require.Zero(t, foreignStats.DayRows)
+	t.Run("admission replay checks the locked current credential", func(t *testing.T) {
+		access.denied = false
+		for _, scenario := range []string{"DISABLED", "REVOKED", "expired", "grant", "acquire removed", "limits revision", "CIDR revision", "expires while waiting for key lock"} {
+			t.Run(scenario, func(t *testing.T) {
+				local := key
+				local.ID, local.Digest = uuid.NewString(), collection.Digest(uuid.NewString())
+				local.Scope.OrganizationID = "admission-" + uuid.NewString()
+				_, _, err := keys.Create(ctx, local, uuid.NewString(), collection.Digest(local.Input))
+				require.NoError(t, err)
+				principal := dataacquisition.Principal{Scope: local.Scope, CredentialID: local.ID, CredentialRevision: 1}
+				command := uuid.NewString()
+				original, err := repo.Admit(ctx, principal, command, q, orgresource.FundingEnterprise)
+				require.NoError(t, err)
+				var returned dataacquisition.Job
+				var freshRevision int64
+				switch scenario {
+				case "DISABLED", "REVOKED":
+					_, err = keys.Change(ctx, local.Scope, local.ID, uuid.NewString(), collection.Digest(scenario), 1, dataservice.KeyPatch{State: scenario})
+					require.NoError(t, err)
+				case "grant":
+					require.NoError(t, db.Exec("UPDATE data_service_credentials SET member_id='replacement-grant' WHERE id=?", local.ID).Error)
+				case "limits revision", "CIDR revision":
+					input := local.Input
+					if scenario == "limits revision" {
+						input.DailyRows = 3
+					} else {
+						input.CIDRs = []string{"203.0.113.0/24"}
+					}
+					changed, err := keys.Change(ctx, local.Scope, local.ID, uuid.NewString(), collection.Digest(input), 1, dataservice.KeyPatch{State: "ACTIVE", Limits: &input})
+					require.NoError(t, err)
+					freshRevision = changed.Revision
+				case "acquire removed":
+					input := local.Input
+					input.Permissions = []string{dataservice.PermissionResult}
+					raw, err := json.Marshal(input)
+					require.NoError(t, err)
+					require.NoError(t, db.Exec("UPDATE data_service_credentials SET config_json=? WHERE id=?", string(raw), local.ID).Error)
+				case "expired", "expires while waiting for key lock":
+					input := local.Input
+					input.ExpiresAt = time.Now().UTC().Add(-time.Minute).Truncate(time.Microsecond)
+					if scenario != "expired" {
+						input.ExpiresAt = time.Now().UTC().Add(time.Second).Truncate(time.Microsecond)
+					}
+					raw, err := json.Marshal(input)
+					require.NoError(t, err)
+					require.NoError(t, db.Exec("UPDATE data_service_credentials SET config_json=?,expires_at=? WHERE id=?", string(raw), input.ExpiresAt, local.ID).Error)
+					if scenario != "expired" {
+						holder := db.WithContext(ctx).Begin()
+						require.NoError(t, holder.Error)
+						t.Cleanup(func() { _ = holder.Rollback().Error })
+						var locked string
+						require.NoError(t, holder.Raw("SELECT id FROM data_service_credentials WHERE id=? FOR UPDATE", local.ID).Scan(&locked).Error)
+						done := make(chan error, 1)
+						go func() {
+							var e error
+							returned, e = repo.Admit(ctx, principal, command, q, orgresource.FundingEnterprise)
+							done <- e
+						}()
+						require.Eventually(t, func() bool {
+							var waiting int64
+							require.NoError(t, db.Raw("SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%data_service_credentials%' AND query LIKE '%FOR UPDATE%'").Scan(&waiting).Error)
+							return waiting > 0
+						}, 500*time.Millisecond, 10*time.Millisecond)
+						select {
+						case <-ctx.Done():
+							t.Fatal(ctx.Err())
+						case <-time.After(time.Until(input.ExpiresAt) + 30*time.Millisecond):
+						}
+						require.NoError(t, holder.Commit().Error)
+						err = <-done
+					}
+				}
+				if scenario != "expires while waiting for key lock" {
+					returned, err = repo.Admit(ctx, principal, command, q, orgresource.FundingEnterprise)
+				}
+				require.Error(t, err, "stale authenticated key must not expose the original command")
+				require.Zero(t, returned)
+				var rows, fen, count int64
+				require.NoError(t, db.Raw("SELECT reserved_rows,reserved_fen FROM data_service_quota WHERE key_id=? AND window_kind='day'", local.ID).Row().Scan(&rows, &fen))
+				require.Equal(t, int64(2), rows)
+				require.Equal(t, int64(10), fen)
+				require.NoError(t, db.Raw("SELECT count(*) FROM data_acquisition_jobs WHERE credential_id=?", local.ID).Scan(&count).Error)
+				require.Equal(t, int64(1), count)
+				if freshRevision != 0 {
+					principal.CredentialRevision = freshRevision
+					replayed, err := repo.Admit(ctx, principal, command, q, orgresource.FundingEnterprise)
+					require.NoError(t, err, "fresh authentication replays the same hash after limits/CIDR changes")
+					require.Equal(t, original.ID, replayed.ID)
+					require.NoError(t, db.Raw("SELECT reserved_rows FROM data_service_quota WHERE key_id=? AND window_kind='day'", local.ID).Scan(&rows).Error)
+					require.Equal(t, int64(2), rows)
+				} else {
+					_, err = repo.Admit(ctx, principal, uuid.NewString(), q, orgresource.FundingEnterprise)
+					require.Error(t, err, "new admissions use the same current key guard")
+				}
+				_, err = repo.Cancel(ctx, local.Scope, original.ID, uuid.NewString())
+				require.NoError(t, err)
+			})
+		}
+	})
 	t.Run("charge callback preserves exact original intent and local eligibility", func(t *testing.T) {
 		access.denied = false
 		for _, scenario := range []string{"member", "funding", "fingerprint", "business scope", "disabled key", "expired key", "key grant", "acquire removed", "canceled job", "expired job", "canceled context"} {

@@ -405,6 +405,67 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 				})
 			}
 		}
+		for _, state := range []string{"DISABLED", "REVOKED", "CIDR tightened"} {
+			t.Run("creation replay rejects completed key change "+state, func(t *testing.T) {
+				created, err := module.keys.Create(ctx, uuid.NewString(), dataservice.KeyInput{Name: "write race", ExpiresAt: time.Now().UTC().Add(time.Hour), DailyRows: 2, MonthlyCostFen: 10, Permissions: []string{dataservice.PermissionAcquire}})
+				require.NoError(t, err)
+				command := uuid.NewString()
+				body := `{"query":{"site":"us","mode":"asin","asins":["B000123456"],"limit":1},"maximumRows":1,"maximumCostFen":5}`
+				header := "DataKey " + created.Key.ID + "." + created.Secret
+				w := send("POST", APIBase, body, header, command)
+				require.Equal(t, http.StatusAccepted, w.Code)
+				var original dataacquisition.Job
+				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &original))
+				starts := fixture.starts
+				fixture.credentialCheck = func(ctx context.Context, _ collection.Scope, permission string) error {
+					if permission == dataservice.PermissionAcquire {
+						fixture.credentialCheck = nil
+						patch := dataservice.KeyPatch{State: state}
+						if state == "CIDR tightened" {
+							input := created.Key.Input
+							input.CIDRs = []string{"203.0.113.0/24"}
+							patch = dataservice.KeyPatch{State: "ACTIVE", Limits: &input}
+						}
+						_, err := module.keys.Change(ctx, created.Key.ID, uuid.NewString(), 1, patch)
+						return err
+					}
+					return nil
+				}
+				t.Cleanup(func() { fixture.credentialCheck = nil })
+				w = send("POST", APIBase, body, header, command)
+				if state == "CIDR tightened" {
+					require.Equal(t, http.StatusConflict, w.Code)
+				} else {
+					require.Equal(t, http.StatusForbidden, w.Code, "a revoke committed after Authenticate must prevent original-command disclosure/start")
+				}
+				require.NotContains(t, w.Body.String(), original.ID)
+				require.NotContains(t, w.Body.String(), "B000123456")
+				require.Equal(t, starts, fixture.starts)
+				var rows, fen, count int64
+				require.NoError(t, productDB.Raw("SELECT reserved_rows,reserved_fen FROM data_service_quota WHERE key_id=? AND window_kind='day'", created.Key.ID).Row().Scan(&rows, &fen))
+				require.Equal(t, int64(1), rows)
+				require.Equal(t, int64(5), fen)
+				require.NoError(t, productDB.Raw("SELECT count(*) FROM data_acquisition_jobs WHERE credential_id=?", created.Key.ID).Scan(&count).Error)
+				require.Equal(t, int64(1), count)
+				if state == "CIDR tightened" {
+					w = send("POST", APIBase, body, header, command)
+					require.Equal(t, http.StatusForbidden, w.Code, "fresh authentication rejects the excluded peer")
+					request := httptest.NewRequest("POST", APIBase, strings.NewReader(body))
+					request.TLS, request.RemoteAddr = &tls.ConnectionState{}, "203.0.113.10:4567"
+					request.Header.Set("Content-Type", "application/json")
+					request.Header.Set("Authorization", header)
+					request.Header.Set("Idempotency-Key", command)
+					w = httptest.NewRecorder()
+					router.ServeHTTP(w, request)
+					require.Equal(t, http.StatusAccepted, w.Code)
+					require.Contains(t, w.Body.String(), original.ID, "fresh allowed peer replays the same original job")
+					require.NoError(t, productDB.Raw("SELECT reserved_rows FROM data_service_quota WHERE key_id=? AND window_kind='day'", created.Key.ID).Scan(&rows).Error)
+					require.Equal(t, int64(1), rows)
+				}
+				_, err = repo.Cancel(ctx, scope, original.ID, uuid.NewString())
+				require.NoError(t, err, "original terminal fencing remains allowed after key revocation")
+			})
+		}
 		t.Run("committed admission returns UNKNOWN and recovers the same command and quota", func(t *testing.T) {
 			created, err := module.keys.Create(ctx, uuid.NewString(), dataservice.KeyInput{Name: "startup outage", ExpiresAt: time.Now().UTC().Add(time.Hour), DailyRows: 2, MonthlyCostFen: 10, Permissions: []string{dataservice.PermissionAcquire, dataservice.PermissionResult}})
 			require.NoError(t, err)
