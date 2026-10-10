@@ -102,12 +102,17 @@ func DataWorkflow(ctx workflow.Context, input Execution) error {
 	if !input.valid() {
 		return temporal.NewNonRetryableApplicationError("invalid original data execution", "invalid", nil)
 	}
-	attempt := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{StartToCloseTimeout: 2 * time.Minute, ScheduleToCloseTimeout: 2 * time.Minute, RetryPolicy: &temporal.RetryPolicy{MaximumAttempts: 1}})
 	for workflow.Now(ctx).Before(input.Deadline) {
+		remaining := input.Deadline.Sub(workflow.Now(ctx))
+		window := 6 * time.Minute
+		if remaining < window {
+			window = remaining
+		}
+		attempt := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{StartToCloseTimeout: window, ScheduleToCloseTimeout: window, RetryPolicy: &temporal.RetryPolicy{MaximumAttempts: 1}})
 		if err := workflow.ExecuteActivity(attempt, RunActivityName, input).Get(ctx, nil); err == nil {
 			return nil
 		}
-		remaining := input.Deadline.Sub(workflow.Now(ctx))
+		remaining = input.Deadline.Sub(workflow.Now(ctx))
 		if remaining <= 0 {
 			break
 		}

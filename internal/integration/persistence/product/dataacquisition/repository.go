@@ -461,10 +461,10 @@ func (r *Repository) Admit(ctx context.Context, p dataacquisition.Principal, com
 // Every mutation follows key -> original UTC quota buckets -> job -> item.
 // Proof/binding/fencing deliberately do not require continuing execution rights.
 func (r *Repository) withJob(ctx context.Context, job dataacquisition.Job, active bool, action func(*gorm.DB, *jobRow, dataacquisition.Job) error) error {
-	return r.withJobCommand(ctx, job, active, job.Scope, "", action)
+	return r.withJobCommand(ctx, job, active, true, job.Scope, "", action)
 }
 
-func (r *Repository) withJobCommand(ctx context.Context, job dataacquisition.Job, active bool, commandScope collection.Scope, command string, action func(*gorm.DB, *jobRow, dataacquisition.Job) error) error {
+func (r *Repository) withJobCommand(ctx context.Context, job dataacquisition.Job, active, checkLive bool, commandScope collection.Scope, command string, action func(*gorm.DB, *jobRow, dataacquisition.Job) error) error {
 	if job.Scope.Validate() != nil || !collection.ValidID(job.ID) {
 		return dataacquisition.ErrInvalid
 	}
@@ -506,8 +506,10 @@ func (r *Repository) withJobCommand(ctx context.Context, job dataacquisition.Job
 				if err = activeKey(tx, key, job.Scope); err != nil {
 					return err
 				}
-				if err = r.live.CheckExecution(ctx, dataacquisition.Principal{Scope: current.Scope, CredentialID: current.CredentialID}, current.Funding); err != nil {
-					return err
+				if checkLive {
+					if err = r.live.CheckExecution(ctx, dataacquisition.Principal{Scope: current.Scope, CredentialID: current.CredentialID}, current.Funding); err != nil {
+						return err
+					}
 				}
 			}
 			if err = action(tx, &row, current); err != nil {
@@ -534,6 +536,13 @@ func (r *Repository) withJobCommand(ctx context.Context, job dataacquisition.Job
 }
 func (r *Repository) CheckActive(ctx context.Context, job dataacquisition.Job) error {
 	return r.withJob(ctx, job, true, func(*gorm.DB, *jobRow, dataacquisition.Job) error { return nil })
+}
+func originalItemIntent(job dataacquisition.Job, asin string) orgresource.ConsumerChargeIntent {
+	id := collection.StableID(job.Scope.OrganizationID, job.Scope.ActorID, "amazon-item", job.ID, asin)
+	return orgresource.ConsumerChargeIntent{Identity: orgresource.ConsumerChargeIdentity{OrganizationID: job.Scope.OrganizationID, Consumer: orgresource.ConsumerAmazonData, OperationID: id}, ActorID: job.Scope.ActorID, MemberID: job.Scope.MemberID, Funding: job.Funding, ResourceType: orgresource.ResourceDataRow, Quantity: 1, Fingerprint: collection.Digest(struct {
+		Job, Query, ASIN string
+		Price            int64
+	}{job.ID, job.InputHash, asin, dataacquisition.PriceFen}), BusinessScope: "amazon-data:" + job.ID + ":" + id}
 }
 func (r *Repository) Discover(ctx context.Context, job dataacquisition.Job, ids []string) (dataacquisition.Job, error) {
 	if len(ids) > 200 {
@@ -564,11 +573,8 @@ func (r *Repository) Discover(ctx context.Context, job dataacquisition.Job, ids 
 			return nil
 		}
 		for _, asin := range normalized {
-			id := collection.StableID(row.OrganizationID, row.ActorID, "amazon-item", row.ID, asin)
-			intent := orgresource.ConsumerChargeIntent{Identity: orgresource.ConsumerChargeIdentity{OrganizationID: row.OrganizationID, Consumer: orgresource.ConsumerAmazonData, OperationID: id}, ActorID: row.ActorID, MemberID: row.MemberID, Funding: current.Funding, ResourceType: orgresource.ResourceDataRow, Quantity: 1, Fingerprint: collection.Digest(struct {
-				Job, Query, ASIN string
-				Price            int64
-			}{row.ID, row.InputHash, asin, dataacquisition.PriceFen}), BusinessScope: "amazon-data:" + row.ID + ":" + id}
+			intent := originalItemIntent(current, asin)
+			id := intent.Identity.OperationID
 			raw, err := json.Marshal(intent)
 			if err != nil {
 				return err
@@ -872,7 +878,7 @@ func (r *Repository) Cancel(ctx context.Context, s collection.Scope, id, command
 	if err != nil {
 		return job, err
 	}
-	err = r.withJobCommand(ctx, job, false, s, command, func(tx *gorm.DB, row *jobRow, current dataacquisition.Job) error {
+	err = r.withJobCommand(ctx, job, false, true, s, command, func(tx *gorm.DB, row *jobRow, current dataacquisition.Job) error {
 		if row.Canceled {
 			return nil
 		}
@@ -928,20 +934,35 @@ func (r *Repository) original(ctx context.Context, id orgresource.ConsumerCharge
 	return job, row, err
 }
 func (r *Repository) ChargeIntent(ctx context.Context, id orgresource.ConsumerChargeIdentity) (orgresource.ConsumerChargeIntent, error) {
-	job, row, err := r.original(ctx, id)
+	job, _, err := r.original(ctx, id)
 	if err != nil {
 		return orgresource.ConsumerChargeIntent{}, err
 	}
-	// CheckActive already validates current identity and funding inside the
-	// Product transaction. Do not repeat network-backed authorization within
-	// Resource's bounded charge-owner callback.
-	if err = r.CheckActive(ctx, job); err != nil {
+	// ProcessItem checks live access before every new Reserve and again before
+	// Fetch. Resource's 500ms owner callback reads only locked original facts.
+	var intent orgresource.ConsumerChargeIntent
+	err = r.withJobCommand(ctx, job, true, false, job.Scope, "", func(tx *gorm.DB, _ *jobRow, current dataacquisition.Job) error {
+		row, err := readItem(tx, current, id.OperationID, true)
+		if err != nil {
+			return err
+		}
+		if row.State == "SAVED" || row.State == "FAILED" {
+			return dataacquisition.ErrForbidden
+		}
+		candidate, err := row.intent()
+		if err != nil {
+			return err
+		}
+		if candidate != originalItemIntent(current, row.ASIN) || candidate.Identity != id {
+			return dataacquisition.ErrConflict
+		}
+		intent = candidate
+		return nil
+	})
+	if err != nil {
 		return orgresource.ConsumerChargeIntent{}, err
 	}
-	if row.State == "SAVED" || row.State == "FAILED" {
-		return orgresource.ConsumerChargeIntent{}, dataacquisition.ErrForbidden
-	}
-	return row.intent()
+	return intent, nil
 }
 func (r *Repository) ChargeProof(ctx context.Context, receipt orgresource.ConsumerChargeReceipt) (orgresource.ConsumerChargeProof, error) {
 	job, _, err := r.original(ctx, receipt.Intent.Identity)
