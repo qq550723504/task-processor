@@ -1,6 +1,6 @@
 # 指定企业平台草稿质检：隔离离线试用装配
 
-Status: DRAFT / architecture review pending. Issue #611, same Delivery Batch / PR #617.
+Status: IMPLEMENTATION_READY. Independent review /root/architecture_review bound to design 0657282dcf541415695d47adbb621e5dbb090ec4, no BLOCKER. Issue #611, same Delivery Batch / PR #617. Listed IMPLEMENTATION_TEST items are required before completion.
 
 ## Product outcome and authority
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 	supplyhttp "task-processor/internal/app/supplychain/httpapi"
 	billinghttp "task-processor/internal/commercial/billing/httpapi"
+	"task-processor/internal/product/collection"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -119,6 +120,8 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
+	privateDraftTrials           int
+	privateDraftTrial            *PrivateDraftTrialDependencies
 	agentCustomizations          int
 	agentCustomizationDB         *gorm.DB
 	toolMarketConfigs            int
@@ -347,6 +350,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	if supplied.productCollections > 0 && supplied.productAcquisitionDB == nil {
 		return nil, errors.New("collections require their current Product owner pool")
 	}
+	if supplied.privateDraftTrials > 1 || supplied.privateDraftTrials > 0 && (supplied.privateDraftTrial == nil || supplied.privateDraftTrial.Scope.Validate() != nil || !collection.ValidID(supplied.privateDraftTrial.StoreID) || supplied.supplyChains > 0 || supplied.localTrials > 0 || supplied.officialStoreApplications != nil || supplied.productAgents > 0 || supplied.imageAgents > 0 || supplied.agentCustomizations != 1 || supplied.productCollections != 1 || supplied.storeCenters != 1 || supplied.productAcquisitionDB == nil) {
+		return nil, errors.New("private draft trial assembly not admitted")
+	}
 	if supplied.supplyChains > 1 || supplied.supplyChains > 0 && (supplied.supplyChain == nil || supplied.supplyChain.AssetDB == nil || supplied.supplyChain.Starter == nil || supplied.supplyChain.NewWorker == nil || supplied.supplyChain.Worker == nil || supplied.productCollections != 1 || supplied.productAcquisitionDB == nil || supplied.storeCenters != 1 || supplied.officialStoreApplications == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "") {
 		return nil, errors.New("supply chain requires current Product, Store, Asset and workflow owners")
 	}
@@ -464,7 +470,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 			if err != nil {
 				return nil, err
 			}
-			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges, supplied.productCollections > 0, supplied.supplyChains > 0)
+			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges, supplied.productCollections > 0, (supplied.supplyChains > 0 || supplied.privateDraftTrials > 0))
 		}
 	}
 	if supplied.browserCaptures > 1 {
@@ -479,7 +485,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		browserDB := supplied.productAcquisitionDB
 		factories.buildBrowserCapture = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer, supplied.productCollections > 0, supplied.supplyChains > 0)
+			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer, supplied.productCollections > 0, (supplied.supplyChains > 0 || supplied.privateDraftTrials > 0))
 		}
 	}
 	if supplied.imageAgents > 0 {
@@ -654,7 +660,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, acquisition)
 	}
 	if supplied.productCollections > 0 {
-		collections, err := buildProductCollectionModuleWithSourceMedia(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, cfg, supplied.supplyChains > 0, supplied.collectionSourceMedia)
+		collections, err := buildProductCollectionModuleWithSourceMedia(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, cfg, (supplied.supplyChains > 0 || supplied.privateDraftTrials > 0), supplied.collectionSourceMedia)
 		if err != nil {
 			return nil, fmt.Errorf("build current product collections: %w", err)
 		}
@@ -695,6 +701,14 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		module, e := buildSupplyChainModule(ctx, supplied.productAcquisitionDB, supplied.storeCenterDB, *supplied.supplyChain, *workbench.authDependencies, authorizer, supplied.officialStoreApplications, cfg, productRuntime, storeCapabilities)
 		if e != nil {
 			return nil, fmt.Errorf("build current supply chain: %w", e)
+		}
+		modules = append(modules, module)
+		supplyRuntime = &module
+	}
+	if supplied.privateDraftTrial != nil {
+		module, e := buildPrivateDraftTrialModule(ctx, supplied.productAcquisitionDB, supplied.storeCenterDB, *supplied.privateDraftTrial, *workbench.authDependencies, authorizer, cfg)
+		if e != nil {
+			return nil, fmt.Errorf("build private draft trial: %w", e)
 		}
 		modules = append(modules, module)
 		supplyRuntime = &module
@@ -814,9 +828,10 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	}
 	routeFeatures := currentApplicationOptionalRoutes{
 		AgentCustomization:  supplied.agentCustomizations > 0,
+		PrivateDraftTrial:   supplied.privateDraftTrials > 0,
 		ToolMarket:          supplied.toolMarket != nil,
 		Ecoservices:         supplied.ecoservices != nil,
-		SupplyChain:         supplied.supplyChains > 0,
+		SupplyChain:         (supplied.supplyChains > 0 || supplied.privateDraftTrials > 0),
 		Collections:         supplied.productCollections > 0,
 		NotificationCenter:  supplied.notifications > 0,
 		ZitadelSMS:          true,
@@ -918,6 +933,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	PrivateDraftTrial   bool
 	AgentCustomization  bool
 	ToolMarket          bool
 	Ecoservices         bool
@@ -953,6 +969,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	if optional.Ecoservices {
 		for _, r := range ehttp.Routes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
+	if optional.PrivateDraftTrial {
+		for _, r := range supplyhttp.PrivateDraftReadRoutes(nil, nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
 		}
 	}
@@ -1136,7 +1157,7 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			}
 		}
 		if descriptor.Path == supplyhttp.SupplyBasePath || strings.HasPrefix(descriptor.Path, supplyhttp.SupplyBasePath+"/") {
-			if !optional.SupplyChain {
+			if !optional.SupplyChain && (!optional.PrivateDraftTrial || !supplyhttp.IsPrivateDraftReadRoute(descriptor.Method, descriptor.Path)) {
 				return errors.New("supply chain feature not admitted")
 			}
 			if e := validateSupplyDescriptor(descriptor); e != nil {

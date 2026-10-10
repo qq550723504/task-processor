@@ -83,4 +83,14 @@ RUN-1 仍是原有身份/路由隔离环境，不因本功能自动增加 schema
 
 ## 验证交接
 
+### 无官方凭据的隔离离线试用
+
+仅用于已获准的独立本机项目，依据 [离线试用准入](../architecture/private-draft-offline-trial.md)。在私有 manifest 明确配置 `privateDraftTrial`，字段为 `acknowledgment: ISOLATED_OFFLINE_DRAFT_TRIAL_ONLY`、`organizationId`、`actorId`、当前实际 `memberId`、`storeId`。保留正常本机 HTTPS 身份、当前 Product/Store/Collection/customization owner 和 live permissions；禁止同时配置完整 SupplyChain、official applications 或 Agent/provider 执行。缺省关闭，配置冲突拒绝启动。
+
+显式通过现有 native owner 准备测试店铺和一个 TargetRecord；店铺名称以“离线测试”开头，保持 pending activation/disconnected。准备步骤不进入启动、HTTP 或 worker，不直接写草稿/issues/报告。试用 Product role 使用现有 collections+SupplyChain grants；只挂七个 GET，不开放草稿保存、上传、操作或规则调用，Asset/Temporal 不参与试用读取。
+
+UI server 环境 `LISTINGKIT_PRIVATE_DRAFT_TRIAL_ENABLED=true` 提供醒目说明；`LISTINGKIT_SUPPLY_CHAIN_ENABLED=false` 继续关闭完整供应链。环境开关不授权请求。实际报告由服务端检查测试 binding 后保存 `offlineTrial` 观察标记，摘要/详情与刷新读回保留测试规则说明。
+
+正常登录后：我的智能体 → 已交付2.0.0私有质检 → 选择测试批次/离线测试店铺/待补全草稿 → 检查并保存 → 查看报告。正常 stop/start 保留所有命名卷及数据；不要重新初始化定制库/身份，不执行 down -v。内部受控运行检查不等于实际 SHEIN 接入或用户验收。
+
 配置生命周期、正常路由授权及隔离 PostgreSQL 组合检查是开发自检，使用合成身份与需求，不能替代真实登录、专员处理或用户验收。获准启用环境后，按前述正常入口验证企业提交及读取、平台评估到交付、附件下载和权限隔离；由用户或其指定独立验证者确认使用效果。当前 HEAD、CI、独立复核、组合/用户验收状态维护在主要 PR，不在本文维护滚动状态。

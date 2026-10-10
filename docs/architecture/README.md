@@ -185,6 +185,9 @@ source of truth for long-lived rules.
     actor-private immutable reports and current source authorization. Existing
     Listing saved validation is reused;
     no model/provider, product mutation or second generic Agent runtime.
+  - Bounded isolated trial admission: [`private-draft-offline-trial.md`](./private-draft-offline-trial.md).
+    Explicit offline test scope/store and seven existing native read routes;
+    test-rule reports remain distinct from real platform acceptance.
 
 - [`product-agent-text-provider-neutral-v1.md`](./product-agent-text-provider-neutral-v1.md)
   - IMPLEMENTATION_READY #573 architecture for organization-scoped,

@@ -15,7 +15,7 @@ import { listWorkbenchStores, type WorkbenchStore } from "@/lib/api/workbench-st
 import styles from "./agents.module.css";
 import qualityStyles from "./private-agent.module.css";
 
-export function PrivateDraftForm({scope,id,canUse,saved}:{scope:CustomScope;id:string;canUse:boolean;saved:(run:QualityRun)=>void}) {
+export function PrivateDraftForm({scope,id,canUse,saved,offlineTrial=false}:{scope:CustomScope;id:string;canUse:boolean;offlineTrial?:boolean;saved:(run:QualityRun)=>void}) {
   const context=useWorkbenchContext();
   const {userId,organizationId}=scope;
   const canSelect=["workbench.collection.read","workbench.supply.read","workbench.store.read"].every(p=>context.permissions.includes(p));
@@ -75,6 +75,6 @@ export function PrivateDraftForm({scope,id,canUse,saved}:{scope:CustomScope;id:s
       {record?<p>将检查草稿 v{record.revision}，保存时间 {new Date(record.createdAt).toLocaleString("zh-CN")}。报告与这个版本绑定。</p>:null}
       <Button type="button" disabled={!record} onClick={()=>record&&void execute({deliveryId:id,key:crypto.randomUUID(),input:{recordId:record.id,expectedRevision:record.revision}})}>{busy?"正在检查并保存…":"检查并保存报告"}</Button>
     </fieldset>
-    <Link href={prep&&store?`/workbench/supply/mine?preparation=${prep}&store=${store}`:"/workbench/supply/mine"}>前往我的供应链补全资料 →</Link>
+    {!offlineTrial?<Link href={prep&&store?`/workbench/supply/mine?preparation=${prep}&store=${store}`:"/workbench/supply/mine"}>前往我的供应链补全资料 →</Link>:null}
   </Card>;
 }

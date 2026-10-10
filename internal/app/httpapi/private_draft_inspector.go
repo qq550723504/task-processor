@@ -26,7 +26,7 @@ func (r supplyDraftInspector) Inspect(ctx context.Context, scope d.Scope, select
 	if !ok || scope.Platform || identity.UserID != scope.ActorID || identity.EffectiveOrganizationID != scope.OrganizationID || identity.TenantID != scope.OrganizationID {
 		return out, d.ErrForbidden
 	}
-	if r.app == nil || r.app.Authorization == nil || r.app.Targets == nil || r.app.Records == nil || r.app.Sources == nil {
+	if r.app == nil || r.app.Authorization == nil || r.app.Records == nil || r.app.Sources == nil {
 		return out, d.ErrUnavailable
 	}
 	owner, e := r.app.Authorization.Authorize(ctx, preparation.PermissionRead)
@@ -81,6 +81,7 @@ func (r supplyDraftInspector) Inspect(ctx context.Context, scope d.Scope, select
 	}
 	out.DraftBinding = d.DraftBinding{RecordID: saved.ID, Revision: saved.Revision, SourceID: saved.Source.ID, PreparationID: saved.Source.PreparationID, StoreID: saved.Merchant.StoreID, Platform: "shein", Site: saved.Merchant.Site, ProductKey: saved.Source.Source.ProductKey, ProductVersion: strconv.FormatUint(saved.EffectiveVersion, 10), Title: title, RecordHash: collection.Digest(saved), ProductHash: saved.ProductHash, RulesHash: saved.RulesHash, InventoryHash: saved.InventoryHash, SavedAt: saved.CreatedAt}
 	out.Issues = []d.DraftIssue{}
+	out.OfflineTrial = saved.Merchant.ApplicationID == "offline-private-draft-trial"
 	for _, issue := range saved.Result.Issues {
 		out.Issues = append(out.Issues, d.DraftIssue{Field: issue.Field, Code: issue.Code, Message: issue.Message})
 	}

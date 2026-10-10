@@ -16,6 +16,16 @@ vi.mock("@/lib/api/workbench-stores",()=>({listWorkbenchStores:vi.fn(async()=>({
 beforeEach(()=>{sessionStorage.clear();vi.restoreAllMocks();state.permissions=[...permissions]});
 afterEach(()=>{cleanup();vi.restoreAllMocks()});
 function reads(url:unknown){return Response.json(String(url).endsWith("/reports")?{items:[],nextCursor:""}:String(url).includes("/reports/")?run:delivery)}
+
+it("labels offline trial reports after a server read and hides unavailable editing links",async()=>{
+  vi.stubGlobal("fetch",vi.fn(async(url:unknown)=>Response.json(String(url).endsWith("/reports")?{items:[{...summary,draft:{...summary.draft,offlineTrial:true}}],nextCursor:""}:String(url).includes("/reports/")?{...run,draft:{...draft,offlineTrial:true}}:delivery)));
+  render(<PrivateAgentPage id={id} offlineTrial />);
+  expect(await screen.findByText(/这是隔离离线试用/)).toBeInTheDocument();
+  await screen.findByRole("button",{name:"查看报告"});
+  fireEvent.click(screen.getByRole("button",{name:"查看报告"}));
+  expect(await screen.findByText("规则来源：离线测试规则，未获取 SHEIN 官方规则。",{exact:true})).toBeInTheDocument();
+  expect(screen.queryByRole("link",{name:/补全/})).not.toBeInTheDocument();
+});
 async function choose(){await screen.findByRole("option",{name:"测试批次"});await screen.findByRole("option",{name:"测试店铺"});fireEvent.change(screen.getByRole("combobox",{name:"供应链批次"}),{target:{value:id}});fireEvent.change(screen.getByRole("combobox",{name:"目标店铺"}),{target:{value:id}});await screen.findByRole("option",{name:"盒子 · 草稿 v3"});fireEvent.change(screen.getByRole("combobox",{name:"平台草稿"}),{target:{value:recordId}})}
 it("keeps private draft delivery visible when title configuration is unavailable",async()=>{
   vi.spyOn(globalThis,"fetch").mockImplementation(async url=>String(url).includes("agent-customization/agents")?Response.json({items:[delivery],nextCursor:""}):Response.json({code:"DEPENDENCY_UNAVAILABLE"},{status:503}));

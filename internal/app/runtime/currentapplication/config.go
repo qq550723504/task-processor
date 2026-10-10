@@ -49,6 +49,7 @@ type Config struct {
 	ProductAcquisitionDatabase *DatabaseConfig                           `json:"productAcquisitionDatabase,omitempty"`
 	ProductCollections         bool                                      `json:"productCollections,omitempty"`
 	SupplyChain                *SupplyChainConfig                        `json:"supplyChain,omitempty"`
+	PrivateDraftTrial          *PrivateDraftTrialConfig                  `json:"privateDraftTrial,omitempty"`
 	SourceMedia                *coreconfig.ImageAgentArtifactStoreConfig `json:"sourceMedia,omitempty"`
 	ImageAgent                 *ImageAgentConfig                         `json:"imageAgent,omitempty"`
 	ProductAgent               *ProductAgentConfig                       `json:"productAgent,omitempty"`
@@ -413,6 +414,9 @@ func (cfg *Config) validate() error {
 	}
 	if cfg.ProductCollections && cfg.ProductAcquisitionDatabase == nil {
 		return errors.New("product collections require the current Product database")
+	}
+	if err := cfg.validatePrivateDraftTrial(); err != nil {
+		return err
 	}
 	if err := cfg.validateSupplyChain(); err != nil {
 		return err

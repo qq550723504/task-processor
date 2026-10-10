@@ -30,6 +30,7 @@ type DraftSelection struct {
 	ExpectedRevision int64  `json:"expectedRevision"`
 }
 type DraftBinding struct {
+	OfflineTrial   bool      `json:"offlineTrial,omitempty"`
 	RecordID       string    `json:"recordId"`
 	Revision       int64     `json:"revision"`
 	SourceID       string    `json:"sourceId"`
