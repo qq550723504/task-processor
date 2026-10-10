@@ -211,7 +211,7 @@ func (s *Service) ProcessItem(ctx context.Context, job Job, item Item, stopReaso
 		// Read-only transport/startup failures retain the original reservation and
 		// claim lease. The existing activity retries within the original deadline;
 		// only typed source refusals or invalid evidence establish a terminal fence.
-		if fetchErr != nil && !errors.Is(fetchErr, ErrSourceChallenge) && !errors.Is(fetchErr, ErrSourceUnsupported) {
+		if fetchErr != nil && !errors.Is(fetchErr, ErrSourceChallenge) && !errors.Is(fetchErr, ErrSourceUnsupported) && !errors.Is(fetchErr, ErrInvalid) {
 			return fetchErr
 		}
 		if fetchErr != nil || evidence.Site != job.Query.Site || evidence.ASIN != item.ASIN || evidence.Validate() != nil {

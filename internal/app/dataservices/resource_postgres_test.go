@@ -386,6 +386,7 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 	}{
 		{"challenge", dataacquisition.ErrSourceChallenge, false},
 		{"unsupported", dataacquisition.ErrSourceUnsupported, false},
+		{"invalid evidence", dataacquisition.ErrInvalid, false},
 		{"transient then deadline", context.Canceled, true},
 	} {
 		t.Run("fetch "+tc.name, func(t *testing.T) {
