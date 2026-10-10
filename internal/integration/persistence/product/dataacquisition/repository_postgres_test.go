@@ -256,10 +256,10 @@ func TestPostgresJobQuotaFencingPublicationAndOriginalChargeProof(t *testing.T) 
 					input := local.Input
 					input.ExpiresAt = time.Now().UTC().Add(-time.Minute).Truncate(time.Microsecond)
 					if scenario != "expired" {
-						input.ExpiresAt = time.Now().UTC().Add(time.Second).Truncate(time.Microsecond)
+						require.NoError(t, db.Raw("SELECT clock_timestamp()+interval '1 second'").Scan(&input.ExpiresAt).Error)
 					}
-					raw, err := json.Marshal(input)
-					require.NoError(t, err)
+					raw, marshalErr := json.Marshal(input)
+					require.NoError(t, marshalErr)
 					require.NoError(t, db.Exec("UPDATE data_service_credentials SET config_json=?,expires_at=? WHERE id=?", string(raw), input.ExpiresAt, local.ID).Error)
 					if scenario != "expired" {
 						holder := db.WithContext(ctx).Begin()
@@ -278,11 +278,11 @@ func TestPostgresJobQuotaFencingPublicationAndOriginalChargeProof(t *testing.T) 
 							require.NoError(t, db.Raw("SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%data_service_credentials%' AND query LIKE '%FOR UPDATE%'").Scan(&waiting).Error)
 							return waiting > 0
 						}, 500*time.Millisecond, 10*time.Millisecond)
-						select {
-						case <-ctx.Done():
-							t.Fatal(ctx.Err())
-						case <-time.After(time.Until(input.ExpiresAt) + 30*time.Millisecond):
-						}
+						require.Eventually(t, func() bool {
+							var expired bool
+							require.NoError(t, db.Raw("SELECT clock_timestamp() >= ?", input.ExpiresAt).Scan(&expired).Error)
+							return expired
+						}, 2*time.Second, 10*time.Millisecond)
 						require.NoError(t, holder.Commit().Error)
 						err = <-done
 					}

@@ -273,7 +273,7 @@ func activeKey(tx *gorm.DB, key dataservice.Credential, s collection.Scope) erro
 		return nil
 	}
 	var current time.Time
-	if err := tx.Raw("SELECT now()").Scan(&current).Error; err != nil {
+	if err := tx.Raw("SELECT clock_timestamp()").Scan(&current).Error; err != nil {
 		return err
 	}
 	allowed := false
@@ -345,6 +345,32 @@ func (r *Repository) Admit(ctx context.Context, p dataacquisition.Principal, com
 		if err != nil {
 			return err
 		}
+		checkCredential := func() error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := activeKey(tx, key, p.Scope); err != nil {
+				return err
+			}
+			if p.CredentialID != "" && key.Revision != p.CredentialRevision {
+				return dataacquisition.ErrConflict
+			}
+			return nil
+		}
+		if err = checkCredential(); err != nil {
+			return err
+		}
+		readOriginal := func(row jobRow) error {
+			if err := checkCredential(); err != nil {
+				return err
+			}
+			out, err = summarize(tx, row)
+			if err == nil {
+				err = checkCredential()
+			}
+			finished = err == nil
+			return err
+		}
 		// The locked canonical key supplies the effective bounded permission set.
 		// Quota/revision changes do not alter an original command, permissions do.
 		hash := collection.Digest(struct {
@@ -363,15 +389,7 @@ func (r *Repository) Admit(ctx context.Context, p dataacquisition.Principal, com
 			if existing.InputHash != hash {
 				return dataacquisition.ErrConflict
 			}
-			out, err = summarize(tx, existing)
-			finished = err == nil
-			return err
-		}
-		if err = activeKey(tx, key, p.Scope); err != nil {
-			return err
-		}
-		if p.CredentialID != "" && key.Revision != p.CredentialRevision {
-			return dataacquisition.ErrConflict
+			return readOriginal(existing)
 		}
 		if err = r.live.CheckExecution(ctx, p, funding); err != nil {
 			return err
@@ -414,9 +432,7 @@ func (r *Repository) Admit(ctx context.Context, p dataacquisition.Principal, com
 			if existing.InputHash != hash {
 				return dataacquisition.ErrConflict
 			}
-			out, err = summarize(tx, existing)
-			finished = err == nil
-			return err
+			return readOriginal(existing)
 		}
 		var active int64
 		if err = tx.Raw("SELECT count(*) FROM data_acquisition_jobs WHERE organization_id=? AND state IN ('ADMITTED','RUNNING') AND NOT canceled AND deadline>now()", row.OrganizationID).Scan(&active).Error; err != nil {
@@ -449,11 +465,17 @@ func (r *Repository) Admit(ctx context.Context, p dataacquisition.Principal, com
 		}
 		row.QueryJSON = raw
 		out, err = row.job()
+		if err == nil {
+			err = checkCredential()
+		}
 		finished = err == nil
 		return err
 	})
 	if err != nil && finished {
 		return dataacquisition.Job{}, dataacquisition.ErrUnknown
+	}
+	if err != nil {
+		return dataacquisition.Job{}, err
 	}
 	return out, err
 }
