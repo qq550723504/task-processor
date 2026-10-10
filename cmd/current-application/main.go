@@ -8,8 +8,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	podapp "task-processor/internal/app/pod"
+	podruntime "task-processor/internal/app/runtime/pod"
 	observationruntime "task-processor/internal/app/runtime/storeobservations"
 	supplyruntime "task-processor/internal/app/runtime/supplychain"
+	"task-processor/internal/integration/sds"
 	"task-processor/internal/product/collection"
 	"time"
 
@@ -57,6 +60,10 @@ func execute() error {
 		defer cancel()
 	}
 	return currentapplication.Run(ctx, cfg, logger, currentapplication.Dependencies{
+		NewMarketStorage: prepareSupplyMarket,
+		PreparePOD: func(ctx context.Context, p *currentapplication.PODConfig) (sds.CredentialSource, error) {
+			return currentapplication.PreparePODCredentials(ctx, p.CredentialFile, &http.Client{Timeout: 15 * time.Second})
+		},
 		IdentityPreflight: currentapplication.VerifyIdentityProvider,
 		OpenToolMarket: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
@@ -203,6 +210,13 @@ func execute() error {
 			}
 			if features.SupplyWorkflow != nil {
 				options = append(options, httpapi.WithSupplyChain(httpapi.SupplyChainDependencies{AssetDB: features.SupplyAssetDB, Starter: supplyruntime.TemporalOperationStarter{Client: features.SupplyWorkflow}, NewWorker: supplyruntime.WorkerFactory(features.SupplyWorkflow), Worker: features.SupplyWorker}))
+			}
+			if features.MarketStorage != nil {
+				options = append(options, httpapi.WithSupplyMarket(httpapi.SupplyMarketDependencies{Storage: features.MarketStorage}))
+			}
+			if features.POD != nil {
+				p := features.POD
+				options = append(options, httpapi.WithPOD(httpapi.PODDependencies{AssetDB: features.PODAssetDB, Credentials: features.PODCredentials, HTTP: &http.Client{Timeout: 15 * time.Second}, OSSHosts: p.OSSHosts, Starter: podruntime.TemporalStarter{Client: features.PODWorkflow}, NewWorker: func(p *podapp.Processor) (podapp.Worker, error) { return podruntime.NewWorker(features.PODWorkflow, p) }, Worker: features.PODWorker}))
 			}
 			if features.ImageAgentDB != nil {
 				if features.ImageSetWorkerConfig != nil {

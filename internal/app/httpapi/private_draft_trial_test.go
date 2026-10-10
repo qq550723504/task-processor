@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"github.com/stretchr/testify/require"
+	podhttp "task-processor/internal/app/pod/httpapi"
 	supplyhttp "task-processor/internal/app/supplychain/httpapi"
 	"task-processor/internal/httproute"
 	"task-processor/internal/listing/preparation"
 	record "task-processor/internal/listing/record/target"
 	"task-processor/internal/product/collection"
+	markethttp "task-processor/internal/product/supplymarket/httpapi"
 	"task-processor/internal/storecenter"
 	"testing"
 	"time"
@@ -44,6 +46,21 @@ func TestPrivateDraftTrialDoesNotInstallExecutionWorker(t *testing.T) {
 	var supplied currentApplicationOptions
 	WithPrivateDraftTrial(PrivateDraftTrialDependencies{})(&supplied)
 	require.NotPanics(t, func() { supplied.installSupplyWorker(&supplyChainModule{}) })
+}
+
+func TestPrivateDraftTrialDoesNotAdmitMarketPODServices(t *testing.T) {
+	var base []httproute.Descriptor
+	for _, r := range currentWorkbenchApplicationRoutes {
+		base = append(base, httproute.Descriptor{Method: r.Method, Path: r.Path})
+	}
+	for _, pod := range []bool{false, true} {
+		routes := append(append([]httproute.Descriptor{}, base...), supplyhttp.PrivateDraftReadRoutes(nil, nil)...)
+		routes = append(routes, markethttp.Routes(nil, nil, nil)...)
+		if pod {
+			routes = append(routes, podhttp.Routes(nil, nil)...)
+		}
+		require.Error(t, validateCurrentApplicationRoutesInternal(routes, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{PrivateDraftTrial: true, SupplyMarket: true, POD: pod}))
+	}
 }
 
 type trialTestAuthorizer struct {

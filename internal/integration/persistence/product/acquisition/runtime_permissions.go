@@ -9,15 +9,19 @@ import (
 	preparationstore "task-processor/internal/integration/persistence/listing/preparation"
 	recordstore "task-processor/internal/integration/persistence/listing/record"
 	collectionstore "task-processor/internal/integration/persistence/product/collection"
+	podstore "task-processor/internal/integration/persistence/product/pod"
+	marketstore "task-processor/internal/integration/persistence/product/supplymarket"
 	"task-processor/internal/product/sourcing"
 )
 
 const RuntimeRole = "source_acquisition_runtime"
 
 type RuntimeCapabilities struct {
-	Collections bool
-	SupplyChain bool
-	ImageSets   bool
+	Collections  bool
+	SupplyChain  bool
+	SupplyMarket bool
+	POD          bool
+	ImageSets    bool
 }
 
 const collectionPrivileges = `,('product_collection_batches','SELECT'),('product_collection_batches','INSERT'),('product_collection_batches','UPDATE'),
@@ -32,12 +36,35 @@ func runtimePermissionsFor(capability RuntimeCapabilities) string {
 	if capability.SupplyChain {
 		admitted += supplyPrivileges
 	}
-	if capability.ImageSets && !capability.SupplyChain {
+	if capability.SupplyMarket {
+		admitted += marketPrivileges
+		if !capability.SupplyChain {
+			admitted += `,('product_title_proposals','SELECT')`
+		}
+	}
+	if capability.POD {
+		admitted += podPrivileges
+		if !capability.SupplyChain {
+			admitted += submissionPrivileges
+		}
+	}
+	if capability.ImageSets && !capability.SupplyChain && !capability.SupplyMarket {
 		admitted += ",('product_title_proposals','SELECT')"
 	}
 	admitted += ")"
 	return strings.Replace(runtimePermissionQuery, admittedPrivileges, admitted, 1)
 }
+
+const marketPrivileges = `,('supply_market_records','SELECT'),('supply_market_records','INSERT'),('supply_market_records','UPDATE'),
+ ('supply_market_events','SELECT'),('supply_market_events','INSERT'),
+ ('supply_market_releases','SELECT'),('supply_market_releases','INSERT'),('supply_market_releases','UPDATE'),
+ ('supply_market_commands','SELECT'),('supply_market_commands','INSERT'),
+ ('supply_market_private_uploads','SELECT'),('supply_market_private_uploads','INSERT')`
+const podPrivileges = `,('product_pod_operations','SELECT'),('product_pod_operations','INSERT'),('product_pod_operations','UPDATE'),
+ ('product_pod_fences','SELECT'),('product_pod_fences','INSERT'),('product_pod_fences','UPDATE'),('product_pod_fences','DELETE'),
+ ('product_pod_commands','SELECT'),('product_pod_commands','INSERT')`
+const submissionPrivileges = `,('listing_submission_execution_attempts','SELECT'),('listing_submission_execution_attempts','INSERT'),('listing_submission_execution_attempts','UPDATE'),
+ ('listing_submission_target_fences','SELECT'),('listing_submission_target_fences','INSERT'),('listing_submission_target_fences','UPDATE')`
 
 const supplyPrivileges = `,('listing_preparations','SELECT'),('listing_preparations','INSERT'),
  ('listing_preparation_sources','SELECT'),('listing_preparation_sources','INSERT'),
@@ -153,7 +180,9 @@ func GrantRuntimePermissions(ctx context.Context, db *gorm.DB, capabilities ...R
 		enabled := len(capabilities) == 1 && capabilities[0].Collections
 		supply := len(capabilities) == 1 && capabilities[0].SupplyChain
 		images := len(capabilities) == 1 && capabilities[0].ImageSets
-		if supply && !enabled {
+		market := len(capabilities) == 1 && capabilities[0].SupplyMarket
+		pod := len(capabilities) == 1 && capabilities[0].POD
+		if (supply || market || pod) && !enabled || pod && !market {
 			return sourcing.ErrAcquisitionUnavailable
 		}
 		if enabled {
@@ -191,7 +220,23 @@ func GrantRuntimePermissions(ctx context.Context, db *gorm.DB, capabilities ...R
 				"GRANT SELECT,INSERT,UPDATE ON public.listing_preparation_targets,public.listing_preparation_operations,public.listing_preparation_operation_items,public.listing_submission_execution_attempts,public.listing_submission_target_fences TO source_acquisition_runtime",
 				"GRANT SELECT ON public.product_title_proposals TO source_acquisition_runtime")
 		}
-		if images && !supply {
+		if market {
+			if err := marketstore.VerifySchema(ctx, tx); err != nil {
+				return err
+			}
+			statements = append(statements, "GRANT SELECT,INSERT,UPDATE ON public.supply_market_records,public.supply_market_releases TO source_acquisition_runtime",
+				"GRANT SELECT,INSERT ON public.supply_market_events,public.supply_market_commands,public.supply_market_private_uploads TO source_acquisition_runtime",
+				"GRANT SELECT ON public.product_title_proposals TO source_acquisition_runtime")
+		}
+		if pod {
+			if err := podstore.VerifySchema(ctx, tx); err != nil {
+				return err
+			}
+			statements = append(statements, "GRANT SELECT,INSERT,UPDATE ON public.product_pod_operations,public.listing_submission_execution_attempts,public.listing_submission_target_fences TO source_acquisition_runtime",
+				"GRANT SELECT,INSERT ON public.product_pod_commands TO source_acquisition_runtime",
+				"GRANT SELECT,INSERT,UPDATE,DELETE ON public.product_pod_fences TO source_acquisition_runtime")
+		}
+		if images && !supply && !market {
 			statements = append(statements, "GRANT SELECT ON public.product_title_proposals TO source_acquisition_runtime")
 		}
 		for _, statement := range statements {
@@ -226,7 +271,7 @@ func VerifyRuntimePermissions(ctx context.Context, db *gorm.DB, capabilities ...
 	if len(capabilities) == 1 {
 		capability = capabilities[0]
 	}
-	if capability.SupplyChain && !capability.Collections {
+	if (capability.SupplyChain || capability.SupplyMarket || capability.POD) && !capability.Collections || capability.POD && !capability.SupplyMarket {
 		return sourcing.ErrAcquisitionUnavailable
 	}
 	var required, forbidden bool
@@ -256,6 +301,16 @@ func VerifyRuntimePermissions(ctx context.Context, db *gorm.DB, capabilities ...
 			return err
 		}
 		if err := officialstore.VerifyOfficialSchema(ctx, db); err != nil {
+			return err
+		}
+	}
+	if capability.SupplyMarket {
+		if err := marketstore.VerifySchema(ctx, db); err != nil {
+			return err
+		}
+	}
+	if capability.POD {
+		if err := podstore.VerifySchema(ctx, db); err != nil {
 			return err
 		}
 	}

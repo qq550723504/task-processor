@@ -30,7 +30,7 @@ func issue398CurrentLeafImporter(importer, target string) bool {
 		return false
 	}
 	switch importer {
-	case "task-processor/internal/integration/acquisition/a1688", "task-processor/internal/app/productsourcing", "task-processor/internal/app/supplychain", "task-processor/internal/integration/shein", "task-processor/internal/app/runtime/currentapplication":
+	case "task-processor/internal/integration/acquisition/a1688", "task-processor/internal/app/productsourcing", "task-processor/internal/app/supplychain", "task-processor/internal/integration/shein", "task-processor/internal/app/runtime/currentapplication", "task-processor/internal/app/pod", "task-processor/internal/integration/sds":
 		return true
 	}
 	return false
@@ -57,6 +57,13 @@ func issue398AcquisitionAPIViolations(sources []listingKitImageBoundarySource) (
 		{"internal/app/runtime/currentapplication", issue398HTTP, map[string][]string{"internal/app/runtime/currentapplication/source_media_storage.go": {"ValidatePublicHTTPSURL"}}},
 		{"internal/app/supplychain", issue398HTTP, map[string][]string{"internal/app/supplychain/image_probe.go": {"NewPublicImageHTTPClient", "ValidatePublicHTTPSURL", "Download", "InspectGeneratedArtifact"}}},
 		{"internal/integration/shein", issue398HTTP, map[string][]string{"internal/integration/shein/official_goods.go": {"ValidatePublicHTTPSURL"}}},
+		// #622 frozen design reuses these current SSRF-safe and pure image leaves.
+		// Historical ceiling remains eight; all OS/build-tag text and sibling APIs are still checked.
+		{"internal/app/pod", issue398HTTP, map[string][]string{
+			"internal/app/pod/application.go": {"NewPublicImageHTTPClient"},
+			"internal/app/pod/inputs.go":      {"Download", "InspectGeneratedArtifact"},
+		}},
+		{"internal/integration/sds", issue398HTTP, map[string][]string{"internal/integration/sds/mutations.go": {"InspectGeneratedArtifact"}}},
 		{"internal/app/httpapi/collection_source_media.go", "task-processor/internal/app/productsourcing", map[string][]string{"internal/app/httpapi/collection_source_media.go": {"SourceMedia", "SourceMediaStorage"}}},
 		{"internal/app/httpapi/product_collection_application.go", "task-processor/internal/app/productsourcing", map[string][]string{"internal/app/httpapi/product_collection_application.go": {"NewOwnProductWriter", "NewPublishedAcquisitionReader"}}},
 		{"internal/app/httpapi/supply_chain_agents.go", "task-processor/internal/app/productsourcing", map[string][]string{"internal/app/httpapi/supply_chain_agents.go": {"NewExecutionPublicationGateway", "NewTransactionReader"}}},
@@ -151,6 +158,10 @@ func TestIssue398CurrentLeafEdgesAreExact(t *testing.T) {
 		{"task-processor/internal/integration/acquisition/a1688/child", issue398HTTP, false},
 		{"task-processor/internal/integration/acquisition/a1688", issue398Database, false},
 		{"task-processor/internal/worker", issue398HTTP, false},
+		{"task-processor/internal/app/pod", issue398HTTP, true},
+		{"task-processor/internal/app/pod/child", issue398HTTP, false},
+		{"task-processor/internal/integration/sds", issue398HTTP, true},
+		{"task-processor/internal/integration/sdslegacy", issue398HTTP, false},
 	} {
 		require.Equal(t, tc.want, issue398CurrentLeafImporter(tc.importer, tc.target), "%s -> %s", tc.importer, tc.target)
 	}
@@ -174,6 +185,11 @@ func TestIssue398CurrentLeafAndInitializerAPIGuard(t *testing.T) {
 		{"source media sibling", "internal/app/productsourcing/other.go", issue398HTTP, "ValidatePublicHTTPSURL", false},
 		{"probe current reader", "internal/app/supplychain/image_probe.go", issue398HTTP, "Download", true},
 		{"probe sibling", "internal/app/supplychain/other.go", issue398HTTP, "Download", false},
+		{"POD exact image reader", "internal/app/pod/inputs.go", issue398HTTP, "Download", true},
+		{"POD legacy API denied", "internal/app/pod/inputs.go", issue398HTTP, "NewProductImageDownloader", false},
+		{"POD sibling denied", "internal/app/pod/other.go", issue398HTTP, "Download", false},
+		{"SDS exact thumbnail inspection", "internal/integration/sds/mutations.go", issue398HTTP, "InspectGeneratedArtifact", true},
+		{"SDS sibling denied", "internal/integration/sds/other.go", issue398HTTP, "InspectGeneratedArtifact", false},
 		{"official exact validator", "internal/integration/shein/official_goods.go", issue398HTTP, "ValidatePublicHTTPSURL", true},
 		{"official sibling", "internal/integration/shein/other.go", issue398HTTP, "ValidatePublicHTTPSURL", false},
 		{"storage current constructor", "internal/app/runtime/currentapplication/source_media_storage.go", issue605SourceStorage, "NewUploaderWithOptions", true},

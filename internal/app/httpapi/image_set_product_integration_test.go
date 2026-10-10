@@ -25,13 +25,30 @@ import (
 )
 
 func TestFullImageAcquisitionOptionsDoNotRequireCollections(t *testing.T) {
-	capability, options, err := collectionAcquisitionOptions([]bool{false, false, true})
+	capability, options, err := collectionAcquisitionOptions([]bool{false, false, false, false, true})
 	require.NoError(t, err)
 	require.True(t, capability.ImageSets)
 	require.False(t, capability.Collections)
+	require.False(t, capability.SupplyMarket)
+	require.False(t, capability.POD)
 	require.Empty(t, options)
-	_, _, err = collectionAcquisitionOptions([]bool{false, true, true})
+	_, _, err = collectionAcquisitionOptions([]bool{false, true, false, false, true})
 	require.Error(t, err, "Supply still requires Collections")
+}
+
+func TestFullImageAcquisitionOptionsKeepMarketAndImageAdmissionSeparate(t *testing.T) {
+	market, _, err := collectionAcquisitionOptions([]bool{true, false, true, true})
+	require.NoError(t, err)
+	require.True(t, market.SupplyMarket)
+	require.True(t, market.POD)
+	require.False(t, market.ImageSets)
+	combined, _, err := collectionAcquisitionOptions([]bool{true, false, true, true, true})
+	require.NoError(t, err)
+	require.True(t, combined.SupplyMarket)
+	require.True(t, combined.POD)
+	require.True(t, combined.ImageSets)
+	_, _, err = collectionAcquisitionOptions([]bool{true, false, false, true, true})
+	require.Error(t, err, "POD still requires Market when images are enabled")
 }
 
 func TestFullImageProductReaderNeedsOnlySnapshotAndAppliedTitleReads(t *testing.T) {

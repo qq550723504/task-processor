@@ -7,6 +7,14 @@ import { ConsoleNavigation } from "./console-navigation";
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 
 const query=vi.hoisted(()=>({value:""}));
+it("opens current market entries only with the serving feature",()=>{
+ const view=render(<ConsoleNavigation pathname="/workbench/supply/official" ariaLabel="主导航"/>);
+ expect(screen.getByRole("link",{name:"硕米自营"})).toHaveAttribute("title","硕米自营：业务暂未启用");
+ view.rerender(<ConsoleNavigation pathname="/workbench/supply/official" ariaLabel="主导航" supplyMarketAvailable/>);
+ expect(screen.getByRole("link",{name:"硕米自营"})).toHaveAttribute("title","硕米自营");
+ expect(screen.getByRole("link",{name:"优选申请"})).toHaveAttribute("title","优选申请");
+});
+
 it("only opens the granted cockpit page and keeps settings under its goal",()=>{
  const view=render(<ConsoleNavigation pathname="/workbench/overview/goals/settings" ariaLabel="主导航" operationsCockpitAvailable cockpitPermissions={["workbench.cockpit.goals.read"]}/>);
  expect(screen.getByRole("link",{name:"目标管理"})).toHaveAttribute("title","目标管理");

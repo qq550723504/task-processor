@@ -3985,6 +3985,9 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "knowledge", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #608 admits only Notification Center's feature-local HTTP adapter.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "notificationcenter", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	// #622 frozen design admits only these feature-local adapters; core remains Gin-free.
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "product", "supplymarket", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "app", "pod", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #570 / PR #571 admits only Agent Configuration's feature-local HTTP adapter.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "agentconfig", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #611 admits only the approved customization HTTP adapter, not its domain.
@@ -4001,6 +4004,8 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "ecoservices", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #613 admits only the reviewed Tool Market HTTP adapter, not its contracts.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "toolmarket", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	// #621 admits only Data Service's feature-local adapter, not its domain or DI.
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "dataservice", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "app", "supplychain", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #614 admits only the observations feature-local HTTP adapter.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "app", "storeobservations", "httpapi"))+string(os.PathSeparator)] = struct{}{}
@@ -4010,6 +4015,16 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	// #627 admits only the frozen Cockpit HTTP adapter; calculations stay framework-free.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "operationscockpit", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	return allowedHTTPPackages
+}
+
+func TestDataServiceHTTPBoundaryRegistration(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowed := businessHTTPPackages(root)
+	for path, want := range map[string]bool{"dataservice/httpapi/handler.go": true, "dataservice/httpapi/nested/handler.go": true, "dataservice/service.go": false, "dataservice/httpapi_extra/handler.go": false, "app/dataservices/module.go": false} {
+		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(path)), allowed); got != want {
+			t.Errorf("HTTP boundary allows %s = %v, want %v", path, got, want)
+		}
+	}
 }
 
 func TestProjectCenterHTTPBoundaryRegistration(t *testing.T) {
@@ -4117,6 +4132,23 @@ func TestNotificationCenterHTTPBoundaryRegistration(t *testing.T) {
 	root := filepath.Join("..", "internal")
 	allowed := businessHTTPPackages(root)
 	for path, want := range map[string]bool{"notificationcenter/httpapi/handler.go": true, "notificationcenter/service.go": false, "notificationcenter/httpapi_extra/handler.go": false} {
+		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(path)), allowed); got != want {
+			t.Errorf("HTTP boundary allows %s = %v, want %v", path, got, want)
+		}
+	}
+}
+
+func TestSupplyMarketHTTPBoundaryRegistration(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowed := businessHTTPPackages(root)
+	for path, want := range map[string]bool{
+		"product/supplymarket/httpapi/handler.go":       true,
+		"app/pod/httpapi/handler.go":                    true,
+		"product/supplymarket/service.go":               false,
+		"app/pod/service.go":                            false,
+		"app/pod/httpapi_extra/handler.go":              false,
+		"product/supplymarket-extra/httpapi/handler.go": false,
+	} {
 		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(path)), allowed); got != want {
 			t.Errorf("HTTP boundary allows %s = %v, want %v", path, got, want)
 		}

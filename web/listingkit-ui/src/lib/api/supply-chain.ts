@@ -1,6 +1,6 @@
 import { z } from "zod";
 import * as c from "../contracts/supply-chain";
-import { collectionID } from "../contracts/product-collection";
+import { collectionID, type CollectionSourceKind } from "../contracts/product-collection";
 import type { CollectionScope } from "./product-collection";
 import { readBoundedStrictJSON } from "./strict-json-response";
 import { supplyReviewCommand,supplyReviewApplyCommandSchema,supplyReviewDecisionCommandSchema } from "./supply-review-command";
@@ -15,7 +15,7 @@ export function supplyIntentRequestSchema(route:SupplyIntent["route"]){
 }
 export {SupplyAPIError} from "./supply-error";
 const base="/api/workbench/supply-preparations";
-type Query={after?:string;keyword?:string;limit?:number;sourceKind?:"own"|"acquisition"};
+type Query={after?:string;keyword?:string;limit?:number;sourceKind?:CollectionSourceKind};
 const query=(q:Query)=>{const p=new URLSearchParams({limit:String(q.limit??50)});if(q.after)p.set("after",q.after);if(q.keyword)p.set("keyword",q.keyword);if(q.sourceKind)p.set("sourceKind",q.sourceKind);return `?${p}`};
 export const listSupplyPreparations=(scope:SupplyScope,q:Query={},signal?:AbortSignal)=>send(base+query(q),scope,c.preparationPageSchema,signal);
 export const readSupplyPreparation=async(scope:SupplyScope,id:string,signal?:AbortSignal)=>{

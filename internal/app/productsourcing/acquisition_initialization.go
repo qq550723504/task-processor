@@ -19,7 +19,9 @@ import (
 	submissionstore "task-processor/internal/integration/persistence/listing/submission"
 	acquisitionstore "task-processor/internal/integration/persistence/product/acquisition"
 	collectionstore "task-processor/internal/integration/persistence/product/collection"
+	podstore "task-processor/internal/integration/persistence/product/pod"
 	reviewstore "task-processor/internal/integration/persistence/product/review"
+	marketstore "task-processor/internal/integration/persistence/product/supplymarket"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
@@ -30,6 +32,8 @@ type acquisitionInitManifest struct {
 	Collections   bool `json:"collections,omitempty"`
 	SupplyChain   bool `json:"supplyChain,omitempty"`
 	ImageSets     bool `json:"imageSets,omitempty"`
+	SupplyMarket  bool `json:"supplyMarket,omitempty"`
+	POD           bool `json:"pod,omitempty"`
 	Database      struct {
 		Host     string `json:"host"`
 		Port     int    `json:"port"`
@@ -61,7 +65,7 @@ func InitializeAcquisitionDatabase(ctx context.Context, manifest, confirmedDatab
 	var cfg acquisitionInitManifest
 	strict, err := sigjson.UnmarshalStrict(raw, &cfg, sigjson.DisallowUnknownFields, sigjson.DisallowDuplicateFields)
 	d := cfg.Database
-	if cfg.SupplyChain && !cfg.Collections {
+	if (cfg.SupplyChain || cfg.SupplyMarket || cfg.POD) && !cfg.Collections || cfg.POD && !cfg.SupplyMarket {
 		return unavailable
 	}
 	if err != nil || len(strict) > 0 || cfg.SchemaVersion != 1 || d.Host != "127.0.0.1" || d.Port < 1 || d.Port > 65535 || !acquisitionInitName.MatchString(d.User) || !acquisitionInitName.MatchString(d.Database) || confirmedDatabase != d.Database || d.User == acquisitionstore.RuntimeRole || d.Database == "postgres" || d.Database == "template0" || d.Database == "template1" || len(d.Password) < 1 || len(d.Password) > 1024 || strings.ContainsAny(d.Password, " ='\\\t\r\n\v\f\x00") {
@@ -100,7 +104,23 @@ func InitializeAcquisitionDatabase(ctx context.Context, manifest, confirmedDatab
 				return err
 			}
 		}
-		return acquisitionstore.GrantRuntimePermissions(ctx, tx, acquisitionstore.RuntimeCapabilities{Collections: cfg.Collections, SupplyChain: cfg.SupplyChain, ImageSets: cfg.ImageSets})
+		if cfg.SupplyMarket {
+			if err := reviewstore.InstallSchema(tx); err != nil {
+				return err
+			}
+			if err := marketstore.InstallSchema(tx); err != nil {
+				return err
+			}
+		}
+		if cfg.POD {
+			if err := submissionstore.InstallSchema(tx); err != nil {
+				return err
+			}
+			if err := podstore.InstallSchema(tx); err != nil {
+				return err
+			}
+		}
+		return acquisitionstore.GrantRuntimePermissions(ctx, tx, acquisitionstore.RuntimeCapabilities{Collections: cfg.Collections, SupplyChain: cfg.SupplyChain, SupplyMarket: cfg.SupplyMarket, POD: cfg.POD, ImageSets: cfg.ImageSets})
 	})
 	if err != nil {
 		return unavailable
