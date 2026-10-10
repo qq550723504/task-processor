@@ -4006,6 +4006,8 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "ecoservices", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #613 admits only the reviewed Tool Market HTTP adapter, not its contracts.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "toolmarket", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	// #621 admits only Data Service's feature-local adapter, not its domain or DI.
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "dataservice", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "app", "supplychain", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #614 admits only the observations feature-local HTTP adapter.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "app", "storeobservations", "httpapi"))+string(os.PathSeparator)] = struct{}{}
@@ -4015,6 +4017,16 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	// #627 admits only the frozen Cockpit HTTP adapter; calculations stay framework-free.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "operationscockpit", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	return allowedHTTPPackages
+}
+
+func TestDataServiceHTTPBoundaryRegistration(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowed := businessHTTPPackages(root)
+	for path, want := range map[string]bool{"dataservice/httpapi/handler.go": true, "dataservice/httpapi/nested/handler.go": true, "dataservice/service.go": false, "dataservice/httpapi_extra/handler.go": false, "app/dataservices/module.go": false} {
+		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(path)), allowed); got != want {
+			t.Errorf("HTTP boundary allows %s = %v, want %v", path, got, want)
+		}
+	}
 }
 
 func TestProjectCenterHTTPBoundaryRegistration(t *testing.T) {

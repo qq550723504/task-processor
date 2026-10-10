@@ -44,13 +44,14 @@ func (s Scope) Validate() error {
 }
 
 type Batch struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	Kind       string     `json:"kind"`
-	Revision   int64      `json:"revision"`
-	Count      int64      `json:"count"`
-	CreatedAt  time.Time  `json:"createdAt"`
-	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
+	ID                      string     `json:"id"`
+	Name                    string     `json:"name"`
+	Kind                    string     `json:"kind"`
+	Revision                int64      `json:"revision"`
+	Count                   int64      `json:"count"`
+	SupplyTransferSupported bool       `json:"supplyTransferSupported"`
+	CreatedAt               time.Time  `json:"createdAt"`
+	ArchivedAt              *time.Time `json:"archivedAt,omitempty"`
 }
 type Source struct {
 	ProductKey    string `json:"productKey"`
@@ -150,7 +151,7 @@ func ValidID(value string) bool {
 	return err == nil && id != uuid.Nil && id.String() == value
 }
 func ValidSourceKind(value string) bool {
-	return value == "own" || value == "acquisition" || value == "market" || value == "sds_template" || value == "sds_finished"
+	return value == "own" || value == "acquisition" || value == "market" || value == "sds_template" || value == "sds_finished" || value == "amazon_data" || value == "custom_dataset"
 }
 func StableID(parts ...string) string {
 	data, _ := json.Marshal(parts)

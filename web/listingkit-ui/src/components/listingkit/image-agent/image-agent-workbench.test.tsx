@@ -242,9 +242,9 @@ describe("ImageAgentWorkbench", () => {
 
     act(() => FakeEventSource.instances[0]?.emit(5, 5));
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText("有效并发").parentElement).toHaveTextContent("6 个槽位"));
     expect(screen.getByText(guidance)).toBeInTheDocument();
     expect(screen.getByText("server detail after refresh")).toBeInTheDocument();
-    expect(screen.getByText("有效并发").parentElement).toHaveTextContent("6 个槽位");
     if (refreshedCanCreate) {
       expect(screen.getByRole("button", { name: "创建新尝试" })).toBeEnabled();
     } else {
@@ -279,13 +279,13 @@ describe("ImageAgentWorkbench", () => {
 
     act(() => source.emit(5, 5));
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
-    expect(screen.getByText("有效并发").parentElement).toHaveTextContent("未提供");
+    await waitFor(() => expect(screen.getByText("有效并发").parentElement).toHaveTextContent("未提供"));
     expect(FakeEventSource.instances).toHaveLength(1);
     expect(source.closed).toBe(false);
 
     act(() => source.emit(6, 6));
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
-    expect(screen.getByText("有效并发").parentElement).toHaveTextContent("5 个槽位");
+    await waitFor(() => expect(screen.getByText("有效并发").parentElement).toHaveTextContent("5 个槽位"));
     expect(FakeEventSource.instances).toHaveLength(1);
     expect(source.closed).toBe(false);
   });
@@ -363,8 +363,10 @@ describe("ImageAgentWorkbench", () => {
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
     expect(fetchSpy.mock.calls[0]?.[0]).toBe("/api/listing-kits/image-agent/runs/run-1/restart");
     expect(fetchSpy.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
-    expect(screen.getAllByText("计划中")).toHaveLength(2);
-    expect(FakeEventSource.instances).toHaveLength(1);
+    await waitFor(() => {
+      expect(screen.getAllByText("计划中")).toHaveLength(2);
+      expect(FakeEventSource.instances).toHaveLength(1);
+    });
   });
 
   it("keeps source materials and style references separate from generated candidates", () => {

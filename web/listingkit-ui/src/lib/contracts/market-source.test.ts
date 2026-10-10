@@ -6,7 +6,7 @@ it("keeps retained market and SDS sources usable in My Data and the existing Sup
  for(const kind of ["market","sds_template","sds_finished"]){
   const item={id,batchId:id,revision:1,createdAt:"2026-10-10T00:00:00Z",source:{productKey:"received-product",publicationId:id,version:"1",kind,operationId:id}};
   expect(collectionItemsSchema.safeParse({items:[item],total:1}).success).toBe(true);
-  expect(collectionBatchesSchema.safeParse({items:[{id,name:"真实来源",kind,revision:2,count:1,createdAt:item.createdAt}],total:1}).success).toBe(true);
+  expect(collectionBatchesSchema.safeParse({items:[{id,name:"真实来源",kind,revision:2,count:1,supplyTransferSupported:kind!=="sds_template",createdAt:item.createdAt}],total:1}).success).toBe(true);
   expect(sourceDetailSchema.safeParse({source:{id,preparationId:id,collectionItemId:id,collectionRevision:1,source:item.source},product:{title:"来源商品"},images:[]}).success).toBe(true);
  }
 });

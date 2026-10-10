@@ -57,6 +57,16 @@ func TestPostgresTransferReceivedProductsRetainsKindsAndRejectsBlankTemplates(t 
 			require.NoError(t, db.Exec(`INSERT INTO product_collection_batches(organization_id,actor_id,member_id,id,name,kind,revision,created_at) VALUES(?,?,?,?,?,'manual',1,now())`, scope.OrganizationID, scope.ActorID, scope.MemberID, batch, "received").Error)
 			require.NoError(t, db.Create(&catalogstore.SnapshotVersionRecord{TenantID: scope.OrganizationID, ProductKey: product, Version: 1, PublicationID: publication, PayloadHash: collection.Digest("source"), SnapshotJSON: []byte(`{"title":"received"}`)}).Error)
 			require.NoError(t, db.Exec(`INSERT INTO product_collection_items(organization_id,actor_id,member_id,id,batch_id,product_key,publication_id,original_version,source_kind,source_operation_id,revision,created_at) VALUES(?,?,?,?,?,?,?,1,?,?,1,now())`, scope.OrganizationID, scope.ActorID, scope.MemberID, item, batch, product, publication, kind, op).Error)
+			visible, e := collectionsRepo.ListBatches(ctx, scope, collection.Query{Limit: 10})
+			require.NoError(t, e)
+			var found bool
+			for _, candidate := range visible.Items {
+				if candidate.ID == batch {
+					found = true
+					require.Equal(t, kind != "sds_template", candidate.SupplyTransferSupported, kind)
+				}
+			}
+			require.True(t, found)
 			input := preparation.TransferInput{BatchID: batch, ExpectedRevision: 1}
 			r, e := service.Transfer(actor, key, input)
 			if kind == "sds_template" {
