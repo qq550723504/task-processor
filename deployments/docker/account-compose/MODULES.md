@@ -65,7 +65,7 @@ After normal login and enterprise selection, this combination provides:
 | Completed capability | Entry |
 | --- | --- |
 | Cockpit goals, store matrix, manual financial facts, alerts/advice | `/workbench` |
-| Accounts, members, roles, resources, audit and store management | `/workbench/account`, `/workbench/store-center` |
+| Accounts, members, roles, resources, audit and store management | `/workbench/account`, `/workbench/stores` |
 | Knowledge, personal projects and reports | `/workbench/ai/knowledge`, `/workbench/ai/projects`, `/workbench/ai/reports` |
 | 1688 acquisition and Product Collection | `/workbench/supply/acquisition`, `/workbench/data/mine` |
 | Supply Market | `/workbench/supply/official`, `/workbench/supply/selected`, `/workbench/supply/catalogs` |
@@ -84,6 +84,8 @@ missing configuration. These completed code paths remain unavailable here:
 | Capability | Required current configuration |
 | --- | --- |
 | Ecoservices/online payments and third-party settlement | Qualified WeChat platform merchant profile/keys, fixed HTTPS notify ingress, platform-fee product and private immutable storage |
+| Enterprise wallet online top-up | Qualified Alipay Page Pay or WeChat APIv3 Native merchant keys/certificates and fixed HTTPS notification ingress; separate from Ecoservices merchant admission |
+| Real SMS delivery | Applicable Tencent Cloud SMS application, approved sign/template, provider credentials and the existing ZITADEL SMS callback configuration in `SMS.md` |
 | AI Chat/title execution | Admitted organization model credentials, title and separate planning policies, explicit prices/budgets, Review/Asset and permitted organization scope |
 | Complete image Agent | Admitted model/organization credentials, confirmed point price/limits, canonical Asset/storage, same current Product review owner and worker configuration |
 | Store product/order/logistics sync | Actual official Store application and authorized channel configuration |
