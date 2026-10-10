@@ -52,7 +52,7 @@ func (c *Config) validateSupplyMarket() error {
 		if p.AssetDatabase.User != "supply_asset_runtime" || p.AssetDatabase.MaxConnections > 8 {
 			return errors.New("POD requires bounded canonical Asset access")
 		}
-		owners := []*DatabaseConfig{&c.SourceAccountDatabase, c.ProductAcquisitionDatabase, c.CommercialOwnerDatabase, c.MoneyOwnerDatabase, c.NotificationCenterDatabase}
+		owners := []*DatabaseConfig{&c.SourceAccountDatabase, c.ProductAcquisitionDatabase, c.CommercialOwnerDatabase, c.MoneyOwnerDatabase, c.NotificationCenterDatabase, c.AgentCustomizationDatabase}
 		if c.StoreCenter != nil {
 			owners = append(owners, &c.StoreCenter.Database)
 		}

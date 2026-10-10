@@ -42,13 +42,16 @@ func (w *podStartFailureWorker) Start() error {
 }
 func (w *podStartFailureWorker) Stop() { w.stops++ }
 func TestPODRuntimeAssemblyFailureClosesCanonicalPools(t *testing.T) {
-	for _, phase := range []string{"assembly", "worker start"} {
+	for _, phase := range []string{"assembly", "worker start", "customization alias"} {
 		t.Run(phase, func(t *testing.T) {
 			c := supplyRuntimeConfig(t)
 			c.POD = &PODConfig{AssetDatabase: c.SupplyChain.AssetDatabase, TemporalAddress: c.SupplyChain.TemporalAddress, TemporalNamespace: "default", CredentialFile: writeManifest(t, `{}`), OSSHosts: []string{"fixture.oss-cn-hangzhou.aliyuncs.com"}}
 			c.SupplyMarket = &SupplyMarketConfig{Storage: KnowledgeStorageConfig{Region: "local", Bucket: "private", AccessKeyID: "fixture", SecretAccessKey: "fixture", Mode: "aws"}}
 			c.StoreCenter = nil
 			c.SupplyChain = nil
+			if phase == "customization alias" {
+				c.AgentCustomizationDatabase = &DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "agent_customization_runtime", Password: "fixture", Database: "customization", MaxConnections: 2}
+			}
 			source, product, owner, assets := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
 			workflow := &mocks.Client{}
 			worker := &podStartFailureWorker{}
@@ -60,6 +63,7 @@ func TestPODRuntimeAssemblyFailureClosesCanonicalPools(t *testing.T) {
 				OpenProductAcquisition: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return product, nil },
 				OpenCommercialOwner:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return owner, nil },
 				OpenSupplyAssets:       func(context.Context, DatabaseConfig) (*gorm.DB, error) { return assets, nil },
+				OpenAgentCustomization: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return assets, nil },
 				NewMarketStorage: func(context.Context, *SupplyMarketConfig, *logrus.Logger) (supplymarket.PrivateFileStorage, error) {
 					return marketTestStorage{}, nil
 				},
@@ -75,21 +79,26 @@ func TestPODRuntimeAssemblyFailureClosesCanonicalPools(t *testing.T) {
 					require.NotNil(t, f.MarketStorage)
 					require.NotNil(t, f.PODCredentials)
 					require.NotNil(t, f.PODWorker)
-					if phase == "assembly" {
+					if phase == "assembly" || phase == "customization alias" {
 						return nil, errors.New("fixture assembly failure")
 					}
 					*f.PODWorker = worker
 					return &http.Server{Handler: http.NotFoundHandler()}, nil
 				},
 			})
-			if phase == "assembly" {
+			if phase == "customization alias" {
+				require.ErrorContains(t, err, "independent Asset pool")
+				require.Zero(t, closed)
+			} else if phase == "assembly" {
 				require.ErrorContains(t, err, "fixture assembly failure")
 			} else {
 				require.ErrorContains(t, err, "start POD worker failed")
 				require.Equal(t, 1, worker.starts)
 				require.Equal(t, 1, worker.stops)
 			}
-			require.Equal(t, 1, closed)
+			if phase != "customization alias" {
+				require.Equal(t, 1, closed)
+			}
 			require.Contains(t, pools, assets)
 		})
 	}

@@ -32,6 +32,7 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
+	AgentCustomizationDatabase *DatabaseConfig                           `json:"agentCustomizationDatabase,omitempty"`
 	ProjectCenter              *ProjectCenterConfig                      `json:"projectCenter,omitempty"`
 	ToolMarket                 *ToolMarketConfig                         `json:"toolMarket,omitempty"`
 	Ecoservices                *EcoservicesConfig                        `json:"ecoservices,omitempty"`
@@ -51,6 +52,7 @@ type Config struct {
 	SupplyChain                *SupplyChainConfig                        `json:"supplyChain,omitempty"`
 	SupplyMarket               *SupplyMarketConfig                       `json:"supplyMarket,omitempty"`
 	POD                        *PODConfig                                `json:"pod,omitempty"`
+	PrivateDraftTrial          *PrivateDraftTrialConfig                  `json:"privateDraftTrial,omitempty"`
 	SourceMedia                *coreconfig.ImageAgentArtifactStoreConfig `json:"sourceMedia,omitempty"`
 	ImageAgent                 *ImageAgentConfig                         `json:"imageAgent,omitempty"`
 	ProductAgent               *ProductAgentConfig                       `json:"productAgent,omitempty"`
@@ -297,6 +299,9 @@ func (cfg *Config) validate() error {
 	if err := cfg.validateSupplyMarket(); err != nil {
 		return err
 	}
+	if err := cfg.validateAgentCustomization(); err != nil {
+		return err
+	}
 	if err := cfg.validateProjectCenter(); err != nil {
 		return err
 	}
@@ -418,6 +423,9 @@ func (cfg *Config) validate() error {
 	}
 	if cfg.ProductCollections && cfg.ProductAcquisitionDatabase == nil {
 		return errors.New("product collections require the current Product database")
+	}
+	if err := cfg.validatePrivateDraftTrial(); err != nil {
+		return err
 	}
 	if err := cfg.validateSupplyChain(); err != nil {
 		return err

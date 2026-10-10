@@ -24,6 +24,27 @@ import (
 const SupplyBasePath = "/api/v1/workbench/supply-preparations"
 const supplyMaxBytes = 2 << 20
 
+// Explicit read-only selection composition; execution descriptors are absent.
+func IsPrivateDraftReadRoute(method, path string) bool {
+	if method != http.MethodGet {
+		return false
+	}
+	switch path {
+	case SupplyBasePath, SupplyBasePath + "/:preparation_id", SupplyBasePath + "/:preparation_id/sources", SupplyBasePath + "/sources/:source_id", SupplyBasePath + "/:preparation_id/stages", SupplyBasePath + "/sources/:source_id/targets/:store_id", SupplyBasePath + "/records/:record_id":
+		return true
+	}
+	return false
+}
+func PrivateDraftReadRoutes(app *supplyapp.Application, bind func(context.Context, string) (context.Context, error)) []httproute.Descriptor {
+	var out []httproute.Descriptor
+	for _, route := range SupplyRoutes(app, bind) {
+		if IsPrivateDraftReadRoute(route.Method, route.Path) {
+			out = append(out, route)
+		}
+	}
+	return out
+}
+
 func SupplyRoutes(app *supplyapp.Application, bind func(context.Context, string) (context.Context, error)) []httproute.Descriptor {
 	specs := []struct{ method, path, action, permission string }{
 		{"GET", "/optimization-options", "optimization-options", preparation.PermissionManage},

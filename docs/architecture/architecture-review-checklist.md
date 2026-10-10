@@ -96,11 +96,13 @@ consider the applicable guards, including:
 - `TestListingSubmissionPersistenceAdapterImplementsOnlySubmissionPort`
 - `TestSupplyPersistenceAndOfficialTransportOnlyImportAdmittedPorts`
 - `TestSupplyAndCollectionHTTPRegistrationKeepsBusinessSiblingsFrameworkFree`
+- `TestCockpitHTTPBoundaryRegistration`
 - `TestProductCatalogPersistenceGuardRejectsEverySiblingProductDomainFixture`
 - `depguard: infrastructure_business_boundaries`
 - `depguard: product_catalog_persistence_boundary`
 - `depguard: listing_submission_persistence_boundary`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
+- `TestAgentCustomizationHTTPBoundaryRegistration` — permits only the approved agent customization HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `TestMembershipHTTPBoundaryRegistration` — permits only the membership HTTP subtree; rejects the domain root, siblings, other organizations and similar prefixes.
 - `TestSubjectVerificationHTTPBoundaryRegistration` — permits only the approved subject verification HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `TestEcoservicesHTTPBoundaryRegistration` — permits only the approved ecosystem HTTP subtree; rejects the domain root, siblings and similar prefixes.
@@ -400,6 +402,7 @@ Supporting context documents must not be listed as review references unless prom
 - `docs/architecture/store-center-current-application-v1.md`
 - `docs/architecture/supply-market-v1.md`
 - `docs/architecture/store-center-platform-observations-v1.md`
+- `docs/architecture/operations-cockpit-v1.md`
 - `docs/architecture/httpapi-assembly-boundaries.md`
 - `docs/architecture/app-assembly-boundaries.md`
 - `docs/architecture/temporal-boundaries.md`

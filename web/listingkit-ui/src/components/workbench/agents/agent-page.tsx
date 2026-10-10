@@ -25,6 +25,7 @@ import {
 } from "@/lib/contracts/agent-configuration";
 import { basesSchema, knowledgeRequest } from "@/lib/api/knowledge";
 import styles from "./agents.module.css";
+import { PrivateAgentCards } from "./private-agent-page";
 
 const agentId = "product.title.agent";
 const labels: Record<string, string> = {
@@ -382,6 +383,7 @@ function ScopedPage({
         </Link>
       }
     >
+      {mode === "mine" && !id ? <PrivateAgentCards scope={scope}/> : null}
       {failure != null && (
         <div role="alert" className={styles.notice}>
           {configurationError(failure)}
