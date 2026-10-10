@@ -9,7 +9,7 @@ const operation="11111111-1111-4111-8111-111111111111",runId="22222222-2222-4222
 const sha="a".repeat(64),digest="b".repeat(64),now="2026-10-09T00:00:00Z";
 const template={templateId,agentId:"product.image.agent",lifecycle:"ACTIVE",revision:"1",version:"1",schemaVersion:"image-config-v1",name:"Two groups",targetPlatform:"product",createdAt:now,image:{schema:"image-config-v1",mode:"standard",shareOriginals:true,background:"white",language:"en",carousel:[{id:"main",purpose:"product_identity"}],detail:[{id:"detail",purpose:"detail_closeup"}]}};
 const entry={agent:{agentId:"product.image.agent",activation:"ENABLED",revision:"1",activationEpoch:"1",defaultTemplate:{templateId,revision:"1"},updatedAt:now},name:"Images",description:"Full images",definitionVersion:"v1.0.0",parameterSchema:"image-config-v1",canConfigure:true,canUse:true,canReadRuns:true,capabilities:[{id:"image.generate",support:"REQUIRED",readiness:"AVAILABLE",reason:"",observedAt:now}]};
-const source={ContextKind:"acquisition",ProductID:"p",OperationID:operation,OriginalPublicationID:"publication",OriginalVersion:1,EffectiveVersion:1};
+const source={ContextKind:"acquisition",ProductID:"p",OperationID:operation,OriginalPublicationID:"publication",OriginalVersion:"1",EffectiveVersion:"1"};
 function projection(status="awaiting_plan_approval",confirmationActionId=""){
  return {runId,status,template:{templateId,revision:"1"},confirmationActionId,generationAdmitted:!!confirmationActionId,planRevision:1,planDigest:sha,quoteDigest:digest,images:2,points:20,settledPoints:status==="awaiting_plan_approval"?0:20,resultDigest:status==="awaiting_plan_approval"?"":sha,approvalAvailable:status==="awaiting_final_approval",candidateSelectionAvailable:["awaiting_final_approval","completed","failed","blocked","cancelled"].includes(status),regenerationAvailable:status==="awaiting_final_approval",plan:{Source:source,Target:{Platform:"product",StoreID:"",Site:"",CategoryID:0}},slots:["main","detail"].map((slotId,i)=>({slotId,status:status==="awaiting_plan_approval"?"pending":"accepted",attempt:status==="awaiting_plan_approval"?0:1,errorCode:"",recipe:{Purpose:i?"detail_closeup":"product_identity",Background:"white",Language:"en",Placement:{Group:i?"detail":"carousel",Order:1},References:[{AssetID:"original"}],Quote:{Points:10}},candidates:status==="awaiting_plan_approval"?[]:[{assetId:`generated-${i}`,url:`https://images.test/generated-${i}.png`,width:1024,height:1024}],closure:status==="awaiting_plan_approval"?null:{Kind:"generated",Points:10}})),originals:[{ID:"original",DisplayURL:"https://images.test/original.png",Width:1024,Height:1024}],recoverableEffects:null,pendingCommand:null,block:null};
 }
@@ -135,6 +135,20 @@ it(`can combine new subset output with successful ${parentStatus} parent outputs
  expect(fetch.mock.calls.some(([url])=>/\/(prepare|regenerate|confirm)$/.test(String(url)))).toBe(false);
 });
 }
+
+it("restores and prepares the exact large catalog version without numeric conversion",async()=>{
+ const version="9223372036854775807",largeSource={...source,OriginalVersion:"9007199254740993",EffectiveVersion:version};
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation(async(url,init)=>{
+  if(String(url).includes("/sources"))return Response.json({contextKind:"acquisition",contextId:operation,source:largeSource,manualReplacementAvailable:false,originals:[{id:"original",displayUrl:"https://images.test/original.png",width:1024,height:1024}],evidence:{}});
+  if(String(url).endsWith("/prepare"))return Response.json({...state,plan:{...state.plan,Source:largeSource}},{status:201});
+  return real(url,init);
+ });
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);await prepare();
+ await screen.findByRole("button",{name:"确认点数并生成"});
+ const request=fetch.mock.calls.find(([url])=>String(url).endsWith("/prepare"))!;
+ expect(JSON.parse(String(request[1]!.body)).effectiveCatalogVersion).toBe(version);
+});
 it("uses the restored custom parent template rather than the current default for subset regeneration",async()=>{
  const parentTemplateId="55555555-5555-4555-8555-555555555555";
  const parentTemplate={...template,templateId:parentTemplateId,name:"Old custom",revision:"4",version:"2",image:{...template.image,mode:"custom",carousel:[{id:"old-custom",purpose:"custom",brief:"Original custom instruction"}],detail:[]}};
@@ -202,7 +216,7 @@ for(const failure of ["read","inventory"]){
 const sheinTarget={Platform:"shein",StoreID:"saved-store",Site:"US",CategoryID:123,RecordID:"saved-record"} as const;
 const officialPlacement={Group:"spu",SKC:0,SKU:0,Type:1,Sort:1,Site:"US"};
 const sheinRequirements={platform:"shein",site:"US",categoryId:123,version:"current-official-rules",nativeWidth:1024,nativeHeight:1024,groups:[{group:"spu",skc:0,sku:0,types:[{type:1,minimum:1,maximum:8,nativeCompatible:true}]}]};
-function sheinProjection(){const p=projection("awaiting_final_approval",templateId);return {...p,plan:{...p.plan,Source:{...source,EffectiveVersion:2,ApplyReceiptID:operation},Target:sheinTarget},slots:p.slots.map(slot=>({...slot,recipe:{...slot.recipe,OfficialPlacement:officialPlacement}}))}}
+function sheinProjection(){const p=projection("awaiting_final_approval",templateId);return {...p,plan:{...p.plan,Source:{...source,EffectiveVersion:"2",ApplyReceiptID:operation},Target:sheinTarget},slots:p.slots.map(slot=>({...slot,recipe:{...slot.recipe,OfficialPlacement:officialPlacement}}))}}
 it("returns from a historical platform run to the current page target for fresh preparation",async()=>{
  const p=sheinProjection(),liveTarget={...sheinTarget,StoreID:"current-store",RecordID:"current-record",CategoryID:456},real=fetch.getMockImplementation()!;
  fetch.mockImplementation((url,init)=>String(url).endsWith("/requirements")?Promise.resolve(Response.json({...sheinRequirements,categoryId:JSON.parse(String(init!.body)).target.CategoryID})):String(url).endsWith(`/runs/${runId}`)?Promise.resolve(Response.json(p)):String(url).endsWith("/images/runs")?Promise.resolve(Response.json({items:[{runId,contextKind:"acquisition",contextId:operation,status:p.status,targetPlatform:"shein",createdAt:now}],nextCursor:""})):real(url,init));
@@ -218,9 +232,9 @@ it("returns from a historical platform run to the current page target for fresh 
  await prepare();
  await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/prepare"))).toBe(true));
  const rules=fetch.mock.calls.filter(([url])=>String(url).endsWith("/requirements")).at(-1)!;
- expect(JSON.parse(String(rules[1]!.body))).toEqual({target:liveTarget,effectiveCatalogVersion:1});
+ expect(JSON.parse(String(rules[1]!.body))).toEqual({target:liveTarget,effectiveCatalogVersion:"1"});
  const request=fetch.mock.calls.find(([url])=>String(url).endsWith("/prepare"))!;
- expect(JSON.parse(String(request[1]!.body))).toMatchObject({target:liveTarget,effectiveCatalogVersion:1});
+ expect(JSON.parse(String(request[1]!.body))).toMatchObject({target:liveTarget,effectiveCatalogVersion:"1"});
  expect(JSON.parse(String(request[1]!.body))).not.toHaveProperty("applyReceiptId");
 });
 for(const restoration of ["initial","recent"]){
@@ -233,7 +247,7 @@ it(`restores a SHEIN ${restoration} run's saved target and current rules for ori
  expect(screen.getByLabelText("素材目标")).toHaveValue("shein");
  expect(screen.getByText("店铺 saved-store · 站点 US · 类目 123")).toBeInTheDocument();
  const rules=fetch.mock.calls.find(([url])=>String(url).endsWith("/requirements"))!;
- expect(JSON.parse(String(rules[1]!.body))).toEqual({target:sheinTarget,effectiveCatalogVersion:2,applyReceiptId:operation});
+ expect(JSON.parse(String(rules[1]!.body))).toEqual({target:sheinTarget,effectiveCatalogVersion:"2",applyReceiptId:operation});
  fireEvent.click(screen.getByRole("button",{name:"选择原图 1"}));
  const position=screen.getAllByLabelText("官方图片位置").at(-1)!;expect(position).toBeEnabled();
  fireEvent.change(position,{target:{value:"spu:0:0"}});fireEvent.click(screen.getByRole("button",{name:"预览完整选择"}));
@@ -245,7 +259,7 @@ it(`restores a SHEIN ${restoration} run's saved target and current rules for ori
  fireEvent.click(screen.getByRole("button",{name:"准备所选 1 项的新计划"}));
  await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/regenerate"))).toBe(true));
  const regeneration=fetch.mock.calls.find(([url])=>String(url).endsWith("/regenerate"))!;
- expect(JSON.parse(String(regeneration[1]!.body))).toMatchObject({target:sheinTarget,effectiveCatalogVersion:2,applyReceiptId:operation,selectedTaskIds:["main"],officialPlacements:{main:officialPlacement}});
+ expect(JSON.parse(String(regeneration[1]!.body))).toMatchObject({target:sheinTarget,effectiveCatalogVersion:"2",applyReceiptId:operation,selectedTaskIds:["main"],officialPlacements:{main:officialPlacement}});
 });
 }
 it("does not expose stale rules when switching SHEIN runs and can reload the saved target after a rules failure",async()=>{
@@ -260,7 +274,7 @@ it("does not expose stale rules when switching SHEIN runs and can reload the sav
  unavailable=false;fireEvent.click(screen.getByRole("button",{name:"读取当前图片规则"}));
  await waitFor(()=>expect(screen.getAllByLabelText("官方图片位置").at(-1)).toBeEnabled());
  const last=fetch.mock.calls.filter(([url])=>String(url).endsWith("/requirements")).at(-1)!;
- expect(JSON.parse(String(last[1]!.body))).toEqual({target:second.plan.Target,effectiveCatalogVersion:2,applyReceiptId:operation});
+ expect(JSON.parse(String(last[1]!.body))).toEqual({target:second.plan.Target,effectiveCatalogVersion:"2",applyReceiptId:operation});
 });
 it("discards late SHEIN rules from a previously refreshed run",async()=>{
  const first=sheinProjection(),secondId="44444444-4444-4444-8444-444444444444",second={...first,runId:secondId,plan:{...first.plan,Target:{...sheinTarget,StoreID:"second-store",RecordID:"second-record",CategoryID:456}}};

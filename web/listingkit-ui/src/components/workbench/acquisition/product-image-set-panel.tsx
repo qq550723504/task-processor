@@ -16,7 +16,7 @@ import {imageTemplatesPageSchema,imageTemplateSchema,carouselTasks,detailTasks,t
 import {ImageSetError,imageSetRequest,type ImageSetScope} from "@/lib/api/product-image-set";
 import {imageSetApprovalSchema,imageSetRunSchema,imageSetSourcesSchema,imageSetRecentSchema,imageSetInventorySchema,imageSetPreviewSchema,imageSetAcceptedSchema,imageSetRequirementsSchema,imageSetRequestSchema,type ImageSetRun,type ImageSetPrepare,type ImageSetChoice,type ImageSetSelection,type ImageSetRequirements,type ImageSetInventory,type ImageSetRoute} from "@/lib/contracts/product-image-set";
 
-type Props={kind:ImageSetScope["kind"];contextId:string;target?:ImageSetPrepare["target"];effectiveVersion?:number;applyReceiptId?:string;onSaved?:()=>void;initialRunId?:string};
+type Props={kind:ImageSetScope["kind"];contextId:string;target?:ImageSetPrepare["target"];effectiveVersion?:string;applyReceiptId?:string;onSaved?:()=>void;initialRunId?:string};
 type Intent={action:ImageSetRoute;runId?:string;requestKey?:string;body:unknown};
 type ChoiceView={key:string;url:string;label:string;choice:ImageSetChoice};
 const stateNames:Record<string,string>={awaiting_plan_approval:"等待点数确认",executing:"生成中",evaluating:"处理结果中",repairing:"处理结果中",awaiting_final_approval:"等待人工选择",blocked:"已阻止",completed:"已保存正式素材",failed:"生成失败",cancelled:"已取消",pending:"等待执行",accepted:"已生成",rejected:"失败"};
@@ -105,7 +105,7 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
     if(saved){const parsed=z.object({action:z.enum(["prepare","regenerate","confirm","approve","cancel","recover","resume","restart"]),runId:z.string().optional(),requestKey:z.string().optional(),body:z.unknown()}).strict().safeParse(JSON.parse(saved));if(parsed.success&&imageSetRequestSchema(parsed.data.action).safeParse(parsed.data.body).success)setIntent(parsed.data)}
     const agent=await configurationRequest(stableScope,"product.image.agent",catalogEntrySchema,{signal:controller.signal});if(controller.signal.aborted)return;setEntry(agent);
     if(!agent.canReadRuns)return;
-    const query=new URLSearchParams();if(effectiveVersion)query.set("effectiveCatalogVersion",String(effectiveVersion));if(applyReceiptId)query.set("applyReceiptId",applyReceiptId);
+    const query=new URLSearchParams();if(effectiveVersion)query.set("effectiveCatalogVersion",effectiveVersion);if(applyReceiptId)query.set("applyReceiptId",applyReceiptId);
     const source=await imageSetRequest(stableScope,"sources",imageSetSourcesSchema,{query:query.toString(),signal:controller.signal});if(controller.signal.aborted)return;setSources(source);
     // Recover the known run before optional template or recent-run discovery.
     const id=initialRunId??localStorage.getItem(storageKey+":run");

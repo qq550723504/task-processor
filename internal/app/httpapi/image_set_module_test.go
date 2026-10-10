@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"net/http"
@@ -122,13 +123,57 @@ func (r imageSetHTTPRepository) GetProjection(_ context.Context, s imageagent.Ru
 type imageSetHTTPSource struct {
 	binding imageagent.ImageSourceBinding
 	err     error
+	input   imageagent.PrepareImageSetInput
 }
 
 func (r *imageSetHTTPSource) ReadImageSetSource(_ context.Context, _ imageagent.ExecutionIdentity, input imageagent.PrepareImageSetInput) (imageagent.ImageSetPreparation, error) {
+	r.input = input
 	if r.err != nil {
 		return imageagent.ImageSetPreparation{}, r.err
 	}
 	return imageagent.ImageSetPreparation{Source: r.binding}, nil
+}
+
+func TestFullImageCatalogVersionsRemainExactAcrossHTTP(t *testing.T) {
+	const sourceID = "d1abe8da-b381-4924-8d15-d79bdbfacf70"
+	const version = uint64(9223372036854775807)
+	sources := &imageSetHTTPSource{binding: imageagent.ImageSourceBinding{ContextKind: imageagent.ImageSourceAcquisition, OperationID: sourceID, OriginalVersion: version - 1, EffectiveVersion: version}}
+	service, err := imageagent.NewService(imageSetHTTPRepository{}, imageSetHTTPWorkflow{}, closedImageSetCatalog{}, imageagent.WithOrganizationScope())
+	require.NoError(t, err)
+	module := fullImageModule{application: &fullImageApplication{service: service, readSources: sources}, bind: func(ctx context.Context, _ string) (context.Context, error) { return ctx, nil }}
+	router := gin.New()
+	for _, route := range module.routes() {
+		router.Handle(route.Method, route.Path, route.Handler)
+	}
+	id := authidentity.AuthenticatedIdentity{TenantID: "org", EffectiveOrganizationID: "org", UserID: "actor", EffectiveMemberID: "member"}
+	call := func(method, suffix, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, "/api/v1/workbench/sourcing/1688/acquisitions/"+sourceID+"/images/"+suffix, strings.NewReader(body))
+		if method == http.MethodPost {
+			r.Header.Set("Content-Type", "application/json")
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, r.WithContext(authidentity.WithAuthenticatedIdentity(r.Context(), id)))
+		return w
+	}
+	w := call(http.MethodGet, "sources?effectiveCatalogVersion=9223372036854775807", "")
+	require.Equal(t, 200, w.Code, w.Body.String())
+	var payload struct {
+		Source struct{ OriginalVersion, EffectiveVersion string }
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &payload))
+	require.Equal(t, "9223372036854775806", payload.Source.OriginalVersion)
+	require.Equal(t, "9223372036854775807", payload.Source.EffectiveVersion)
+	require.Equal(t, version, sources.input.EffectiveCatalogVersion)
+	w = call(http.MethodPost, "requirements", `{"target":{"Platform":"product"},"effectiveCatalogVersion":"9223372036854775807"}`)
+	require.Equal(t, 200, w.Code, w.Body.String())
+	require.Equal(t, version, sources.input.EffectiveCatalogVersion)
+	for _, invalid := range []string{`9223372036854775807`, `"01"`, `"0"`, `"+1"`, `"9223372036854775808"`} {
+		w = call(http.MethodPost, "requirements", `{"target":{"Platform":"product"},"effectiveCatalogVersion":`+invalid+`}`)
+		require.Equal(t, 400, w.Code, w.Body.String())
+	}
+	for _, invalid := range []string{"01", "0", "9223372036854775808"} {
+		require.Equal(t, 400, call(http.MethodGet, "sources?effectiveCatalogVersion="+invalid, "").Code)
+	}
 }
 func TestFullImageHTTPReadsOriginalApprovalWithoutASecondMutation(t *testing.T) {
 	const sourceID = "d1abe8da-b381-4924-8d15-d79bdbfacf70"

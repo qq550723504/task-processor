@@ -3,6 +3,26 @@ import {buildWorkbenchBrowserResponse,buildWorkbenchUpstreamRequest} from "./wor
 const context="11111111-1111-4111-8111-111111111111",run="22222222-2222-4222-8222-222222222222",action="33333333-3333-4333-8333-333333333333";
 const path=["sourcing","1688","acquisitions",context,"images"];
 const expected=JSON.stringify({kind:"acquisition",contextId:context,runId:run});
+
+it("preserves signed-64-bit catalog versions through image source reads and preparation bodies",async()=>{
+ const version="9223372036854775807";
+ const queried=await buildWorkbenchUpstreamRequest(request("GET",`/sources?effectiveCatalogVersion=${version}`),[...path,"sources"],"token","actor");
+ expect(queried).not.toBeInstanceOf(Response);if(queried instanceof Response)return;
+ expect(queried.url).toContain(`effectiveCatalogVersion=${version}`);
+ const payload={contextKind:"acquisition",contextId:context,manualReplacementAvailable:false,source:{ContextKind:"acquisition",ProductID:"p",OperationID:context,OriginalPublicationID:"pub",OriginalVersion:"9007199254740993",EffectiveVersion:version},originals:[],evidence:{}};
+ const response=await buildWorkbenchBrowserResponse(Response.json(payload),"image-set-sources",JSON.stringify({kind:"acquisition",contextId:context}));
+ expect(response.status).toBe(200);expect(await response.json()).toEqual(payload);
+ for(const suffix of ["/prepare",`/runs/${run}/regenerate`,"/requirements"]){
+  const tail=suffix.slice(1).split("/");
+  const body={target:{Platform:"product"},effectiveCatalogVersion:version};
+  const prepared=await buildWorkbenchUpstreamRequest(request("POST",suffix,JSON.stringify(body),suffix==="/requirements"?{}:{"Idempotency-Key":action}),[...path,...tail],"token","actor");
+  expect(prepared).not.toBeInstanceOf(Response);if(prepared instanceof Response)return;
+  expect(JSON.parse(String(prepared.init.body)).effectiveCatalogVersion).toBe(version);
+ }
+ for(const invalid of ["01","0","+1","garbage","9223372036854775808",Number.MAX_SAFE_INTEGER+1]){
+  expect(await buildWorkbenchUpstreamRequest(request("POST","/prepare",JSON.stringify({target:{Platform:"product"},effectiveCatalogVersion:invalid}),{"Idempotency-Key":action}),[...path,"prepare"],"token","actor")).toBeInstanceOf(Response);
+ }
+});
 beforeEach(()=>vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL","http://localhost:3000"));
 afterEach(()=>vi.unstubAllEnvs());
 function request(method:string,suffix:string,body?:string,extra:Record<string,string>={}){
@@ -21,7 +41,7 @@ it("binds the full image endpoints to the source owner, original run and same pr
  }
 });
 it("rejects a different source owner and preserves uncertainty for a mismatched accepted run",async()=>{
- const source={contextKind:"supply",contextId:context,manualReplacementAvailable:false,source:{ContextKind:"supply",ProductID:"p",OperationID:context,OriginalPublicationID:"pub",OriginalVersion:1,EffectiveVersion:1},originals:[],evidence:{}};
+ const source={contextKind:"supply",contextId:context,manualReplacementAvailable:false,source:{ContextKind:"supply",ProductID:"p",OperationID:context,OriginalPublicationID:"pub",OriginalVersion:"1",EffectiveVersion:"1"},originals:[],evidence:{}};
  const badSource=await buildWorkbenchBrowserResponse(Response.json(source),"image-set-sources",JSON.stringify({kind:"acquisition",contextId:context}));
  expect(badSource.status).toBe(502);
  const badRun=await buildWorkbenchBrowserResponse(Response.json({runId:context,status:"accepted"},{status:202}),"image-set-confirm",expected,{sourceMutation:true});

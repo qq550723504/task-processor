@@ -5,7 +5,7 @@ const id="11111111-1111-4111-8111-111111111111",run="22222222-2222-4222-8222-222
 const scope={userId:"actor",organizationId:"org",kind:"acquisition" as const,contextId:id};
 afterEach(()=>vi.unstubAllGlobals());
 it("rejects cross-context sources even when their schema is valid",async()=>{
- vi.stubGlobal("fetch",vi.fn().mockResolvedValue(Response.json({contextKind:"acquisition",contextId:run,manualReplacementAvailable:false,source:{ContextKind:"acquisition",OperationID:run,ProductID:"p",OriginalPublicationID:"pub",OriginalVersion:1,EffectiveVersion:1},originals:[],evidence:{}})));
+ vi.stubGlobal("fetch",vi.fn().mockResolvedValue(Response.json({contextKind:"acquisition",contextId:run,manualReplacementAvailable:false,source:{ContextKind:"acquisition",OperationID:run,ProductID:"p",OriginalPublicationID:"pub",OriginalVersion:"1",EffectiveVersion:"1"},originals:[],evidence:{}})));
  await expect(imageSetRequest(scope,"sources",imageSetSourcesSchema)).rejects.toMatchObject({code:"CONTEXT_CHANGED"});
 });
 it("rejects another approval action without issuing any mutation",async()=>{

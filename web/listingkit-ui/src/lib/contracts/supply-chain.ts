@@ -7,7 +7,8 @@ const text=(max:number)=>z.string().refine(v=>new TextEncoder().encode(v).length
 const integer=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const revision=integer.min(1);
 const time=z.iso.datetime({offset:true});
-const version=z.string().regex(/^[1-9][0-9]{0,18}$/).refine(v=>BigInt(v)<=BigInt("9223372036854775807"));
+export const catalogVersionSchema=z.string().regex(/^[1-9][0-9]{0,18}$/).pipe(z.string().refine(v=>BigInt(v)<=BigInt("9223372036854775807")));
+const version=catalogVersionSchema;
 const list=<T extends z.ZodType>(value:T,max=4096)=>z.array(value).max(max).nullable().transform(v=>v??[]);
 const page=<T extends z.ZodType>(value:T)=>z.object({items:list(value,100),total:integer,nextCursor:collectionID.optional()});
 const applicationModeSchema=z.enum(["self_operated","semi_managed","fully_managed"]);

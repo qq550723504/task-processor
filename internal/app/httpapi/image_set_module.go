@@ -54,9 +54,38 @@ type fullImagePrepareBody struct {
 	DetailOriginalIDs       []string                                     `json:"detailOriginalIds,omitempty"`
 	SelectedTaskIDs         []string                                     `json:"selectedTaskIds,omitempty"`
 	OfficialPlacements      map[string]imageagent.OfficialImagePlacement `json:"officialPlacements,omitempty"`
-	EffectiveCatalogVersion uint64                                       `json:"effectiveCatalogVersion,omitempty"`
+	EffectiveCatalogVersion string                                       `json:"effectiveCatalogVersion,omitempty"`
 	ApplyReceiptID          string                                       `json:"applyReceiptId,omitempty"`
 }
+
+// Browser versions use the same canonical decimal representation as Supply.
+// Domain and persisted plan values keep their original integer representation.
+type fullImageSourceResponse struct {
+	imageagent.ImageSourceBinding
+	OriginalVersion  string
+	EffectiveVersion string
+}
+
+func fullImageSource(source imageagent.ImageSourceBinding) fullImageSourceResponse {
+	return fullImageSourceResponse{ImageSourceBinding: source, OriginalVersion: strconv.FormatUint(source.OriginalVersion, 10), EffectiveVersion: strconv.FormatUint(source.EffectiveVersion, 10)}
+}
+
+type fullImagePlanResponse struct {
+	*imageagent.ImageSetPlan
+	Source fullImageSourceResponse
+}
+
+func fullImageCatalogVersion(raw string) (uint64, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	version, err := strconv.ParseUint(raw, 10, 63)
+	if err != nil || version == 0 || strconv.FormatUint(version, 10) != raw {
+		return 0, imageagent.ErrValidation
+	}
+	return version, nil
+}
+
 type fullImageSelectionBody struct {
 	ActionID        string                   `json:"actionId"`
 	PlanRevision    int64                    `json:"planRevision"`
@@ -129,7 +158,12 @@ func (m fullImageModule) handle(c *gin.Context, kind imageagent.ImageSourceConte
 			writeFullImageError(c, err, false)
 			return
 		}
-		input := imageagent.PrepareImageSetInput{ContextKind: kind, ContextID: contextID, Target: body.Target, EffectiveCatalogVersion: body.EffectiveCatalogVersion, ApplyReceiptID: body.ApplyReceiptID}
+		version, e := fullImageCatalogVersion(body.EffectiveCatalogVersion)
+		if e != nil {
+			writeFullImageError(c, e, false)
+			return
+		}
+		input := imageagent.PrepareImageSetInput{ContextKind: kind, ContextID: contextID, Target: body.Target, EffectiveCatalogVersion: version, ApplyReceiptID: body.ApplyReceiptID}
 		source, e := a.readSources.ReadImageSetSource(ctx, exec, input)
 		if e != nil {
 			writeFullImageError(c, e, false)
@@ -219,8 +253,8 @@ func (m fullImageModule) handle(c *gin.Context, kind imageagent.ImageSourceConte
 		}
 		version := uint64(0)
 		if raw := query.Get("effectiveCatalogVersion"); raw != "" {
-			version, err = strconv.ParseUint(raw, 10, 63)
-			if err != nil || version == 0 {
+			version, err = fullImageCatalogVersion(raw)
+			if err != nil {
 				writeFullImageError(c, imageagent.ErrValidation, false)
 				return
 			}
@@ -243,7 +277,7 @@ func (m fullImageModule) handle(c *gin.Context, kind imageagent.ImageSourceConte
 		if evidence == nil {
 			evidence = map[string]string{}
 		}
-		c.JSON(http.StatusOK, gin.H{"contextKind": kind, "contextId": contextID, "source": source.Source, "originals": originals, "evidence": evidence, "manualReplacementAvailable": a.manualAvailable})
+		c.JSON(http.StatusOK, gin.H{"contextKind": kind, "contextId": contextID, "source": fullImageSource(source.Source), "originals": originals, "evidence": evidence, "manualReplacementAvailable": a.manualAvailable})
 		return
 	}
 	if action == "prepare" || action == "regenerate" {
@@ -257,7 +291,12 @@ func (m fullImageModule) handle(c *gin.Context, kind imageagent.ImageSourceConte
 			writeFullImageError(c, imageagent.ErrValidation, false)
 			return
 		}
-		input := imageagent.PrepareImageSetInput{ContextKind: kind, RequestID: keys[0], ContextID: contextID, Template: body.Template, Target: body.Target, SharedOriginalIDs: body.SharedOriginalIDs, CarouselOriginalIDs: body.CarouselOriginalIDs, DetailOriginalIDs: body.DetailOriginalIDs, SelectedTaskIDs: body.SelectedTaskIDs, OfficialPlacements: body.OfficialPlacements, EffectiveCatalogVersion: body.EffectiveCatalogVersion, ApplyReceiptID: body.ApplyReceiptID}
+		version, e := fullImageCatalogVersion(body.EffectiveCatalogVersion)
+		if e != nil {
+			writeFullImageError(c, e, false)
+			return
+		}
+		input := imageagent.PrepareImageSetInput{ContextKind: kind, RequestID: keys[0], ContextID: contextID, Template: body.Template, Target: body.Target, SharedOriginalIDs: body.SharedOriginalIDs, CarouselOriginalIDs: body.CarouselOriginalIDs, DetailOriginalIDs: body.DetailOriginalIDs, SelectedTaskIDs: body.SelectedTaskIDs, OfficialPlacements: body.OfficialPlacements, EffectiveCatalogVersion: version, ApplyReceiptID: body.ApplyReceiptID}
 		if action == "regenerate" {
 			p, e := a.service.Get(ctx, c.Param("run_id"))
 			if e == nil {
@@ -538,7 +577,7 @@ func (a *fullImageApplication) response(ctx context.Context, p imageagent.RunPro
 		_, e := imageagent.ImageSetClosedEffectsDigest(p.Plan, p.Slots, p.RecoverableEffects)
 		closed = e == nil
 	}
-	response := gin.H{"runId": p.Run.ID, "status": p.Run.Status, "planRevision": p.Plan.Revision, "planDigest": prepared.PlanDigest, "quoteDigest": prepared.QuoteDigest, "images": prepared.Images, "points": prepared.Points, "settledPoints": settled, "plan": p.Plan.Set, "slots": slots, "resultDigest": p.ResultDigest, "originals": p.AssetCatalog.Assets, "recoverableEffects": p.RecoverableEffects, "pendingCommand": p.PendingCommand, "approvalAvailable": p.Run.Status == imageagent.RunStatusAwaitingFinalApproval && p.ResultDigest != "" && closed, "regenerationAvailable": closed, "block": p.Run.Block}
+	response := gin.H{"runId": p.Run.ID, "status": p.Run.Status, "planRevision": p.Plan.Revision, "planDigest": prepared.PlanDigest, "quoteDigest": prepared.QuoteDigest, "images": prepared.Images, "points": prepared.Points, "settledPoints": settled, "plan": fullImagePlanResponse{ImageSetPlan: p.Plan.Set, Source: fullImageSource(p.Plan.Set.Source)}, "slots": slots, "resultDigest": p.ResultDigest, "originals": p.AssetCatalog.Assets, "recoverableEffects": p.RecoverableEffects, "pendingCommand": p.PendingCommand, "approvalAvailable": p.Run.Status == imageagent.RunStatusAwaitingFinalApproval && p.ResultDigest != "" && closed, "regenerationAvailable": closed, "block": p.Run.Block}
 	candidateDigest, candidateErr := imageagent.ImageSetCandidateResultDigest(p)
 	response["candidateSelectionAvailable"] = candidateErr == nil
 	if candidateErr == nil {

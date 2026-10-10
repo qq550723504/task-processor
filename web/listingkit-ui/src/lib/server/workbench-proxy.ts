@@ -1,4 +1,4 @@
-import { SUPPLY_MAX_BYTES, supplyRouteMethods, supplyPath, supplyRequestSchema, supplyUsesKey, supplyMutates, parseSupplyResponse, type SupplyRoute } from "@/lib/contracts/supply-chain";
+import { catalogVersionSchema, SUPPLY_MAX_BYTES, supplyRouteMethods, supplyPath, supplyRequestSchema, supplyUsesKey, supplyMutates, parseSupplyResponse, type SupplyRoute } from "@/lib/contracts/supply-chain";
 import { hasValidStoreServiceFacts } from "@/lib/validation/workbench-store";
 import {officialConnectionViewSchema,officialConnectionBeginSchema,officialConnectionCompleteSchema,officialConnectionQuerySchema,officialApplicationListSchema,officialConnectionStartSchema} from "@/lib/contracts/store-connection";
 import { BROWSER_CAPTURE_MAX_BYTES, browserCaptureSchema } from "@/lib/contracts/browser-capture";
@@ -504,7 +504,7 @@ export async function buildWorkbenchUpstreamRequest(
         const allowed=action==="sources"?["effectiveCatalogVersion","applyReceiptId"]:action==="recent"?["cursor"]:[];
         for(const key of url.searchParams.keys()){
           const values=url.searchParams.getAll(key);const value=values[0]??"";
-          if(!allowed.includes(key)||values.length!==1||!value||key==="effectiveCatalogVersion"&&(!/^[1-9][0-9]*$/.test(value)||!Number.isSafeInteger(Number(value)))||(key==="applyReceiptId"||key==="cursor")&&!isAcquisitionUUID(value))return protocolError(400,"INVALID_REQUEST","Image query invalid");
+          if(!allowed.includes(key)||values.length!==1||!value||key==="effectiveCatalogVersion"&&!catalogVersionSchema.safeParse(value).success||(key==="applyReceiptId"||key==="cursor")&&!isAcquisitionUUID(value))return protocolError(400,"INVALID_REQUEST","Image query invalid");
         }
         query=url.search;
       }else{
