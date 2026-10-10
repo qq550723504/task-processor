@@ -6,7 +6,7 @@ export const consoleNavigation: readonly ConsoleNavNode[] = [
   pending("AI工作台", "ai", [
     { label: "硕米Chat", href: "/workbench/ai/chat", availability: "connected", children: [{ label: "新建会话", href: "/workbench/ai/chat/new", availability: "connected" }, { label: "最近会话", href: "/workbench/ai/chat/recent", availability: "connected" }, { label: "收藏会话", href: "/workbench/ai/chat/saved", availability: "connected" }] },
     { label: "任务中心", href: "/workbench/ai/tasks", availability: "connected", children: [{ label: "进行中", href: "/workbench/ai/tasks/running", availability: "connected" }, { label: "待确认", href: "/workbench/ai/tasks/pending", availability: "connected" }, { label: "已完成", href: "/workbench/ai/tasks/completed", availability: "connected" }, { label: "异常任务", href: "/workbench/ai/tasks/errors", availability: "connected" }] },
-    {label:"项目中心",href:"/workbench/ai/projects",availability:"connected",children:[{label:"进行中项目",href:"/workbench/ai/projects/active",availability:"connected"},{label:"最近访问",href:"/workbench/ai/projects/recent",availability:"connected"},{label:"已归档项目",href:"/workbench/ai/projects/archived",availability:"connected"},{label:"项目模板",href:"/workbench/ai/projects/templates",availability:"connected"}]}, pending("知识库", "ai/knowledge"), pending("我的报告", "ai/reports"),
+    {label:"项目中心",href:"/workbench/ai/projects",availability:"connected",children:[{label:"进行中项目",href:"/workbench/ai/projects/active",availability:"connected"},{label:"最近访问",href:"/workbench/ai/projects/recent",availability:"connected"},{label:"已归档项目",href:"/workbench/ai/projects/archived",availability:"connected"},{label:"项目模板",href:"/workbench/ai/projects/templates",availability:"connected"}]}, pending("知识库", "ai/knowledge"), pending("我的报告", "ai/reports", [pending("最近报告", "ai/reports/recent"), pending("收藏报告", "ai/reports/favorites"), pending("全部报告", "ai/reports/all")]),
   ]),
   pending("供应市场", "supply", [
     { label: "1688采集", href: "/workbench/supply/acquisition", availability: "connected" },
@@ -80,6 +80,11 @@ export function findConsoleRoute(pathname: string): ConsoleRoute | undefined {
   if (/^\/workbench\/ai\/chat\/[0-9a-f-]{36}$/.test(pathname)) {
     const parent = findConsoleRoute("/workbench/ai/chat")!;
     const node: ConsoleNavNode = { label: "业务会话", href: pathname, availability: "connected" };
+    return { node, trail: [...parent.trail, node] };
+  }
+  if (/^\/workbench\/ai\/reports\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(pathname)) {
+    const parent = findConsoleRoute("/workbench/ai/reports")!;
+    const node: ConsoleNavNode = { label: "报告详情", href: pathname, availability: parent.node.availability };
     return { node, trail: [...parent.trail, node] };
   }
   if (/^\/workbench\/ai\/tasks\/[0-9a-f-]{36}$/.test(pathname)) {

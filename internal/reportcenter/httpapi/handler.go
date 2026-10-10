@@ -41,6 +41,10 @@ func Routes(h *Handler) []httproute.Descriptor {
 			access = httproute.OrganizationAccessPolicyLiveWrite
 		}
 		result = append(result, httproute.Descriptor{Method: s.method, Path: s.path, Module: ModuleName, Permission: permission, AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: access, RequestTimeout: 10 * time.Second, RejectUnreadRequestBody: s.method == "GET", Handler: httproute.WithRequestBodyReadTimeout(10*time.Second, func(c *gin.Context) {
+			if s.method == "GET" && (c.Request.ContentLength != 0 || len(c.Request.TransferEncoding) != 0) {
+				failure(c, rc.ErrInvalid)
+				return
+			}
 			if h == nil || h.Service == nil || h.Bind == nil {
 				failure(c, rc.ErrUnavailable)
 				return

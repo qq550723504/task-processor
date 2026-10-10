@@ -7,6 +7,17 @@ import { ConsoleNavigation } from "./console-navigation";
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 
 const query=vi.hoisted(()=>({value:""}));
+it("opens saved reports without an Agent only when the report runtime is configured", () => {
+ const view=render(<ConsoleNavigation pathname="/workbench/ai/reports" ariaLabel="主导航" />);
+ expect(screen.getByRole("link",{name:"我的报告"})).toHaveAttribute("title","我的报告：业务暂未启用");
+ expect(screen.queryByRole("link",{name:"最近报告"})).not.toBeInTheDocument();
+ view.rerender(<ConsoleNavigation pathname="/workbench/ai/reports/recent" ariaLabel="主导航" reportCenterAvailable />);
+ expect(screen.getByRole("link",{name:"我的报告"})).toHaveAttribute("title","我的报告");
+ expect(screen.getByRole("link",{name:"最近报告"})).toHaveAttribute("aria-current","page");
+ expect(screen.getByRole("link",{name:"收藏报告"})).toHaveAttribute("href","/workbench/ai/reports/favorites");
+ expect(screen.getByRole("link",{name:"全部报告"})).toHaveAttribute("href","/workbench/ai/reports/all");
+ expect(screen.queryByRole("link",{name:"硕米Chat"})).not.toBeInTheDocument();
+});
 it("advertises each Store observation entry only with ready runtime and its read permission", () => {
   const view=render(<ConsoleNavigation pathname="/workbench/store-orders" ariaLabel="主导航" storeProductsAvailable={false} storeOrdersAvailable={false}/>);
   expect(screen.getByRole("link",{name:"订单履约"})).toHaveAttribute("title","订单履约：业务暂未启用");

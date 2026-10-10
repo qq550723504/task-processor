@@ -23,6 +23,32 @@ func (r *repository) List(_ context.Context, s rc.Scope, _ rc.Filter) (rc.Page, 
 	r.calls++
 	return rc.Page{Items: []rc.ReportSummary{}}, nil
 }
+func TestAllReportReadsRejectBodiesBeforeBindingOrSourceReads(t *testing.T) {
+	binds := 0
+	h := &Handler{Service: &rc.Service{}, Bind: func(ctx context.Context, _ string) (context.Context, error) {
+		binds++
+		return ctx, rc.ErrUnavailable
+	}}
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	for _, d := range Routes(h) {
+		router.Handle(d.Method, d.Path, d.Handler)
+	}
+	for _, path := range []string{"", "/summary", "/sources/TITLE_REVIEW/1510eced-9831-49de-a28c-098cb16deba1", "/1510eced-9831-49de-a28c-098cb16deba1"} {
+		for _, chunked := range []bool{false, true} {
+			request := httptest.NewRequest(http.MethodGet, Base+path, strings.NewReader("unread"))
+			if chunked {
+				request.ContentLength = -1
+				request.TransferEncoding = []string{"chunked"}
+			}
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			require.Equal(t, 400, response.Code)
+			require.Equal(t, "close", response.Header().Get("Connection"))
+		}
+	}
+	require.Zero(t, binds)
+}
 func TestStrictRequestAndDescriptors(t *testing.T) {
 	r := &repository{}
 	h := &Handler{Service: &rc.Service{Repository: r, Authorize: func(c context.Context, _ rc.Scope, _ bool) (context.Context, error) { return c, nil }}, Bind: func(c context.Context, _ string) (context.Context, error) {

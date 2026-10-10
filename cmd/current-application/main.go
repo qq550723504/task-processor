@@ -58,6 +58,9 @@ func execute() error {
 	}
 	return currentapplication.Run(ctx, cfg, logger, currentapplication.Dependencies{
 		IdentityPreflight: currentapplication.VerifyIdentityProvider,
+		OpenReportCenter: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
 		OpenToolMarket: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
@@ -131,6 +134,9 @@ func execute() error {
 			}
 			if features.ProjectCenterDB != nil {
 				options = append(options, httpapi.WithProjectCenter(features.ProjectCenterDB))
+			}
+			if features.ReportCenterDB != nil {
+				options = append(options, httpapi.WithReportCenter(features.ReportCenterDB))
 			}
 			if features.Ecoservices != nil {
 				e := features.Ecoservices
