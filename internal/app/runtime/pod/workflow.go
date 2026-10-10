@@ -29,8 +29,26 @@ func DesignWorkflow(ctx workflow.Context, in podapp.Execution) error {
 	}
 	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{StartToCloseTimeout: 3 * time.Minute, RetryPolicy: &temporal.RetryPolicy{MaximumAttempts: 1}})
 	var result podapp.ExecutionResult
-	if e := workflow.ExecuteActivity(ctx, processActivity, in).Get(ctx, &result); e != nil {
-		return e
+	preSendDeadline := workflow.Now(ctx).Add(15 * time.Minute)
+	for {
+		if e := workflow.ExecuteActivity(ctx, processActivity, in).Get(ctx, &result); e != nil {
+			return e
+		}
+		if !result.NotStarted {
+			break
+		}
+		if result.Done || result.Wait || result.Unknown {
+			return temporal.NewNonRetryableApplicationError("invalid POD progress", "invalid", nil)
+		}
+		if !workflow.Now(ctx).Before(preSendDeadline) {
+			return temporal.NewNonRetryableApplicationError("POD pre-send checks unavailable", "pre-send-budget", nil)
+		}
+		if e := workflow.Sleep(ctx, 5*time.Second); e != nil {
+			return e
+		}
+		if !workflow.Now(ctx).Before(preSendDeadline) {
+			return temporal.NewNonRetryableApplicationError("POD pre-send checks unavailable", "pre-send-budget", nil)
+		}
 	}
 	if result.Done || result.Unknown {
 		return nil
@@ -92,7 +110,7 @@ func describedOriginal(description *workflowservice.DescribeWorkflowExecutionRes
 	if info.Execution == nil || info.Execution.WorkflowId != id || info.Type == nil || info.Type.Name != WorkflowName {
 		return pod.ErrUnknown
 	}
-	if info.Status != enums.WORKFLOW_EXECUTION_STATUS_RUNNING && info.Status != enums.WORKFLOW_EXECUTION_STATUS_COMPLETED {
+	if info.Status != enums.WORKFLOW_EXECUTION_STATUS_RUNNING {
 		return pod.ErrUnknown
 	}
 	return nil

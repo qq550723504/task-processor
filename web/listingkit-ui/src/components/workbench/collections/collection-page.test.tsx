@@ -18,6 +18,15 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it("keeps blank SDS template batches out of finished Supply Chain transfer",async()=>{
+ state.context.permissions=["workbench.collection.read","workbench.supply.manage"];
+ state.list.mockResolvedValue({items:[{id:"550e8400-e29b-41d4-a716-446655440000",name:"模板批次",kind:"sds_template",revision:1,count:1,createdAt:"2026-10-08T00:00:00Z"}],total:1});
+ render(<CollectionPage supplyAvailable />);
+ expect(await screen.findByRole("button",{name:"加入我的供应链"})).toBeDisabled();
+ expect(screen.getByRole("button",{name:"加入我的供应链"})).toHaveAttribute("title","SDS 模板须先定制成品，再加入供应链");
+ expect(state.supplyWrite).not.toHaveBeenCalled();
+});
+
 it("does not dispatch a command when its original recovery intent cannot be retained", async () => {
   state.context.setPendingCollectionIntent = () => false;
   render(<CollectionPage />);

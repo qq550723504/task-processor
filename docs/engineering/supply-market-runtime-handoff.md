@@ -95,6 +95,16 @@ OSS hosts 都完成配置后才设置 `LISTINGKIT_SDS_POD_ENABLED=true`。沿既
 - `/workbench/supply/catalogs/sds`：选模板/款式和本人已批准图案，配置设计；核实
   原 operation 的效果图和已保存成品后再选择入本人 Collection。
 
+市场和已核实 SDS 成品批次可以沿既有“加入我的供应链”转入准备流程，保留原
+source kind、publication 和 operation；未定制 SDS 模板须先生成并核实成品。
+混合手动批次包含未定制模板时，转入会明确拒绝并回滚，先将成品单独分组。
+新安装的 preparation schema 只接收 acquisition/own/market/sds_finished；启动
+检查拒绝仍只有 acquisition/own 的旧约束，不在运行期修改既有数据库。
+
+首次发送前的临时读取失败仅在原 Kernel 确认 OSS attempt 不存在时，在同一
+固定工作流内等待重查，最长15分钟。已有 attempt 或读取结果不明确时不重试。
+前置等待超时/工作流关闭后显示 UNKNOWN，保留原操作和 fence，不新建工作流。
+
 平台专员通过 `/workbench/supply/operator` 及原申请 UUID 详情执行人工评估、发布。
 该入口独立使用现有 server session 身份，后台每次核对 verified global platform
 权限，不要求成为客户企业成员。导航仅在原平台读取成功后展示专员入口；企业

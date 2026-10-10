@@ -2,6 +2,7 @@ package podapp
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	podpersistence "task-processor/internal/integration/persistence/product/pod"
 	"task-processor/internal/integration/sds"
@@ -12,6 +13,7 @@ import (
 )
 
 type MutationKernel interface {
+	submission.ExecutionIntentReader
 	Acquire(context.Context, submission.AcquireExecutionCommand) (submission.ExecutionAcquisition, error)
 	MarkUnknown(context.Context, submission.ExecutionClaim, submission.UnknownReason) (submission.ExecutionAttempt, error)
 }
@@ -45,9 +47,22 @@ type Execution struct {
 	OperationID string
 }
 type ExecutionResult struct {
-	Done    bool
-	Wait    bool
-	Unknown bool
+	Done       bool
+	Wait       bool
+	Unknown    bool
+	NotStarted bool
+}
+
+// Only a definitive no-attempt read permits another pre-send check. Once any
+// original attempt exists, the existing Kernel owns its non-replayable result.
+func (p *Processor) preSendFailure(ctx context.Context, o pod.Operation, step string) ExecutionResult {
+	if step == pod.StepOSS && o.Object == nil && o.Material == nil && o.Intent == nil {
+		_, e := p.Kernel.ReadIntent(ctx, submission.ExecutionScope{OrganizationID: o.Plan.Scope.OrganizationID}, pod.StepIntent(o.Plan.OperationID, pod.StepOSS))
+		if errors.Is(e, submission.ErrExecutionNotFound) {
+			return ExecutionResult{NotStarted: true}
+		}
+	}
+	return ExecutionResult{Unknown: true}
 }
 
 func (p *Processor) recheck(ctx context.Context, o pod.Operation) ([]byte, error) {
@@ -128,7 +143,7 @@ func (p *Processor) Process(ctx context.Context, in Execution) (ExecutionResult,
 		}
 		raw, e := p.recheck(ctx, o)
 		if e != nil {
-			return ExecutionResult{Unknown: true}, nil
+			return p.preSendFailure(ctx, o, step), nil
 		}
 		command, e := pod.StepCommand(o, step, "pod-worker")
 		if e != nil {

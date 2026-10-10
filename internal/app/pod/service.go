@@ -169,7 +169,6 @@ func (s *Service) Create(ctx context.Context, key string, in DesignRequest) (Pro
 		if e != nil {
 			return Progress{}, e
 		}
-		s.ensureUnstarted(ctx, o)
 		return s.project(ctx, o), nil
 	} else if e != pod.ErrNotFound {
 		return Progress{}, e
@@ -220,7 +219,6 @@ func (s *Service) Create(ctx context.Context, key string, in DesignRequest) (Pro
 	if s.guard(ctx, scope, supplymarket.PermissionDesign) != nil {
 		return Progress{}, pod.ErrForbidden
 	}
-	s.ensureUnstarted(ctx, o)
 	return s.project(ctx, o), nil
 }
 func progress(o pod.Operation) Progress {
@@ -247,6 +245,10 @@ func (s *Service) project(ctx context.Context, o pod.Operation) Progress {
 		return result
 	}
 	if s.Intents == nil {
+		result.State = "UNKNOWN"
+		return result
+	}
+	if s.ensureUnstarted(ctx, o) != nil {
 		result.State = "UNKNOWN"
 		return result
 	}
@@ -315,7 +317,6 @@ func (s *Service) Operation(ctx context.Context, id string, verify bool) (Progre
 	if e != nil {
 		return Progress{}, e
 	}
-	s.ensureUnstarted(ctx, o)
 	if verify {
 		if s.guard(ctx, scope, supplymarket.PermissionDesign) != nil {
 			return Progress{}, pod.ErrForbidden
@@ -343,22 +344,24 @@ func (s *Service) ByKey(ctx context.Context, key string) (Progress, error) {
 	if e = s.guard(ctx, scope, supplymarket.PermissionRead); e != nil {
 		return Progress{}, e
 	}
-	s.ensureUnstarted(ctx, o)
 	return s.project(ctx, o), nil
 }
 
 // SQL commit may outlive a lost Temporal start response. Original queries may
 // ensure only that fixed workflow while no send attempt exists. Once an attempt
 // exists (including UNKNOWN), queries never initiate execution again.
-func (s *Service) ensureUnstarted(ctx context.Context, o pod.Operation) {
+func (s *Service) ensureUnstarted(ctx context.Context, o pod.Operation) error {
 	if o.Finished != nil || s.Intents == nil || s.Starter == nil {
-		return
+		return nil
 	}
 	_, e := s.Intents.ReadIntent(ctx, submission.ExecutionScope{OrganizationID: o.Plan.Scope.OrganizationID}, pod.StepIntent(o.Plan.OperationID, pod.StepOSS))
-	if e != submission.ErrExecutionNotFound || s.guard(ctx, o.Plan.Scope, supplymarket.PermissionDesign) != nil {
-		return
+	if e != submission.ErrExecutionNotFound {
+		return nil
 	}
-	_ = s.Starter.Ensure(ctx, Execution{o.Plan.Scope, o.Plan.OperationID})
+	if s.guard(ctx, o.Plan.Scope, supplymarket.PermissionDesign) != nil {
+		return pod.ErrUnknown
+	}
+	return s.Starter.Ensure(ctx, Execution{o.Plan.Scope, o.Plan.OperationID})
 }
 func (s *Service) ImportTemplate(ctx context.Context, key, id, digest string) (collection.Receipt, error) {
 	scope, e := s.scope(ctx, supplymarket.PermissionSelect)

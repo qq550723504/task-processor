@@ -39,6 +39,51 @@ func TestObservationBudgetIncludesActivityTime(t *testing.T) {
 	require.LessOrEqual(t, env.Now().Sub(started), 15*time.Minute+30*time.Second)
 }
 
+func TestProvenPreSendFailureRetriesWithinOriginalWorkflow(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	calls := 0
+	process := func(context.Context, podapp.Execution) (podapp.ExecutionResult, error) {
+		calls++
+		if calls == 1 {
+			return podapp.ExecutionResult{NotStarted: true}, nil
+		}
+		return podapp.ExecutionResult{Done: true}, nil
+	}
+	env.RegisterActivityWithOptions(process, activity.RegisterOptions{Name: processActivity})
+	env.ExecuteWorkflow(DesignWorkflow, podapp.Execution{Scope: collection.Scope{"org", "actor", "member"}, OperationID: uuid.NewString()})
+	require.NoError(t, env.GetWorkflowError())
+	require.Equal(t, 2, calls)
+}
+
+func TestPreSendBudgetFailsWithoutReplacingWorkflowOrObserving(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	started := time.Now().UTC()
+	env.SetStartTime(started)
+	process := func(context.Context, podapp.Execution) (podapp.ExecutionResult, error) {
+		return podapp.ExecutionResult{NotStarted: true}, nil
+	}
+	env.RegisterActivityWithOptions(process, activity.RegisterOptions{Name: processActivity})
+	env.ExecuteWorkflow(DesignWorkflow, podapp.Execution{Scope: collection.Scope{"org", "actor", "member"}, OperationID: uuid.NewString()})
+	require.Error(t, env.GetWorkflowError())
+	require.LessOrEqual(t, env.Now().Sub(started), 15*time.Minute+time.Second)
+}
+
+func TestUnknownAttemptNeverRetriesProcess(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	calls := 0
+	process := func(context.Context, podapp.Execution) (podapp.ExecutionResult, error) {
+		calls++
+		return podapp.ExecutionResult{Unknown: true}, nil
+	}
+	env.RegisterActivityWithOptions(process, activity.RegisterOptions{Name: processActivity})
+	env.ExecuteWorkflow(DesignWorkflow, podapp.Execution{Scope: collection.Scope{"org", "actor", "member"}, OperationID: uuid.NewString()})
+	require.NoError(t, env.GetWorkflowError())
+	require.Equal(t, 1, calls)
+}
+
 type temporalFixture struct {
 	starts  []client.StartWorkflowOptions
 	in      []podapp.Execution
@@ -71,5 +116,8 @@ func TestEnsureStartsOnlyMissingOriginalWorkflow(t *testing.T) {
 	require.Equal(t, enums.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE, f.starts[0].WorkflowIDReusePolicy)
 	f.state = enums.WORKFLOW_EXECUTION_STATUS_FAILED
 	require.ErrorIs(t, s.Ensure(context.Background(), in), pod.ErrUnknown)
+	require.Len(t, f.starts, 1)
+	f.state = enums.WORKFLOW_EXECUTION_STATUS_COMPLETED
+	require.ErrorIs(t, s.Ensure(context.Background(), in), pod.ErrUnknown, "closed workflows cannot silently represent an unstarted QUEUED operation")
 	require.Len(t, f.starts, 1)
 }

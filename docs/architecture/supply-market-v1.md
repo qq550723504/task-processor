@@ -129,6 +129,8 @@ POD 的 ApprovedArtwork / TemplateReader / SDSMutation / SDSObservation / Execut
 准入 producer 为 `supply_market/v1`、`sds_template/v1`、`sds_finished/v1`，
 SourceID 包含接收 scope + 明确源 revision，SourceRunID 绑定本次本地 operation。
 新 Collection source kinds 对应 market / sds_template / sds_finished。
+下游Preparation新安装约束接受market和已核实sds_finished，保存原精确来源；
+sds_template仍为未定制输入，转入供应链明确拒绝并原子回滚，不伪造成品。
 immutable evidence 保留发布版本或 SDS receipt refs，不同步原商家后续修改。
 不同成员不会通过相同 upstream ID 共用一个私人 Product。审批、Asset、店铺和上传权
 不随选品复制；模板显示“未定制”，成品来源只在确切成品已核实后产生。
@@ -445,7 +447,11 @@ tokenless窄执行入口，不能传递已清空组织scope的平台HTTP context
 - `internal/app/runtime/pod.TemporalStarter{Client}`注入Service；
   `NewWorker(client, app.Processor)`显式启动/停止专用worker。taskqueue为
   `product-pod-current`，workflow为`ProductPODDesignV1`，固定ID为`pod-design/{operationID}`。
-  Process activity最大一次；后续只读Observe按15分钟wall-clock预算结束，UNKNOWN保留事实和锁。
+  取得发送许可后的Process activity最大一次；首次前置读取失败且原Kernel确认OSS intent
+  不存在时，原固定workflow可在15分钟wall-clock预算内再次检查，每次均重新核对原权限、
+  凭据、模板和图案。不能把已有attempt、读取UNKNOWN、OSS后续步骤或缺失回执归入未发送。
+  超过前置预算使原workflow失败，查询显示UNKNOWN而非无限QUEUED，原事实和fence保留；
+  不替换或重跑已关闭workflow。后续只读Observe按15分钟wall-clock预算结束，UNKNOWN保留事实和锁。
   已完成workflow不重跑；原操作无OSS attempt时，原成员查询可Ensure原ID，补齐SQL提交后
   workflow未启动的缺口；任何已有attempt均不得据此重新发送。
 - Console使用既有私有BFF、scope切换保护和原操作pending记录；SDS pages为
