@@ -168,6 +168,16 @@ type currentApplicationOptions struct {
 	aiWorkbenches                int
 }
 
+func (o currentApplicationOptions) supplyRouteFeatures() (full, trial bool) {
+	return o.supplyChains > 0, o.privateDraftTrials > 0
+}
+
+func (o currentApplicationOptions) installSupplyWorker(module *supplyChainModule) {
+	if o.supplyChains > 0 && module != nil {
+		*o.supplyChain.Worker = module.worker
+	}
+}
+
 // WithRuntimeContext supplies the long-lived application context for bounded
 // background recovery. Construction itself continues to use the caller's
 // bounded startup context.
@@ -826,12 +836,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	if err != nil {
 		return nil, err
 	}
+	fullSupply, privateDraftTrial := supplied.supplyRouteFeatures()
 	routeFeatures := currentApplicationOptionalRoutes{
 		AgentCustomization:  supplied.agentCustomizations > 0,
-		PrivateDraftTrial:   supplied.privateDraftTrials > 0,
+		PrivateDraftTrial:   privateDraftTrial,
 		ToolMarket:          supplied.toolMarket != nil,
 		Ecoservices:         supplied.ecoservices != nil,
-		SupplyChain:         (supplied.supplyChains > 0 || supplied.privateDraftTrials > 0),
+		SupplyChain:         fullSupply,
 		Collections:         supplied.productCollections > 0,
 		NotificationCenter:  supplied.notifications > 0,
 		ZitadelSMS:          true,
@@ -859,9 +870,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		startCommercialRecoveryLoop(runtimeContext, server, ecoservicesRecovery, 15*time.Second, "ecoservices original commands", logger)
 	}
-	if supplyRuntime != nil {
-		*supplied.supplyChain.Worker = supplyRuntime.worker
-	}
+	supplied.installSupplyWorker(supplyRuntime)
 	if resourceRecovery != nil {
 		runtimeContext := supplied.runtimeContext
 		if runtimeContext == nil {

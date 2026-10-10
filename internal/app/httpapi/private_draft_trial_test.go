@@ -19,10 +19,13 @@ func TestPrivateDraftTrialOnlyAdmitsSelectionReads(t *testing.T) {
 	for _, r := range currentWorkbenchApplicationRoutes {
 		base = append(base, httproute.Descriptor{Method: r.Method, Path: r.Path})
 	}
+	var supplied currentApplicationOptions
+	WithPrivateDraftTrial(PrivateDraftTrialDependencies{})(&supplied)
+	fullSupply, trial := supplied.supplyRouteFeatures()
 	reads := supplyhttp.PrivateDraftReadRoutes(nil, nil)
 	require.Len(t, reads, 7)
 	check := func(routes []httproute.Descriptor) error {
-		return validateCurrentApplicationRoutesInternal(routes, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{PrivateDraftTrial: true})
+		return validateCurrentApplicationRoutesInternal(routes, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{PrivateDraftTrial: trial, SupplyChain: fullSupply})
 	}
 	require.NoError(t, check(append(append([]httproute.Descriptor{}, base...), reads...)))
 	for _, r := range supplyhttp.SupplyRoutes(nil, nil) {
@@ -35,6 +38,12 @@ func TestPrivateDraftTrialOnlyAdmitsSelectionReads(t *testing.T) {
 		changed[i].Permission = ""
 		require.Error(t, check(append(append([]httproute.Descriptor{}, base...), changed...)))
 	}
+}
+
+func TestPrivateDraftTrialDoesNotInstallExecutionWorker(t *testing.T) {
+	var supplied currentApplicationOptions
+	WithPrivateDraftTrial(PrivateDraftTrialDependencies{})(&supplied)
+	require.NotPanics(t, func() { supplied.installSupplyWorker(&supplyChainModule{}) })
 }
 
 type trialTestAuthorizer struct {
