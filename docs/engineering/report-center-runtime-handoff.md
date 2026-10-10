@@ -60,6 +60,7 @@ go run ./cmd/report-center-schema-init -dsn-file 'C:\private\reports-owner.priva
 ```
 
 命令用单连接、30秒截止、事务 advisory lock 确认数据库没有业务表、视图或序列；
+受维护的 Windows 操作入口为 `scripts/report-center-schema-init.ps1 -DsnFile <absolute-private-file> -ConfirmDatabase reports -InstallEmptySchema`，复用相同原生命令，不读取或输出 DSN。
 原生 InstallSchema 和 GrantRuntime 同事务。grant 失败回滚；已有 report schema 或任何其他
 业务对象拒绝，重复执行不是迁移。命令不生成凭据，也不在 serving startup 调用。
 

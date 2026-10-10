@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/stretchr/testify/require"
 	"task-processor/internal/authidentity"
+	"task-processor/internal/authz"
 	"task-processor/internal/httproute"
 	rc "task-processor/internal/reportcenter"
 	"task-processor/internal/workbenchcontext"
@@ -15,6 +16,26 @@ type resolveFunc func(context.Context, httproute.OrganizationAccessPolicy, workb
 
 func (f resolveFunc) Resolve(c context.Context, p httproute.OrganizationAccessPolicy, i workbenchcontext.ResolveInput) (authidentity.AuthenticatedIdentity, error) {
 	return f(c, p, i)
+}
+func TestReportAuthorizationPreservesConfiguredUserAuthority(t *testing.T) {
+	policy, err := authz.NewListingKitAuthorizer([]string{"configured-user"}, nil)
+	require.NoError(t, err)
+	for _, user := range []string{"configured-user", "unconfigured-user"} {
+		id := authidentity.AuthenticatedIdentity{UserID: user, TenantID: "org-a", EffectiveOrganizationID: "org-a", TokenExpiresAt: time.Now().Add(time.Hour)}
+		a := &authorization{resolver: resolveFunc(func(context.Context, httproute.OrganizationAccessPolicy, workbenchcontext.ResolveInput) (authidentity.AuthenticatedIdentity, error) {
+			return id, nil
+		}), policy: policy}
+		ctx, err := a.Bind(authidentity.WithAuthenticatedIdentity(context.Background(), id), "Bearer fixture-token")
+		require.NoError(t, err)
+		for _, manage := range []bool{false, true} {
+			_, err := a.Authorize(ctx, rc.Scope{OrganizationID: "org-a", ActorID: user}, manage)
+			if user == "configured-user" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, rc.ErrForbidden)
+			}
+		}
+	}
 }
 func TestAuthorizationUsesOriginalProofAndResolvedScopedRoles(t *testing.T) {
 	identity := authidentity.AuthenticatedIdentity{UserID: "actor-a", TenantID: "org-a", EffectiveOrganizationID: "org-a", HomeOrganizationID: "home-a", TokenExpiresAt: time.Now().Add(time.Hour)}

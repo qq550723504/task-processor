@@ -5,12 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ConsoleState } from "../console/console-page";
 import { fetchProductTitleProposals } from "@/lib/api/product-title-review-client";
-import { fetchSheinRecords } from "@/lib/api/shein-records-client";
 import { requestAIWorkbench } from "@/lib/api/ai-workbench";
 import { ReportError, reportRequest } from "@/lib/api/report-center";
 import { reportSourceSchema, reviewLocator, type ReportScope, type ReportSource } from "@/lib/contracts/report-center";
 import styles from "./report-page.module.css";
-type SourceMode = "review" | "task" | "record" | "detail";
+type SourceMode = "review" | "task" | "detail";
 export function ReportSourcePicker({ scope, authorizationKey, disabled, tasksAvailable, save }: { scope: ReportScope; authorizationKey: string; disabled: boolean; tasksAvailable: boolean; save: (source: ReportSource) => void }) {
   const [mode, setMode] = useState<SourceMode>("review"), [cursor, setCursor] = useState("");
   const [locator, setLocator] = useState(""), [detailID, setDetailID] = useState(""), [locatorError, setLocatorError] = useState("");
@@ -18,7 +17,6 @@ export function ReportSourcePicker({ scope, authorizationKey, disabled, tasksAva
     if (mode === "detail") return { sources: [await reportRequest(scope, `/sources/TITLE_REVIEW/${detailID}`, reportSourceSchema, signal)], next: "" };
     let refs: { kind: "TITLE_REVIEW" | "SHEIN_RECORD"; id: string }[], next = "";
     if (mode === "review") { const page = await fetchProductTitleProposals({ ...scope, limit: 20, ...(cursor ? { cursor } : {}), signal }); refs = page.items.map(i => ({ kind: "TITLE_REVIEW", id: i.proposal_id })); next = page.next_cursor ?? ""; }
-    else if (mode === "record") { const page = await fetchSheinRecords({ organizationId: scope.organizationId, limit: 20, ...(cursor ? { cursor } : {}), signal }); refs = page.items.map(i => ({ kind: "SHEIN_RECORD", id: i.record_id })); next = page.next_cursor ?? ""; }
     else { const page = await requestAIWorkbench({ scope, signal, method: "GET", route: "task-list", path: `tasks?limit=20${cursor ? `&after=${cursor}` : ""}` }); refs = [...new Set(page.tasks.flatMap(i => i.reviewId ? [i.reviewId] : []))].map(id => ({ kind: "TITLE_REVIEW", id })); next = page.next; }
     const sources: ReportSource[] = [];
     // Original admin lists can contain others' records. Only the private source
@@ -29,7 +27,8 @@ export function ReportSourcePicker({ scope, authorizationKey, disabled, tasksAva
   return <Card className={styles.picker}>
     <h2>保存本人已有结果</h2>
     <p>选择来源并手动保存当前展示版本。若来源在保存前变化，会拒绝本次保存。</p>
-    <div className={styles.filters}>{([["review", "待处理标题审核"], ["detail", "已有审核详情"], ["task", "业务任务中的标题结果"], ["record", "SHEIN资料与保存时诊断"]] as const).filter(([value]) => value !== "task" || tasksAvailable).map(([value, label]) => <Button key={value} aria-pressed={mode === value} variant={mode === value ? "secondary" : "outline"} disabled={disabled} onClick={() => { setMode(value); setCursor(""); }}>{label}</Button>)}</div>
+    <div className={styles.filters}>{([["review", "待处理标题审核"], ["detail", "已有审核详情"], ["task", "业务任务中的标题结果"]] as const).filter(([value]) => value !== "task" || tasksAvailable).map(([value, label]) => <Button key={value} aria-pressed={mode === value} variant={mode === value ? "secondary" : "outline"} disabled={disabled} onClick={() => { setMode(value); setCursor(""); }}>{label}</Button>)}<Button variant="outline" disabled title="报告保存暂未开放">SHEIN资料与保存时诊断</Button></div>
+    <p>SHEIN资料报告保存暂未开放；已保存的历史报告仍可查阅和下载。</p>
     {mode === "detail" ? <form className={styles.filters} onSubmit={e => {
       e.preventDefault(); const id = reviewLocator(locator, window.location.origin);
       if (!id) { setDetailID(""); setLocatorError("请输入当前应用的标题审核详情链接或有效 ID。"); return; }

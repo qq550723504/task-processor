@@ -58,7 +58,7 @@ func TestReportCenterNormalCompositionReadsSavedReportsWithoutOriginalOwners(t *
 	snapshot := rc.Snapshot{SourceInfo: rc.SourceInfo{Ref: rc.SourceRef{Kind: "TITLE_REVIEW", ID: uuid.NewString(), Version: "1:pending"}, Title: "保存时审核", ProductKey: "product-a"}, Content: rc.Document{SchemaVersion: 1, Sections: []rc.Section{{Title: "历史标题", Fields: []rc.Field{{Label: "提案", Value: "saved-before-source-disappeared"}}}}}}
 	result, err := repo.Save(ctx, scope, uuid.NewString(), rc.Fingerprint("save", snapshot.Ref), snapshot, func(context.Context) error { return nil })
 	require.NoError(t, err)
-	identity := authidentity.AuthenticatedIdentity{UserID: scope.ActorID, TenantID: scope.OrganizationID, EffectiveOrganizationID: scope.OrganizationID, EffectiveMemberID: "member-a", HomeOrganizationID: scope.OrganizationID, Roles: []string{"listingkit_admin"}, TokenExpiresAt: time.Now().Add(time.Hour)}
+	identity := authidentity.AuthenticatedIdentity{UserID: scope.ActorID, TenantID: scope.OrganizationID, EffectiveOrganizationID: scope.OrganizationID, EffectiveMemberID: "member-a", HomeOrganizationID: scope.OrganizationID, TokenExpiresAt: time.Now().Add(time.Hour)}
 	resolver := &productReviewResolverStub{value: identity}
 	deps := routeAuthDependencies{workbenchVerifier: mountedVerifierStub{identity: identity}, organizationResolver: resolver}
 	factories := currentApplicationFactories{
@@ -68,7 +68,9 @@ func TestReportCenterNormalCompositionReadsSavedReportsWithoutOriginalOwners(t *
 		buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
 		buildCommercial:    func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
 	}
-	server, err := buildCurrentApplication(ctx, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories, WithReportCenter(reports))
+	cfg := currentApplicationTestConfig()
+	cfg.ListingKit.PlatformAdminUsers = []string{identity.UserID}
+	server, err := buildCurrentApplication(ctx, &gorm.DB{}, cfg, logrus.New(), factories, WithReportCenter(reports))
 	require.NoError(t, err)
 	request := func(method, path, body, key string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, reporthttp.Base+path, strings.NewReader(body))

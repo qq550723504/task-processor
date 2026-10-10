@@ -39,7 +39,7 @@ func (s *Sources) Read(ctx context.Context, scope rc.Scope, kind, id string) (rc
 	if kind == "SHEIN_RECORD" {
 		permission = authz.PermissionListingKitAdminRead
 	}
-	if !authz.AllowedOrganization(ctx, s.Policy, "", scope.OrganizationID, identity.Roles, permission) {
+	if !authz.AllowedOrganization(ctx, s.Policy, identity.UserID, scope.OrganizationID, identity.Roles, permission) {
 		return rc.Snapshot{}, rc.ErrForbidden
 	}
 	if kind == "TITLE_REVIEW" {

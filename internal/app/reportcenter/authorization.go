@@ -48,7 +48,7 @@ func (a *authorization) Authorize(ctx context.Context, scope rc.Scope, manage bo
 		return nil, rc.ErrForbidden
 	}
 	fresh := authidentity.WithAuthenticatedIdentity(ctx, id)
-	if !authz.AllowedOrganization(fresh, a.policy, "", scope.OrganizationID, id.Roles, permission) {
+	if !authz.AllowedOrganization(fresh, a.policy, id.UserID, scope.OrganizationID, id.Roles, permission) {
 		return nil, rc.ErrForbidden
 	}
 	return fresh, nil

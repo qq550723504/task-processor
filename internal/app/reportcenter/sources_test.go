@@ -32,6 +32,27 @@ type recordFunc func(context.Context, listingtask.Actor, string) (record.Record,
 func (f recordFunc) ReadOfflinePackage(c context.Context, a listingtask.Actor, id string) (record.Record, error) {
 	return f(c, a, id)
 }
+func TestSourceAuthorizationUsesTheVerifiedUserSubject(t *testing.T) {
+	policy, err := authz.NewListingKitAuthorizer([]string{"configured-user"}, nil)
+	require.NoError(t, err)
+	calls := 0
+	s := &Sources{Policy: policy, Reviews: reviewFunc(func(context.Context, string) (review.View, error) { calls++; return review.View{}, review.ErrNotFound }), Records: recordFunc(func(context.Context, listingtask.Actor, string) (record.Record, error) {
+		calls++
+		return record.Record{}, record.ErrNotFound
+	})}
+	for _, user := range []string{"configured-user", "unconfigured-user"} {
+		ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: user, TenantID: "org-a", EffectiveOrganizationID: "org-a", TokenExpiresAt: time.Now().Add(time.Hour)})
+		for _, kind := range []string{"TITLE_REVIEW", "SHEIN_RECORD"} {
+			_, err := s.Read(ctx, rc.Scope{OrganizationID: "org-a", ActorID: user}, kind, uuid.NewString())
+			if user == "configured-user" {
+				require.ErrorIs(t, err, rc.ErrNotFound)
+			} else {
+				require.ErrorIs(t, err, rc.ErrForbidden)
+			}
+		}
+	}
+	require.Equal(t, 2, calls)
+}
 
 func TestReviewSourceCapturesApplyAtSameRevisionAndEmptyBefore(t *testing.T) {
 	scope := rc.Scope{OrganizationID: "org-a", ActorID: "actor-a"}

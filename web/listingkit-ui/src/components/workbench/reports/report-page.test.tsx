@@ -2,14 +2,31 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, expect, it, vi } from "vitest";
 import { ReportPage } from "./report-page";
+import { fetchSheinRecords } from "@/lib/api/shein-records-client";
 import { type Report } from "@/lib/contracts/report-center";
 const fixture = vi.hoisted(() => ({ context: { user: { id: "actor-a" }, effectiveOrganization: { id: "org-a" }, roles: ["listingkit_operator"], permissions: ["workbench.report.read", "workbench.report.manage"], isSwitching: false, isLoading: false, selectionRequired: false, error: null, blockingError: null, aiWorkbenchAvailable: false }, sourceList: vi.fn() }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => fixture.context }));
 vi.mock("@/lib/api/product-title-review-client", () => ({ fetchProductTitleProposals: fixture.sourceList }));
+vi.mock("@/lib/api/shein-records-client", () => ({ fetchSheinRecords: vi.fn() }));
 const source = { ref: { kind: "TITLE_REVIEW" as const, id: "550e8400-e29b-41d4-a716-446655440000", version: "2:accepted" }, title: "标题审核 · 商品A", productKey: "product-a", storeId: "" };
 const report: Report = { ...source, id: "550e8400-e29b-41d4-a716-446655440001", capturedAt: "2026-10-10T00:00:00Z", favorite: false, content: { schemaVersion: 1, sections: [{ title: "标题历史", fields: [{ label: "建议标题", value: "已保存的标题内容" }] }] }, digest: "a".repeat(64) };
 beforeEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); sessionStorage.clear(); fixture.context.effectiveOrganization = { id: "org-a" }; fixture.context.permissions = ["workbench.report.read", "workbench.report.manage"]; fixture.sourceList.mockResolvedValue({ items: [{ proposal_id: source.ref.id }], next_cursor: null }); });
 const tree = (client: QueryClient) => <QueryClientProvider client={client}><ReportPage view="all" /></QueryClientProvider>;
+it("clearly disables unmounted SHEIN capture without fetching it and still reads saved SHEIN reports", async () => {
+  const sheinReport = { ...report, ref: { ...report.ref, kind: "SHEIN_RECORD", version: `sha256:${"a".repeat(64)}` } };
+  const { content, digest, ...summary } = sheinReport; void content; void digest;
+  vi.stubGlobal("fetch", vi.fn(async (path: string) => path.endsWith("/summary") ? Response.json({ saved: 1, recent: 1, favorites: 0, stores: 0 }) : path.endsWith(report.id) ? Response.json(sheinReport) : Response.json({ items: [summary], nextCursor: "" })));
+  fixture.sourceList.mockResolvedValue({ items: [], next_cursor: null });
+  const client = new QueryClient(), view = render(tree(client));
+  fireEvent.click(await screen.findByRole("button", { name: source.title }));
+  await screen.findByText("已保存的标题内容");
+  fireEvent.click(screen.getByRole("button", { name: "保存报告" }));
+  expect(screen.getByRole("button", { name: "SHEIN资料与保存时诊断" })).toBeDisabled();
+  expect(screen.getByText(/SHEIN资料报告保存暂未开放/)).toBeInTheDocument();
+  expect(fetchSheinRecords).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "下载 JSON" })).toBeEnabled();
+  view.unmount(); client.clear();
+});
 it.each(["applied", "rejected"])("saves a %s Review from its existing detail link after it leaves the actionable collection", async state => {
   fixture.sourceList.mockResolvedValue({ items: [], next_cursor: null });
   const terminal = { ...source, ref: { ...source.ref, version: `2:${state}` } }, terminalReport = { ...report, ...terminal };
