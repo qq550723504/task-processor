@@ -123,6 +123,28 @@ func TestAIWorkbenchPlanningReadinessFollowsSelectedOrganization(t *testing.T) {
 	require.Equal(t, []string{"org-b", "org-a"}, titleReadOrganizations)
 }
 
+func TestStoreObservationAvailabilityRequiresReadyAndSelectedPermission(t *testing.T) {
+	handler := NewHandlerWithWorkbenchAuthorizer(authz.DefaultListingKitAuthorizer())
+	ready := false
+	handler.SetStoreObservationsReadiness(func() bool { return ready })
+	identity := authidentity.AuthenticatedIdentity{UserID: "actor", HomeOrganizationID: "org-a", EffectiveOrganizationID: "org-a", OrganizationGrants: []authidentity.OrganizationGrant{{OrganizationID: "org-a", OrganizationName: "A", Roles: []string{"listingkit_admin"}}, {OrganizationID: "org-b", OrganizationName: "B", Roles: []string{}}}}
+	read := func() map[string]any {
+		response := serveHandler(t, http.MethodGet, "/api/v1/workbench/context", "", identity, handler.GetContext)
+		require.Equal(t, http.StatusOK, response.Code)
+		var result map[string]any
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
+		return result
+	}
+	require.NotContains(t, read(), "storeObservationsAvailable")
+	ready = true
+	require.Equal(t, true, read()["storeObservationsAvailable"])
+	identity.EffectiveOrganizationID = "org-b"
+	require.NotContains(t, read(), "storeObservationsAvailable", "another enterprise's permission must not advertise the current module")
+	identity.EffectiveOrganizationID = "org-a"
+	ready = false
+	require.NotContains(t, read(), "storeObservationsAvailable")
+}
+
 func TestAIWorkbenchAvailabilityRequiresSelectedOrganizationAdmission(t *testing.T) {
 	handler := NewHandlerWithWorkbenchAuthorizer(authz.DefaultListingKitAuthorizer())
 	handler.SetAIWorkbenchAvailable(true)

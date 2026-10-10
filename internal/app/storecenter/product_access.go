@@ -111,12 +111,18 @@ func (h *MerchantHandle) credential(ctx context.Context) (storecenter.OfficialMe
 	return credential, nil
 }
 func (a *OfficialProductAccess) validMaterial(subject storecenter.ProductExecutionSubject, storeID string, m storecenter.ProductExecutionMaterial, c storecenter.OfficialMerchantCredential, entry officialApplicationEntry) bool {
+	return validOfficialMaterial(subject.OrganizationID, storeID, m, c, entry, a.now())
+}
+func validOfficialMaterial(org string, storeID string, m storecenter.ProductExecutionMaterial, c storecenter.OfficialMerchantCredential, entry officialApplicationEntry, now time.Time) bool {
 	application := entry.application
-	return m.Platform == storecenter.PlatformShein && m.StoreVersion > 0 && m.Connection.Version > 0 && m.Connection.Status == storecenter.ConnectionStatusConnected && m.Attempt.State == "verified" && m.Attempt.OrganizationID == subject.OrganizationID && m.Attempt.StoreID == storeID && m.Attempt.AttemptID == m.Connection.AttemptID && m.Attempt.AppID == application.AppID && m.Attempt.AppVersion == application.Version && c.AppID == application.AppID && c.SupplierID != "" && c.OpenKeyID != "" && c.SecretKey != "" && a.now().Before(m.ServiceExpiresAt)
+	return m.Platform == storecenter.PlatformShein && m.StoreVersion > 0 && m.Connection.Version > 0 && m.Connection.Status == storecenter.ConnectionStatusConnected && m.Attempt.State == "verified" && m.Attempt.OrganizationID == org && m.Attempt.StoreID == storeID && m.Attempt.AttemptID == m.Connection.AttemptID && m.Attempt.AppID == application.AppID && m.Attempt.AppVersion == application.Version && c.AppID == application.AppID && c.SupplierID != "" && c.OpenKeyID != "" && c.SecretKey != "" && now.Before(m.ServiceExpiresAt)
 }
 func merchantBinding(subject storecenter.ProductExecutionSubject, storeID string, m storecenter.ProductExecutionMaterial, c storecenter.OfficialMerchantCredential, mode storecenter.OfficialApplicationType) MerchantBinding {
+	return officialMerchantBinding(subject.OrganizationID, storeID, m, c, mode)
+}
+func officialMerchantBinding(org string, storeID string, m storecenter.ProductExecutionMaterial, c storecenter.OfficialMerchantCredential, mode storecenter.OfficialApplicationType) MerchantBinding {
 	hash := sha256.Sum256([]byte(c.AppID + "\x00" + c.SupplierID + "\x00" + c.OpenKeyID))
-	return MerchantBinding{OrganizationID: subject.OrganizationID, StoreID: storeID, Site: "shein-us", StoreVersion: m.StoreVersion, ConnectionRevision: m.Connection.Version, ApplicationRevision: m.Attempt.AppVersion, ApplicationID: m.Attempt.AppID, ApplicationType: mode, SupplierIdentityHash: hex.EncodeToString(hash[:]), ServiceExpiresAt: m.ServiceExpiresAt.UTC()}
+	return MerchantBinding{OrganizationID: org, StoreID: storeID, Site: "shein-us", StoreVersion: m.StoreVersion, ConnectionRevision: m.Connection.Version, ApplicationRevision: m.Attempt.AppVersion, ApplicationID: m.Attempt.AppID, ApplicationType: mode, SupplierIdentityHash: hex.EncodeToString(hash[:]), ServiceExpiresAt: m.ServiceExpiresAt.UTC()}
 }
 func (h *MerchantHandle) Publish(ctx context.Context, input model.PublishProduct) (model.PublishResult, error) {
 	return callMerchant(ctx, h, storecenter.ProductPurposePublish, func(ctx context.Context, c storecenter.OfficialMerchantCredential) (model.PublishResult, error) {
