@@ -127,6 +127,8 @@ job admission在单一Product事务锁key→quota day/month→job，原key/hash�
 
 发现集合写入同事务后，为每item派生稳定operation ID/command hash；未使用的requested quota释放。每商品在Fetch前将1 DATA_ROW intent（原scope/member/funding/rowID/queryhash/source/5分价格）持久化，调用Resource reserve，再在Product记录准确reservation；未确认reservation不Fetch。admin使用enterprise-unallocated，成员使用member-allocated，消费既有规则；funding选择冻结，权限降低不能重选资金来源。
 
+Resource owner 回调边界澄清（2026-10-10，原 Must 的实现补齐）：每次新 reserve 前由现有 ProcessItem/check 实时核对原 grant 与当前资金授权；Resource 的既有 500ms ReadChargeIntent 回调只读取 canonical Product 事实，不在此预算内调用最长5秒的 IAM。回调仍在 key→quota→job→item 原事务中锁定并核对 key ACTIVE/expiry/acquire/精确 scope、job 未取消/未截止/可执行状态、fresh item 非 SAVED/FAILED，以及完整 immutable intent 与原 job/item 的 scope/member/funding/identity/query/source/5分价格/1 DATA_ROW 一致。任何读取或提交失败均不输出可消费 intent。仅此内部 owner 读取跳过网络查询；CheckActive、Claim、PrepareEvidence、Publish 的实时授权保留，reserve 后 Fetch 前与 publication 前仍实时核对。reserve 后撤权时不能 Fetch/发布；下次原 Run 沿既有 fence/proof 释放同一 reservation，不新建授权缓存、owner、schema 或恢复协议，不扩大 Resource 全局超时。
+
 所有写命令采用统一锁顺序 key→quota（day/month）→job→item，取消、撤销、改限额及发布不能逆序。成功item的一个Product UoW：按该顺序锁定fence与限制→重新核对scope/未取消→current SRC publication、Catalog bridge、Collection append同事务→exact publication receipt→item `SAVED` 与可验证成功proof。任一步失败回滚；不得先签发success再append Collection。此UoW是唯一成功来源，Collection只保存refs。提交未知不重新Fetch/重新发布另一key，核实原item/publication/collection receipt。
 
 取消幂等准入（2026-10-10，原 Must 的实现补齐）：原 Data Services command receipt owner 提供窄 `ApplyCancellationCommand(tx, verified scope, command, target, apply)`，仅接受真实 Product 事务。沿已有 actor advisory lock→key→quota→job→item；member/action/hash/target 绑定原命令，同目标重放不再执行，不同目标冲突且不得 fence 或释放另一任务额度。首次 apply 原取消与 receipt 写入同一事务，失败一起回滚、不绑定失败命令。DataAcquisition 私有 `withJobCommand` 只给取消加入此 receipt 分支，不增加公共领域合同、schema、owner 或通用命令框架；callback 保持原事务连接，支持单连接 pool。仅 apply 与 receipt 全部成功后标记已完成，COMMIT 或提交后回读未知仍返回原 UNKNOWN、保持原命令恢复。
@@ -154,6 +156,10 @@ Resource `Reconcile`消费immutable terminal proof，将原reservation committed
 Temporal workflow只调用原job/item的owner命令；不保存第二状态机。HTTP创建202返回job ID和原key的状态查询；创建retry/读取触发同一有界EnsureExecution以恢复已commit而未start的job。workflow ID固定org+actor+jobID；重复启动校验同identity，不再建新workflow。安装配置不丢失原namespace/workflow，重启worker恢复未完成项；本批不建通用scheduler/恢复平台。
 
 发现与商品Fetch都是匿名只读，允许原job在有限attempt/deadline内恢复尚未保存的只读请求；provider返回后以item fence保证只有一个固定evidence可保存。Browser结果未知本身不意味着付费外部mutation，不能据此新发资源reservation。已持久evidence/publication绝不再次Fetch。job最长30分钟、单页/Fetch最长30秒、浏览器并发最多2、单企业active job最多8；输入200条上限与数量/时限同时适用，部分完成诚实保留。DB/UoW最长10秒、外部auth最长5秒，超限返回真实pending/partial/failure，不无限延长原deadline。
+
+Workflow attempt 窗口澄清（2026-10-10）：每轮重新取 min(6分钟, 原 job deadline 剩余时间)，同时用于 StartToClose/ScheduleToClose，覆盖现有十页×30秒、5分钟 Discover 与后续持久化，不让2分钟 Activity 截断正常发现。原 job 30分钟、workflow 40分钟、原 cleanup/retry/terminal fence 保持，不增加另一发现进度事实或 scheduler。
+
+上述两项经原独立 Reviewer 在生产修改前分类为 IMPLEMENTATION_TEST，冻结 IMPLEMENTATION_READY 维持；必须以实际实现和针对性测试收敛，准入不是 PASS。已复现 RED：Activity 2分钟不足5分钟且超过剩余40秒；700ms 正常 IAM 导致 Resource 500ms 回调超时，不能到达预留后撤权检查。
 
 ## 9. 定制需求与交付
 

@@ -2,6 +2,7 @@ package dataacquisitionpersistence
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -213,6 +214,76 @@ func TestPostgresJobQuotaFencingPublicationAndOriginalChargeProof(t *testing.T) 
 	foreignStats, err := repo.Usage(ctx, other)
 	require.NoError(t, err)
 	require.Zero(t, foreignStats.DayRows)
+	t.Run("charge callback preserves exact original intent and local eligibility", func(t *testing.T) {
+		access.denied = false
+		for _, scenario := range []string{"member", "funding", "fingerprint", "business scope", "disabled key", "expired key", "key grant", "acquire removed", "canceled job", "expired job", "canceled context"} {
+			t.Run(scenario, func(t *testing.T) {
+				localScope := scope
+				localScope.OrganizationID = "callback-" + uuid.NewString()
+				localKey := key
+				localKey.Scope = localScope
+				localKey.ID, localKey.Digest = uuid.NewString(), collection.Digest(uuid.NewString())
+				_, _, err := keys.Create(ctx, localKey, uuid.NewString(), collection.Digest(localKey.Input))
+				require.NoError(t, err)
+				original, err := repo.Admit(ctx, dataacquisition.Principal{Scope: localScope, CredentialID: localKey.ID, CredentialRevision: 1}, uuid.NewString(), q, orgresource.FundingEnterprise)
+				require.NoError(t, err)
+				original, err = repo.Discover(ctx, original, q.ASINs[:1])
+				require.NoError(t, err)
+				rows, err := repo.Items(ctx, original)
+				require.NoError(t, err)
+				require.Len(t, rows, 1)
+				identity := orgresource.ConsumerChargeIdentity{OrganizationID: localScope.OrganizationID, Consumer: orgresource.ConsumerAmazonData, OperationID: rows[0].ID}
+				intent, err := repo.ChargeIntent(ctx, identity)
+				require.NoError(t, err)
+				callbackCtx := ctx
+				switch scenario {
+				case "member", "funding", "fingerprint", "business scope":
+					switch scenario {
+					case "member":
+						intent.MemberID = "another-grant"
+					case "funding":
+						intent.Funding = orgresource.FundingMember
+					case "fingerprint":
+						intent.Fingerprint = collection.Digest("another query")
+					case "business scope":
+						intent.BusinessScope = "another-job"
+					}
+					require.True(t, orgresource.ValidConsumerChargeIntent(intent), "generic Resource validity is insufficient for original owner identity")
+					raw, err := json.Marshal(intent)
+					require.NoError(t, err)
+					require.NoError(t, db.Exec("UPDATE data_acquisition_items SET intent_json=? WHERE id=?", string(raw), rows[0].ID).Error)
+				case "disabled key":
+					require.NoError(t, db.Exec("UPDATE data_service_credentials SET state='DISABLED' WHERE id=?", localKey.ID).Error)
+				case "expired key":
+					input := localKey.Input
+					input.ExpiresAt = time.Now().UTC().Add(-time.Minute).Truncate(time.Microsecond)
+					raw, err := json.Marshal(input)
+					require.NoError(t, err)
+					require.NoError(t, db.Exec("UPDATE data_service_credentials SET config_json=?,expires_at=? WHERE id=?", string(raw), input.ExpiresAt, localKey.ID).Error)
+				case "key grant":
+					require.NoError(t, db.Exec("UPDATE data_service_credentials SET member_id='another-grant' WHERE id=?", localKey.ID).Error)
+				case "acquire removed":
+					input := localKey.Input
+					input.Permissions = []string{dataservice.PermissionResult}
+					raw, err := json.Marshal(input)
+					require.NoError(t, err)
+					require.NoError(t, db.Exec("UPDATE data_service_credentials SET config_json=? WHERE id=?", string(raw), localKey.ID).Error)
+				case "canceled job":
+					_, err = repo.Cancel(ctx, localScope, original.ID, uuid.NewString())
+					require.NoError(t, err)
+				case "expired job":
+					require.NoError(t, db.Exec("UPDATE data_acquisition_jobs SET created_at=now()-interval '31 minutes',deadline=now()-interval '1 minute' WHERE id=?", original.ID).Error)
+				case "canceled context":
+					var stop context.CancelFunc
+					callbackCtx, stop = context.WithCancel(ctx)
+					stop()
+				}
+				returned, err := repo.ChargeIntent(callbackCtx, identity)
+				require.Error(t, err)
+				require.Zero(t, returned, "failed callback must return no consumable intent")
+			})
+		}
+	})
 	t.Run("concurrent admissions cannot over-reserve quota", func(t *testing.T) {
 		access.denied = false
 		concurrentScope := collection.Scope{OrganizationID: "quota-org", ActorID: "creator", MemberID: "member"}

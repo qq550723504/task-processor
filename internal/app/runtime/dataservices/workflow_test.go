@@ -37,6 +37,34 @@ func TestWorkflowRetriesOriginalJobAndEndsWithBoundedDeadlineCleanup(t *testing.
 	require.NoError(t, env.GetWorkflowError())
 	env.AssertExpectations(t)
 }
+func TestRunActivityCoversBoundedDiscoveryWithoutExtendingOriginalDeadline(t *testing.T) {
+	for _, remaining := range []time.Duration{30 * time.Minute, 40 * time.Second} {
+		t.Run(remaining.String(), func(t *testing.T) {
+			var suite testsuite.WorkflowTestSuite
+			env := suite.NewTestWorkflowEnvironment()
+			now := time.Now().UTC()
+			env.SetStartTime(now)
+			window := make(chan time.Duration, 1)
+			env.RegisterActivityWithOptions(func(ctx context.Context, _ Execution) error {
+				info := activity.GetInfo(ctx)
+				window <- info.Deadline.Sub(info.StartedTime)
+				return nil
+			}, activity.RegisterOptions{Name: RunActivityName})
+			input := Execution{Scope: collection.Scope{OrganizationID: "org", ActorID: "creator", MemberID: "original"}, JobID: uuid.NewString(), InputHash: collection.Digest("original"), Deadline: now.Add(remaining)}
+			env.ExecuteWorkflow(DataWorkflow, input)
+			require.True(t, env.IsWorkflowCompleted())
+			require.NoError(t, env.GetWorkflowError())
+			actual := <-window
+			if remaining >= 6*time.Minute {
+				require.Greater(t, actual, 5*time.Minute, "activity must cover the existing five-minute discovery plus persistence")
+				require.LessOrEqual(t, actual, 6*time.Minute)
+			} else {
+				require.LessOrEqual(t, actual, remaining, "activity cannot extend the original job deadline")
+				require.Positive(t, actual)
+			}
+		})
+	}
+}
 func TestDeadlineCleanupRetriesOriginalExecutionAfterRepeatedUnavailable(t *testing.T) {
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()

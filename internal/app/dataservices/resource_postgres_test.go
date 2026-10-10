@@ -97,6 +97,19 @@ type lostReserveAck struct {
 	lose bool
 }
 
+type revokeAfterReserve struct {
+	*orgresource.ConsumerChargeService
+	access *executionFixture
+}
+
+func (r revokeAfterReserve) Reserve(ctx context.Context, id orgresource.ConsumerChargeIdentity) (orgresource.ConsumerChargeReceipt, error) {
+	receipt, err := r.ConsumerChargeService.Reserve(ctx, id)
+	if err == nil {
+		r.access.denied = true
+	}
+	return receipt, err
+}
+
 type unknownAvailabilityFixture struct {
 	*executionFixture
 }
@@ -631,7 +644,7 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 			require.Zero(t, bucket.Reserved)
 		})
 	}
-	t.Run("resource owner validates live access once within its callback budget", func(t *testing.T) {
+	t.Run("resource owner reads only original facts within its callback budget", func(t *testing.T) {
 		original, err := service.Start(ctx, dataacquisition.Principal{Scope: scope}, uuid.NewString(), q, orgresource.FundingEnterprise, 5)
 		require.NoError(t, err)
 		original, err = repo.Discover(ctx, original, q.ASINs)
@@ -639,13 +652,13 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 		items, err := repo.Items(ctx, original)
 		require.NoError(t, err)
 		require.Len(t, items, 1)
-		fixture.authDelay = 300 * time.Millisecond
+		fixture.authDelay = 700 * time.Millisecond
 		t.Cleanup(func() { fixture.authDelay = 0 })
 		before := fixture.executionChecks
 		reservation, err := charges.Reserve(ctx, orgresource.ConsumerChargeIdentity{OrganizationID: scope.OrganizationID, Consumer: orgresource.ConsumerAmazonData, OperationID: items[0].ID})
 		fixture.authDelay = 0
-		require.NoError(t, err, "one bounded live authorization fits Resource's existing 500 ms callback")
-		require.Equal(t, before+1, fixture.executionChecks)
+		require.NoError(t, err, "live IAM must not run inside Resource's existing 500 ms fact callback")
+		require.Equal(t, before, fixture.executionChecks)
 		require.Equal(t, orgresource.ReservationReserved, reservation.State)
 		_, err = repo.Cancel(ctx, scope, original.ID, uuid.NewString())
 		require.NoError(t, err)
@@ -656,6 +669,37 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 		readBalance()
 		require.Equal(t, int64(3), bucket.Consumed)
 		require.Zero(t, bucket.Reserved)
+	})
+	t.Run("slow live IAM remains before reserve and revocation prevents fetch", func(t *testing.T) {
+		original, err := service.Start(ctx, dataacquisition.Principal{Scope: scope}, uuid.NewString(), q, orgresource.FundingEnterprise, 5)
+		require.NoError(t, err)
+		original, err = repo.Discover(ctx, original, q.ASINs)
+		require.NoError(t, err)
+		items, err := repo.Items(ctx, original)
+		require.NoError(t, err)
+		runner, err := dataacquisition.NewService(repo, fixture, fixture, revokeAfterReserve{charges, fixture}, fixture)
+		require.NoError(t, err)
+		fixture.authDelay = 700 * time.Millisecond
+		t.Cleanup(func() { fixture.authDelay = 0; fixture.denied = false })
+		before, fetches := fixture.executionChecks, fixture.fetches
+		require.ErrorIs(t, runner.ProcessItem(ctx, original, items[0], ""), dataacquisition.ErrForbidden, "revocation after reserve must still prevent provider Fetch")
+		require.GreaterOrEqual(t, fixture.executionChecks, before+3, "live checks remain before and after the local owner callback")
+		require.Equal(t, fetches, fixture.fetches)
+		id := orgresource.ConsumerChargeIdentity{OrganizationID: scope.OrganizationID, Consumer: orgresource.ConsumerAmazonData, OperationID: items[0].ID}
+		reserved, err := charges.Lookup(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, orgresource.ReservationReserved, reserved.State)
+		fixture.authDelay = 0
+		require.NoError(t, runner.Run(ctx, scope, original.ID))
+		settled, err := charges.Lookup(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, reserved.ReservationID, settled.ReservationID)
+		require.Equal(t, orgresource.ReservationReleased, settled.State)
+		require.Equal(t, fetches, fixture.fetches)
+		readBalance()
+		require.Equal(t, int64(3), bucket.Consumed)
+		require.Zero(t, bucket.Reserved)
+		fixture.denied = false
 	})
 	t.Run("archiving a running batch does not cancel original saves or duplicate charges", func(t *testing.T) {
 		owner := collection.Scope{OrganizationID: "org", ActorID: "archive-creator", MemberID: "archive-grant"}
