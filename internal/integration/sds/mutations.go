@@ -124,14 +124,13 @@ func (c *MutationClient) Upload(ctx context.Context, p pod.Plan, raw []byte, per
 }
 
 type materialDTO struct {
-	ID        remoteID `json:"id"`
-	Name      string   `json:"name"`
-	FileCode  string   `json:"file_code"`
-	Width     int      `json:"width"`
-	Height    int      `json:"height"`
-	MediaType string   `json:"content_type"`
-	URL       string   `json:"img_url"`
-	AltURL    string   `json:"imgUrl"`
+	ID         remoteID `json:"id"`
+	MerchantID remoteID `json:"merchant_id"`
+	Name       string   `json:"name"`
+	FileCode   string   `json:"file_code"`
+	FileFormat string   `json:"file_format"`
+	Width      int      `json:"width"`
+	Height     int      `json:"height"`
 }
 
 func (c *MutationClient) CreateMaterial(ctx context.Context, p pod.Plan, object pod.ObjectReceipt, permit *pod.MutationPermit) (pod.MaterialReceipt, error) {
@@ -153,35 +152,35 @@ func (c *MutationClient) CreateMaterial(ctx context.Context, p pod.Plan, object 
 		return pod.MaterialReceipt{}, pod.ErrUnknown
 	}
 	m := result.Data[0]
-	if !validRemoteID(string(m.ID)) || m.Name != pod.MaterialName(p.OperationID) || m.FileCode != object.FileCode || m.Width != p.Artwork.Width || m.Height != p.Artwork.Height || m.MediaType != p.Artwork.MediaType {
+	formatMatches := p.Artwork.MediaType == "image/png" && m.FileFormat == "png" || p.Artwork.MediaType == "image/jpeg" && (m.FileFormat == "jpg" || m.FileFormat == "jpeg")
+	if !validRemoteID(string(m.ID)) || string(m.MerchantID) != p.Binding.MerchantID || m.Name != pod.MaterialName(p.OperationID) || m.FileCode != object.FileCode || m.Width != p.Artwork.Width || m.Height != p.Artwork.Height || !formatMatches {
 		return pod.MaterialReceipt{}, pod.ErrUnknown
 	}
 	credentials, e := c.credentials(ctx, p)
 	if e != nil {
 		return pod.MaterialReceipt{}, pod.ErrUnknown
 	}
-	var confirmed []materialDTO
-	if c.read.get(ctx, credentials, "mapi.sdspod.com", "/materials/findByIds", url.Values{"ids": {string(m.ID)}, "fields": {"id,name,imgUrl,width,height,file_code,content_type"}}, &confirmed) != nil || len(confirmed) != 1 {
+	// This GET returns imgUrl and dimensions, not file_code/content_type. The
+	// exact file is independently bound by the allowlisted URL below; creation
+	// attests its actual merchant and file_format. No other-operation reuse.
+	var confirmed []struct {
+		ID            remoteID `json:"id"`
+		Name          string   `json:"name"`
+		URL           string   `json:"imgUrl"`
+		Width, Height int
+	}
+	if c.read.get(ctx, credentials, "mapi.sdspod.com", "/materials/findByIds", url.Values{"ids": {string(m.ID)}, "fields": {"id,name,imgUrl,width,height"}}, &confirmed) != nil || len(confirmed) != 1 {
 		return pod.MaterialReceipt{}, pod.ErrUnknown
 	}
 	v := confirmed[0]
-	if v.ID != m.ID || v.Name != m.Name || v.FileCode != m.FileCode || v.Width != m.Width || v.Height != m.Height || v.MediaType != m.MediaType {
+	if v.ID != m.ID || v.Name != m.Name || v.Width != m.Width || v.Height != m.Height {
 		return pod.MaterialReceipt{}, pod.ErrUnknown
 	}
-	image := v.AltURL
-	if image == "" {
-		image = v.URL
-	}
-	u, e := url.Parse(image)
-	if e != nil || u.Scheme != "https" || u.Host != "cdn.sdspod.com" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || !strings.HasSuffix(u.Path, "/"+object.FileCode) {
+	u, e := url.Parse(v.URL)
+	if e != nil || u.Scheme != "https" || u.Host != "cdn.sdspod.com" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.RawPath != "" || !strings.HasPrefix(u.Path, "/imagesThumbs/") || !strings.HasSuffix(u.Path, "/"+object.FileCode) {
 		return pod.MaterialReceipt{}, pod.ErrUnknown
 	}
-	if strings.HasPrefix(u.Path, "/images/") {
-		u.Path = "/images1000Thumbs/" + strings.TrimPrefix(u.Path, "/images/")
-	}
-	if !strings.HasPrefix(u.Path, "/images1000Thumbs/") {
-		return pod.MaterialReceipt{}, pod.ErrUnknown
-	}
+	u.Path = "/images1000Thumbs/" + strings.TrimPrefix(u.Path, "/imagesThumbs/")
 	q := url.Values{"material_id": {string(m.ID)}}
 	u.RawQuery = q.Encode()
 	// Read the actual provider thumbnail dimensions. Original artwork dimensions

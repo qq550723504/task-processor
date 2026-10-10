@@ -382,7 +382,7 @@ revision/同键重放；撤销与选品同UoW；资格文件私密读；两个�
 | SDS受控成品保存 | CONFIRMED | 本次成品9rdygezsctts及task/render/detail复查成立；不等于产品验收 |
 | SDS首次自动归属关联 | QUALIFIED / CLOSED | exact finished design GET绑定实际material及原Fabric/PSD意图；原finding独立复核已关闭 |
 | SDS完成及fence释放 | 开发自检PASS | 现有隔离PostgreSQL测试执行SaveStep/Finish；Kernel/POD/fence原子提交，失败及错误意图不提前解锁；独立增量复核单列 |
-| SDS同图案复用 | IMPLEMENTATION_TEST未收敛 | 当前内容MD5与repeatReturnId=true可能返回旧素材；须接口资料或另获明确授权的有界复用测试，不能接受别的operation素材名 |
+| SDS同图案复用 | 受控协议证据CONFIRMED；增量复核待完成 | 明确授权的一次复用返回新素材480968536及新operation名，成品9r9sburhhh0g精确匹配原设计/task/8张图；仍拒绝别的operation素材，正式路径验收NOT_RUN |
 | 共享authz/navigation/runtime协调 | OWNER_ASSIGNED | 协调指定会话 `01a11f74-2565-78e0-9118-4fe1ff53e726`；本Writer提供本设计feature ports，不修改共享接线；具体接线在批准后由该owner消费 |
 | 独立Architecture Review | IMPLEMENTATION_READY | 两轮及原SDS finding证据增量复核完成，全部BLOCKER关闭，无新增全局评审 |
 | 正式生产/schema修改 | IN_PROGRESS | 已准入；市场及SDS feature-local owner/UoW/API/Console/worker已实现，共享接线和外部依赖仍未完成 |
@@ -426,7 +426,10 @@ tokenless窄执行入口，不能传递已清空组织scope的平台HTTP context
   `internal/app/supplychain.OrganizationExecutionAuthorizer.AuthorizePODDesign`复用当前live IAM，
   仅核对原成员Collection read/manage与supply-market.design，不接受任意permission。
   CredentialSource须为每个凭据revision返回已核对的实际merchant身份；不能把浏览器请求、
-  客户body或只声明merchant的文件直接当作该证明。当前后台私密配置尚未具备。
+  客户body或只声明merchant的文件直接当作该证明。用户已授权将当前Edge登录态保存到
+  项目ignored `.local/sds/platform-account.private.json`，仅当前用户/System可读，未进入Git。
+  当前token对实际商户36811的`/merchants/36811/setMeals`读取返回200及相同商户ID；
+  这是本次配置核对记录，运行owner仍须注入满足上述合同的CredentialSource。
 - Fresh bootstrap分别调用SupplyMarket和POD persistence `InstallSchema`，同一ProductDB须
   安装当前Submission schema及Collection的`market/sds_template/sds_finished`约束。
   运行构造只Verify，不执行DDL/迁移/种子。`productsourcing.ReceivePOD`复用Source、Catalog、
@@ -457,8 +460,19 @@ tokenless窄执行入口，不能传递已清空组织scope的平台HTTP context
 Kernel SaveStep及Finish失败回滚/成功终结、物理fence、错误意图、凭据轮换、私密资质owner
 与attachment隔离，以及真实Source/Catalog/Collection receiver回滚与成功。前端相关Vitest、
 typecheck、范围ESLint及Next生产构建通过。自检、controlled provider qualification和产品
-验收分别记录；同图案素材去重、后台凭据、共享接线、正式真实1688/SDS路径和用户验收
-尚未收敛，不将Draft PR视为完整交付。
+验收分别记录；同图案复用有受控真实协议证据，私密登录态已获授权并保存。运行期
+CredentialSource注入、共享接线、正式真实1688/SDS路径和用户验收尚未完成，Draft保持。
+
+2026-10-10唯一一次同图案复用operation `6464cb0d-9ebe-4e3d-b306-e0ed5e889a24`：
+沿用已保存PNG及模板95147/15261，只登记一次素材和保存一次设计，不重新上传、不下单、
+不付款、不删除、不重发旧UNKNOWN。`repeatReturnId=true`返回新素材480968536及exact
+`sds-pod-{operation}`名称；成品9r9sburhhh0g / 962805303994494976，task
+962805300622274561完成，原Fabric、8个PSD和8张实际成品图均精确匹配。
+实际POST返回`file_format`及`merchant_id`，GET仅返回`imgUrl`/name/dimensions，
+未返回file_code/content_type。实现按这两个实际DTO分别解码，仍校验merchant、原操作名、
+原file_code、尺寸、格式、GET身份及allowlisted exact图片文件；不接受另一次操作素材。
+真实脱敏样本的目标测试先RED再GREEN，错误商户/素材/格式/GET身份不继续下载或重发。
+此证据证明本次provider协议，不代表正式Console/后台路径或用户验收。
 
 PR候选8e32c6564的首次CI发现结构接线与未使用导出问题，已按同一冻结设计修正：
 基础设施依赖业务Kernel的编排移到app层，Source receiver改为组合根注入；移除未使用导出，

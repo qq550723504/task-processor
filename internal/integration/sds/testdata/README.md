@@ -10,3 +10,12 @@ tokens, signed upload fields or source image bytes are included.
 The current `prototypeGroup` exposes `productId` and `id`; it does not expose
 `designLayerNum`. The authoritative supported image-region list is `layers`.
 This fixture verifies decoding; it is not execution of the formal application.
+
+`qualified-material.json` retains the actual creation/readback field shapes from
+the single authorized 2026-10-10 same-pattern reuse test
+`6464cb0d-9ebe-4e3d-b306-e0ed5e889a24`. Creation returned a new material with the
+exact new operation name and `file_format`, `file_code`, and `merchant_id`.
+The ID-scoped GET returned `imgUrl` under `/imagesThumbs/`, name and dimensions;
+it did not return `file_code` or `content_type`, even when requested. Unrelated
+account fields were removed; merchant and image paths were replaced with test
+values. Tokens, signed upload fields and image bytes are excluded.
