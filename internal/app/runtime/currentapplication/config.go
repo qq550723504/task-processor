@@ -32,6 +32,7 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
+	ReportCenter               *ReportCenterConfig                       `json:"reportCenter,omitempty"`
 	AgentCustomizationDatabase *DatabaseConfig                           `json:"agentCustomizationDatabase,omitempty"`
 	ProjectCenter              *ProjectCenterConfig                      `json:"projectCenter,omitempty"`
 	ToolMarket                 *ToolMarketConfig                         `json:"toolMarket,omitempty"`
@@ -303,6 +304,9 @@ func (cfg *Config) validate() error {
 		return err
 	}
 	if err := cfg.validateProjectCenter(); err != nil {
+		return err
+	}
+	if err := cfg.validateReportCenter(); err != nil {
 		return err
 	}
 	if err := cfg.validateToolMarket(); err != nil {

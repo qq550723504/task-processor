@@ -26,6 +26,7 @@ import (
 )
 
 type Dependencies struct {
+	OpenReportCenter              func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	NewMarketStorage              func(context.Context, *SupplyMarketConfig, *logrus.Logger) (supplymarket.PrivateFileStorage, error)
 	PreparePOD                    func(context.Context, *PODConfig) (sds.CredentialSource, error)
 	OpenAgentCustomization        func(context.Context, DatabaseConfig) (*gorm.DB, error)
@@ -65,6 +66,7 @@ type Dependencies struct {
 // ApplicationFeatures keeps separately owned, opt-in current modules together
 // only at the serving composition boundary.
 type ApplicationFeatures struct {
+	ReportCenterDB                                       *gorm.DB
 	MarketStorage                                        supplymarket.PrivateFileStorage
 	POD                                                  *PODConfig
 	PODCredentials                                       sds.CredentialSource
@@ -184,6 +186,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	if cfg.ToolMarket != nil && (dependencies.OpenToolMarket == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("tool market lifecycle unavailable")
+	}
+	if cfg.ReportCenter != nil && (dependencies.OpenReportCenter == nil || dependencies.NewApplicationWithFeatures == nil) {
+		return errors.New("report center lifecycle unavailable")
 	}
 	if cfg.ProductAgent != nil && (dependencies.OpenProductAgent == nil || dependencies.NewApplicationWithFeatures == nil) {
 		return errors.New("product agent lifecycle unavailable")
@@ -601,6 +606,24 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(projectDB)) }()
 	}
 	var server *http.Server
+	var reportDB *gorm.DB
+	if cfg.ReportCenter != nil {
+		reportDB, err = dependencies.OpenReportCenter(startupContext, cfg.ReportCenter.Database)
+		if reportDB != nil {
+			for _, other := range []*gorm.DB{sourceAccountDB, commercialOwnerDB, moneyOwnerDB, productDB, agentDB, agentReviewDB, agentAssetDB, workbenchDB, imageDB, auditImageDB, auditProductDB, referralDB, membershipDB, storeDB, trialDB, notificationDB, supplyAssetDB, toolMarketDB, customizationDB, projectDB, knowledgeDB} {
+				if reportDB == other {
+					return errors.New("report center requires its independent owner pool")
+				}
+			}
+			if ecoservicesRuntime != nil && reportDB == ecoservicesRuntime.DB {
+				return errors.New("report center requires its independent owner pool")
+			}
+			defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(reportDB)) }()
+		}
+		if err != nil || reportDB == nil {
+			return errors.New("report center database unavailable")
+		}
+	}
 	var marketStorage supplymarket.PrivateFileStorage
 	if cfg.SupplyMarket != nil {
 		marketStorage, err = dependencies.NewMarketStorage(startupContext, cfg.SupplyMarket, logger)
@@ -624,7 +647,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			if err != nil || podAssetDB == nil {
 				return errors.New("open current POD Asset owner failed")
 			}
-			for _, existing := range []*gorm.DB{sourceAccountDB, productDB, commercialOwnerDB, moneyOwnerDB, storeDB, notificationDB, agentDB, agentReviewDB, agentAssetDB, imageDB, workbenchDB, toolMarketDB, projectDB, customizationDB} {
+			for _, existing := range []*gorm.DB{sourceAccountDB, productDB, commercialOwnerDB, moneyOwnerDB, storeDB, notificationDB, agentDB, agentReviewDB, agentAssetDB, imageDB, workbenchDB, toolMarketDB, projectDB, customizationDB, reportDB} {
 				if podAssetDB == existing {
 					return errors.New("POD requires its narrow independent Asset pool")
 				}
@@ -645,7 +668,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		}
 	}
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{MarketStorage: marketStorage, POD: cfg.POD, PODCredentials: podCredentials, PODAssetDB: podAssetDB, PODWorkflow: podWorkflow, PODWorker: &podWorker, AgentCustomizationDB: customizationDB, ProjectCenterDB: projectDB, OperationsCockpit: cfg.StoreCenter != nil && cfg.StoreCenter.Enabled && cfg.StoreCenter.OperationsCockpit, ToolMarketDB: toolMarketDB, ToolMarket: cfg.ToolMarket, Ecoservices: ecoservicesRuntime, NotificationCenterDB: notificationDB, Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, PrivateDraftTrial: cfg.PrivateDraftTrial, SourceMediaStorage: sourceMediaStorage, SupplyAssetDB: supplyAssetDB, StoreObservationsWorkflow: observationWorkflow, StoreObservationsLifecycle: &observationLifecycle, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{ReportCenterDB: reportDB, MarketStorage: marketStorage, POD: cfg.POD, PODCredentials: podCredentials, PODAssetDB: podAssetDB, PODWorkflow: podWorkflow, PODWorker: &podWorker, AgentCustomizationDB: customizationDB, ProjectCenterDB: projectDB, OperationsCockpit: cfg.StoreCenter != nil && cfg.StoreCenter.Enabled && cfg.StoreCenter.OperationsCockpit, ToolMarketDB: toolMarketDB, ToolMarket: cfg.ToolMarket, Ecoservices: ecoservicesRuntime, NotificationCenterDB: notificationDB, Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, PrivateDraftTrial: cfg.PrivateDraftTrial, SourceMediaStorage: sourceMediaStorage, SupplyAssetDB: supplyAssetDB, StoreObservationsWorkflow: observationWorkflow, StoreObservationsLifecycle: &observationLifecycle, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {

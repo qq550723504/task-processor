@@ -53,6 +53,9 @@ func (c *Config) validateSupplyMarket() error {
 			return errors.New("POD requires bounded canonical Asset access")
 		}
 		owners := []*DatabaseConfig{&c.SourceAccountDatabase, c.ProductAcquisitionDatabase, c.CommercialOwnerDatabase, c.MoneyOwnerDatabase, c.NotificationCenterDatabase, c.AgentCustomizationDatabase}
+		if c.ReportCenter != nil {
+			owners = append(owners, &c.ReportCenter.Database)
+		}
 		if c.StoreCenter != nil {
 			owners = append(owners, &c.StoreCenter.Database)
 		}

@@ -19,7 +19,7 @@ var enterpriseModules = []MenuModule{
 	{"tasks", "AI工作台", "任务中心", true, []string{PermissionWorkbenchTaskRead}},
 	{"projects", "AI工作台", "项目中心", true, []string{"workbench.project.read", "workbench.project.manage"}},
 	{"knowledge", "AI工作台", "知识库", true, []string{PermissionWorkbenchKnowledgeRead, PermissionWorkbenchKnowledgeManage}},
-	{"reports", "AI工作台", "我的报告", false, nil},
+	{"reports", "AI工作台", "我的报告", true, workbenchReportPermissions},
 	{"acquisition", "供应市场", "1688采集", true, []string{PermissionProductSourcingWrite, PermissionLocalAgentWrite, PermissionWorkbenchAgentRead, PermissionWorkbenchAgentUse, PermissionWorkbenchTaskRead}},
 	{"supply-official", "供应市场", "硕米自营", true, supplyMarketModulePermissions()},
 	{"supply-selected", "供应市场", "硕米优选", true, supplyMarketModulePermissions()},
