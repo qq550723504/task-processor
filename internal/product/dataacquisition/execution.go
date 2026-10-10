@@ -208,6 +208,12 @@ func (s *Service) ProcessItem(ctx context.Context, job Job, item Item, stopReaso
 		fetchContext, cancel := context.WithTimeout(ctx, 30*time.Second)
 		evidence, fetchErr := s.provider.Fetch(fetchContext, job.Query.Site, item.ASIN)
 		cancel()
+		// Read-only transport/startup failures retain the original reservation and
+		// claim lease. The existing activity retries within the original deadline;
+		// only typed source refusals or invalid evidence establish a terminal fence.
+		if fetchErr != nil && !errors.Is(fetchErr, ErrSourceChallenge) && !errors.Is(fetchErr, ErrSourceUnsupported) {
+			return fetchErr
+		}
 		if fetchErr != nil || evidence.Site != job.Query.Site || evidence.ASIN != item.ASIN || evidence.Validate() != nil {
 			fenced, err := s.repo.Fence(ctx, job, claimed, "provider_rejected")
 			if err != nil {

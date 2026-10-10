@@ -33,8 +33,9 @@ import (
 
 type executionFixture struct {
 	authorizedFixture
-	denied  bool
-	fetches int
+	denied   bool
+	fetches  int
+	fetchErr error
 }
 
 func (f *executionFixture) CheckExecution(context.Context, dataacquisition.Principal, orgresource.ResourceFunding) error {
@@ -54,12 +55,27 @@ func (f *executionFixture) Discover(_ context.Context, q dataacquisition.Query) 
 }
 func (f *executionFixture) Fetch(_ context.Context, site, asin string) (dataacquisition.Evidence, error) {
 	f.fetches++
+	if f.fetchErr != nil {
+		return dataacquisition.Evidence{}, f.fetchErr
+	}
 	return dataacquisition.Evidence{Site: site, ASIN: asin, Title: "controlled fixture", MainImage: "https://m.media-amazon.com/images/I/fixture.jpg", Availability: "available", Price: 10, Currency: "USD", CapturedAt: time.Now().UTC().Format(time.RFC3339Nano), ParserVersion: "amazon-v1"}, nil
 }
 
 type lostReserveAck struct {
 	*orgresource.ConsumerChargeService
 	lose bool
+}
+
+type unavailableReconcile struct {
+	*orgresource.ConsumerChargeService
+	unavailable bool
+}
+
+func (c *unavailableReconcile) Reconcile(ctx context.Context, id orgresource.ConsumerChargeIdentity) (orgresource.ConsumerChargeReceipt, error) {
+	if c.unavailable {
+		return orgresource.ConsumerChargeReceipt{}, dataacquisition.ErrUnknown
+	}
+	return c.ConsumerChargeService.Reconcile(ctx, id)
 }
 
 type terminalDiscoveryFixture struct {
@@ -318,6 +334,89 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 			require.Equal(t, int64(2), bucket.Consumed)
 			require.Zero(t, bucket.Reserved)
 			require.Equal(t, 2, fixture.fetches)
+		})
+	}
+
+	t.Run("transient fetch retains reservation and saved row recovers through Resource", func(t *testing.T) {
+		provider := &executionFixture{fetchErr: context.DeadlineExceeded}
+		delayed := &unavailableReconcile{ConsumerChargeService: charges, unavailable: true}
+		runner, err := dataacquisition.NewService(repo, fixture, provider, delayed, fixture)
+		require.NoError(t, err)
+		job, err := runner.Start(ctx, dataacquisition.Principal{Scope: scope}, uuid.NewString(), q, orgresource.FundingEnterprise, 5)
+		require.NoError(t, err)
+		require.ErrorIs(t, runner.Run(ctx, scope, job.ID), context.DeadlineExceeded)
+		job, err = repo.Read(ctx, scope, job.ID)
+		require.NoError(t, err)
+		items, err := repo.Items(ctx, job)
+		require.NoError(t, err)
+		require.Len(t, items, 1)
+		require.Equal(t, "FETCHING", items[0].State)
+		identity := orgresource.ConsumerChargeIdentity{OrganizationID: scope.OrganizationID, Consumer: orgresource.ConsumerAmazonData, OperationID: items[0].ID}
+		original, err := charges.Lookup(ctx, identity)
+		require.NoError(t, err)
+		require.Equal(t, orgresource.ReservationReserved, original.State)
+		// Expire the existing claim in the isolated fixture, without waiting or inventing a new recovery path.
+		require.NoError(t, productDB.Exec("UPDATE data_acquisition_items SET lease_until=now()-interval '1 second' WHERE job_id=?", job.ID).Error)
+		provider.fetchErr = nil
+		require.ErrorIs(t, runner.Run(ctx, scope, job.ID), dataacquisition.ErrUnknown)
+		items, err = repo.Items(ctx, job)
+		require.NoError(t, err)
+		require.Equal(t, "SAVED", items[0].State)
+		require.Equal(t, 2, provider.fetches)
+		require.Equal(t, original.ReservationID, items[0].ReservationID)
+		count, err := charges.RecoverDue(ctx)
+		require.NoError(t, err)
+		require.Equal(t, 1, count)
+		delayed.unavailable = false
+		require.NoError(t, runner.Run(ctx, scope, job.ID))
+		require.NoError(t, runner.Run(ctx, scope, job.ID))
+		settled, err := charges.Lookup(ctx, identity)
+		require.NoError(t, err)
+		require.Equal(t, original.ReservationID, settled.ReservationID)
+		require.Equal(t, orgresource.ReservationCommitted, settled.State)
+		require.Equal(t, 2, provider.fetches)
+		readBalance()
+		require.Equal(t, int64(3), bucket.Consumed)
+		require.Zero(t, bucket.Reserved)
+	})
+	for _, tc := range []struct {
+		name     string
+		fetchErr error
+		expire   bool
+	}{
+		{"challenge", dataacquisition.ErrSourceChallenge, false},
+		{"unsupported", dataacquisition.ErrSourceUnsupported, false},
+		{"transient then deadline", context.Canceled, true},
+	} {
+		t.Run("fetch "+tc.name, func(t *testing.T) {
+			provider := &executionFixture{fetchErr: tc.fetchErr}
+			runner, err := dataacquisition.NewService(repo, fixture, provider, charges, fixture)
+			require.NoError(t, err)
+			job, err := runner.Start(ctx, dataacquisition.Principal{Scope: scope}, uuid.NewString(), q, orgresource.FundingEnterprise, 5)
+			require.NoError(t, err)
+			if tc.expire {
+				require.ErrorIs(t, runner.Run(ctx, scope, job.ID), tc.fetchErr)
+				// Advance the isolated fixture past its original 30-minute window,
+				// preserving the installation constraint between created_at/deadline.
+				require.NoError(t, productDB.Exec("UPDATE data_acquisition_jobs SET created_at=now()-interval '31 minutes',deadline=now()-interval '1 minute' WHERE id=?", job.ID).Error)
+			}
+			require.NoError(t, runner.Run(ctx, scope, job.ID))
+			require.NoError(t, runner.Run(ctx, scope, job.ID))
+			job, err = repo.Read(ctx, scope, job.ID)
+			require.NoError(t, err)
+			require.Equal(t, "FAILED", job.State)
+			items, err := repo.Items(ctx, job)
+			require.NoError(t, err)
+			require.Len(t, items, 1)
+			require.Equal(t, "FAILED", items[0].State)
+			require.Equal(t, orgresource.ReservationReleased, items[0].ChargeState)
+			require.Equal(t, 1, provider.fetches)
+			if tc.expire {
+				require.Equal(t, "deadline", items[0].Reason)
+			}
+			readBalance()
+			require.Equal(t, int64(3), bucket.Consumed)
+			require.Zero(t, bucket.Reserved)
 		})
 	}
 }

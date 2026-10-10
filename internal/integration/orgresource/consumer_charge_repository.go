@@ -285,11 +285,11 @@ func (r *GormConsumerChargeRepository) Settle(ctx context.Context, original orgr
 // Advance the durable check time before any external proof read. Permanently
 // UNKNOWN reservations cannot occupy every slot in subsequent recovery passes.
 func (r *GormConsumerChargeRepository) ClaimDue(ctx context.Context, consumers []orgresource.ResourceConsumer) ([]orgresource.ConsumerChargeIdentity, error) {
-	if len(consumers) < 1 || len(consumers) > 2 {
+	if len(consumers) < 1 || len(consumers) > 3 {
 		return nil, orgresource.ErrInvalidInput
 	}
 	for _, consumer := range consumers {
-		if consumer != orgresource.ConsumerProductAcquisition && consumer != orgresource.ConsumerStoreService {
+		if consumer != orgresource.ConsumerProductAcquisition && consumer != orgresource.ConsumerStoreService && consumer != orgresource.ConsumerAmazonData {
 			return nil, orgresource.ErrReservationOwnerNotRegistered
 		}
 	}

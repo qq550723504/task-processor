@@ -2,6 +2,7 @@ package collectionpersistence
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -90,6 +91,43 @@ func TestPostgresDataPublicationBatchAtomicityReplayAndActorIsolation(t *testing
 	require.Len(t, items.Items, 2)
 	// An old kind constraint must fail readiness instead of enabling a route
 	// that cannot save Amazon/custom source references. This is isolated test DDL.
+	t.Run("supply eligibility follows active sources after moving and archiving", func(t *testing.T) {
+		own, err := r.Execute(ctx, testCommand(scope, uuid.NewString(), collection.Mutation{Action: "create_product", Product: &collection.OwnProduct{Title: "own fixture"}}))
+		require.NoError(t, err)
+		check := func(id string, want bool) {
+			t.Helper()
+			page, err := r.ListBatches(ctx, scope, collection.Query{Limit: 100})
+			require.NoError(t, err)
+			found := false
+			for _, b := range page.Items {
+				if b.ID == id {
+					found = true
+					raw, err := json.Marshal(b)
+					require.NoError(t, err)
+					var fields map[string]any
+					require.NoError(t, json.Unmarshal(raw, &fields))
+					require.Equal(t, want, fields["supplyTransferSupported"])
+				}
+			}
+			require.True(t, found)
+			b, err := r.ReadBatch(ctx, scope, id)
+			require.NoError(t, err)
+			raw, err := json.Marshal(b)
+			require.NoError(t, err)
+			var fields map[string]any
+			require.NoError(t, json.Unmarshal(raw, &fields))
+			require.Equal(t, want, fields["supplyTransferSupported"])
+		}
+		check(own.BatchID, true)
+		check(batch.ID, false)
+		moved, err := r.Execute(ctx, testCommand(scope, uuid.NewString(), collection.Mutation{Action: "move_item", ItemID: items.Items[0].ID, TargetBatchID: own.BatchID, ExpectedRevision: items.Items[0].Revision}))
+		require.NoError(t, err)
+		check(own.BatchID, false)
+		_, err = r.Execute(ctx, testCommand(scope, uuid.NewString(), collection.Mutation{Action: "archive_item", ItemID: items.Items[0].ID, ExpectedRevision: moved.Revision}))
+		require.NoError(t, err)
+		check(own.BatchID, true)
+		check(batch.ID, false)
+	})
 	require.NoError(t, db.Exec("ALTER TABLE product_collection_items DROP CONSTRAINT product_collection_items_source_kind_check; ALTER TABLE product_collection_items ADD CONSTRAINT product_collection_items_source_kind_check CHECK(source_kind IN ('acquisition','own')) NOT VALID").Error)
 	require.ErrorIs(t, VerifySchema(ctx, db), collection.ErrUnavailable)
 }

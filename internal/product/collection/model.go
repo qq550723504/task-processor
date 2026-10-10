@@ -44,13 +44,14 @@ func (s Scope) Validate() error {
 }
 
 type Batch struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	Kind       string     `json:"kind"`
-	Revision   int64      `json:"revision"`
-	Count      int64      `json:"count"`
-	CreatedAt  time.Time  `json:"createdAt"`
-	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
+	ID                      string     `json:"id"`
+	Name                    string     `json:"name"`
+	Kind                    string     `json:"kind"`
+	Revision                int64      `json:"revision"`
+	Count                   int64      `json:"count"`
+	SupplyTransferSupported bool       `json:"supplyTransferSupported"`
+	CreatedAt               time.Time  `json:"createdAt"`
+	ArchivedAt              *time.Time `json:"archivedAt,omitempty"`
 }
 type Source struct {
 	ProductKey    string `json:"productKey"`

@@ -30,7 +30,7 @@ it("does not dispatch a command when its original recovery intent cannot be reta
 it("transfers all 205 batch members and recovers an uncertain original key",async()=>{
  const id="550e8400-e29b-41d4-a716-446655440000";
  state.context.permissions=["workbench.collection.read","workbench.supply.manage"];
- state.list.mockResolvedValue({items:[{id,name:"供应测试批次",kind:"manual",revision:1,count:205,createdAt:"2026-10-08T00:00:00Z"}],total:1});
+ state.list.mockResolvedValue({items:[{id,name:"供应测试批次",kind:"manual",revision:1,count:205,supplyTransferSupported:true,createdAt:"2026-10-08T00:00:00Z"}],total:1});
  state.supplyWrite.mockRejectedValue(new SupplyAPIError("OUTCOME_UNKNOWN",503));
  render(<CollectionPage supplyAvailable />);
  await userEvent.click(await screen.findByRole("button",{name:"加入我的供应链"}));
@@ -42,6 +42,16 @@ it("transfers all 205 batch members and recovers an uncertain original key",asyn
  await userEvent.click(screen.getByRole("button",{name:"核实原操作"}));
  await screen.findByRole("link",{name:"查看我的供应链"});
  expect(state.supplyRead).toHaveBeenCalledWith(intent,expect.any(AbortSignal));expect(state.supplyWrite).toHaveBeenCalledOnce();
+});
+
+it.each(["amazon_data", "custom_dataset", "manual"])("hides supply transfer for unsupported sources in a %s batch", async kind => {
+ state.context.permissions=["workbench.collection.read","workbench.supply.manage"];
+ state.list.mockResolvedValue({items:[{id:"550e8400-e29b-41d4-a716-446655440000",name:"待查看数据",kind,revision:2,count:2,supplyTransferSupported:false,createdAt:"2026-10-08T00:00:00Z"}],total:1});
+ render(<CollectionPage supplyAvailable />);
+ await screen.findByText("待查看数据");
+ expect(screen.queryByRole("button",{name:"加入我的供应链"})).not.toBeInTheDocument();
+ expect(screen.getByRole("button",{name:"查看商品"})).toBeEnabled();
+ expect(state.supplyWrite).not.toHaveBeenCalled();
 });
 
 it("keeps an uncertain batch command and verifies the original key without another write", async () => {
@@ -68,6 +78,6 @@ it("aborts an old enterprise read and ignores its late batch data", async () => 
   state.context = { ...state.context, user: { id: "actor-b" }, effectiveOrganization: { id: "org-b" } };
   view.rerender(<CollectionPage />);
   expect(signal.aborted).toBe(true);
-  await act(async () => resolve({ items: [{ id: "550e8400-e29b-41d4-a716-446655440000", name: "旧企业私有批次", kind: "manual", revision: 1, count: 1, createdAt: "2026-10-08T00:00:00Z" }], total: 1 }));
+  await act(async () => resolve({ items: [{ id: "550e8400-e29b-41d4-a716-446655440000", name: "旧企业私有批次", kind: "manual", revision: 1, count: 1, supplyTransferSupported:true, createdAt: "2026-10-08T00:00:00Z" }], total: 1 }));
   expect(screen.queryByText("旧企业私有批次")).not.toBeInTheDocument();
 });
