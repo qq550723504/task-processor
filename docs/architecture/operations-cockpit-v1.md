@@ -3,7 +3,7 @@
 Refs [执行 Issue #627](https://github.com/qq550723504/task-processor/issues/627)、#137。
 
 - Design Basis: **Independent Architecture**。
-- Admission Status: **NOT_READY / 第1轮独立评审完成，目标归属产品决定待回复**。正式生产代码尚未开工；评审依据与分类见第10节。
+- Admission Status: **NOT_READY / 目标归属决定已确认，待相关增量独立复核**。正式生产代码尚未开工；评审依据与分类见第10节。
 - 调查基线：`main 6db1bbc5529433d37b49708828b7d2b621bf9bc2`（含 #615）。
 - 唯一 Writer：chat `01a11f6e-6586-7e13-ba3a-1758a7123e90`，`codex/operations-cockpit`。
 
@@ -15,6 +15,7 @@ Refs [执行 Issue #627](https://github.com/qq550723504/task-processor/issues/62
 
 1. **首版由运营人员录入店铺每期收入和各项成本，系统计算利润；平台财务数据后续再接。**
 2. **经营建议先提供有数据依据的规则建议，跳转已有页面由人处理；AI方案后续接入。**
+3. **目标由创建人与具有管理权限的人维护。** 创建人身份保留，维护者可以是当前创建人或当前具有目标管理权限的人；这是同一企业目标的资源规则，不改成个人私有目标，也不限定为只有企业管理员能维护。
 
 这些决定替代 Figma 中首版自动财务分析、AI生成方案/任务的开放语义；Figma仍决定页面归属、名称、布局和有效交互。原型示例不成为经营事实。
 
@@ -68,11 +69,15 @@ Domain不importGin/GORM/app/SDK。Repository只访问自己的schema，当前Sto
 
 ## 5. 目标与评判
 
-企业目标配置：一个当前启用revision，引用1–50家明确Store ID、日/周/月（周以周一为起点）、对应自然日期、正人民币利润目标、可选最低净利润率（0–100%，整数basis points）、正常/关注阈值（推荐90%/70%，可配置，0<关注<正常≤100%）。相同店铺组不推断企业全部店铺。
+企业目标配置：首版沿用一个当前启用目标的页面合同，head以organization为scope，首次创建分配稳定goal UUID并持久化不可变creator ActorID；后续修改、管理人修改和历史恢复都不转移创建人，也不新建另一个覆盖旧目标的资源。目标引用1–50家明确Store ID、日/周/月（周以周一为起点）、对应自然日期、正人民币利润目标、可选最低净利润率（0–100%，整数basis points）、正常/关注阈值（推荐90%/70%，可配置，0<关注<正常≤100%）。相同店铺组不推断企业全部店铺。
 
 保存并启用一次事务：append不可变version + 更新当前head + append操作回执；编辑仅浏览器草稿。恢复历史版本也是以当前权限验证后创建新revision，不回滚行或复用旧approval。所有读目标/历史/恢复必须当前可访问其全部店铺；任何店铺撤权时不泄漏名称、目标金额或关联数据，返回不可访问。
 
-**目标归属待用户决定，阻正式准入**：本草案暂拟企业singleton，但普通运营不可读旧head时既不能获得expectedRevision，也不能盲覆盖他人范围。已向用户提交两种具体路径：企业共同目标/管理员设置，或每成员个人目标。确定前不实现singleton schema或角色规则。若选择企业共同，旧/新目标写均只允许当前企业管理员，运营只读/录入；若选择个人，则head/revision/receipt均必须加入actor身份、个人只修改自己的目标，不能在企业singleton上隐藏actor过滤。无论哪种路径，原scope权限失效的历史恢复仍拒绝，目标范围内店铺被退休时只显示安全失效信息，由合法目标owner以当前version创建新scope，不尝试读取退休店铺历史来“恢复兼容”。
+**创建人与管理权限合同（用户决定已确认）**：首次创建要求当前goals模块read/create权限及全部新scope店铺访问；企业尚无head且expectedRevision=0时创建，若已存在则不能用create绕过原创建人覆盖。维护既有目标要求当前goals read权限且`current actor == immutable creator OR current goals.manage permission`；创建人不需要manage才能修改自己的目标，管理人也不因一次修改变成创建人。原创建人离开企业/失去模块访问不保留维护能力，当前管理权限可接手；角色/成员/权限每次live重验，创建人不替代Store授权。
+
+**失效scope的安全CAS路径**：通常目标payload/历史/评判仍要求可访问其全部店铺。当前合法维护者即使已失去旧scope店铺访问，也可经单独的head metadata读取获得仅goal ID、当前revision、scope有效性和可重配标志；不返回旧店铺ID/名称、目标金额、日期、创建人身份、备注或历史payload。其他人不能用metadata探测或得到revision。重配请求提交完整新payload及metadata读取的expectedRevision；同一事务锁head、重新验证创建人/管理权限和全部新scope店铺、验证当前revision后append新version并更新head/成功receipt。重配无需旧店铺授权，不读取旧经营事实，不盲覆盖，不允许调用恢复将已失效旧scope重新启用。历史版本仍仅在当前可访问其全部店铺时读取/恢复。对退休店铺及撤权只显示安全失效信息；不会为此恢复旧店铺或建立兼容路径。
+
+head/revision的业务scope为organization + 稳定goal ID，creator是资源维护资格；command receipts仍以organization + 发起actor + operation key隔离，管理人不可读回创建人的回执。并发维护通过相同head锁/expectedRevision，过期者412；冲突响应不携带旧payload。幂等回放必须重新验证当前维护资格和原命令scope店铺；原payload店铺已失效则拒绝回执读回，维护者可通过安全metadata按当前revision重配，不能重发新key冒充旧未知结果。
 
 评估到`min(昨日,目标结束日)`，未开始/今日目标尚无完整日则`not_started/pending_data`；截至该日全部所选店铺完整覆盖才计算。应达利润=目标金额×已过去自然日÷目标总自然日，使用整数/有界有理数比较，不浮点舍入触发阈值。完整数据下完成度≥正常阈值为正常、≥关注阈值为需关注、否则异常；利润率低于启用底线至少需关注。目标过期不隐式续期。
 
@@ -96,23 +101,23 @@ Figma的安全底线只消费真正存在的平台异常事实；库存为0/平�
 
 ## 7. 授权、事务、幂等与恢复
 
-新增有界四read permission：`workbench.cockpit.goals.read`、`.stores.read`、`.alerts.read`、`.advice.read`；`workbench.cockpit.manage`用于事实/目标写。沿当前native enterprise module grant、平台既有角色policy、当前tenant admin规则；不开放旧viewer/operator角色，不创建新角色体系。读取相应read并需要Store read/current member grant；写需要manage和Store当前访问；模块授予manage仅适用目标/矩阵，不以alerts/advice只读授予写。
+新增有界四read permission：`workbench.cockpit.goals.read`、`.stores.read`、`.alerts.read`、`.advice.read`；另有`.goals.create`、`.goals.manage`、`.facts.write`。goals模块普通grant给予read/create，既有目标维护在服务端按创建人OR当前manage判断；模块选择不自动授予manage，避免普通创建者因此能改他人目标。goals.manage由既有Casbin管理policy明确授予（复用ToolMarket的read/资源owner/manage模式，默认listingkit_admin有manage，不新造角色/权限授予UI）；不能用陈旧JWT角色或客户端canManage推断。矩阵模块给予stores.read/facts.write；alerts/advice保持只读。沿当前native enterprise module grant、平台既有角色policy、当前tenant admin规则；不开放旧viewer/operator角色，不创建新角色体系。普通内容读取仍须Store read/current member grant；仅上述合法维护者的安全head metadata是payload读取的受控例外。
 
 全部请求live重验当前member/module/organization；不信客户端org/user/member/角色。持久化使用Store专用数据库中的独立`operations_cockpit` schema，便于借用当前Store事务和grant行锁。本repo不拥有Store表。feature-local integration在写事务中借用同一DB transaction的既有member-scoped Store repository，按排序Store ID锁定当前记录/grant并验证；锁保持到commit，避免撤权写穿透。当前Get只在非admin路径锁grant，不锁Store，不能当作满足此合同：由Store当前owner最小提供借用tx的锁读能力，同时admin路径锁Store，integration不得自己直读/锁Store表。当前IAMlive recheck在进入事务及提交前执行；不创长期凭据/工作流身份。
 
-每个写绑定`org + actor + UUID operationKey + normalized intent hash`（含expected revision、精确stores/周期/金额）。org-head/店铺事实head锁并由DB唯一键串行化；同key同payload回放原已提交结果，同key不同payload409。expectedRevision必填，create=0，stale=412。一次事务包含新revision、head及成功回执；未commit无结果，响应丢失按原key重发/读回。不blind生成新key；权限撤销后的回放仍重验原资源，不泄漏旧回执。
+每个写绑定`org + actor + UUID operationKey + normalized intent hash`（含资源goal/record ID、命令类型、expected revision、精确stores/周期/金额）。org-goal head/店铺事实head锁并由DB唯一键串行化；同key同payload回放原已提交结果，同key不同payload409。expectedRevision必填，create=0，stale=412。目标creator和首次创建goal ID与head/version/receipt同事务落库。一次事务包含新revision、head及成功回执；未commit无结果，响应丢失按原key重发/读回。不blind生成新key；权限撤销后的回放仍重验原资源，不泄漏旧回执。
 
 无跨数据库业务写、无外部副作用、无outbox/Saga/Temporal/UNKNOWN新协议。取消/timeout在commit前rollback；已commit后保留原结果。revision使用int64+字符串输出避免溢出；溢出拒绝。并发相同资源/不同区间重叠只允许一个成功。只保留本新系统事实和操作回执，不迁移旧系统，不自行增加清理器。
 
 ## 8. 持久化、接线与共享Writer
 
-最小表：企业串行head；店铺事实锁head；经营区间事实head及不可变revision；目标head及不可变revision；actor-scoped command receipts。payload有界JSON，显式check/唯一键/索引，SQL schema-qualified。原生Store行/grant只由当前owner操作；初始化是显式空schema安装，同事务，serving只VerifySchema、不建表；运行账号只获得本schema必要SELECT/INSERT/UPDATE，不授予DDL/DELETE。
+最小表：店铺事实锁head；经营区间事实head及不可变revision；organization唯一目标head（稳定goal ID与不可变creator）及不可变revision；actor-scoped command receipts。payload有界JSON，显式check/唯一键/索引，SQL schema-qualified。head metadata只返回安全CAS标识；SQL不联表IAM、不创建第二身份owner。原生Store行/grant只由当前owner操作；初始化是显式空schema安装，同事务，serving只VerifySchema、不建表；运行账号只获得本schema必要SELECT/INSERT/UPDATE，不授予DDL/DELETE。
 
 共享增量已在[#137接单通知](https://github.com/qq550723504/task-processor/issues/137#issuecomment-6091453232)登记：Console四菜单/三级goal路径、authz四module/policy、currentapplication config/schema initializer/HTTP injection/Store serving role本schema grant和preflight。**未协调前不写共享路径**。feature-local可在准入后由本唯一Writer实现，完整运行交付仍需共享owner接线。
 
 拟正常页面：`/workbench/overview/goals`（设置子页`/settings`）、`/workbench/overview/stores`（录入/详情在此）、`/workbench/overview/alerts`、`/workbench/overview/advice`；复用WorkspaceAppShell、ConsolePage、Card/Input/Button、现有主题/tokens。feature-local CSS表达Figma的两列目标、矩阵表/选择条、预警列表、建议队列详情。既有品牌及导航资产复用确认完全相同的asset，不新增临时URL。
 
-HTTP拟`/api/v1/workbench/operations-cockpit/{capabilities,stores,facts,goals,alerts,advice}`；GET显式query白名单、拒绝未读body；POST严格JSON（未知/重复字段拒绝）、16KiB body、10s deadline、UUID/idempotency/expected revision；response≤1MiB、no-store。逐页history ≤20、rows≤50；error安全码不暴露SQL/凭据。BFF复用当前token、Expected Organization/User headers、同源/CSRF、strict JSON/schema/bounds；企业/用户query-key、晚到响应scope重验、切换清理旧表单/详情/receipt，UNKNOWN HTTP结果保留原key与payload。
+HTTP拟`/api/v1/workbench/operations-cockpit/{capabilities,stores,facts,goals,alerts,advice}`，goals/head为上述仅供合法维护者的metadata路径；GET显式query白名单、拒绝未读body；POST严格JSON（未知/重复字段拒绝）、16KiB body、10s deadline、UUID/idempotency/expected revision；response≤1MiB、no-store。逐页history ≤20、rows≤50；error安全码不暴露SQL/凭据。BFF复用当前token、Expected Organization/User headers、同源/CSRF、strict JSON/schema/bounds；企业/用户query-key、晚到响应scope重验、切换清理旧表单/详情/receipt，UNKNOWN HTTP结果保留原key与payload。
 
 ## 9. 验证、交接与Legacy
 
@@ -128,6 +133,6 @@ Legacy decision: N/A。已有合格Store、observations、Console/authz合同按
 
 2026-10-10 第1轮只读独立Reviewer `/root/cockpit_architecture_review` 检查设计候选 `0a6d7e1b44dc7b84d48897b6022b79927978a310` 及直接相关Store/member/schema/授权合同，结论 **NOT_READY**。唯一剩余架构准入阻碍是目标归属产品决定，命中当前AGENTS“核心happy path按当前设计无法完成”及潜在“错误授权”：企业singleton旧head不可读时无安全CAS来源，不能允许盲覆盖。
 
-目标决定后只复核head/revision/receipt scope、读写权限及安全失效重配这部分增量，不重复全局审查。共享路径唯一Writer责任仍须协调，它是接线gate，不由Reviewer替用户指定。
+用户随后明确“目标由创建人与管理权限维护”。第5/7/8节已以企业目标稳定goal ID、不可变creator、创建人OR当前manage、安全head metadata + 完整payload CAS重配回应该决定；该决定替代原草案中管理员限定/成员个人两种待选路径。第2轮只复核这些scope/权限/失效重配相关增量，不重复全局审查；当前尚未声称IMPLEMENTATION_READY。共享路径唯一Writer责任仍须协调，它是接线gate，不由Reviewer替用户指定。
 
 其余五项为IMPLEMENTATION_TEST，均是当前Must的实现义务，不重开架构：当前Store owner提供同tx窄锁读并live重查admin；稳定record ID日期纠错/并发重叠/保留revision；同SQL快照覆盖和目标/数据依据；checked金额和math/big阈值边界；启用schema时全部Store consumers使用同一最小capability/preflight清单。相关最低合同已写入正文，必须实现并验证后才能交付。无新增Accepted Risk或额外验收平台。运行/真实数据/用户验收NOT_RUN，未改生产代码。
