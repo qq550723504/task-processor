@@ -19,6 +19,10 @@ const VALID_CONTEXT = {
 };
 
 describe("workbench context API", () => {
+  it("accepts only server-derived Store worker readiness",()=>{
+    expect(parseWorkbenchContextPayload({...VALID_CONTEXT,storeObservationsAvailable:true}).success).toBe(true);
+    expect(parseWorkbenchContextPayload({...VALID_CONTEXT,storeObservationsAvailable:"true"}).success).toBe(false);
+  });
   it("accepts only a server-derived boolean AI Workbench availability", () => {
     expect(parseWorkbenchContextPayload({ ...VALID_CONTEXT, aiWorkbenchAvailable: true }).success).toBe(true);
     expect(parseWorkbenchContextPayload({ ...VALID_CONTEXT, aiWorkbenchAvailable: false }).success).toBe(true);

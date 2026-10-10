@@ -4,6 +4,7 @@ import "errors"
 
 // StoreCenterConfig uses the independently owned native record database.
 type StoreCenterConfig struct {
+	Observations         *StoreObservationsConfig        `json:"observations,omitempty"`
 	Enabled              bool                            `json:"enabled"`
 	Database             DatabaseConfig                  `json:"database"`
 	OfficialApplications []OfficialStoreConnectionConfig `json:"officialApplications,omitempty"`

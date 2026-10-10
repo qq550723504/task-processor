@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"task-processor/internal/app/productsourcing"
+	observationruntime "task-processor/internal/app/runtime/storeobservations"
 	supplyapp "task-processor/internal/app/supplychain"
 	"time"
 
@@ -22,35 +23,36 @@ import (
 )
 
 type Dependencies struct {
-	OpenToolMarket               func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenEcoservices              func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	NewEcoservices               func(context.Context, *gorm.DB, *EcoservicesConfig, *logrus.Logger) (*EcoservicesRuntime, error)
-	OpenNotificationCenter       func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenKnowledge                func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	NewKnowledge                 func(context.Context, *gorm.DB, *KnowledgeConfig, *logrus.Logger) (*knowledge.Service, *knowledge.Processor, error)
-	OpenStoreCenter              func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenLocalTrial               func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenProductAgent             func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenAIWorkbench              func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	IdentityPreflight            func(context.Context, IdentityConfig) error
-	OpenSourceAccount            func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenCommercialOwner          func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenMoneyOwner               func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenProductAcquisition       func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenImageAgent               func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenAccountAuditUsage        func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	DialImageAgentWorkflow       func(context.Context, string, string) (imageagent.WorkflowClient, func() error, error)
-	OpenSupplyAssets             func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	DialSupplyWorkflow           func(context.Context, string, string) (client.Client, func() error, error)
-	OpenReferrals                func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenMembership               func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	NewApplicationWithFeatures   func(context.Context, *gorm.DB, ApplicationFeatures, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
-	NewReferralsApplication      func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
-	NewApplicationWithMembership func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *MembershipConfig, *logrus.Logger) (*http.Server, error)
-	NewApplication               func(context.Context, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
-	Listen                       func(string, string) (net.Listener, error)
-	CloseDatabase                func(*gorm.DB) error
-	ShutdownTimeout              time.Duration
+	OpenToolMarket                func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenEcoservices               func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	NewEcoservices                func(context.Context, *gorm.DB, *EcoservicesConfig, *logrus.Logger) (*EcoservicesRuntime, error)
+	OpenNotificationCenter        func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenKnowledge                 func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	NewKnowledge                  func(context.Context, *gorm.DB, *KnowledgeConfig, *logrus.Logger) (*knowledge.Service, *knowledge.Processor, error)
+	OpenStoreCenter               func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenLocalTrial                func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenProductAgent              func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenAIWorkbench               func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	IdentityPreflight             func(context.Context, IdentityConfig) error
+	OpenSourceAccount             func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenCommercialOwner           func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenMoneyOwner                func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenProductAcquisition        func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenImageAgent                func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenAccountAuditUsage         func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	DialImageAgentWorkflow        func(context.Context, string, string) (imageagent.WorkflowClient, func() error, error)
+	OpenSupplyAssets              func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	DialSupplyWorkflow            func(context.Context, string, string) (client.Client, func() error, error)
+	DialStoreObservationsWorkflow func(context.Context, string, string) (client.Client, func() error, error)
+	OpenReferrals                 func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenMembership                func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	NewApplicationWithFeatures    func(context.Context, *gorm.DB, ApplicationFeatures, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	NewReferralsApplication       func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	NewApplicationWithMembership  func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *MembershipConfig, *logrus.Logger) (*http.Server, error)
+	NewApplication                func(context.Context, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	Listen                        func(string, string) (net.Listener, error)
+	CloseDatabase                 func(*gorm.DB) error
+	ShutdownTimeout               time.Duration
 }
 
 // ApplicationFeatures keeps separately owned, opt-in current modules together
@@ -74,6 +76,8 @@ type ApplicationFeatures struct {
 	ProductAcquisitionDB                                 *gorm.DB
 	ProductCollections                                   bool
 	SupplyAssetDB                                        *gorm.DB
+	StoreObservationsWorkflow                            client.Client
+	StoreObservationsLifecycle                           *observationruntime.Lifecycle
 	SupplyWorkflow                                       client.Client
 	SupplyWorker                                         *supplyapp.OperationWorker
 	ImageAgentDB                                         *gorm.DB
@@ -428,6 +432,24 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		}
 		defer func() { resultErr = errors.Join(resultErr, closeWorkflow()) }()
 	}
+	var observationWorkflow client.Client
+	var observationLifecycle observationruntime.Lifecycle
+	if cfg.StoreCenter != nil && cfg.StoreCenter.Observations != nil {
+		settings := cfg.StoreCenter.Observations
+		if cfg.SupplyChain != nil && cfg.SupplyChain.TemporalAddress == settings.TemporalAddress && cfg.SupplyChain.TemporalNamespace == settings.TemporalNamespace {
+			observationWorkflow = supplyWorkflow
+		} else {
+			if dependencies.DialStoreObservationsWorkflow == nil {
+				return errors.New("Store observation workflow dial unavailable")
+			}
+			var closeWorkflow func() error
+			observationWorkflow, closeWorkflow, err = dependencies.DialStoreObservationsWorkflow(startupContext, settings.TemporalAddress, settings.TemporalNamespace)
+			if err != nil || observationWorkflow == nil || closeWorkflow == nil {
+				return errors.New("Store observation workflow unavailable")
+			}
+			defer func() { resultErr = errors.Join(resultErr, closeWorkflow()) }()
+		}
+	}
 	var trialDB *gorm.DB
 	if cfg.LocalTrial != nil {
 		trialDB, err = dependencies.OpenLocalTrial(startupContext, cfg.LocalTrial.Database)
@@ -513,7 +535,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{ToolMarketDB: toolMarketDB, ToolMarket: cfg.ToolMarket, Ecoservices: ecoservicesRuntime, NotificationCenterDB: notificationDB, Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, SourceMediaStorage: sourceMediaStorage, SupplyAssetDB: supplyAssetDB, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, ApplicationFeatures{ToolMarketDB: toolMarketDB, ToolMarket: cfg.ToolMarket, Ecoservices: ecoservicesRuntime, NotificationCenterDB: notificationDB, Knowledge: knowledgeService, OfficialStoreApplications: officialApplications, StoreCenterDB: storeDB, LocalTrialDB: trialDB, MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, AIWorkbenchDB: workbenchDB, AIWorkbench: cfg.AIWorkbench, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ProductCollections: cfg.ProductCollections, SourceMediaStorage: sourceMediaStorage, SupplyAssetDB: supplyAssetDB, StoreObservationsWorkflow: observationWorkflow, StoreObservationsLifecycle: &observationLifecycle, SupplyWorkflow: supplyWorkflow, SupplyWorker: &supplyWorker, ImageAgentDB: imageDB, AccountAuditImageDB: auditImageDB, AccountAuditProductDB: auditProductDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, membershipDB, core, cfg.Membership, logger)
 	} else if referralDB != nil {
@@ -551,6 +573,13 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			return errors.New("start supply worker failed")
 		}
 		defer supplyWorker.Stop()
+	}
+	if observationWorkflow != nil {
+		if err := observationLifecycle.Start(); err != nil {
+			_ = listener.Close()
+			return errors.New("start Store observation worker failed")
+		}
+		defer observationLifecycle.Stop()
 	}
 	serveResult := make(chan error, 1)
 	go func() { serveResult <- server.Serve(listener) }()
