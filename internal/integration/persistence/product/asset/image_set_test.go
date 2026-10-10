@@ -95,3 +95,84 @@ func TestEmptyImageInventorySerializesAsAnArrayAndRetainsThePreviousHead(t *test
 		}
 	}
 }
+
+func TestImageSetInventoryReadsRequestedVersionAndRetainsGlobalHeadCAS(t *testing.T) {
+	db := openRepositoryTestDB(t)
+	require.NoError(t, AutoMigrate(db))
+	repo, err := NewRepository(db)
+	require.NoError(t, err)
+	ctx := context.Background()
+	reader := repo.(productasset.ImageSetInventoryReader)
+	newer := setCommit("version-two", productasset.ImageInventoryHead{})
+	newer.SourceSnapshotVersion = 2
+	newer.ImageSet.Source.EffectiveCatalogVersion = 2
+	newer.ImageSet.Digest = productasset.ImageSetSelectionDigest(newer)
+	_, err = repo.CommitApproval(ctx, newer)
+	require.NoError(t, err)
+	newerHash, err := approvalPayloadHash(newer)
+	require.NoError(t, err)
+	newerHead := productasset.ImageInventoryHead{ActionID: newer.ActionID, PayloadHash: newerHash}
+	restored := setCommit("restored-version-one", newerHead)
+	restoredReceipt, err := repo.CommitApproval(ctx, restored)
+	require.NoError(t, err)
+	restoredHash, err := approvalPayloadHash(restored)
+	require.NoError(t, err)
+	globalHead := productasset.ImageInventoryHead{ActionID: restored.ActionID, PayloadHash: restoredHash}
+	scope := productasset.InventoryScope{TenantID: newer.TenantID, ProductKey: newer.ProductKey, TargetPlatform: newer.TargetPlatform, SourceSnapshotVersion: 2}
+	inventory, err := reader.ReadImageSetInventory(ctx, scope)
+	require.NoError(t, err)
+	require.Equal(t, newer.Assets, inventory.Assets, "restoring another version must not hide this version's selected images")
+	require.Equal(t, globalHead, inventory.Head, "selection CAS still uses the global latest approval")
+	encoded, err := json.Marshal(inventory)
+	require.NoError(t, err)
+	var wire struct {
+		ApprovalActionID string `json:"approval_action_id"`
+	}
+	require.NoError(t, json.Unmarshal(encoded, &wire))
+	require.Equal(t, newer.ActionID, wire.ApprovalActionID, "the picker needs the requested version's real approval identity")
+	exact, err := repo.GetApprovedInventory(ctx, scope)
+	require.NoError(t, err)
+	require.Equal(t, exact.Assets, inventory.Assets, "editor and exact-version consumers read the same approved set")
+	for _, version := range []uint64{0, 1, 3} {
+		scope.SourceSnapshotVersion = version
+		read, err := reader.ReadImageSetInventory(ctx, scope)
+		require.NoError(t, err)
+		require.Equal(t, globalHead, read.Head)
+		if version == 3 {
+			require.Empty(t, read.ApprovalActionID)
+			require.NotNil(t, read.Assets)
+			require.Empty(t, read.Assets, "a missing version must not fall back to the global version")
+		} else {
+			require.Equal(t, restored.ActionID, read.ApprovalActionID)
+			require.Equal(t, restored.Assets, read.Assets)
+		}
+	}
+	stale := productasset.CloneApprovalCommit(newer)
+	stale.ActionID, stale.ImageSet.ExpectedHead = "stale-version-two", newerHead
+	stale.ImageSet.Digest = productasset.ImageSetSelectionDigest(stale)
+	_, err = repo.CommitApproval(ctx, stale)
+	require.ErrorIs(t, err, productasset.ErrApprovalConflict)
+	_, err = repo.(productasset.ApprovalCommitReader).ReadApprovalCommit(ctx, stale.TenantID, stale.ActionID)
+	require.ErrorIs(t, err, productasset.ErrApprovedAssetsNotReady)
+	replayed, err := repo.CommitApproval(ctx, restored)
+	require.NoError(t, err)
+	require.Equal(t, restoredReceipt, replayed)
+	scope.SourceSnapshotVersion = 2
+	read, err := reader.ReadImageSetInventory(ctx, scope)
+	require.NoError(t, err)
+	require.Equal(t, inventory, read)
+}
+
+func TestImageSetInventoryRejectsCorruptVersionHead(t *testing.T) {
+	db := openRepositoryTestDB(t)
+	require.NoError(t, AutoMigrate(db))
+	repo, err := NewRepository(db)
+	require.NoError(t, err)
+	ctx := context.Background()
+	commit := setCommit("version-one", productasset.ImageInventoryHead{})
+	_, err = repo.CommitApproval(ctx, commit)
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&ApprovedInventoryVersionHeadRecord{TenantID: commit.TenantID, ProductKey: commit.ProductKey, TargetPlatform: commit.TargetPlatform, SourceSnapshotVersion: 2, ActionID: commit.ActionID}).Error)
+	_, err = repo.(productasset.ImageSetInventoryReader).ReadImageSetInventory(ctx, productasset.InventoryScope{TenantID: commit.TenantID, ProductKey: commit.ProductKey, TargetPlatform: commit.TargetPlatform, SourceSnapshotVersion: 2})
+	require.ErrorIs(t, err, productasset.ErrRepositoryStateInvalid, "a mismatched version receipt must not become an empty or cross-version set")
+}

@@ -24,7 +24,7 @@ export const imageSetRunSchema=z.object({runId:uuid,status,template:templateRefS
 export type ImageSetRun=z.infer<typeof imageSetRunSchema>;
 export const imageSetSourcesSchema=z.object({contextKind:z.enum(["acquisition","supply"]),contextId:uuid,source,manualReplacementAvailable:z.boolean(),originals:z.array(z.object({id,displayUrl:url,width:integer,height:integer})).max(4096),evidence:z.record(z.string(),z.string())});
 const approved=z.object({id,role:id,url,width:integer.optional(),height:integer.optional(),presentation:z.object({group:z.enum(["carousel","detail"]),order:positive,variant_id:id.optional()}).optional(),official_placement:position.optional(),selection_receipt:z.object({action_id:id,asset_id:id}).optional()});
-const inventory=z.object({head:imageSetHeadSchema,assets:z.array(approved).max(40)});
+const inventory=z.object({head:imageSetHeadSchema,approval_action_id:z.string().max(192),assets:z.array(approved).max(40)}).refine(value=>!value.assets.length||!!value.approval_action_id);
 export const imageSetInventorySchema=z.object({target:inventory,generic:inventory.nullable()});
 export type ImageSetInventory=z.infer<typeof imageSetInventorySchema>;
 export const imageSetPreviewSchema=z.object({digest:hash,head:imageSetHeadSchema,assets:z.array(approved).min(1).max(40)});

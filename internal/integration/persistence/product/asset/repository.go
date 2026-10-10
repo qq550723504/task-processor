@@ -250,24 +250,31 @@ func (r *repository) ReadApprovalCommit(ctx context.Context, tenantID, actionID 
 }
 
 func (r *repository) GetApprovedInventory(ctx context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
-	if err := ctx.Err(); err != nil {
+	actionID, err := r.approvedInventoryAction(ctx, scope)
+	if err != nil {
 		return productasset.ApprovedAssetInventory{}, err
 	}
+	return r.readApprovedInventory(ctx, scope, actionID)
+}
+
+func (r *repository) approvedInventoryAction(ctx context.Context, scope productasset.InventoryScope) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if err := productasset.ValidateInventoryScope(scope); err != nil {
-		return productasset.ApprovedAssetInventory{}, err
+		return "", err
 	}
 
 	var actionID string
-	var err error
 	if scope.SourceSnapshotVersion > 0 {
 		var head ApprovedInventoryVersionHeadRecord
 		err := r.db.WithContext(ctx).
 			Where("tenant_id = ? AND product_key = ? AND target_platform = ? AND source_snapshot_version = ?", scope.TenantID, scope.ProductKey, scope.TargetPlatform, scope.SourceSnapshotVersion).
 			Take(&head).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
+			return "", productasset.ErrApprovedAssetsNotReady
 		} else if err != nil {
-			return productasset.ApprovedAssetInventory{}, mapRepositoryError("load versioned approved inventory head", err)
+			return "", mapRepositoryError("load versioned approved inventory head", err)
 		} else {
 			actionID = head.ActionID
 		}
@@ -277,13 +284,17 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 			Where("tenant_id = ? AND product_key = ? AND target_platform = ?", scope.TenantID, scope.ProductKey, scope.TargetPlatform).
 			Take(&head).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
+			return "", productasset.ErrApprovedAssetsNotReady
 		}
 		if err != nil {
-			return productasset.ApprovedAssetInventory{}, mapRepositoryError("load approved inventory head", err)
+			return "", mapRepositoryError("load approved inventory head", err)
 		}
 		actionID = head.ActionID
 	}
+	return actionID, nil
+}
+
+func (r *repository) readApprovedInventory(ctx context.Context, scope productasset.InventoryScope, actionID string) (productasset.ApprovedAssetInventory, error) {
 	var selection struct{ IsImageSet bool }
 	if err := r.db.WithContext(ctx).Model(&ApprovalReceiptRecord{}).Select("CASE WHEN selection_json IS NULL THEN FALSE ELSE TRUE END AS is_image_set").Where("tenant_id = ? AND action_id = ?", scope.TenantID, actionID).Take(&selection).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -313,7 +324,7 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 	if scope.SourceSnapshotVersion > 0 {
 		recordQuery = recordQuery.Where("source_snapshot_version = ?", scope.SourceSnapshotVersion)
 	}
-	err = recordQuery.Order("slot_id ASC, attempt ASC, asset_id ASC").Find(&records).Error
+	err := recordQuery.Order("slot_id ASC, attempt ASC, asset_id ASC").Find(&records).Error
 	if err != nil {
 		return productasset.ApprovedAssetInventory{}, mapRepositoryError("load approved asset inventory", err)
 	}

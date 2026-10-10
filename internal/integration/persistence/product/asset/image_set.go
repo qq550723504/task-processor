@@ -68,8 +68,25 @@ func (r *repository) ReadImageSetInventory(ctx context.Context, scope productass
 		return productasset.ImageSetInventory{}, productasset.ErrRepositoryStateInvalid
 	}
 	result := productasset.ImageSetInventory{Scope: scope, Assets: []productasset.ApprovedAsset{}, Head: productasset.ImageInventoryHead{ActionID: commit.ActionID, PayloadHash: hash}}
-	if commit.SourceSnapshotVersion == scope.SourceSnapshotVersion {
+	// The global head protects selection CAS; assets follow the requested
+	// source version, using the same exact inventory as downstream consumers.
+	if scope.SourceSnapshotVersion == 0 {
+		result.ApprovalActionID = commit.ActionID
 		result.Assets = commit.Assets
+		return result, nil
 	}
+	actionID, err := r.approvedInventoryAction(ctx, scope)
+	if errors.Is(err, productasset.ErrApprovedAssetsNotReady) {
+		return result, nil
+	}
+	if err != nil {
+		return productasset.ImageSetInventory{}, err
+	}
+	inventory, err := r.readApprovedInventory(ctx, scope, actionID)
+	if err != nil {
+		return productasset.ImageSetInventory{}, err
+	}
+	result.ApprovalActionID = actionID
+	result.Assets = inventory.Assets
 	return result, nil
 }

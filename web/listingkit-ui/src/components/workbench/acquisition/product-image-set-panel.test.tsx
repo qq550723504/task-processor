@@ -28,7 +28,7 @@ beforeEach(()=>{
   if(url.endsWith("/confirm")){state=projection("awaiting_final_approval",body.actionId);return Response.json({runId,status:"accepted"},{status:202})}
   if(url.endsWith("/preview"))return Response.json({digest,head:{action_id:"",payload_hash:""},assets:[{id:"generated-0",role:"main",url:"https://images.test/generated-0.png"},{id:"generated-1",role:"detail",url:"https://images.test/generated-1.png"}]});
   if(url.endsWith("/approve")){approved=true;state={...state,status:"completed",approvalAvailable:false};return Response.json({runId,status:"accepted"},{status:202})}
-  if(url.endsWith("/inventory"))return Response.json({target:{head:approved?{action_id:templateId,payload_hash:sha}:{action_id:"",payload_hash:""},assets:approved?[{id:"generated-0",role:"main",url:"https://images.test/generated-0.png",presentation:{group:"carousel",order:1}},{id:"generated-1",role:"detail",url:"https://images.test/generated-1.png",presentation:{group:"detail",order:1}}]:[]},generic:null});
+  if(url.endsWith("/inventory"))return Response.json({target:{approval_action_id:approved?templateId:"",head:approved?{action_id:templateId,payload_hash:sha}:{action_id:"",payload_hash:""},assets:approved?[{id:"generated-0",role:"main",url:"https://images.test/generated-0.png",presentation:{group:"carousel",order:1}},{id:"generated-1",role:"detail",url:"https://images.test/generated-1.png",presentation:{group:"detail",order:1}}]:[]},generic:null});
   if(url.endsWith(`/runs/${runId}`))return Response.json(state);
   throw new Error(`unexpected ${url}`);
  });vi.stubGlobal("fetch",fetch);
@@ -442,6 +442,36 @@ for(const failure of ["read","inventory"]){
 }
 const sheinTarget={Platform:"shein",StoreID:"saved-store",Site:"US",CategoryID:123,RecordID:"saved-record"} as const;
 const officialPlacement={Group:"spu",SKC:0,SKU:0,Type:1,Sort:1,Site:"US"};
+
+it.each(["target","generic"] as const)("reselects %s version assets with their own approval identity and the global CAS head",async(poolKind)=>{
+ state=poolKind==="generic"?sheinProjection():{...projection("awaiting_final_approval",templateId),plan:{Source:{...source,EffectiveVersion:"2"},Target:projection().plan.Target}};
+ const approvalAction="44444444-4444-4444-8444-444444444444",globalHead={action_id:"55555555-5555-4555-8555-555555555555",payload_hash:digest};
+ const pool={approval_action_id:approvalAction,head:globalHead,assets:[{id:"formal-version-two",role:"gallery",url:"https://images.test/formal-version-two.png",presentation:{group:"carousel",order:1}}]},empty={approval_action_id:"",head:globalHead,assets:[]};
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation((url,init)=>{
+  if(String(url).endsWith("/inventory"))return Promise.resolve(Response.json({target:poolKind==="target"?pool:empty,generic:poolKind==="generic"?pool:null}));
+  if(String(url).endsWith("/requirements"))return Promise.resolve(Response.json(sheinRequirements));
+  if(String(url).endsWith("/preview")){
+   const body=JSON.parse(String(init!.body));
+   if(body.choices[0]?.approval_action_id!==approvalAction)return Promise.resolve(Response.json({code:"IMAGE_APPROVAL_CONFLICT"},{status:409}));
+   return Promise.resolve(Response.json({digest,head:globalHead,assets:pool.assets}));
+  }
+  return real(url,init);
+ });
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation} initialRunId={runId}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"采用素材 1"}));
+ if(poolKind==="generic")fireEvent.change(screen.getAllByLabelText("官方图片位置").at(-1)!,{target:{value:"spu:0:0"}});
+ fireEvent.click(screen.getByRole("button",{name:"预览完整选择"}));
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/preview"))).toBe(true));
+ const preview=fetch.mock.calls.find(([url])=>String(url).endsWith("/preview"))!,command=JSON.parse(String(preview[1]!.body));
+ expect(command).toMatchObject({expectedHead:globalHead,choices:[{kind:"approved",approval_action_id:approvalAction,asset_id:"formal-version-two"}]});
+ if(poolKind==="generic")expect(command.choices[0].generic_head).toEqual(globalHead);else expect(command.choices[0]).not.toHaveProperty("generic_head");
+ fireEvent.click(await screen.findByRole("button",{name:"人工批准并保存素材"}));
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/approve"))).toBe(true));
+ const approve=fetch.mock.calls.find(([url])=>String(url).endsWith("/approve"))!;
+ expect(JSON.parse(String(approve[1]!.body))).toEqual({...command,selectionDigest:digest});
+ expect(fetch.mock.calls.some(([url])=>/\/(prepare|regenerate|confirm)$/.test(String(url)))).toBe(false);
+});
 const sheinRequirements={platform:"shein",site:"US",categoryId:123,version:"current-official-rules",nativeWidth:1024,nativeHeight:1024,groups:[{group:"spu",skc:0,sku:0,types:[{type:1,minimum:1,maximum:8,nativeCompatible:true}]}]};
 function sheinProjection(){const p=projection("awaiting_final_approval",templateId);return {...p,plan:{...p.plan,Source:{...source,EffectiveVersion:"2",ApplyReceiptID:operation},Target:sheinTarget},slots:p.slots.map(slot=>({...slot,recipe:{...slot.recipe,OfficialPlacement:officialPlacement}}))}}
 it("requires current compatible placements before regenerating a historical SHEIN slot",async()=>{

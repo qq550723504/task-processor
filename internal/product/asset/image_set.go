@@ -9,9 +9,12 @@ import (
 const ImageSetSelectionSchema = "product-image-selection-v1"
 
 type ImageSetInventory struct {
-	Scope  InventoryScope     `json:"scope"`
-	Head   ImageInventoryHead `json:"head"`
-	Assets []ApprovedAsset    `json:"assets"`
+	Scope InventoryScope `json:"scope"`
+	// Head is the global selection CAS fence, even for a version-specific read.
+	Head ImageInventoryHead `json:"head"`
+	// ApprovalActionID identifies the exact receipt that owns Assets.
+	ApprovalActionID string          `json:"approval_action_id"`
+	Assets           []ApprovedAsset `json:"assets"`
 }
 
 type ImageSetInventoryReader interface {

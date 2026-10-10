@@ -140,6 +140,54 @@ func setSelectionService(t *testing.T, sources *setSourceReader, candidates *set
 	return service, repo
 }
 
+func TestImageSetCanExplicitlyReuseVersionAssetsAfterAnotherVersionIsApproved(t *testing.T) {
+	sources, input := setSelectionFixture()
+	sources.selection.EffectiveCatalogVersion, input.Source.EffectiveCatalogVersion = 2, 2
+	input.ActionID = "approve-version-two"
+	input.Choices = input.Choices[:1]
+	candidates := &setCandidateReader{}
+	service, repo := setSelectionService(t, sources, candidates)
+	ctx := context.Background()
+	preview, err := service.Preview(ctx, input)
+	require.NoError(t, err)
+	input.SelectionDigest = preview.Digest
+	versionTwoReceipt, err := service.Select(ctx, input)
+	require.NoError(t, err)
+	reader := repo.(productasset.ImageSetInventoryReader)
+	scope := productasset.InventoryScope{TenantID: "org", ProductKey: "product", TargetPlatform: "product", SourceSnapshotVersion: 2}
+	versionTwo, err := reader.ReadImageSetInventory(ctx, scope)
+	require.NoError(t, err)
+	sources.selection.EffectiveCatalogVersion, input.Source.EffectiveCatalogVersion = 1, 1
+	input.ActionID, input.ExpectedHead, input.SelectionDigest = "restore-version-one", versionTwo.Head, ""
+	preview, err = service.Preview(ctx, input)
+	require.NoError(t, err)
+	input.SelectionDigest = preview.Digest
+	_, err = service.Select(ctx, input)
+	require.NoError(t, err)
+	available, err := reader.ReadImageSetInventory(ctx, scope)
+	require.NoError(t, err)
+	require.Len(t, available.Assets, 1, "the version-two approved image remains selectable")
+	require.Equal(t, versionTwo.Assets, available.Assets)
+	require.Equal(t, "restore-version-one", available.Head.ActionID)
+	require.Equal(t, versionTwoReceipt.ActionID, available.ApprovalActionID)
+	sources.selection.EffectiveCatalogVersion, input.Source.EffectiveCatalogVersion = 2, 2
+	input.ActionID, input.ExpectedHead, input.SelectionDigest = "reselect-version-two", available.Head, ""
+	input.Choices = []productasset.ImageSetChoice{{Kind: "approved", ApprovalActionID: available.ApprovalActionID, AssetID: available.Assets[0].ID, Presentation: productasset.ImagePresentation{Group: "detail", Order: 1}}}
+	preview, err = service.Preview(ctx, input)
+	require.NoError(t, err)
+	input.SelectionDigest = preview.Digest
+	receipt, err := service.Select(ctx, input)
+	require.NoError(t, err)
+	require.Len(t, receipt.AssetIDs, 1)
+	selected, err := reader.ReadImageSetInventory(ctx, scope)
+	require.NoError(t, err)
+	require.Equal(t, input.ActionID, selected.Head.ActionID)
+	require.Equal(t, versionTwo.Assets[0].SourceApproval, selected.Assets[0].SourceApproval, "reselection preserves the approved original's provenance")
+	require.Equal(t, versionTwo.Assets[0].URL, selected.Assets[0].URL)
+	require.Equal(t, &productasset.ImagePresentation{Group: "detail", Order: 1}, selected.Assets[0].Presentation)
+	require.Zero(t, candidates.calls, "reselection does not generate a new candidate")
+}
+
 func TestImageSetExplicitGenericAdoptionRequiresTheExactCurrentGenericHead(t *testing.T) {
 	sources, input := setSelectionFixture()
 	candidates := &setCandidateReader{}
@@ -151,14 +199,27 @@ func TestImageSetExplicitGenericAdoptionRequiresTheExactCurrentGenericHead(t *te
 	require.NoError(t, err)
 	generic, err := repo.(productasset.ImageSetInventoryReader).ReadImageSetInventory(context.Background(), productasset.InventoryScope{TenantID: "org", ProductKey: "product", TargetPlatform: "product", SourceSnapshotVersion: 1})
 	require.NoError(t, err)
+	sources.selection.EffectiveCatalogVersion, input.Source.EffectiveCatalogVersion = 2, 2
+	input.ActionID, input.ExpectedHead, input.SelectionDigest = "approve-other-version", generic.Head, ""
+	preview, err = service.Preview(context.Background(), input)
+	require.NoError(t, err)
+	input.SelectionDigest = preview.Digest
+	_, err = service.Select(context.Background(), input)
+	require.NoError(t, err)
+	sources.selection.EffectiveCatalogVersion, input.Source.EffectiveCatalogVersion = 1, 1
+	generic, err = repo.(productasset.ImageSetInventoryReader).ReadImageSetInventory(context.Background(), productasset.InventoryScope{TenantID: "org", ProductKey: "product", TargetPlatform: "product", SourceSnapshotVersion: 1})
+	require.NoError(t, err)
+	require.Equal(t, receipt.ActionID, generic.ApprovalActionID)
+	require.Equal(t, "approve-other-version", generic.Head.ActionID)
 	sources.selection.TargetPlatform = "shein"
 	service, err = productasset.NewImageSetService(sources, repo, repo.(productasset.ImageSetInventoryReader), repo.(productasset.ApprovalCommitReader), candidates, selectedTargetPositions{t: t})
 	require.NoError(t, err)
 	input.ActionID = "adopt-1"
+	input.ExpectedHead = productasset.ImageInventoryHead{}
 	input.Source.TargetPlatform = "shein"
 	input.SelectionDigest = ""
 	input.Target = &productasset.ImageSetTarget{RecordID: "record", StoreID: "store", Site: "shein-us", ApplicationID: "application", ApplicationMode: "self_operated", CategoryID: 1, ProductTypeID: 2, AttributesDigest: strings.Repeat("a", 64), VariantsDigest: strings.Repeat("b", 64)}
-	input.Choices = []productasset.ImageSetChoice{{Kind: "approved", ApprovalActionID: receipt.ActionID, AssetID: receipt.AssetIDs[1], Presentation: productasset.ImagePresentation{Group: "detail", Order: 1}, OfficialPlacement: &productasset.ImageOfficialPlacement{Group: "skc", Type: 5, Sort: 1, Site: "shein-us"}}}
+	input.Choices = []productasset.ImageSetChoice{{Kind: "approved", ApprovalActionID: generic.ApprovalActionID, AssetID: receipt.AssetIDs[1], Presentation: productasset.ImagePresentation{Group: "detail", Order: 1}, OfficialPlacement: &productasset.ImageOfficialPlacement{Group: "skc", Type: 5, Sort: 1, Site: "shein-us"}}}
 	_, err = service.Preview(context.Background(), input)
 	require.ErrorIs(t, err, productasset.ErrApprovalConflict)
 	input.Choices[0].GenericHead = &generic.Head

@@ -1,9 +1,18 @@
 import {afterEach,expect,it,vi} from "vitest";
 import {imageSetRequest} from "./product-image-set";
-import {imageSetSourcesSchema,imageSetApprovalSchema,imageSetAcceptedSchema} from "../contracts/product-image-set";
+import {imageSetSourcesSchema,imageSetApprovalSchema,imageSetAcceptedSchema,imageSetInventorySchema} from "../contracts/product-image-set";
 const id="11111111-1111-4111-8111-111111111111",run="22222222-2222-4222-8222-222222222222",action="33333333-3333-4333-8333-333333333333";
 const scope={userId:"actor",organizationId:"org",kind:"acquisition" as const,contextId:id};
 afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers()});
+it.each(["target","generic"] as const)("refuses %s inventory assets without their exact approval identity",async(poolKind)=>{
+ const head={action_id:action,payload_hash:"a".repeat(64)},empty={head,approval_action_id:"",assets:[]};
+ for(const approval of [undefined,""]){
+  const invalid={head,...approval===undefined?{}:{approval_action_id:approval},assets:[{id:"formal-image",role:"gallery",url:"https://images.test/formal.png"}]};
+  const fetch=vi.fn().mockResolvedValue(Response.json({target:poolKind==="target"?invalid:empty,generic:poolKind==="generic"?invalid:null}));vi.stubGlobal("fetch",fetch);
+  await expect(imageSetRequest(scope,"inventory",imageSetInventorySchema,{runId:run})).rejects.toMatchObject({code:"INVALID_UPSTREAM_RESPONSE"});
+  expect(fetch).toHaveBeenCalledOnce();expect(fetch.mock.calls[0][1].method).toBe("GET");
+ }
+});
 it.each([
  ...(["acquisition","supply"] as const).flatMap(kind=>[
   {kind,duration:31_000,cancelEarly:false,success:true},
