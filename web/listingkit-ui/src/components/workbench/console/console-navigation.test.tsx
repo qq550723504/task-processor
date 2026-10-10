@@ -18,6 +18,15 @@ it("opens saved reports without an Agent only when the report runtime is configu
  expect(screen.getByRole("link",{name:"全部报告"})).toHaveAttribute("href","/workbench/ai/reports/all");
  expect(screen.queryByRole("link",{name:"硕米Chat"})).not.toBeInTheDocument();
 });
+
+it("only opens the granted cockpit page and keeps settings under its goal",()=>{
+ const view=render(<ConsoleNavigation pathname="/workbench/overview/goals/settings" ariaLabel="主导航" operationsCockpitAvailable cockpitPermissions={["workbench.cockpit.goals.read"]}/>);
+ expect(screen.getByRole("link",{name:"目标管理"})).toHaveAttribute("title","目标管理");
+ expect(screen.getByRole("link",{name:"店铺矩阵"})).toHaveAttribute("title","店铺矩阵：业务暂未启用");
+ expect(findConsoleRoute("/workbench/overview/goals/settings")?.trail.map(n=>n.label)).toEqual(["运营驾驶舱","目标管理","设置经营目标"]);
+ view.rerender(<ConsoleNavigation pathname="/workbench/overview/goals" ariaLabel="主导航" operationsCockpitAvailable={false} cockpitPermissions={["workbench.cockpit.goals.read"]}/>);
+ expect(screen.getByRole("link",{name:"目标管理"})).toHaveAttribute("title","目标管理：业务暂未启用");
+});
 it("advertises each Store observation entry only with ready runtime and its read permission", () => {
   const view=render(<ConsoleNavigation pathname="/workbench/store-orders" ariaLabel="主导航" storeProductsAvailable={false} storeOrdersAvailable={false}/>);
   expect(screen.getByRole("link",{name:"订单履约"})).toHaveAttribute("title","订单履约：业务暂未启用");

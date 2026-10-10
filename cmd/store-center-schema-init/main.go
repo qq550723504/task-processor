@@ -24,15 +24,16 @@ import (
 func main() {
 	path := flag.String("config", "", "absolute private Store schema-owner JSON config")
 	observations := flag.Bool("observations", false, "install readonly platform observations on an authorized fresh empty Store instance")
+	cockpit := flag.Bool("operations-cockpit", false, "install manual financial facts and goals on an authorized fresh empty Store instance")
 	flag.Parse()
-	if err := run(*path, *observations); err != nil {
+	if err := run(*path, *observations, *cockpit); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	fmt.Println("current Store schema installed and narrow runtime roles granted")
 }
 
-func run(storePath string, observations bool) error {
+func run(storePath string, observations, cockpit bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	storeCfg, err := loadOwnerConfig(storePath, "store_center_owner")
@@ -53,6 +54,11 @@ func run(storePath string, observations bool) error {
 	if observations {
 		if err := storeschema.InstallObservations(ctx, records); err != nil {
 			return fmt.Errorf("initialize Store observation schema: %w", err)
+		}
+	}
+	if cockpit {
+		if err := storeschema.InstallOperationsCockpit(ctx, records); err != nil {
+			return fmt.Errorf("initialize Cockpit schema: %w", err)
 		}
 	}
 	return nil

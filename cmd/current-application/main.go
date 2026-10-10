@@ -171,6 +171,9 @@ func execute() error {
 					options = append(options, httpapi.WithStoreOfficialApplications(features.OfficialStoreApplications))
 				}
 			}
+			if features.OperationsCockpit {
+				options = append(options, httpapi.WithOperationsCockpit())
+			}
 			if features.StoreObservationsWorkflow != nil {
 				options = append(options, httpapi.WithStoreObservations(httpapi.StoreObservationsDependencies{Starter: observationruntime.Starter{Client: features.StoreObservationsWorkflow}, Lifecycle: features.StoreObservationsLifecycle, NewWorker: observationruntime.WorkerFactory(features.StoreObservationsWorkflow, features.StoreObservationsLifecycle)}))
 			}

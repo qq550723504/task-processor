@@ -231,7 +231,7 @@ it("allows switching after an unknown outcome and retries only the restored orig
   expect([...switchGuards].every((guard) => guard()), "in-flight dispatch must block switching").toBe(false);
   lost.reject(new Error("response lost"));
   await screen.findByRole("button", { name: "重试原操作" });
-  expect([...switchGuards].every((guard) => guard()), "retained unknown intent must allow switching away").toBe(true);
+  await waitFor(() => expect([...switchGuards].every((guard) => guard()), "retained unknown intent must allow switching away").toBe(true));
   first.unmount();
   context.effectiveOrganization = { id: "org-b", name: "B企业" };
   const second = mount("official");

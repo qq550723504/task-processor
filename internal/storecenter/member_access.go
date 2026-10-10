@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"sort"
 	"strconv"
 	"time"
 
@@ -172,6 +173,43 @@ func (r *MemberScopedStoreRepository) Get(ctx context.Context, org, id string) (
 	}
 	base, _ := NewGormStoreRepository(r.db)
 	return base.Get(ctx, org, id)
+}
+
+// LockRead fences a bounded set of Store records and member grants in the
+// caller's borrowed transaction. Administrators also lock Store rows. The
+// current owner keeps the same Store-then-grant order as its mutations.
+func (r *MemberScopedStoreRepository) LockRead(ctx context.Context, org string, ids []string) error {
+	if r == nil || r.db == nil || r.db.Statement == nil {
+		return ErrDependencyUnavailable
+	}
+	if _, borrowed := r.db.Statement.ConnPool.(gorm.TxCommitter); !borrowed {
+		return ErrDependencyUnavailable
+	}
+	if len(ids) == 0 || len(ids) > 50 {
+		return ErrNotFound
+	}
+	sorted := append([]string(nil), ids...)
+	sort.Strings(sorted)
+	for i, id := range sorted {
+		parsed, err := uuid.Parse(id)
+		if err != nil || parsed == uuid.Nil || parsed.String() != id || i > 0 && sorted[i-1] == id {
+			return ErrNotFound
+		}
+	}
+	access, err := r.authorize(ctx, org, false)
+	if err != nil {
+		return err
+	}
+	tx := r.db.WithContext(ctx)
+	for _, id := range sorted {
+		if err := lockMemberStore(tx, org, id); err != nil {
+			return err
+		}
+		if err := requireMemberGrant(tx, access, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 func (r *MemberScopedStoreRepository) withWrite(ctx context.Context, org, id string, mutation func(*GormStoreRepository) error) error {
 	access, err := r.authorize(ctx, org, true)

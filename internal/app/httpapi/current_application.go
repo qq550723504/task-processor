@@ -35,7 +35,9 @@ import (
 	"task-processor/internal/knowledge"
 	knowledgehttp "task-processor/internal/knowledge/httpapi"
 	"task-processor/internal/ledger/orgresource"
+	o "task-processor/internal/marketplace/shein/observations"
 	notificationhttp "task-processor/internal/notificationcenter/httpapi"
+	cockpithttp "task-processor/internal/operationscockpit/httpapi"
 	collectionhttp "task-processor/internal/product/collection/httpapi"
 	"task-processor/internal/product/sourcing"
 	reporthttp "task-processor/internal/reportcenter/httpapi"
@@ -125,6 +127,7 @@ type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
 	reportCenters                int
 	reportCenterDB               *gorm.DB
+	operationsCockpits           int
 	privateDraftTrials           int
 	privateDraftTrial            *PrivateDraftTrialDependencies
 	agentCustomizations          int
@@ -354,7 +357,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		option(&supplied)
 	}
-	if supplied.storeObservations > 1 || supplied.storeCenters > 1 || supplied.localTrials > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.productCollections > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 || supplied.projectCenters > 1 || supplied.projectCenters == 1 && supplied.projectCenterDB == nil || supplied.accountAuditSources > 1 {
+	if supplied.operationsCockpits > 1 || supplied.storeObservations > 1 || supplied.storeCenters > 1 || supplied.localTrials > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.productCollections > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 || supplied.projectCenters > 1 || supplied.projectCenters == 1 && supplied.projectCenterDB == nil || supplied.accountAuditSources > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
 	}
 	if supplied.collectionSourceMedias > 1 || cfg.ProductCollectionSourceMedia.Enabled != (supplied.collectionSourceMedias == 1) || supplied.collectionSourceMedias == 1 && (supplied.productCollections != 1 || supplied.collectionSourceMedia == nil || supplied.collectionSourceMedia.Storage == nil) {
@@ -363,7 +366,10 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	if supplied.storeObservations > 0 && (supplied.storeCenters != 1 || supplied.storeObservationDependencies == nil || supplied.storeObservationDependencies.Starter == nil || supplied.storeObservationDependencies.NewWorker == nil || supplied.storeObservationDependencies.Lifecycle == nil || supplied.officialStoreApplications == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "") {
 		return nil, errors.New("Store observations require current Store, official registry, exact authorization and worker lifecycle")
 	}
-	storeCapabilities := storecenter.RuntimeCapabilities{Observations: supplied.storeObservations == 1}
+	if supplied.operationsCockpits > 0 && (supplied.storeCenters != 1 || supplied.storeCenterDB == nil) {
+		return nil, errors.New("operations cockpit requires current Store owner")
+	}
+	storeCapabilities := storecenter.RuntimeCapabilities{Observations: supplied.storeObservations == 1, OperationsCockpit: supplied.operationsCockpits == 1}
 	if supplied.productCollections > 0 && supplied.productAcquisitionDB == nil {
 		return nil, errors.New("collections require their current Product owner pool")
 	}
@@ -576,8 +582,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		modules = append(modules, stores)
 	}
+	var savedObservations *o.Service
 	if supplied.storeObservations > 0 {
-		module, err := buildCurrentStoreObservations(ctx, supplied.storeCenterDB, *supplied.storeObservationDependencies, *workbench.authDependencies, authorizer, supplied.officialStoreApplications, cfg)
+		module, err := buildCurrentStoreObservations(ctx, supplied.storeCenterDB, *supplied.storeObservationDependencies, *workbench.authDependencies, authorizer, supplied.officialStoreApplications, cfg, storeCapabilities)
 		if err != nil {
 			return nil, fmt.Errorf("build current Store observations: %w", err)
 		}
@@ -585,8 +592,10 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		if workbench.handler != nil {
 			workbench.handler.SetStoreObservationsReadiness(module.application.Available)
 		}
+		savedObservations = module.application.Service
 	}
 	if supplied.localTrials > 0 {
+		// The local trial shares no Cockpit facts or schema ownership.
 		trial, err := factories.buildLocalTrial(ctx, supplied.localTrialDB, authorizer, *workbench.authDependencies)
 		if err != nil {
 			return nil, fmt.Errorf("build #36 local trial: %w", err)
@@ -595,6 +604,16 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 			return nil, errors.New("#36 local trial unavailable")
 		}
 		modules = append(modules, trial)
+	}
+	if supplied.operationsCockpits > 0 {
+		module, err := buildOperationsCockpit(ctx, supplied.storeCenterDB, *workbench.authDependencies, authorizer, storeCapabilities, savedObservations)
+		if err != nil {
+			return nil, fmt.Errorf("build operations cockpit: %w", err)
+		}
+		modules = append(modules, module)
+		if workbench.handler != nil {
+			workbench.handler.SetOperationsCockpitAvailable(true)
+		}
 	}
 	sms, err := buildZitadelSMSModule(ctx)
 	if err != nil {
@@ -884,6 +903,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	fullSupply, privateDraftTrial := supplied.supplyRouteFeatures()
 	routeFeatures := currentApplicationOptionalRoutes{
 		ReportCenter:        supplied.reportCenterDB != nil,
+		OperationsCockpit:   supplied.operationsCockpits > 0,
 		AgentCustomization:  supplied.agentCustomizations > 0,
 		PrivateDraftTrial:   privateDraftTrial,
 		ToolMarket:          supplied.toolMarket != nil,
@@ -990,6 +1010,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 
 type currentApplicationOptionalRoutes struct {
 	ReportCenter        bool
+	OperationsCockpit   bool
 	PrivateDraftTrial   bool
 	AgentCustomization  bool
 	ToolMarket          bool
@@ -1015,6 +1036,14 @@ type currentApplicationOptionalRoutes struct {
 
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if optional.OperationsCockpit {
+		if !optional.StoreCenter {
+			return errors.New("operations cockpit requires current Store routes")
+		}
+		for _, r := range cockpithttp.Routes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
 	if optional.AgentCustomization {
 		for _, r := range customhttp.Routes(nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
@@ -1205,6 +1234,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 				return errors.New("report center not admitted")
 			}
 			if err := reporthttp.ValidateDescriptor(descriptor); err != nil {
+				return err
+			}
+		}
+		if descriptor.Path == cockpithttp.Base || strings.HasPrefix(descriptor.Path, cockpithttp.Base+"/") {
+			if !optional.OperationsCockpit {
+				return errors.New("operations cockpit feature not admitted")
+			}
+			if err := cockpithttp.ValidateDescriptor(descriptor); err != nil {
 				return err
 			}
 		}
