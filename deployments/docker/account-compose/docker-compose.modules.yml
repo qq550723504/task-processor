@@ -17,13 +17,14 @@ services:
    - runtime-secrets:/base:ro
    - business-db-admin-secret:/secrets/admin:ro
    - store-owner-secret:/secrets/store-owner:ro
+   - qualification-storage-secret:/qualification-storage-secret
   depends_on: {schema-init: {condition: service_completed_successfully}}
  qualification-objects:
   build: {context: .,dockerfile: Dockerfile.knowledge-storage,target: server}
   network_mode: service:runtime-network
   entrypoint: [/bin/sh,-ec]
-  command: ['export MINIO_ROOT_USER=qualification_local_root; export MINIO_ROOT_PASSWORD="$$(cat /state/qualification-root-password)"; exec minio server /data --address 127.0.0.1:9000']
-  volumes: [module-install-state:/state:ro,qualification-objects:/data]
+  command: ['export MINIO_ROOT_USER=qualification_local_root; export MINIO_ROOT_PASSWORD="$$(cat /qualification-private/root-password)"; exec minio server /data --address 127.0.0.1:9000']
+  volumes: [qualification-storage-secret:/qualification-private:ro,qualification-objects:/data]
   depends_on: {native-modules-init: {condition: service_completed_successfully}}
   healthcheck: {test: [CMD,wget,-q,-O,/dev/null,http://127.0.0.1:9000/minio/health/live],interval: 3s,timeout: 3s,retries: 40}
  qualification-storage-init:
@@ -33,7 +34,7 @@ services:
   volumes:
    - ./qualification-storage-init.sh:/init/qualification-storage-init.sh:ro
    - ./qualification-storage-policy.json:/init/qualification-storage-policy.json:ro
-   - module-install-state:/state:ro
+   - qualification-storage-secret:/qualification-private:ro
    - module-runtime:/runtime:ro
   depends_on: {qualification-objects: {condition: service_healthy}}
  current-application:
@@ -62,3 +63,4 @@ volumes:
  module-install-state: {name: "${COMPOSE_PROJECT_NAME}-module-install-state"}
  module-runtime: {name: "${COMPOSE_PROJECT_NAME}-module-runtime"}
  qualification-objects: {name: "${COMPOSE_PROJECT_NAME}-qualification-objects"}
+ qualification-storage-secret: {name: "${COMPOSE_PROJECT_NAME}-qualification-storage-secret"}

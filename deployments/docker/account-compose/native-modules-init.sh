@@ -7,6 +7,7 @@ case "${ACCOUNT_APPLICATION_PORT:-}" in ''|*[!0-9]*) echo 'application port requ
 test "$ACCOUNT_APPLICATION_PORT" -ge 1 && test "$ACCOUNT_APPLICATION_PORT" -le 65535
 if test -f /state/.complete; then
  test "$(cat /state/.complete)" = native-modules-v1 && test -s /runtime/current-application.json
+ test -s /qualification-storage-secret/root-password || { echo 'Retained qualification storage requires its original private root secret' >&2; exit 1; }
  echo 'Native module facts and configuration retained'
  exit 0
 fi
@@ -68,7 +69,7 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 jq -n --rawfile password /secrets/store-owner/store-owner-password '{host:"127.0.0.1",port:5433,user:"store_center_owner",password:($password|rtrimstr("\n")),database:"store_center",maxConnections:2,maxIdleConnections:1}' > "$work/store-owner.json"
 store-center-schema-init -config "$work/store-owner.json" --operations-cockpit
-openssl rand -hex 24 | tr -d '\n' > /state/qualification-root-password
+openssl rand -hex 24 | tr -d '\n' > /qualification-storage-secret/root-password
 openssl rand -hex 16 | tr -d '\n' > /runtime/qualification-access-key
 openssl rand -hex 24 | tr -d '\n' > /runtime/qualification-secret-key
 jq --arg appURL "https://localhost:$ACCOUNT_APPLICATION_PORT/capture/1688" --rawfile nc /state/notification_center-runtime-password --rawfile ac /state/agent_customization-runtime-password --rawfile pc /state/ai_projects-runtime-password --rawfile rc /state/reports-runtime-password --rawfile tc /state/tool_market-runtime-password --rawfile pr /state/product-runtime-password --rawfile token /base/membership-read.pat --rawfile ak /runtime/qualification-access-key --rawfile sk /runtime/qualification-secret-key '

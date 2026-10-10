@@ -50,6 +50,8 @@ Local IAM identities/roles are separate from business acceptance.
    driver, the original Data Services Temporal worker, and the exact-origin tool
    package. Only installer containers mount administrative/schema credentials;
    serving receives its current private manifest and bounded runtime roles.
+   Qualification object storage mounts only its dedicated root-password volume,
+   never the SQL/module installation state containing other owner credentials.
 5. Native descriptors/current IAM and truthful UI capability flags. The admitted
    optional local suspension policy in Data Services is unchanged; exact original
    grants, active users, native permissions and deadlines remain mandatory.
