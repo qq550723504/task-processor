@@ -82,11 +82,6 @@ export function findConsoleRoute(pathname: string): ConsoleRoute | undefined {
     const node: ConsoleNavNode = { label: "业务会话", href: pathname, availability: "connected" };
     return { node, trail: [...parent.trail, node] };
   }
-  if (/^\/workbench\/ai\/reports\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(pathname)) {
-    const parent = findConsoleRoute("/workbench/ai/reports")!;
-    const node: ConsoleNavNode = { label: "报告详情", href: pathname, availability: parent.node.availability };
-    return { node, trail: [...parent.trail, node] };
-  }
   if (/^\/workbench\/ai\/tasks\/[0-9a-f-]{36}$/.test(pathname)) {
     const parent = findConsoleRoute("/workbench/ai/tasks")!;
     const node: ConsoleNavNode = { label: "任务详情", href: pathname, availability: "connected" };
