@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 # Keep this entrypoint materialized as LF on existing Windows worktrees.
+. /usr/local/lib/account-compose/commercial-database-name.sh
 
 state=/state
 trusted_ca=/trusted-ca

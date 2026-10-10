@@ -59,6 +59,7 @@ ENTRYPOINT ["/usr/local/bin/current-application"]
 
 FROM alpine:3.22 AS bootstrap
 RUN apk add --no-cache openssl
+COPY deployments/docker/account-compose/commercial-database-name.sh /usr/local/lib/account-compose/commercial-database-name.sh
 COPY --chmod=0755 deployments/docker/account-compose/bootstrap.sh /usr/local/bin/account-bootstrap
 ENTRYPOINT ["/usr/local/bin/account-bootstrap"]
 

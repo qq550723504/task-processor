@@ -11,6 +11,12 @@ serving. Use the same four overlays on every restart.
 Choose a fresh project and free loopback ports using the base README. A private
 `.env` contains the project, three ports and `ACCOUNT_TOOL_RELEASE_DIRECTORY`
 (an absolute path to this installation's plugin release, with no credentials).
+`ACCOUNT_COMMERCIAL_DATABASE` defaults to `commercial`; custom names must use
+at most 63 lowercase letters, digits or underscores and begin with a letter.
+The existing owner names and the native names `notification_center`,
+`agent_customization`, `ai_projects`, `reports` and `tool_market` are reserved.
+Bootstrap and PostgreSQL initialization share this check; invalid names are
+rejected before credentials or business database facts are provisioned.
 First build the existing capture plugin against this program's exact HTTPS origin:
 
 ```powershell
