@@ -189,13 +189,13 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
   }catch(e){if(!controller.signal.aborted)fail(e)}finally{flight.current=false;if(!controller.signal.aborted)setBusy(false)}
  }
  function newPreparation(parent?:ImageSetRun){
-  const content=parent?runTemplate:template;
-  if(locked||!content||!sources||!(parent?regenerate:tasks).length)return;
+  const content=parent?runTemplate:template,preparationSources=parent?runSources:sources;
+  if(locked||!content||!preparationSources||!(parent?regenerate:tasks).length)return;
   const selectedTasks=parent?regenerate:tasks;
   if(parent?.plan.Target.Platform==="shein"&&selectedTasks.some(id=>!currentGeneratedPosition(positions[id],requirements)))return;
   const groups=parent?{carousel:content.image.carousel.filter(t=>selectedTasks.includes(t.id)).length,detail:content.image.detail.filter(t=>selectedTasks.includes(t.id)).length}:null;
   const selectedTarget=parent?parent.plan.Target.Platform==="shein"?parent.plan.Target:{Platform:"product" as const}:platform==="shein"&&editorTarget?editorTarget:{Platform:"product" as const};
-  const selectedSource=parent?.plan.Source??sources.source;
+  const selectedSource=parent?.plan.Source??preparationSources.source;
   const originals=(group?:"carousel"|"detail")=>[...new Set(parent!.slots.filter(slot=>selectedTasks.includes(slot.slotId)&&(!group||slot.recipe.Placement.Group===group)).flatMap(slot=>slot.recipe.References.map(ref=>ref.AssetID)))];
   const body:ImageSetPrepare={template:{templateId:content.templateId,revision:content.version},target:selectedTarget,selectedTaskIds:selectedTasks,effectiveCatalogVersion:selectedSource.EffectiveVersion,...selectedSource.ApplyReceiptID?{applyReceiptId:selectedSource.ApplyReceiptID}:{},...content.image.shareOriginals?{sharedOriginalIds:parent?originals():shared}:{carouselOriginalIds:parent?originals("carousel"):groups&&!groups.carousel?[]:carousel,detailOriginalIds:parent?originals("detail"):groups&&!groups.detail?[]:detail},...selectedTarget.Platform==="shein"?{officialPlacements:Object.fromEntries(selectedTasks.flatMap(id=>{const position=positions[id];return position?[[id,position]]:[]}))}:{}};
   void send({action:parent?"regenerate":"prepare",runId:parent?.runId,requestKey:crypto.randomUUID(),body});
@@ -244,7 +244,7 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
  const available=entry?.agent.activation==="ENABLED"&&entry.canUse&&entry.capabilities.some(c=>c.id==="image.generate"&&c.readiness==="AVAILABLE");
  const allTasks=template?[...template.image.carousel.map(t=>({...t,group:"carousel" as const})),...template.image.detail.map(t=>({...t,group:"detail" as const}))]:[];
  const canPrepare=available&&!!template&&tasks.length>0&&(template.image.shareOriginals?shared.length>0:(!template.image.carousel.some(t=>tasks.includes(t.id))||carousel.length>0)&&(!template.image.detail.some(t=>tasks.includes(t.id))||detail.length>0))&&(platform==="product"||!!requirements&&tasks.every(id=>!!positions[id]));
- const canRegenerate=available&&!!runTemplate&&regenerate.length>0&&regenerate.every(id=>[...runTemplate.image.carousel,...runTemplate.image.detail].some(task=>task.id===id))&&(run?.plan.Target.Platform!=="shein"||regenerate.every(id=>currentGeneratedPosition(positions[id],requirements)));
+ const canRegenerate=available&&!!runTemplate&&!!runSources&&regenerate.length>0&&regenerate.every(id=>[...runTemplate.image.carousel,...runTemplate.image.detail].some(task=>task.id===id))&&(run?.plan.Target.Platform!=="shein"||regenerate.every(id=>currentGeneratedPosition(positions[id],requirements)));
  function originalChoices(group:string,values:string[],change:(next:string[])=>void){return <section className="space-y-3"><h4 className="text-sm font-medium">{group} · {values.length}/8</h4><div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{sources?.originals.map((image,i)=><label key={image.id} className={`rounded-lg border p-2 ${values.includes(image.id)?"border-emerald-500 bg-emerald-50":"border-slate-200"}`}><Image src={image.displayUrl} width={100} height={100} unoptimized alt={`原始素材 ${i+1}`} className="h-20 w-full object-contain"/><span className="mt-2 flex items-center gap-1 text-xs"><input type="checkbox" aria-label={`${group} 素材 ${i+1}`} disabled={locked||!values.includes(image.id)&&values.length>=8} checked={values.includes(image.id)} onChange={e=>change(e.target.checked?[...values,image.id]:values.filter(id=>id!==image.id))}/>素材 {i+1}</span></label>)}</div></section>}
  const official=run?.plan.Target.Platform==="shein";
  return <Card className="space-y-5 p-6">

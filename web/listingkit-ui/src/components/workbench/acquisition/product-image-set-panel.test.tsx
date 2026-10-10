@@ -88,17 +88,23 @@ it.each(["unavailable","mismatched"])("keeps restored results without falling ba
  expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
 });
 it("restores a historical run even when the current source version is unavailable",async()=>{
- const historical={...source,EffectiveVersion:"2"};state={...projection("awaiting_final_approval",templateId),plan:{...projection().plan,Source:historical}};
+ const historical={...source,ContextKind:"supply",EffectiveVersion:"2",ApplyReceiptID:operation};state={...projection("awaiting_final_approval",templateId),plan:{...projection().plan,Source:historical}};
  const real=fetch.getMockImplementation()!;
  fetch.mockImplementation((input,init)=>{
   const url=new URL(String(input),"http://localhost");
-  if(url.pathname.endsWith("/images/sources"))return Promise.resolve(url.searchParams.get("effectiveCatalogVersion")==="2"?Response.json({contextKind:"acquisition",contextId:operation,source:historical,manualReplacementAvailable:false,evidence:{},originals:[{id:"historical",displayUrl:"https://images.test/historical.png",width:1024,height:1024}]}):Response.json({code:"IMAGE_UNAVAILABLE"},{status:503}));
+  if(url.pathname.endsWith("/images/sources"))return Promise.resolve(url.searchParams.get("effectiveCatalogVersion")==="2"?Response.json({contextKind:"supply",contextId:operation,source:historical,manualReplacementAvailable:false,evidence:{},originals:[{id:"historical",displayUrl:"https://images.test/historical.png",width:1024,height:1024}]}):Response.json({code:"IMAGE_UNAVAILABLE"},{status:503}));
+  if(url.pathname.endsWith("/regenerate"))return Promise.resolve(Response.json(state,{status:201}));
   return real(input,init);
  });
- render(<ProductImageSetPanel kind="acquisition" contextId={operation} effectiveVersion="3" initialRunId={runId}/>);
+ render(<ProductImageSetPanel kind="supply" contextId={operation} effectiveVersion="3" applyReceiptId={templateId} initialRunId={runId}/>);
  fireEvent.click(await screen.findByRole("button",{name:"选择原图 1"}));
  expect(screen.getByRole("img",{name:"拟采用：原图 1"})).toHaveAttribute("src","https://images.test/historical.png");
  expect(screen.queryByRole("button",{name:/准备整套图片计划/})).not.toBeInTheDocument();expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+ fireEvent.click(screen.getAllByRole("checkbox",{name:"重新生成此项，另行确认点数"})[0]);const regenerate=screen.getByRole("button",{name:"准备所选 1 项的新计划"});await waitFor(()=>expect(regenerate).toBeEnabled());fireEvent.click(regenerate);
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/regenerate"))).toBe(true));
+ const request=fetch.mock.calls.find(([url])=>String(url).endsWith("/regenerate"))!;expect(request[0]).toContain(`/runs/${runId}/regenerate`);
+ expect(JSON.parse(String(request[1]!.body))).toMatchObject({effectiveCatalogVersion:"2",applyReceiptId:operation,selectedTaskIds:["main"],sharedOriginalIds:["original"],template:{templateId,revision:"1"}});
+ expect(fetch.mock.calls.some(([url])=>/\/(prepare|confirm|approve)$/.test(String(url)))).toBe(false);
 });
 it("ignores a late historical source response after switching back to another run",async()=>{
  const secondId="44444444-4444-4444-8444-444444444444";
