@@ -3,7 +3,7 @@
 Refs [执行 Issue #627](https://github.com/qq550723504/task-processor/issues/627)、#137。
 
 - Design Basis: **Independent Architecture**。
-- Admission Status: **NOT_READY / 第1轮独立评审待执行**。正式生产代码尚未开工。
+- Admission Status: **NOT_READY / 第1轮独立评审完成，目标归属产品决定待回复**。正式生产代码尚未开工；评审依据与分类见第10节。
 - 调查基线：`main 6db1bbc5529433d37b49708828b7d2b621bf9bc2`（含 #615）。
 - 唯一 Writer：chat `01a11f6e-6586-7e13-ba3a-1758a7123e90`，`codex/operations-cockpit`。
 
