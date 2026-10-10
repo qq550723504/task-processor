@@ -18,7 +18,7 @@ export async function reportRequest<T>(scope: ReportScope, path: string, schema:
     return result.data;
   } catch (e) { if (e instanceof ReportError) throw e; throw new ReportError(write && dispatched ? "OUTCOME_UNKNOWN" : "DEPENDENCY_UNAVAILABLE"); }
 }
-const storageKey = (scope: ReportScope) => `personal-report-intent:${scope.userId}:${scope.organizationId}`;
+const storageKey = (scope: ReportScope) => `personal-report-intent:${JSON.stringify([scope.userId, scope.organizationId])}`;
 export function readReportIntent(scope: ReportScope): ReportIntent | null {
   try { const raw = sessionStorage.getItem(storageKey(scope)); if (!raw) return null; return reportIntentSchema.parse(JSON.parse(raw)); } catch { throw new ReportError("INTENT_STORAGE_UNAVAILABLE"); }
 }

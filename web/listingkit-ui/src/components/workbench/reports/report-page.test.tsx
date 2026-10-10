@@ -4,14 +4,33 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { ReportPage } from "./report-page";
 import { fetchSheinRecords } from "@/lib/api/shein-records-client";
 import { type Report } from "@/lib/contracts/report-center";
+import { readReportIntent, writeReportIntent } from "@/lib/api/report-center";
 const fixture = vi.hoisted(() => ({ context: { user: { id: "actor-a" }, effectiveOrganization: { id: "org-a" }, roles: ["listingkit_operator"], permissions: ["workbench.report.read", "workbench.report.manage"], isSwitching: false, isLoading: false, selectionRequired: false, error: null, blockingError: null, aiWorkbenchAvailable: false }, sourceList: vi.fn() }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => fixture.context }));
 vi.mock("@/lib/api/product-title-review-client", () => ({ fetchProductTitleProposals: fixture.sourceList }));
 vi.mock("@/lib/api/shein-records-client", () => ({ fetchSheinRecords: vi.fn() }));
 const source = { ref: { kind: "TITLE_REVIEW" as const, id: "550e8400-e29b-41d4-a716-446655440000", version: "2:accepted" }, title: "标题审核 · 商品A", productKey: "product-a", storeId: "" };
 const report: Report = { ...source, id: "550e8400-e29b-41d4-a716-446655440001", capturedAt: "2026-10-10T00:00:00Z", favorite: false, content: { schemaVersion: 1, sections: [{ title: "标题历史", fields: [{ label: "建议标题", value: "已保存的标题内容" }] }] }, digest: "a".repeat(64) };
-beforeEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); sessionStorage.clear(); fixture.context.effectiveOrganization = { id: "org-a" }; fixture.context.permissions = ["workbench.report.read", "workbench.report.manage"]; fixture.sourceList.mockResolvedValue({ items: [{ proposal_id: source.ref.id }], next_cursor: null }); });
+beforeEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); sessionStorage.clear(); fixture.context.user = { id: "actor-a" }; fixture.context.effectiveOrganization = { id: "org-a" }; fixture.context.permissions = ["workbench.report.read", "workbench.report.manage"]; fixture.sourceList.mockResolvedValue({ items: [{ proposal_id: source.ref.id }], next_cursor: null }); });
 const tree = (client: QueryClient, titleReviewAvailable = true) => <QueryClientProvider client={client}><ReportPage view="all" titleReviewAvailable={titleReviewAvailable} /></QueryClientProvider>;
+it("clears pending component state when valid colon scopes switch", async () => {
+  fixture.context.user = { id: "a:b" }; fixture.context.effectiveOrganization = { id: "c" };
+  vi.stubGlobal("fetch", vi.fn(async (path: string, init?: RequestInit) => {
+    if (init?.method === "POST") throw new Error("lost");
+    if (path.includes("/sources/")) return Response.json(source);
+    return path.endsWith("/summary") ? Response.json({ saved: 0, recent: 0, favorites: 0, stores: 0 }) : Response.json({ items: [], nextCursor: "" });
+  }));
+  const client = new QueryClient(), view = render(tree(client));
+  await waitFor(() => expect(screen.getByRole("button", { name: "保存报告" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "保存报告" }));
+  fireEvent.click(await screen.findByRole("button", { name: "保存此版本" }));
+  await screen.findByText(/操作结果尚未确认/);
+  fixture.context.user = { id: "a" }; fixture.context.effectiveOrganization = { id: "b:c" };
+  view.rerender(tree(client));
+  await waitFor(() => expect(screen.getByRole("button", { name: "保存报告" })).toBeEnabled());
+  expect(screen.queryByRole("button", { name: "恢复原请求" })).not.toBeInTheDocument();
+  view.unmount(); client.clear();
+});
 it("disables unmounted title capture while saved reports stay readable and downloadable", async () => {
   const { content, digest, ...summary } = report; void content; void digest;
   let favorite = false;
@@ -105,8 +124,8 @@ it("hides historical content immediately when enterprise or report permission ch
   fixture.context.permissions = []; view.rerender(tree(client)); expect(screen.getByText("报告尚不可用")).toBeInTheDocument(); expect(screen.queryByRole("button", { name: "保存报告" })).not.toBeInTheDocument(); view.unmount(); client.clear();
 });
 it("recovers a saved unknown intent with its original key after remount", async () => {
-  const key = "550e8400-e29b-41d4-a716-446655440002"; const intent = { operation: "save", key, source: source.ref }; sessionStorage.setItem("personal-report-intent:actor-a:org-a", JSON.stringify(intent));
+  const key = "550e8400-e29b-41d4-a716-446655440002"; const intent = { operation: "save" as const, key, source: source.ref }; const scope = { userId: "actor-a", organizationId: "org-a" }; writeReportIntent(scope, intent);
   const fetch = vi.fn(async (path: string, init: RequestInit) => { if (init.method === "POST") throw new Error("lost"); if (path.endsWith("/summary")) return Response.json({ saved: 0, recent: 0, favorites: 0, stores: 0 }); return Response.json({ items: [], nextCursor: "" }); }); vi.stubGlobal("fetch", fetch);
   const client = new QueryClient(), view = render(tree(client)); fireEvent.click(await screen.findByRole("button", { name: "恢复原请求" })); await screen.findByText(/操作结果尚未确认/); expect(screen.getByRole("button", { name: "保存报告" })).toBeDisabled();
-  await waitFor(() => expect(fetch.mock.calls.some(([,init]) => init.method === "POST")).toBe(true)); const posted = fetch.mock.calls.find(([,init]) => init.method === "POST")![1]; expect(new Headers(posted.headers).get("Idempotency-Key")).toBe(key); expect(JSON.parse(String(posted.body))).toEqual({ source: source.ref }); expect(JSON.parse(sessionStorage.getItem("personal-report-intent:actor-a:org-a")!)).toEqual(intent); view.unmount(); client.clear();
+  await waitFor(() => expect(fetch.mock.calls.some(([,init]) => init.method === "POST")).toBe(true)); const posted = fetch.mock.calls.find(([,init]) => init.method === "POST")![1]; expect(new Headers(posted.headers).get("Idempotency-Key")).toBe(key); expect(JSON.parse(String(posted.body))).toEqual({ source: source.ref }); expect(readReportIntent(scope)).toEqual(intent); view.unmount(); client.clear();
 });

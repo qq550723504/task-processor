@@ -23,4 +23,15 @@ it("retains the exact intent per actor and enterprise after a lost response", as
   await expect(reportRequest(scope, "", reportResultSchema, undefined, readReportIntent(scope)!)).rejects.toMatchObject({ code: "OUTCOME_UNKNOWN" });
   expect(new Headers(fetch.mock.calls[0][1].headers).get("Idempotency-Key")).toBe(intent.key); expect(fetch.mock.calls[0][1].body).toBe(fetch.mock.calls[1][1].body);
 });
-it("refuses corrupt recovery data instead of inventing a new key", () => { sessionStorage.setItem(`personal-report-intent:${scope.userId}:${scope.organizationId}`, "{}"); expect(() => readReportIntent(scope)).toThrow("INTENT_STORAGE_UNAVAILABLE"); });
+it("keeps colon-containing actor and enterprise scopes independent", () => {
+  const first = { userId: "a:b", organizationId: "c" }, second = { userId: "a", organizationId: "b:c" };
+  writeReportIntent(first, intent);
+  expect(readReportIntent(second)).toBeNull();
+  const other = { ...intent, key: "1510eced-9831-49de-a28c-098cb16deba3" };
+  writeReportIntent(second, other);
+  expect(readReportIntent(first)).toEqual(intent);
+  expect(readReportIntent(second)).toEqual(other);
+  writeReportIntent(second, null);
+  expect(readReportIntent(first)).toEqual(intent);
+});
+it("refuses corrupt recovery data instead of inventing a new key", () => { writeReportIntent(scope, intent); sessionStorage.setItem(sessionStorage.key(0)!, "{}"); expect(() => readReportIntent(scope)).toThrow("INTENT_STORAGE_UNAVAILABLE"); });
