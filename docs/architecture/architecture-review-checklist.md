@@ -102,6 +102,7 @@ consider the applicable guards, including:
 - `depguard: product_catalog_persistence_boundary`
 - `depguard: listing_submission_persistence_boundary`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
+- `TestAgentCustomizationHTTPBoundaryRegistration` — permits only the approved agent customization HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `TestMembershipHTTPBoundaryRegistration` — permits only the membership HTTP subtree; rejects the domain root, siblings, other organizations and similar prefixes.
 - `TestSubjectVerificationHTTPBoundaryRegistration` — permits only the approved subject verification HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `TestEcoservicesHTTPBoundaryRegistration` — permits only the approved ecosystem HTTP subtree; rejects the domain root, siblings and similar prefixes.

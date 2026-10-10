@@ -12,7 +12,7 @@ export const consoleNavigation: readonly ConsoleNavNode[] = [
     { label: "1688采集", href: "/workbench/supply/acquisition", availability: "connected" },
     pending("硕米自营", "supply/official"), pending("硕米优选", "supply/selected"), pending("货盘集成", "supply/catalogs"), pending("我的供应链", "supply/mine", [pending("待适配", "supply/mine/waiting"), pending("待补全", "supply/mine/missing"), pending("已适配", "supply/mine/ready"), pending("待审核", "supply/mine/review"), pending("已上传", "supply/mine/uploaded")]), pending("优选申请", "supply/applications"),
   ]),
-  pending("智能市场", "agents", [{label:"智能体市场",href:"/workbench/agents/market",availability:"connected"},{label:"我的智能体",href:"/workbench/agents/mine",availability:"connected"},pending("智能体定制", "agents/custom")]),
+  pending("智能市场", "agents", [{label:"智能体市场",href:"/workbench/agents/market",availability:"connected"},{label:"我的智能体",href:"/workbench/agents/mine",availability:"connected"},{label:"智能体定制",href:"/workbench/agents/custom",availability:"connected"}]),
   pending("工具市场", "tools", [pending("官方工具", "tools/official"), pending("我的工具", "tools/mine"), pending("工具定制", "tools/custom")]),
   pending("生态服务", "services", [pending("服务市场", "services/market"), pending("我的服务", "services/mine"), pending("申请加入", "services/join")]),
   pending("数据服务", "data", [pending("数据市场", "data/market"), pending("API管理", "data/api"), pending("我的数据", "data/mine")]),
@@ -65,6 +65,11 @@ export function findConsoleRoute(pathname: string): ConsoleRoute | undefined {
   if (pathname === "/workbench/agents/mine/product.title.agent") {
     const parent=findConsoleRoute("/workbench/agents/mine")!;
     const node:ConsoleNavNode={label:"智能体配置",href:pathname,availability:"connected"};
+    return {node,trail:[...parent.trail,node]};
+  }
+  if (pathname === "/workbench/agents/custom/new" || pathname === "/workbench/agents/custom/progress") {
+    const parent=findConsoleRoute("/workbench/agents/custom")!;
+    const node:ConsoleNavNode={label:pathname.endsWith("/new")?"提交需求":"定制进度",href:pathname,availability:"connected"};
     return {node,trail:[...parent.trail,node]};
   }
   if (pathname === "/workbench/ai/chat/archived") {

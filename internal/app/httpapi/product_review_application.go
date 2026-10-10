@@ -95,6 +95,14 @@ type productReviewCore struct {
 	store        *reviewstore.Repository
 }
 
+// The current Review repository owns this transaction source binding. Native
+// draft observations reuse its assembly without constructing title execution.
+func newProductReviewRepository(db *gorm.DB) (*reviewstore.Repository, error) {
+	return reviewstore.NewRepository(db, func(tx *gorm.DB) (review.SourcePublicationReader, error) {
+		return productsourcing.NewTransactionReader(tx)
+	})
+}
+
 func buildProductReviewCore(db *gorm.DB, resolver *workbenchcontext.Resolver, auth *authz.ListingKitAuthorizer) (productReviewCore, error) {
 	if db == nil || resolver == nil || auth == nil || !productReviewSchemaReady(db) {
 		return productReviewCore{}, review.ErrUnavailable
@@ -103,9 +111,7 @@ func buildProductReviewCore(db *gorm.DB, resolver *workbenchcontext.Resolver, au
 	if err != nil {
 		return productReviewCore{}, err
 	}
-	store, err := reviewstore.NewRepository(db, func(tx *gorm.DB) (review.SourcePublicationReader, error) {
-		return productsourcing.NewTransactionReader(tx)
-	})
+	store, err := newProductReviewRepository(db)
 	if err != nil {
 		return productReviewCore{}, err
 	}

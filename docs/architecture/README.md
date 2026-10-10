@@ -182,6 +182,22 @@ source of truth for long-lived rules.
     including Required CI Gate. Production Writer starts only after PR #571 merges
     to main; rollout/provider use remain separately gated.
 
+- [`agent-customization-v1.md`](./agent-customization-v1.md)
+  - APPROVED / IMPLEMENTATION_READY #611: enterprise customization requests,
+    contact consent, private files and verified-platform manual progress.
+    Submission is free; proposals and fees are confirmed offline. Runtime
+    assembly and user acceptance remain separate from the owner implementation.
+
+- [`private-agent-delivery-v1.md`](./private-agent-delivery-v1.md)
+  - APPROVED / IMPLEMENTATION_READY #611: fixed-version platform draft checks
+    privately delivered to the original request enterprise, atomic publication,
+    actor-private immutable reports and current source authorization. Existing
+    Listing saved validation is reused;
+    no model/provider, product mutation or second generic Agent runtime.
+  - Bounded isolated trial admission: [`private-draft-offline-trial.md`](./private-draft-offline-trial.md).
+    Explicit offline test scope/store and seven existing native read routes;
+    test-rule reports remain distinct from real platform acceptance.
+
 - [`product-agent-text-provider-neutral-v1.md`](./product-agent-text-provider-neutral-v1.md)
   - IMPLEMENTATION_READY #573 architecture for organization-scoped,
     provider-neutral title text admission over OpenAI-compatible routes. The
