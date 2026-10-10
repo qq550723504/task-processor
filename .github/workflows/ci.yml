@@ -151,6 +151,26 @@ jobs:
       - name: Run dependency boundary lint
         run: ${{ runner.temp }}/bin/golangci-lint run --config .golangci.yml --enable-only depguard ./...
 
+      - name: Enable public Docker Hub cache for test fixtures
+        run: |
+          set -euo pipefail
+          # Preserve the official fixture images and avoid exposing deployment
+          # registry credentials to pull-request tests. Cache misses use Docker Hub.
+          sudo python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("/etc/docker/daemon.json")
+          config = json.loads(path.read_text()) if path.exists() else {}
+          mirrors = config.setdefault("registry-mirrors", [])
+          mirror = "https://mirror.gcr.io"
+          if mirror not in mirrors:
+              mirrors.insert(0, mirror)
+          path.write_text(json.dumps(config))
+          PY
+          sudo systemctl restart docker
+          docker info --format '{{json .RegistryConfig.Mirrors}}'
+
       - name: Run backend tests
         run: go test ./... -count=1
 
