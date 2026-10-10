@@ -331,7 +331,7 @@ function APIManagement({ scope }: {
                     }
                 }}>{historyLoaded ? nextHistory ? "读取更多历史密钥" : "历史密钥已全部读取" : "查看已撤销／过期密钥"}</Button>{history.length ? keyTable(history, false) : null}</Card> : null}
    {tab === "calls" ? <Card className="gap-4 p-6"><div className="flex justify-between"><h2 className="font-semibold">最近 100 条任务调用记录</h2><Button variant="ghost" size="sm" onClick={reload}>刷新</Button></div>{jobs !== null ? callTable(jobs) : <p role="status">调用记录尚未读取。</p>}</Card> : null}
-   {tab === "usage" && overview ? <Card className="gap-4 p-6"><h2 className="font-semibold">用量与费用</h2><p className="text-sm">本月已确认：{money(usage!.monthConfirmedFen)} · 已保存待确认：{money(usage!.monthPendingFen)}</p><p className="text-sm text-muted-foreground">成功保存才计量；抓取失败或取消的未保存项不计费。取消不会删除已保存数据，定制数据不计入实时抓取消耗。</p><div className="grid gap-3 sm:grid-cols-2">{overview.keyQuotas.map(q => { const key = keys.find(k => k.id === q.keyId); return key ? <div key={q.keyId} className="rounded-lg border p-4 text-sm"><p className="font-semibold">{key.limits.name}</p><p className="mt-2">当日已保存 {q.dayConsumedRows} 条 · 预留 {q.dayReservedRows} 条 · 上限 {key.limits.dailyRows} 条</p><p className="mt-2">月预算已计量 {money(q.monthConsumedFen)} · 预留 {money(q.monthReservedFen)} · 上限 {money(key.limits.monthlyCostFen)}</p><p className="mt-2 text-xs text-muted-foreground">预算计量包含已保存待确认项；实际费用以上方确认金额为准。</p></div> : null; })}</div>{keyTable(keys, false)}<Button variant="outline" asChild><Link href="/workbench/account/organization/resources">查看资源余额与账单</Link></Button></Card> : null}
+   {tab === "usage" && overview ? <Card className="gap-4 p-6"><h2 className="font-semibold">用量与费用</h2><p className="text-sm">本月已确认：{money(usage!.monthConfirmedFen)} · 已保存待确认：{money(usage!.monthPendingFen)}</p><p className="text-sm text-muted-foreground">成功保存才计量；抓取失败或取消的未保存项不计费。取消不会删除已保存数据，定制数据不计入实时抓取消耗。</p><div className="grid gap-3 sm:grid-cols-2">{overview.keyQuotas.map(q => { const key = keys.find(k => k.id === q.keyId); return key ? <div key={q.keyId} className="rounded-lg border p-4 text-sm"><p className="font-semibold">{key.limits.name}</p><p className="mt-2">当日已保存 {q.dayConsumedRows} 条 · 预留 {q.dayReservedRows} 条 · 上限 {key.limits.dailyRows} 条</p><p className="mt-2">月预算已计量 {money(q.monthConsumedFen)} · 预留 {money(q.monthReservedFen)} · 上限 {money(key.limits.monthlyCostFen)}</p><p className="mt-2 text-xs text-muted-foreground">预算计量包含已保存待确认项；实际费用以上方确认金额为准。</p><BudgetWarning name={key.limits.name} consumedFen={q.monthConsumedFen} reservedFen={q.monthReservedFen} limitFen={key.limits.monthlyCostFen}/></div> : null; })}</div>{keyTable(keys, false)}<Button variant="outline" asChild><Link href="/workbench/account/organization/resources">查看资源余额与账单</Link></Button></Card> : null}
   </> : null}
   {dialog === "create" || editing ? <CollectionDialog title={editing ? "编辑密钥限制" : "创建 API 密钥"} onClose={() => { setDialog(null); setEditing(null); }}><KeyForm initial={editing?.limits} disabled={disabled} onSubmit={async (input) => {
                 const path = editing ? `keys/${editing.id}/changes` : "keys";
@@ -363,11 +363,25 @@ function BudgetPreview({ overview }: {
     const [selected, setSelected] = useState(overview.keys[0]?.id ?? "");
     const key = overview.keys.find(k => k.id === selected) ?? overview.keys[0];
     const quota = key && overview.keyQuotas.find(q => q.keyId === key.id);
-    if (!key || !quota)
+    if (!key)
         return <p className={`${styles.usage} text-muted-foreground`}>创建密钥后可查看该密钥的额度与预留量。</p>;
+    const selector = <Select aria-label="额度所属密钥" value={key.id} onChange={e => setSelected(e.target.value)}>{overview.keys.map(k => <option key={k.id} value={k.id}>{k.limits.name}</option>)}</Select>;
+    if (!quota)
+        return <div className={styles.usage}>{selector}<p className="text-muted-foreground">该密钥暂无用量与预留记录。</p></div>;
     const day = quota.dayConsumedRows + quota.dayReservedRows;
     const month = quota.monthConsumedFen + quota.monthReservedFen;
-    return <div className={styles.usage}><Select aria-label="额度所属密钥" value={key.id} onChange={e => setSelected(e.target.value)}>{overview.keys.map(k => <option key={k.id} value={k.id}>{k.limits.name}</option>)}</Select><div className={styles.meter}><p><span>每日条数占用（UTC）</span><span>{day} / {key.limits.dailyRows}</span></p><progress aria-label="该密钥当日条数占用" max={key.limits.dailyRows} value={day}/></div><div className={styles.meter}><p><span>月预算占用（UTC）</span><span>{money(month)} / {money(key.limits.monthlyCostFen)}</span></p><progress aria-label="该密钥月预算占用" max={key.limits.monthlyCostFen} value={month}/></div></div>;
+    return <div className={styles.usage}>{selector}<div className={styles.meter}><p><span>每日条数占用（UTC）</span><span>{day} / {key.limits.dailyRows}</span></p><progress aria-label="该密钥当日条数占用" max={key.limits.dailyRows} value={day}/></div><div className={styles.meter}><p><span>月预算占用（UTC）</span><span>{money(month)} / {money(key.limits.monthlyCostFen)}</span></p><progress aria-label="该密钥月预算占用" max={key.limits.monthlyCostFen} value={month}/></div><BudgetWarning name={key.limits.name} consumedFen={quota.monthConsumedFen} reservedFen={quota.monthReservedFen} limitFen={key.limits.monthlyCostFen}/></div>;
+}
+function BudgetWarning({ name, consumedFen, reservedFen, limitFen }: {
+    name: string;
+    consumedFen: number;
+    reservedFen: number;
+    limitFen: number;
+}) {
+    const occupiedFen = consumedFen + reservedFen;
+    if (occupiedFen * 100 < limitFen * 80)
+        return null;
+    return <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">密钥“{name}”本月预算占用已达到限额的 80% 或以上（{money(occupiedFen)} / {money(limitFen)}，包含计量与预留）。请检查剩余额度后继续抓取。</p>;
 }
 function KeyForm({ initial, disabled, onSubmit }: {
     initial?: DataKey["limits"];

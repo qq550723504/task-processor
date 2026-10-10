@@ -15,6 +15,46 @@ const json = (value: unknown, status = 200) => Response.json(value, { status });
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals(); });
 describe("data service product paths", () => {
     it.each([
+        [79, 0, 100, false], [60, 20, 100, true], [80, 0, 100, true], [0, 80, 100, true], [90, 10, 100, true],
+        [60, 20, 101, false], [0, 8, 10, true],
+    ])("warns at 80 percent from actual per-key occupied budget %s + %s / %s", async (consumed, reserved, limit, warning) => {
+        const key = { id, suffix: "test", state: "ACTIVE", revision: 1, createdAt: job.createdAt, limits: { name: "实际限额密钥", expiresAt: new Date(Date.now() + 3600000).toISOString(), dailyRows: 10, monthlyCostFen: Number(limit), permissions: ["amazon.acquire", "amazon.result.read"] } };
+        const overview = { options, keys: [key], jobs: [], keyQuotas: [{ keyId: id, dayConsumedRows: 0, dayReservedRows: 0, monthConsumedFen: Number(consumed), monthReservedFen: Number(reserved) }], usage: { dayRows: 0, monthConfirmedFen: 0, monthPendingFen: 0, finishedJobs: 0, succeededJobs: 0, successRate: null, window: "UTC month" } };
+        vi.stubGlobal("fetch", vi.fn(async (url: string) => json(url.endsWith("/keys") ? [key] : overview)));
+        render(<DataServicesPage mode="api"/>);
+        await screen.findByRole("progressbar", { name: "该密钥月预算占用" });
+        const checkWarning = () => {
+            const alert = screen.queryByRole("alert");
+            if (warning) {
+                expect(alert).toHaveTextContent("实际限额密钥");
+                expect(alert).toHaveTextContent("80%");
+                expect(alert).toHaveTextContent("计量与预留");
+                expect(alert).not.toHaveTextContent("通知已发送");
+            } else expect(alert).not.toBeInTheDocument();
+        };
+        checkWarning();
+        fireEvent.click(screen.getByRole("button", { name: "用量与费用" }));
+        await screen.findByText("月预算已计量", { exact: false });
+        checkWarning();
+    });
+    it("changes the warning with the selected key and never invents missing quota", async () => {
+        const keys = [id, "b233d58b-1fd3-40d7-a983-d35bbec45313", "c233d58b-1fd3-40d7-a983-d35bbec45313"].map((keyId, i) => ({ id: keyId, suffix: "test", state: "ACTIVE", revision: 1, createdAt: job.createdAt, limits: { name: ["高占用密钥", "低占用密钥", "未读到额度密钥"][i], expiresAt: new Date(Date.now() + 3600000).toISOString(), dailyRows: 10, monthlyCostFen: [100, 200, 10][i], permissions: ["amazon.acquire", "amazon.result.read"] } }));
+        const overview = { options, keys, jobs: [], keyQuotas: keys.slice(0, 2).map(key => ({ keyId: key.id, dayConsumedRows: 0, dayReservedRows: 0, monthConsumedFen: 60, monthReservedFen: 20 })), usage: { dayRows: 0, monthConfirmedFen: 0, monthPendingFen: 0, finishedJobs: 0, succeededJobs: 0, successRate: null, window: "UTC month" } };
+        vi.stubGlobal("fetch", vi.fn(async (url: string) => json(url.endsWith("/keys") ? keys : overview)));
+        render(<DataServicesPage mode="api"/>);
+        const selector = await screen.findByRole("combobox", { name: "额度所属密钥" });
+        expect(screen.getByRole("alert")).toHaveTextContent("高占用密钥");
+        fireEvent.change(selector, { target: { value: keys[1].id } });
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        fireEvent.change(selector, { target: { value: keys[2].id } });
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        fireEvent.change(screen.getByRole("combobox", { name: "额度所属密钥" }), { target: { value: keys[0].id } });
+        expect(screen.getByRole("alert")).toHaveTextContent("高占用密钥");
+        fireEvent.click(screen.getByRole("button", { name: "用量与费用" }));
+        expect(screen.getAllByRole("alert")).toHaveLength(1);
+        expect(screen.getByRole("alert")).toHaveTextContent("高占用密钥");
+    });
+    it.each([
         ["amazon/jobs", 403], ["amazon/jobs", 503], ["custom", 403], ["custom", 503],
     ])("submits both market flows independently of %s history failure %s", async (historyPath, status) => {
         const mutations: { path: string; body: unknown; key: string | null }[] = [];
