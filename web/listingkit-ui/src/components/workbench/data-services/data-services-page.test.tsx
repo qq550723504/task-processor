@@ -14,6 +14,26 @@ const json = (value: unknown, status = 200) => Response.json(value, { status });
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals(); });
 describe("data service product paths", () => {
     it.each([
+        ["需求名称", 200], ["用途与业务场景", 1000], ["时间范围／更新需求", 1000], ["其他说明", 4000],
+    ])("enforces the accepted UTF-8 byte limit for %s", async (label, maximum) => {
+        const fetcher = vi.fn(async (url: string, init?: RequestInit) => { void init; return json(url.endsWith("options") ? options : []); });
+        vi.stubGlobal("fetch", fetcher);
+        render(<DataServicesPage mode="market"/>);
+        const start = await screen.findByRole("button", { name: "提交定制需求" });
+        await waitFor(() => expect(start).toBeEnabled());
+        fireEvent.click(start);
+        const field = screen.getByLabelText(label);
+        expect(field).toHaveAttribute("maxlength", String(maximum));
+        fireEvent.change(field, { target: { value: "中".repeat(Math.floor(Number(maximum) / 3) + 1) } });
+        expect(field).toHaveAttribute("aria-invalid", "true");
+        expect(within(screen.getByRole("dialog")).getByRole("button", { name: "提交定制需求" })).toBeDisabled();
+        fireEvent.change(field, { target: { value: "中".repeat(Math.floor(Number(maximum) / 3)) } });
+        expect(field).toHaveAttribute("aria-invalid", "false");
+        expect(within(screen.getByRole("dialog")).getByRole("button", { name: "提交定制需求" })).toBeEnabled();
+        expect(fetcher.mock.calls.every(([, init]) => !init || init.method !== "POST")).toBe(true);
+        expect(sessionStorage.length).toBe(0);
+    });
+    it.each([
         ["provider_challenged", "Amazon 页面要求验证，本次获取已停止。"],
         ["provider_unsupported", "Amazon 页面结构暂不支持，本次获取已停止。"],
         ["provider_rejected", "来源页面未能取得有效数据"],
@@ -46,8 +66,8 @@ describe("data service product paths", () => {
         fireEvent.change(screen.getByLabelText("需求名称"), { target: { value: "数".repeat(70) } });
         fireEvent.change(screen.getByLabelText(/ASIN 或当前站点/), { target: { value: "B000123456" } });
         fireEvent.change(screen.getByLabelText("用途与业务场景"), { target: { value: "选品分析" } });
-        fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "提交定制需求" }));
-        await screen.findByText("请检查输入、格式、条数和额度。");
+        expect(within(screen.getByRole("dialog")).getByRole("button", { name: "提交定制需求" })).toBeDisabled();
+        expect(screen.getByText("超出字节上限，请缩短内容。")).toBeInTheDocument();
         expect(fetcher.mock.calls.every(([, init]) => !init || (init as RequestInit).method !== "POST")).toBe(true);
         expect(sessionStorage.length).toBe(0);
     });

@@ -86,7 +86,11 @@ func (s *Service) Results(ctx context.Context, p Principal, id, cursor string, l
 					result.Data["images"] = []string{e.MainImage}
 				}
 			}
-			result.Missing = append([]string(nil), e.Missing...)
+			for _, field := range e.Missing {
+				if includes(job.Query.Fields, field) {
+					result.Missing = append(result.Missing, field)
+				}
+			}
 		}
 		candidate := ResultPage{Items: append(append([]Result(nil), page.Items...), result)}
 		raw, err := json.Marshal(candidate)

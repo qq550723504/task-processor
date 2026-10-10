@@ -12,7 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { CollectionDialog } from "@/components/workbench/collections/collection-page";
 import { dataRequest, DataAPIError, type DataScope } from "@/lib/api/data-services";
-import { optionsSchema, customSummarySchema, overviewSchema, jobSchema, keySchema, keyCreatedSchema, keyHistorySchema, resultPageSchema, customSchema, querySchema, keyLimitsSchema, type DataOptions, type DataQuery, type DataKey, type DataJob, type CustomRequest, type Overview } from "@/lib/contracts/data-services";
+import { CUSTOM_INPUT_BYTE_LIMITS, optionsSchema, customSummarySchema, overviewSchema, jobSchema, keySchema, keyCreatedSchema, keyHistorySchema, resultPageSchema, customSchema, querySchema, keyLimitsSchema, type DataOptions, type DataQuery, type DataKey, type DataJob, type CustomRequest, type Overview } from "@/lib/contracts/data-services";
 import { useDataCommand } from "./use-data-command";
 import styles from "./data-services.module.css";
 export const stateNames: Record<string, string> = { ADMITTED: "已提交", RUNNING: "抓取中", SUCCEEDED: "已完成", PARTIAL: "部分完成", FAILED: "失败", CANCELED: "已取消", ACTIVE: "启用", DISABLED: "禁用", REVOKED: "已撤销", SUBMITTED: "已提交", EVALUATING: "需求评估", SPEC_CONFIRMED: "规格已确认", PREPARING: "数据制作中", DELIVERED: "已交付", CLOSED: "已关闭", SAVED: "已保存", PREPARED: "等待抓取", FETCHING: "抓取中", PREPARED_EVIDENCE: "等待保存" };
@@ -151,11 +151,16 @@ function QueryForm({ options, custom = false, disabled, onSubmit }: {
     const sites = custom ? options.customSites : options.sites;
     const [site, setSite] = useState(sites[0]?.code ?? "us"), [mode, setMode] = useState<DataQuery["mode"]>("asin"), [asins, setASINs] = useState(""), [keyword, setKeyword] = useState(""), [node, setNode] = useState(""), [limit, setLimit] = useState("10"), [fields, setFields] = useState<string[]>(options.fields), [error, setError] = useState("");
     const [name, setName] = useState(""), [purpose, setPurpose] = useState(""), [format, setFormat] = useState("csv"), [timeRange, setTimeRange] = useState(""), [notes, setNotes] = useState("");
+    const customBytes = { name, purpose, timeRange, notes };
+    const customLength = (field: keyof typeof customBytes) => new TextEncoder().encode(customBytes[field]).byteLength;
+    const exceedsLimit = (field: keyof typeof customBytes) => customLength(field) > CUSTOM_INPUT_BYTE_LIMITS[field];
+    const customTooLong = custom && (Object.keys(customBytes) as (keyof typeof customBytes)[]).some(exceedsLimit);
+    const lengthHint = (field: keyof typeof customBytes) => <span id={`custom-${field}-limit`} className="text-xs font-normal text-muted-foreground">当前 {customLength(field)} / {CUSTOM_INPUT_BYTE_LIMITS[field]} 字节{exceedsLimit(field) ? <span className="block text-amber-700">超出字节上限，请缩短内容。</span> : null}</span>;
     return <form className="space-y-4" onSubmit={e => {
             e.preventDefault();
             const input = { site, mode, ...(mode === "asin" ? { asins: asins.split(/[\s,，]+/).filter(Boolean) } : { ...(mode === "keyword" && keyword.trim() ? { keyword: keyword.trim() } : {}), ...(node ? { categoryNode: node } : {}) }), limit: Number(limit), fields };
             const parsed = querySchema.safeParse(input);
-            if (!parsed.success || (mode === "keyword" && !keyword.trim()) || (mode === "category" && !node) || !fields.length) {
+            if (customTooLong || !parsed.success || (mode === "keyword" && !keyword.trim()) || (mode === "category" && !node) || !fields.length) {
                 setError("INVALID_DATA_REQUEST");
                 return;
             }
@@ -163,12 +168,12 @@ function QueryForm({ options, custom = false, disabled, onSubmit }: {
             setError("");
             onSubmit(parsed.data, { name, purpose, format, timeRange, notes });
         }}>
-  {custom ? <Field title="需求名称"><Input required maxLength={80} value={name} onChange={e => setName(e.target.value)}/></Field> : null}
+  {custom ? <Field title="需求名称"><Input required aria-label="需求名称" aria-describedby="custom-name-limit" aria-invalid={exceedsLimit("name")} maxLength={CUSTOM_INPUT_BYTE_LIMITS.name} value={name} onChange={e => setName(e.target.value)}/>{lengthHint("name")}</Field> : null}
   <div className="grid gap-4 sm:grid-cols-2"><Field title="Amazon 站点"><Select value={site} onChange={e => setSite(e.target.value as DataQuery["site"])}>{sites.map(s => <option key={s.code} value={s.code}>{s.name} · {s.domain}</option>)}</Select></Field><Field title="输入方式"><Select value={mode} onChange={e => setMode(e.target.value as DataQuery["mode"])}><option value="asin">ASIN／商品链接</option><option value="keyword">关键词</option><option value="category">类目</option></Select></Field></div>
   {mode === "asin" ? <Field title="ASIN 或当前站点 HTTPS 商品链接（每行一个）"><Textarea required rows={4} value={asins} onChange={e => setASINs(e.target.value)} placeholder="B0… 或 https://www.amazon…/dp/…"/></Field> : <div className="grid gap-4 sm:grid-cols-2">{mode === "keyword" ? <Field title="关键词"><Input required maxLength={200} value={keyword} onChange={e => setKeyword(e.target.value)}/></Field> : null}<Field title={mode === "category" ? "Amazon 原生类目节点 ID" : "类目节点 ID（可选）"}><Input required={mode === "category"} pattern="[0-9]{1,20}" maxLength={20} value={node} onChange={e => setNode(e.target.value)} placeholder="当前站点数字 browse node"/></Field></div>}
   <Field title="最大数据条数"><Input required type="number" min={1} max={200} step={1} value={limit} onChange={e => setLimit(e.target.value)}/></Field><fieldset className="rounded-lg border p-4"><legend className="px-2 text-sm font-medium">所需字段</legend><div className="grid gap-2 sm:grid-cols-3">{options.fields.map(f => <label key={f} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={fields.includes(f)} onChange={e => setFields(v => e.target.checked ? [...v, f] : v.filter(x => x !== f))}/>{f}</label>)}</div></fieldset>
-  {custom ? <><Field title="用途与业务场景"><Textarea required maxLength={4000} value={purpose} onChange={e => setPurpose(e.target.value)}/></Field><div className="grid gap-4 sm:grid-cols-2"><Field title="期望交付格式"><Select value={format} onChange={e => setFormat(e.target.value)}>{options.formats.map(f => <option key={f}>{f}</option>)}</Select></Field><Field title="时间范围／更新需求"><Input maxLength={1000} value={timeRange} onChange={e => setTimeRange(e.target.value)}/></Field></div><Field title="其他说明"><Textarea maxLength={8000} value={notes} onChange={e => setNotes(e.target.value)}/></Field><p className="text-sm text-muted-foreground">规格与报价由专员线下确认。定制交付最多 200 条/批，不消费实时抓取的 DATA_ROW。</p></> : <p className="rounded-lg bg-muted p-4 text-sm">确认最多获取 {limit || "—"} 条，最多消费 {limit || "—"} 个 DATA_ROW（{money((Number(limit) || 0) * 5)}）。失败且未保存的条目不计费，已保存数据会保留。来源缺失字段会明确标记。</p>}
-  <DataNotice error={error}/><Button type="submit" disabled={disabled || (!custom && !options.acquisitionReady)}>{disabled ? "正在提交…" : custom ? "提交定制需求" : "确认并开始抓取"}</Button>
+  {custom ? <><Field title="用途与业务场景"><Textarea required aria-label="用途与业务场景" aria-describedby="custom-purpose-limit" aria-invalid={exceedsLimit("purpose")} maxLength={CUSTOM_INPUT_BYTE_LIMITS.purpose} value={purpose} onChange={e => setPurpose(e.target.value)}/>{lengthHint("purpose")}</Field><div className="grid gap-4 sm:grid-cols-2"><Field title="期望交付格式"><Select value={format} onChange={e => setFormat(e.target.value)}>{options.formats.map(f => <option key={f}>{f}</option>)}</Select></Field><Field title="时间范围／更新需求"><Input aria-label="时间范围／更新需求" aria-describedby="custom-timeRange-limit" aria-invalid={exceedsLimit("timeRange")} maxLength={CUSTOM_INPUT_BYTE_LIMITS.timeRange} value={timeRange} onChange={e => setTimeRange(e.target.value)}/>{lengthHint("timeRange")}</Field></div><Field title="其他说明"><Textarea aria-label="其他说明" aria-describedby="custom-notes-limit" aria-invalid={exceedsLimit("notes")} maxLength={CUSTOM_INPUT_BYTE_LIMITS.notes} value={notes} onChange={e => setNotes(e.target.value)}/>{lengthHint("notes")}</Field><p className="text-sm text-muted-foreground">规格与报价由专员线下确认。定制交付最多 200 条/批，不消费实时抓取的 DATA_ROW。</p></> : <p className="rounded-lg bg-muted p-4 text-sm">确认最多获取 {limit || "—"} 条，最多消费 {limit || "—"} 个 DATA_ROW（{money((Number(limit) || 0) * 5)}）。失败且未保存的条目不计费，已保存数据会保留。来源缺失字段会明确标记。</p>}
+  <DataNotice error={error}/><Button type="submit" disabled={disabled || customTooLong || (!custom && !options.acquisitionReady)}>{disabled ? "正在提交…" : custom ? "提交定制需求" : "确认并开始抓取"}</Button>
  </form>;
 }
 export function CustomDetails({ request: r }: {

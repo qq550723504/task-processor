@@ -33,12 +33,24 @@ import (
 
 type executionFixture struct {
 	authorizedFixture
-	denied   bool
-	fetches  int
-	fetchErr error
+	denied          bool
+	fetches         int
+	fetchErr        error
+	authDelay       time.Duration
+	executionChecks int
 }
 
-func (f *executionFixture) CheckExecution(context.Context, dataacquisition.Principal, orgresource.ResourceFunding) error {
+func (f *executionFixture) CheckExecution(ctx context.Context, _ dataacquisition.Principal, _ orgresource.ResourceFunding) error {
+	f.executionChecks++
+	if f.authDelay > 0 {
+		timer := time.NewTimer(f.authDelay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 	if f.denied {
 		return dataacquisition.ErrForbidden
 	}
@@ -419,4 +431,30 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 			require.Zero(t, bucket.Reserved)
 		})
 	}
+	t.Run("resource owner validates live access once within its callback budget", func(t *testing.T) {
+		original, err := service.Start(ctx, dataacquisition.Principal{Scope: scope}, uuid.NewString(), q, orgresource.FundingEnterprise, 5)
+		require.NoError(t, err)
+		original, err = repo.Discover(ctx, original, q.ASINs)
+		require.NoError(t, err)
+		items, err := repo.Items(ctx, original)
+		require.NoError(t, err)
+		require.Len(t, items, 1)
+		fixture.authDelay = 300 * time.Millisecond
+		t.Cleanup(func() { fixture.authDelay = 0 })
+		before := fixture.executionChecks
+		reservation, err := charges.Reserve(ctx, orgresource.ConsumerChargeIdentity{OrganizationID: scope.OrganizationID, Consumer: orgresource.ConsumerAmazonData, OperationID: items[0].ID})
+		fixture.authDelay = 0
+		require.NoError(t, err, "one bounded live authorization fits Resource's existing 500 ms callback")
+		require.Equal(t, before+1, fixture.executionChecks)
+		require.Equal(t, orgresource.ReservationReserved, reservation.State)
+		_, err = repo.Cancel(ctx, scope, original.ID, uuid.NewString())
+		require.NoError(t, err)
+		require.NoError(t, service.Run(ctx, scope, original.ID))
+		settled, err := charges.Lookup(ctx, reservation.Intent.Identity)
+		require.NoError(t, err)
+		require.Equal(t, orgresource.ReservationReleased, settled.State)
+		readBalance()
+		require.Equal(t, int64(3), bucket.Consumed)
+		require.Zero(t, bucket.Reserved)
+	})
 }

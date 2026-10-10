@@ -864,9 +864,9 @@ func (r *Repository) ChargeIntent(ctx context.Context, id orgresource.ConsumerCh
 	if err != nil {
 		return orgresource.ConsumerChargeIntent{}, err
 	}
-	if err = r.live.CheckExecution(ctx, dataacquisition.Principal{Scope: job.Scope, CredentialID: job.CredentialID}, job.Funding); err != nil {
-		return orgresource.ConsumerChargeIntent{}, err
-	}
+	// CheckActive already validates current identity and funding inside the
+	// Product transaction. Do not repeat network-backed authorization within
+	// Resource's bounded charge-owner callback.
 	if err = r.CheckActive(ctx, job); err != nil {
 		return orgresource.ConsumerChargeIntent{}, err
 	}

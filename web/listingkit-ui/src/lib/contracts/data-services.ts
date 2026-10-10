@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { collectionItemSchema } from "@/lib/contracts/product-collection";
 export const DATA_MAX_BYTES = 2 * 1024 * 1024;
+export const CUSTOM_INPUT_BYTE_LIMITS = { name: 200, purpose: 1000, timeRange: 1000, notes: 4000 } as const;
 const id = z.string().uuid();
 const count = z.number().int().nonnegative().max(1e11);
 const text = z.string().max(65536);
@@ -19,7 +20,7 @@ export const optionsSchema = z.object({ sites: z.array(siteSchema).max(14), cust
 const usageSchema = z.object({ dayRows: count, monthConfirmedFen: count, monthPendingFen: count, finishedJobs: count, succeededJobs: count, successRate: z.number().min(0).max(1).nullable(), window: z.string().max(120) }).strict();
 const keyQuotaSchema = z.object({ keyId: id, dayConsumedRows: count, dayReservedRows: count, monthConsumedFen: count, monthReservedFen: count }).strict();
 export const overviewSchema = z.object({ usage: usageSchema, keys: z.array(keySchema).max(20), jobs: z.array(jobSchema).max(10), options: optionsSchema, keyQuotas: z.array(keyQuotaSchema).max(20) }).strict();
-const customInputSchema = z.object({ name: bytes(200, true), query: querySchema, purpose: bytes(1000, true), timeRange: bytes(1000).optional(), format: z.enum(["csv", "json", "xlsx"]), notes: bytes(4000).optional() }).strict();
+const customInputSchema = z.object({ name: bytes(CUSTOM_INPUT_BYTE_LIMITS.name, true), query: querySchema, purpose: bytes(CUSTOM_INPUT_BYTE_LIMITS.purpose, true), timeRange: bytes(CUSTOM_INPUT_BYTE_LIMITS.timeRange).optional(), format: z.enum(["csv", "json", "xlsx"]), notes: bytes(CUSTOM_INPUT_BYTE_LIMITS.notes).optional() }).strict();
 export const customSpecSchema = z.object({ description: bytes(4000, true), quoteNote: bytes(2000, true), confirmationNote: bytes(2000, true), format: z.enum(["csv", "json", "xlsx"]), maximumRows: z.number().int().min(1).max(200) }).strict();
 const customState = z.enum(["SUBMITTED", "EVALUATING", "SPEC_CONFIRMED", "PREPARING", "DELIVERED", "CLOSED"]);
 export const customSchema = z.object({ id, input: customInputSchema, state: customState, revision: count, spec: customSpecSchema.optional(), specRevision: count, batchId: id.optional(), deliveredRows: count, createdAt: date, events: z.array(z.object({ revision: count, state: customState, operatorId: z.string().max(128), note: text, at: date }).strict()).max(100), nextEventBefore: count.optional() }).strict();
