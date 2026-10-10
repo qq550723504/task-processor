@@ -474,6 +474,59 @@ it.each(["target","generic"] as const)("reselects %s version assets with their o
 });
 const sheinRequirements={platform:"shein",site:"US",categoryId:123,version:"current-official-rules",nativeWidth:1024,nativeHeight:1024,groups:[{group:"spu",skc:0,sku:0,types:[{type:1,minimum:1,maximum:1,nativeCompatible:true},{type:2,minimum:0,maximum:7,nativeCompatible:true}]}]};
 function sheinProjection(){const p=projection("awaiting_final_approval",templateId);return {...p,plan:{...p.plan,Source:{...source,EffectiveVersion:"2",ApplyReceiptID:operation},Target:sheinTarget},slots:p.slots.map(slot=>({...slot,recipe:{...slot.recipe,OfficialPlacement:officialPlacement}}))}}
+it("blocks a platform-specific default until its target matches",async()=>{
+ const pinned={...template,targetPlatform:"shein"},real=fetch.getMockImplementation()!;
+ fetch.mockImplementation((url,init)=>String(url).includes("/revisions/")?Promise.resolve(Response.json(pinned)):String(url).includes("/templates")?Promise.resolve(Response.json({items:[pinned],nextCursor:""})):String(url).endsWith("/requirements")?Promise.resolve(Response.json(sheinRequirements)):real(url,init));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation} target={sheinTarget}/>);
+ fireEvent.click(await screen.findByRole("checkbox",{name:"共用原始素材 素材 1"}));
+ const prepare=screen.getByRole("button",{name:"准备整套图片计划（2 项）"});
+ expect(prepare).toBeDisabled();
+ expect(screen.getByRole("option",{name:"Two groups v1"})).toBeDisabled();
+ expect(screen.getByText("当前模板不适用于此素材目标，请选择匹配的模板或切换目标。")).toBeInTheDocument();
+ fireEvent.click(prepare);expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/prepare"))).toBe(false);
+ fireEvent.change(screen.getByLabelText("素材目标"),{target:{value:"shein"}});
+ expect(screen.getByRole("option",{name:"Two groups v1"})).toBeEnabled();
+ fireEvent.click(screen.getByRole("button",{name:"读取当前图片规则"}));
+ await screen.findByText(/规则 current-official-rules/);
+ screen.getAllByLabelText("官方图片位置").forEach(position=>fireEvent.change(position,{target:{value:"spu:0:0"}}));
+ fireEvent.change(screen.getAllByLabelText("官方图片类型")[1],{target:{value:"2"}});
+ fireEvent.change(screen.getAllByLabelText("官方图片排序")[1],{target:{value:"2"}});
+ expect(prepare).toBeEnabled();
+ fireEvent.change(screen.getByLabelText("素材目标"),{target:{value:"product"}});
+ expect(prepare).toBeDisabled();
+ fireEvent.click(prepare);expect(fetch.mock.calls.some(([url])=>/\/(prepare|regenerate|confirm)$/.test(String(url)))).toBe(false);
+});
+it.each(["prepare","regenerate"] as const)("enforces the official per-type maximum before %s",async(action)=>{
+ const p=sheinProjection(),real=fetch.getMockImplementation()!;
+ const rules={...sheinRequirements,groups:[{...sheinRequirements.groups[0],types:[...sheinRequirements.groups[0].types,{type:5,minimum:0,maximum:1,nativeCompatible:true}]}]};
+ fetch.mockImplementation((url,init)=>String(url).endsWith("/requirements")?Promise.resolve(Response.json(rules)):String(url).endsWith(`/runs/${runId}`)?Promise.resolve(Response.json(p)):String(url).endsWith("/regenerate")?Promise.resolve(Response.json(state,{status:201})):real(url,init));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation} {...action==="regenerate"?{initialRunId:runId}:{target:sheinTarget}}/>);
+ if(action==="prepare"){
+  fireEvent.change(await screen.findByLabelText("素材目标"),{target:{value:"shein"}});
+  fireEvent.click(screen.getByRole("button",{name:"读取当前图片规则"}));
+ }
+ await screen.findByText(/规则 current-official-rules/);
+ let positions:HTMLElement[],sorts:HTMLElement[],types:HTMLElement[];
+ if(action==="regenerate"){
+  const slots=screen.getAllByRole("checkbox",{name:"重新生成此项，另行确认点数"});slots.forEach(slot=>fireEvent.click(slot));
+  positions=slots.map(slot=>within(slot.closest("article")!).getByLabelText("官方图片位置"));
+  sorts=slots.map(slot=>within(slot.closest("article")!).getByLabelText("官方图片排序"));
+  types=slots.map(slot=>within(slot.closest("article")!).getByLabelText("官方图片类型"));
+ }else{
+  fireEvent.click(screen.getByRole("checkbox",{name:"共用原始素材 素材 1"}));
+  positions=screen.getAllByLabelText("官方图片位置");sorts=screen.getAllByLabelText("官方图片排序");types=screen.getAllByLabelText("官方图片类型");
+ }
+ positions.forEach(position=>fireEvent.change(position,{target:{value:"spu:0:0"}}));
+ types.forEach(type=>fireEvent.change(type,{target:{value:"5"}}));fireEvent.change(sorts[1],{target:{value:"2"}});
+ const prepare=screen.getByRole("button",{name:action==="prepare"?"准备整套图片计划（2 项）":"准备所选 2 项的新计划"});
+ expect(prepare).toBeDisabled();fireEvent.click(prepare);
+ expect(fetch.mock.calls.some(([url])=>/\/(prepare|regenerate|confirm)$/.test(String(url)))).toBe(false);
+ fireEvent.change(types[1],{target:{value:"2"}});expect(prepare).toBeEnabled();fireEvent.click(prepare);
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith(`/${action}`))).toBe(true));
+ const request=fetch.mock.calls.find(([url])=>String(url).endsWith(`/${action}`))!;
+ expect(JSON.parse(String(request[1]!.body)).officialPlacements).toEqual({main:{...officialPlacement,Type:5},detail:{...officialPlacement,Type:2,Sort:2}});
+ expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/confirm"))).toBe(false);
+});
 it.each(["prepare","regenerate"] as const)("requires unique official group sorts before %s",async(action)=>{
  const p=sheinProjection(),real=fetch.getMockImplementation()!;
  fetch.mockImplementation((url,init)=>String(url).endsWith("/requirements")?Promise.resolve(Response.json(sheinRequirements)):String(url).endsWith(`/runs/${runId}`)?Promise.resolve(Response.json(p)):String(url).endsWith("/regenerate")?Promise.resolve(Response.json(state,{status:201})):real(url,init));
