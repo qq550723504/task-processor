@@ -330,6 +330,7 @@ func TestPostgresJobQuotaFencingPublicationAndOriginalChargeProof(t *testing.T) 
 		require.Zero(t, remaining)
 	})
 	t.Run("result read guard orders credential changes and releases failed reads", func(t *testing.T) {
+		access.denied = false
 		newKey := func() dataservice.Credential {
 			k := key
 			k.ID = uuid.NewString()
