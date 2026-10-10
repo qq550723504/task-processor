@@ -44,6 +44,7 @@ import (
 	"task-processor/internal/product/asset"
 	collectionhttp "task-processor/internal/product/collection/httpapi"
 	"task-processor/internal/product/sourcing"
+	reporthttp "task-processor/internal/reportcenter/httpapi"
 	"task-processor/internal/storecenter"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
 	tm "task-processor/internal/toolmarket"
@@ -128,6 +129,8 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
+	reportCenters                int
+	reportCenterDB               *gorm.DB
 	operationsCockpits           int
 	privateDraftTrials           int
 	privateDraftTrial            *PrivateDraftTrialDependencies
@@ -402,6 +405,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 	}
 	auditSources, auditSourceErr := currentInvocationAuditSources(supplied)
+	if err := validateReportCenterPool(supplied, sourceAccountDB); err != nil {
+		return nil, err
+	}
 	if err := validateAgentCustomizationPool(supplied, sourceAccountDB); err != nil {
 		return nil, err
 	}
@@ -774,6 +780,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, module)
 		supplyRuntime = &module
 	}
+	if supplied.reportCenterDB != nil {
+		module, err := buildReportCenter(ctx, supplied.reportCenterDB, *workbench.authDependencies, authorizer, productRuntime)
+		if err != nil {
+			return nil, fmt.Errorf("build current report center: %w", err)
+		}
+		modules = append(modules, module)
+	}
 	if supplied.agentConfigurationDB != nil {
 		if supplied.fullImages != nil {
 			if supplied.fullImages.Worker == nil || supplied.fullImages.Client == nil {
@@ -941,6 +954,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	}
 	fullSupply, privateDraftTrial := supplied.supplyRouteFeatures()
 	routeFeatures := currentApplicationOptionalRoutes{
+		ReportCenter:        supplied.reportCenterDB != nil,
 		OperationsCockpit:   supplied.operationsCockpits > 0,
 		AgentCustomization:  supplied.agentCustomizations > 0,
 		PrivateDraftTrial:   privateDraftTrial,
@@ -1053,6 +1067,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	ReportCenter        bool
 	SupplyMarket        bool
 	POD                 bool
 	OperationsCockpit   bool
@@ -1110,6 +1125,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	if optional.ToolMarket {
 		for _, r := range tmhttp.Routes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
+	if optional.ReportCenter {
+		for _, r := range reporthttp.Routes(nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
 		}
 	}
@@ -1288,6 +1308,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {
+		if descriptor.Path == reporthttp.Base || strings.HasPrefix(descriptor.Path, reporthttp.Base+"/") {
+			if !optional.ReportCenter {
+				return errors.New("report center not admitted")
+			}
+			if err := reporthttp.ValidateDescriptor(descriptor); err != nil {
+				return err
+			}
+		}
 		if marketPODRoute(descriptor.Path) {
 			isPOD := descriptor.Path == podhttp.BasePath || strings.HasPrefix(descriptor.Path, podhttp.BasePath+"/")
 			if isPOD && !optional.POD || !isPOD && !optional.SupplyMarket {

@@ -72,7 +72,7 @@ func fullImageGenericRuntimeConfig(t *testing.T) *Config {
 }
 
 func TestFullImageGenericRuntimeOpensOnlyItsNarrowAssetPool(t *testing.T) {
-	for _, mode := range []string{"independent", "reject HTTP pool", "shared with Supply"} {
+	for _, mode := range []string{"independent", "reject HTTP pool", "shared with Supply", "report independent", "reject report image assets", "reject report worker"} {
 		t.Run(mode, func(t *testing.T) {
 			cfg := fullImageGenericRuntimeConfig(t)
 			platform := mode == "shared with Supply"
@@ -91,6 +91,17 @@ func TestFullImageGenericRuntimeOpensOnlyItsNarrowAssetPool(t *testing.T) {
 			if mode == "reject HTTP pool" {
 				assets = imageDB
 			}
+			reports := &gorm.DB{}
+			reportEnabled := strings.Contains(mode, "report")
+			if reportEnabled {
+				cfg.ReportCenter = reportRuntimeConfig().ReportCenter
+			}
+			if mode == "reject report image assets" {
+				reports = assets
+			}
+			if mode == "reject report worker" {
+				reports = workerDB
+			}
 			var closed []*gorm.DB
 			var workflowClosed, supplyClosed bool
 			supplyDials := 0
@@ -105,6 +116,7 @@ func TestFullImageGenericRuntimeOpensOnlyItsNarrowAssetPool(t *testing.T) {
 				OpenCommercialOwner:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return points, nil },
 				OpenStoreCenter:        func(context.Context, DatabaseConfig) (*gorm.DB, error) { return store, nil },
 				OpenImageAgent:         func(context.Context, DatabaseConfig) (*gorm.DB, error) { return imageDB, nil },
+				OpenReportCenter:       func(context.Context, DatabaseConfig) (*gorm.DB, error) { return reports, nil },
 				OpenImageSetWorker: func(context.Context, string, DatabaseConfig) (*coreconfig.Config, *gorm.DB, error) {
 					return &coreconfig.Config{}, workerDB, nil
 				},
@@ -132,6 +144,9 @@ func TestFullImageGenericRuntimeOpensOnlyItsNarrowAssetPool(t *testing.T) {
 						require.Nil(t, f.OfficialStoreApplications)
 					}
 					require.Same(t, workerDB, f.ImageSetWorkerDB)
+					if reportEnabled {
+						require.Same(t, reports, f.ReportCenterDB)
+					}
 					return nil, stop
 				},
 				CloseDatabase: func(db *gorm.DB) error { closed = append(closed, db); return nil },
@@ -146,6 +161,8 @@ func TestFullImageGenericRuntimeOpensOnlyItsNarrowAssetPool(t *testing.T) {
 			}
 			if mode == "reject HTTP pool" {
 				require.ErrorContains(t, err, "narrow independently opened pool")
+			} else if strings.HasPrefix(mode, "reject report") {
+				require.ErrorContains(t, err, "report center requires its independent owner pool")
 			} else {
 				require.ErrorIs(t, err, stop)
 				assetCloses := 0
@@ -157,6 +174,9 @@ func TestFullImageGenericRuntimeOpensOnlyItsNarrowAssetPool(t *testing.T) {
 				require.Equal(t, 1, assetCloses, "shared Asset owner closes exactly once")
 			}
 			owned := []*gorm.DB{source, product, configuration, points, imageDB, workerDB}
+			if mode == "report independent" {
+				owned = append(owned, reports)
+			}
 			if platform {
 				owned = append(owned, store)
 			}
