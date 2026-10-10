@@ -35,11 +35,20 @@ func TestStoreCenterRequiresResourceOwnerAndNarrowNativePool(t *testing.T) {
 	c.StoreCenter = &StoreCenterConfig{Enabled: false}
 	require.NoError(t, c.validate())
 }
+
+func TestCockpitRequiresExplicitStoreEnablement(t *testing.T) {
+	c := storeRuntimeConfig()
+	c.StoreCenter.OperationsCockpit = true
+	require.NoError(t, c.validate())
+	c.StoreCenter.Enabled = false
+	require.Error(t, c.validate())
+}
 func TestStoreCenterRuntimeClosesCurrentPoolsOnPartialStartup(t *testing.T) {
 	for failAt := 0; failAt <= 2; failAt++ {
 		t.Run(string(rune('0'+failAt)), func(t *testing.T) {
 			cfg := storeRuntimeConfig()
 			cfg.StoreCenter.Enabled = failAt != 0
+			cfg.StoreCenter.OperationsCockpit = failAt == 2
 			source, resource, records := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
 			var closed []*gorm.DB
 			opened := 0
@@ -63,6 +72,7 @@ func TestStoreCenterRuntimeClosesCurrentPoolsOnPartialStartup(t *testing.T) {
 					if failAt == 2 {
 						require.Same(t, records, f.StoreCenterDB)
 					}
+					require.Equal(t, failAt == 2, f.OperationsCockpit)
 					return nil, stop
 				},
 			}
