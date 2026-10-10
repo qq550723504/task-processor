@@ -20,7 +20,8 @@ beforeEach(()=>{
  fetch=vi.fn(async(input:unknown,init?:RequestInit)=>{
   const url=String(input),body=init?.body?JSON.parse(String(init.body)):undefined;
   if(url.includes("/agents/"))return Response.json(url.includes("/revisions/")?template:url.includes("/templates")?{items:[template],nextCursor:""}:entry);
-  if(url.endsWith("/sources"))return Response.json({contextKind:"acquisition",contextId:operation,source,manualReplacementAvailable:false,originals:[{id:"original",displayUrl:"https://images.test/original.png",width:1024,height:1024}],evidence:{}});
+  const parsed=new URL(url,"http://localhost");
+  if(parsed.pathname.endsWith("/images/sources"))return Response.json({contextKind:"acquisition",contextId:operation,source:{...source,EffectiveVersion:parsed.searchParams.get("effectiveCatalogVersion")??source.EffectiveVersion,...parsed.searchParams.get("applyReceiptId")?{ApplyReceiptID:parsed.searchParams.get("applyReceiptId")}:{}},manualReplacementAvailable:false,originals:[{id:"original",displayUrl:"https://images.test/original.png",width:1024,height:1024}],evidence:{}});
   if(url.endsWith("/images/runs"))return Response.json({items:[],nextCursor:""});
   if(url.endsWith("/prepare"))return Response.json(state,{status:201});
   if(url.includes("/by-key/"))return Response.json(state);
@@ -37,6 +38,89 @@ async function prepare(){
  fireEvent.click(await screen.findByRole("checkbox",{name:"共用原始素材 素材 1"}));
  const button=screen.getByRole("button",{name:"准备整套图片计划（2 项）"});await waitFor(()=>expect(button).toBeEnabled());fireEvent.click(button);
 }
+it.each(["acquisition","supply"] as const)("binds historical %s originals to the run while fresh plans keep current sources",async(kind)=>{
+ const historical={...source,ContextKind:kind,EffectiveVersion:"2",...kind==="supply"?{ApplyReceiptID:operation}:{}};
+ const current={...historical,EffectiveVersion:"3",...kind==="supply"?{ApplyReceiptID:templateId}:{}};
+ state={...projection("awaiting_final_approval",templateId),plan:{...projection().plan,Source:historical}};
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation((input,init)=>{
+  const url=new URL(String(input),"http://localhost");
+  if(url.pathname.endsWith("/images/sources")){
+   const pinned=url.searchParams.get("effectiveCatalogVersion")==="2",binding=pinned?historical:current;
+   return Promise.resolve(Response.json({contextKind:kind,contextId:operation,source:binding,manualReplacementAvailable:false,evidence:{},originals:[{id:"original",displayUrl:"https://images.test/original.png",width:1024,height:1024},{id:pinned?"historical-only":"current-only",displayUrl:`https://images.test/${pinned?"historical":"current"}.png`,width:1024,height:1024}]}));
+  }
+  return real(input,init);
+ });
+ render(<ProductImageSetPanel kind={kind} contextId={operation} effectiveVersion="3" applyReceiptId={kind==="supply"?templateId:undefined} initialRunId={runId}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"选择原图 2"}));
+ expect(screen.getByRole("img",{name:"拟采用：原图 2"})).toHaveAttribute("src","https://images.test/historical.png");
+ fireEvent.click(screen.getByRole("button",{name:"预览完整选择"}));await screen.findByRole("button",{name:"人工批准并保存素材"});
+ const preview=fetch.mock.calls.find(([url])=>String(url).endsWith("/preview"))!;
+ expect(preview[0]).toContain(`/runs/${runId}/preview`);expect(JSON.parse(String(preview[1]!.body)).choices[0].source_id).toBe("historical-only");
+ const pinned=new URL(String(fetch.mock.calls.find(([url])=>String(url).includes("/images/sources?effectiveCatalogVersion=2"))![0]),"http://localhost");
+ expect(pinned.searchParams.get("applyReceiptId")).toBe(kind==="supply"?operation:null);
+ fireEvent.click(screen.getByRole("checkbox",{name:"共用原始素材 素材 2"}));
+ const button=screen.getByRole("button",{name:"准备整套图片计划（2 项）"});await waitFor(()=>expect(button).toBeEnabled());fireEvent.click(button);
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/prepare"))).toBe(true));
+ const fresh=JSON.parse(String(fetch.mock.calls.find(([url])=>String(url).endsWith("/prepare"))![1]!.body));
+ expect(fresh).toMatchObject({effectiveCatalogVersion:"3",sharedOriginalIds:["current-only"]});
+ if(kind==="supply")expect(fresh.applyReceiptId).toBe(templateId);
+ expect(fetch.mock.calls.some(([url])=>/\/(confirm|regenerate|approve)$/.test(String(url)))).toBe(false);
+});
+it.each(["unavailable","mismatched"])("keeps restored results without falling back to current originals when pinned sources are %s",async(mode)=>{
+ const historical={...source,EffectiveVersion:"2"},current={...source,EffectiveVersion:"3"};
+ state={...projection("awaiting_final_approval",templateId),plan:{...projection().plan,Source:historical}};
+ let ready=false;const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation((input,init)=>{
+  const url=new URL(String(input),"http://localhost");
+  if(url.pathname.endsWith("/images/sources")){
+   const pinned=url.searchParams.get("effectiveCatalogVersion")==="2";
+   if(pinned&&!ready&&mode==="unavailable")return Promise.resolve(Response.json({code:"IMAGE_UNAVAILABLE"},{status:503}));
+   return Promise.resolve(Response.json({contextKind:"acquisition",contextId:operation,source:pinned&&ready?historical:current,manualReplacementAvailable:false,evidence:{},originals:[{id:pinned&&ready?"historical":"current",displayUrl:"https://images.test/source.png",width:1024,height:1024}]}));
+  }return real(input,init);
+ });
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation} effectiveVersion="3" initialRunId={runId}/>);
+ expect(await screen.findByRole("alert")).toHaveTextContent(mode==="unavailable"?"当前图片执行或依赖不可用":"原任务或版本已变化");
+ expect(await screen.findAllByRole("button",{name:"选择采用"})).toHaveLength(2);
+ expect(screen.queryByRole("button",{name:/选择原图/})).not.toBeInTheDocument();
+ ready=true;fireEvent.click(screen.getByRole("button",{name:"刷新原任务"}));fireEvent.click(await screen.findByRole("button",{name:"选择原图 1"}));
+ expect(screen.getByRole("img",{name:"拟采用：原图 1"})).toHaveAttribute("src","https://images.test/source.png");
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+});
+it("restores a historical run even when the current source version is unavailable",async()=>{
+ const historical={...source,EffectiveVersion:"2"};state={...projection("awaiting_final_approval",templateId),plan:{...projection().plan,Source:historical}};
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation((input,init)=>{
+  const url=new URL(String(input),"http://localhost");
+  if(url.pathname.endsWith("/images/sources"))return Promise.resolve(url.searchParams.get("effectiveCatalogVersion")==="2"?Response.json({contextKind:"acquisition",contextId:operation,source:historical,manualReplacementAvailable:false,evidence:{},originals:[{id:"historical",displayUrl:"https://images.test/historical.png",width:1024,height:1024}]}):Response.json({code:"IMAGE_UNAVAILABLE"},{status:503}));
+  return real(input,init);
+ });
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation} effectiveVersion="3" initialRunId={runId}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"选择原图 1"}));
+ expect(screen.getByRole("img",{name:"拟采用：原图 1"})).toHaveAttribute("src","https://images.test/historical.png");
+ expect(screen.queryByRole("button",{name:/准备整套图片计划/})).not.toBeInTheDocument();expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+});
+it("ignores a late historical source response after switching back to another run",async()=>{
+ const secondId="44444444-4444-4444-8444-444444444444";
+ state=projection("awaiting_final_approval",templateId);const second={...state,runId:secondId,plan:{...state.plan,Source:{...source,EffectiveVersion:"2"}}};
+ let resolve:(response:Response)=>void=()=>{};const late=new Promise<Response>(r=>{resolve=r});const real=fetch.getMockImplementation()!;
+ const payload=(version:string)=>({contextKind:"acquisition",contextId:operation,source:{...source,EffectiveVersion:version},manualReplacementAvailable:false,evidence:{},originals:[{id:`version-${version}`,displayUrl:`https://images.test/version-${version}.png`,width:1024,height:1024}]});
+ fetch.mockImplementation((input,init)=>{
+  const url=new URL(String(input),"http://localhost");
+  if(url.pathname.endsWith("/images/sources"))return url.searchParams.get("effectiveCatalogVersion")==="2"?late:Promise.resolve(Response.json(payload("1")));
+  if(url.pathname.endsWith(`/runs/${secondId}`))return Promise.resolve(Response.json(second));
+  if(url.pathname.endsWith("/images/runs"))return Promise.resolve(Response.json({items:[state,second].map(p=>({runId:p.runId,contextKind:"acquisition",contextId:operation,status:p.status,targetPlatform:"product",createdAt:now})),nextCursor:""}));
+  return real(input,init);
+ });
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation} initialRunId={runId}/>);
+ const selector=await screen.findByLabelText("本商品最近任务");fireEvent.change(selector,{target:{value:secondId}});
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).includes("/images/sources?effectiveCatalogVersion=2"))).toBe(true));
+ expect(screen.queryByRole("button",{name:"选择原图 1"})).not.toBeInTheDocument();
+ fireEvent.change(selector,{target:{value:runId}});fireEvent.click(await screen.findByRole("button",{name:"选择原图 1"}));
+ await act(async()=>resolve(Response.json(payload("2"))));
+ expect(selector).toHaveValue(runId);expect(screen.getByRole("img",{name:"拟采用：原图 1"})).toHaveAttribute("src","https://images.test/version-1.png");
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+});
 it.each(["disabled","unavailable","read-only"])("keeps admitted runs visible and refreshable when generation is %s",async(mode)=>{
  state=projection("awaiting_final_approval",templateId);const real=fetch.getMockImplementation()!;
  const unavailable={...entry,canUse:false,agent:{...entry.agent,activation:mode==="disabled"?"DISABLED":"ENABLED"},capabilities:entry.capabilities.map(c=>({...c,readiness:mode==="unavailable"?"UNAVAILABLE":c.readiness}))};
@@ -159,7 +243,7 @@ it("aborts a recent-run page and ignores its late items after switching enterpri
 it("can select an untouched source original outside the generation references without generating again",async()=>{
  state=projection("awaiting_final_approval",templateId);
  const real=fetch.getMockImplementation()!;
- fetch.mockImplementation(async(url,init)=>String(url).endsWith("/sources")?Response.json({contextKind:"acquisition",contextId:operation,source,manualReplacementAvailable:false,originals:[{id:"original",displayUrl:"https://images.test/original.png",width:1024,height:1024},{id:"untouched",displayUrl:"https://images.test/untouched.png",width:1024,height:1024}],evidence:{}}):real(url,init));
+ fetch.mockImplementation(async(url,init)=>new URL(String(url),"http://localhost").pathname.endsWith("/images/sources")?Response.json({contextKind:"acquisition",contextId:operation,source,manualReplacementAvailable:false,originals:[{id:"original",displayUrl:"https://images.test/original.png",width:1024,height:1024},{id:"untouched",displayUrl:"https://images.test/untouched.png",width:1024,height:1024}],evidence:{}}):real(url,init));
  render(<ProductImageSetPanel kind="acquisition" contextId={operation} initialRunId={runId}/>);
  fireEvent.click(await screen.findByRole("button",{name:"选择原图 2"}));
  expect(screen.getByRole("img",{name:"拟采用：原图 2"})).toHaveAttribute("src","https://images.test/untouched.png");
