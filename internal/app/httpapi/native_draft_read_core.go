@@ -3,14 +3,17 @@ package httpapi
 import (
 	"context"
 	"gorm.io/gorm"
+	"task-processor/internal/app/productsourcing"
 	supplyapp "task-processor/internal/app/supplychain"
 	"task-processor/internal/authz"
 	officialstore "task-processor/internal/integration/persistence/listing/official"
 	prepstore "task-processor/internal/integration/persistence/listing/preparation"
 	recordstore "task-processor/internal/integration/persistence/listing/record"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
+	reviewstore "task-processor/internal/integration/persistence/product/review"
 	"task-processor/internal/listing/preparation"
 	"task-processor/internal/product/collection"
+	"task-processor/internal/product/review"
 	"task-processor/internal/product/sourcing"
 	"task-processor/internal/workbenchcontext"
 	"time"
@@ -58,7 +61,11 @@ func buildNativeDraftReadCore(ctx context.Context, db *gorm.DB, deps routeAuthDe
 	if err != nil {
 		return empty, err
 	}
-	reviews, err := buildProductReviewCore(db, resolver, permissions)
+	// Only Review observations are needed here. Constructing the title
+	// proposal producer would require unrelated execution/operation tables.
+	reviews, err := reviewstore.NewRepository(db, func(tx *gorm.DB) (review.SourcePublicationReader, error) {
+		return productsourcing.NewTransactionReader(tx)
+	})
 	if err != nil {
 		return empty, err
 	}
@@ -70,6 +77,6 @@ func buildNativeDraftReadCore(ctx context.Context, db *gorm.DB, deps routeAuthDe
 	if err != nil {
 		return empty, err
 	}
-	app := &supplyapp.Application{Preparations: preps, Sources: sources, Records: records, Authorization: auth, Products: supplyapp.EffectiveProductReader{Reviews: reviews.store, Snapshots: snapshots}, StageProjection: supplyapp.ReviewProjection{Facts: repo, Reviews: reviews.store}, PublicationReceipts: receipts}
+	app := &supplyapp.Application{Preparations: preps, Sources: sources, Records: records, Authorization: auth, Products: supplyapp.EffectiveProductReader{Reviews: reviews, Snapshots: snapshots}, StageProjection: supplyapp.ReviewProjection{Facts: repo, Reviews: reviews}, PublicationReceipts: receipts}
 	return nativeDraftReadCore{app, collections, repo}, nil
 }

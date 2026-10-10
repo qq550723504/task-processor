@@ -25,6 +25,7 @@ import (
 	prepstore "task-processor/internal/integration/persistence/listing/preparation"
 	recordstore "task-processor/internal/integration/persistence/listing/record"
 	submissionstore "task-processor/internal/integration/persistence/listing/submission"
+	acquisitionstore "task-processor/internal/integration/persistence/product/acquisition"
 	assetstore "task-processor/internal/integration/persistence/product/asset"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	collectionstore "task-processor/internal/integration/persistence/product/collection"
@@ -171,6 +172,16 @@ func testSupplyAgentOwners(t *testing.T, mode string, f *acquisitionHTTPFixture,
 	app.Execution.Repository = operationsRepo
 	var draftBefore d.DraftSnapshot
 	if mode == "supply private draft quality" {
+		t.Run("native read assembly without title execution", func(t *testing.T) {
+			require.NoError(t, f.owner.Exec("ALTER TABLE product_title_operations RENAME TO private_draft_test_title_operations").Error)
+			require.NoError(t, acquisitionstore.GrantRuntimePermissions(ctx, f.owner, acquisitionstore.RuntimeCapabilities{Collections: true, SupplyChain: true}))
+			readCore, e := buildNativeDraftReadCore(ctx, f.db, deps, permissions, nil)
+			require.NoError(t, f.owner.Exec("ALTER TABLE private_draft_test_title_operations RENAME TO product_title_operations").Error)
+			require.NoError(t, e, "read-only draft assembly must not require title execution tables")
+			saved, e := readCore.app.ReadTarget(actor, page.Items[0].ID, storeID)
+			require.NoError(t, e)
+			require.Equal(t, target.Record.ID, saved.ID)
+		})
 		app.Targets = targets
 		app.PublicationReceipts, err = officialstore.NewOfficialRepository(ctx, f.owner)
 		require.NoError(t, err)
