@@ -276,7 +276,9 @@ func (m fullImageModule) handle(c *gin.Context, kind imageagent.ImageSourceConte
 		}
 		response, e := a.response(ctx, prepared.Projection)
 		if e != nil {
-			writeFullImageError(c, e, false)
+			// Preparation has committed. A later read error cannot invalidate
+			// that mutation or release its original recovery key.
+			c.JSON(http.StatusServiceUnavailable, gin.H{"code": "OUTCOME_UNKNOWN"})
 			return
 		}
 		c.JSON(http.StatusCreated, response)

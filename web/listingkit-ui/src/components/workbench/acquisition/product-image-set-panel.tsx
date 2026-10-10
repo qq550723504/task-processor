@@ -160,7 +160,9 @@ function ScopedImageSetPanel({scope,target,effectiveVersion,applyReceiptId,onSav
     const confirmationObserved=["awaiting_final_approval","completed","cancelled"].includes(p.status)||["blocked","failed"].includes(p.status)&&(p.regenerationAvailable||!!p.recoverableEffects?.length);
     const confirmed=intent.action==="confirm"&&p.generationAdmitted&&p.confirmationActionId===body.actionId&&p.planRevision===body.planRevision&&p.planDigest===body.planDigest&&p.quoteDigest===body.quoteDigest&&confirmationObserved;
     const restarted=intent.action==="restart"&&p.generationAdmitted&&p.planRevision===body.planRevision&&p.planDigest===body.planDigest&&p.quoteDigest===body.quoteDigest&&!["failed","planning","awaiting_plan_approval"].includes(p.status);
-    if(recovered||confirmed||restarted||(intent.action==="resume"||intent.action==="cancel")&&(p.pendingCommand?.ActionID===body.actionId||p.status==="cancelled"))clearIntent();
+    const cancellationClosed=intent.action==="cancel"&&p.planRevision===body.planRevision&&["cancelled","completed","failed"].includes(p.status);
+    const pendingObserved=(intent.action==="resume"||intent.action==="cancel")&&p.pendingCommand?.ActionID===body.actionId;
+    if(recovered||confirmed||restarted||cancellationClosed||pendingObserved||intent.action==="resume"&&p.status==="cancelled")clearIntent();
     else setMessage(intent.action==="confirm"?"读取任务状态不能确认工作流已启动，请继续原确认；请求编号、计划和点数均沿用原值。":"原操作尚未得到明确回执，请继续核实同一编号。");
    }
   }catch(e){if(!controller.signal.aborted)fail(e)}finally{flight.current=false;if(!controller.signal.aborted)setBusy(false)}

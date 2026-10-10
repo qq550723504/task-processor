@@ -468,3 +468,32 @@ it("keeps a known closed failed run on the result-review and regeneration path",
  expect(screen.queryByRole("button",{name:"恢复原失败任务"})).not.toBeInTheDocument();
  expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
 });
+
+for(const status of ["cancelled","completed","failed"]){
+it(`releases a lost cancel intent when the original plan is already ${status}`,async()=>{
+ const key=`product-image-set:actor:org:acquisition:${operation}:intent`;
+ state=projection(status,operation);
+ if(status==="failed")state.slots[1]={...state.slots[1],status:"pending",attempt:0,candidates:[],closure:null};
+ localStorage.setItem(key,JSON.stringify({action:"cancel",runId,body:{actionId:operation,planRevision:1}}));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"核实原请求"}));
+ await waitFor(()=>expect(localStorage.getItem(key)).toBeNull());
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+ if(status==="failed")expect(screen.getByRole("button",{name:"恢复原失败任务"})).toBeEnabled();
+});
+}
+
+for(const mismatch of ["executing","blocked","revision"]){
+it(`retains an unresolved cancel intent for ${mismatch} without another mutation`,async()=>{
+ const key=`product-image-set:actor:org:acquisition:${operation}:intent`;
+ state=projection(mismatch==="revision"?"completed":mismatch,operation);
+ if(mismatch==="revision")state.planRevision=2;
+ const frozen=JSON.stringify({action:"cancel",runId,body:{actionId:operation,planRevision:1}});
+ localStorage.setItem(key,frozen);
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"核实原请求"}));
+ await screen.findByText("原操作尚未得到明确回执，请继续核实同一编号。");
+ expect(localStorage.getItem(key)).toBe(frozen);
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+});
+}
