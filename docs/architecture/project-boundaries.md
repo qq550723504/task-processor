@@ -228,6 +228,21 @@ owns the feature routes; persistence and atomic run admission are injected from
 Generic Agent runtime, Knowledge, AI accounting and Product Review retain their
 existing owners. See [the frozen configuration contract](./organization-agent-configuration-v1.md).
 
+Issue #611 additionally admits `internal/agentcustomization` for human service
+requests, contact consent, private reference files and manual progress. Its
+`httpapi` adapter owns enterprise and verified-platform routes; the single
+PostgreSQL transaction repository is injected from
+`internal/integration/persistence/agentcustomization`. The subsequently approved
+[private delivery contract](./private-agent-delivery-v1.md) additionally owns
+fixed code-version deliveries bound to the original enterprise and immutable
+execution reports. The current platform-draft check consumes the existing
+SupplyChain/Listing immutable TargetRecord and saved validation issues through
+an authorized read port; Listing retains draft and rule ownership. Reports are
+actor-private observations and recheck source access on every read/replay.
+The manual checker is retired. Enterprise activation/templates, AI runs,
+third-party orders and payment facts retain their existing owners. See also
+[the manual customization contract](./agent-customization-v1.md).
+
 ### 3.7 `internal/compatibility/listingkit`
 
 CURRENT STATE: `internal/compatibility/listingkit/sourcehandoff` is a drain-only

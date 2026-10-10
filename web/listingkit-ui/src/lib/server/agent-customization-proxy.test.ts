@@ -1,0 +1,20 @@
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { proxyAgentCustomization } from "./agent-customization-proxy";
+const key = "b510c346-54e7-4cbd-91b2-05f7c0149b42";
+const input = { name: "需求", scenario: "商品", direction: "OTHER", description: "说明", contactName: "测试", contactMethod: "test", consent: true };
+function request(admin = false, body: unknown = input) { return new Request(`https://console.test/api/workbench/${admin ? "admin/" : ""}agent-customization/requests${admin ? `/${key}/progress` : ""}`, { method: "POST", headers: { "Content-Type": "application/json", "Origin": "https://console.test", "X-Expected-User-ID": "user-a", "X-Expected-Organization-ID": "org-a", Cookie: "shuomi_effective_organization=org-a", "Idempotency-Key": key, ...(admin ? { "If-Match": '"1"' } : {}) }, body: JSON.stringify(body) }); }
+beforeEach(() => { vi.restoreAllMocks(); vi.stubEnv("LISTINGKIT_SERVICE_API_BASE", "https://service.test/api/v1"); vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL", "https://console.test"); });
+afterEach(() => vi.unstubAllEnvs());
+it("rejects switched identity before forwarding", async () => { const fetch = vi.spyOn(globalThis, "fetch"); const result = await proxyAgentCustomization(request(), "token", "user-b"); expect(result.status).toBe(409); expect(fetch).not.toHaveBeenCalled(); });
+it("rejects browser scope fields and absent consent", async () => { const fetch = vi.spyOn(globalThis, "fetch"); for (const body of [{ ...input, platform: true }, { ...input, consent: false }]) {
+    const result = await proxyAgentCustomization(request(false, body), "token", "user-a");
+    expect(result.status).toBe(400);
+} expect(fetch).not.toHaveBeenCalled(); });
+it("reports unknown after dispatched mutation response loss", async () => { vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("response lost")); const result = await proxyAgentCustomization(request(), "token", "user-a"); expect(await result.json()).toEqual({ code: "OUTCOME_UNKNOWN" }); });
+it("does not forward enterprise selection to the platform route", async () => { const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ code: "CUSTOMIZATION_FORBIDDEN" }, { status: 403 })); const result = await proxyAgentCustomization(request(true, { stage: "EVALUATING", note: "评估" }), "token", "user-a"); expect(result.status).toBe(403); expect(new Headers(fetch.mock.calls[0][1]?.headers).has("X-Requested-Organization-ID")).toBe(false); expect(String(fetch.mock.calls[0][0])).toContain("/api/v1/admin/agent-customization/requests/"); });
+it("preserves actual middleware denial codes without exposing its metadata", async () => { vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ code: "PERMISSION_DENIED", message: "Permission is denied", requestId: "test", fieldErrors: [] }, { status: 403 })); const result = await proxyAgentCustomization(request(true, { stage: "EVALUATING", note: "评估" }), "token", "user-a"); expect(result.status).toBe(403); expect(await result.json()).toEqual({ code: "PERMISSION_DENIED" }); });
+it("reads a full legal page even when Go escapes HTML characters in long text",async()=>{
+ const at="2026-10-09T00:00:00Z",item={id:key,organizationId:"org-a",createdBy:"user-a",input:{...input,description:"<".repeat(10000)},stage:"DEVELOPING",version:"4",proposal:"<".repeat(5000),offlineConfirmation:"<".repeat(5000),consentVersion:"agent-customization-contact-v1",attachments:[],createdAt:at,updatedAt:at};
+ const payload=JSON.stringify({items:Array.from({length:20},()=>item),nextCursor:""}).replaceAll("<","\\u003c");expect(payload.length).toBeGreaterThan(2*1024*1024);
+ vi.spyOn(globalThis,"fetch").mockResolvedValue(new Response(payload,{headers:{"Content-Type":"application/json"}}));const read=new Request("https://console.test/api/workbench/agent-customization/requests",{headers:{"X-Expected-User-ID":"user-a","X-Expected-Organization-ID":"org-a",Cookie:"shuomi_effective_organization=org-a"}});const result=await proxyAgentCustomization(read,"token","user-a");expect(result.status).toBe(200);
+});

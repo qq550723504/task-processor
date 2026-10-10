@@ -17,7 +17,7 @@ func (c *Config) validateProjectCenter() error {
 	if d.User != "ai_projects_runtime" || d.MaxConnections > 4 {
 		return errors.New("project center requires its restricted independent owner")
 	}
-	owners := []*DatabaseConfig{&c.SourceAccountDatabase, c.CommercialOwnerDatabase, c.MoneyOwnerDatabase, c.ProductAcquisitionDatabase, c.NotificationCenterDatabase}
+	owners := []*DatabaseConfig{&c.SourceAccountDatabase, c.CommercialOwnerDatabase, c.MoneyOwnerDatabase, c.ProductAcquisitionDatabase, c.NotificationCenterDatabase, c.AgentCustomizationDatabase}
 	if c.StoreCenter != nil {
 		owners = append(owners, &c.StoreCenter.Database)
 	}

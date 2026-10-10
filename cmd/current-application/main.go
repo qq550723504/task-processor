@@ -10,6 +10,7 @@ import (
 	"syscall"
 	observationruntime "task-processor/internal/app/runtime/storeobservations"
 	supplyruntime "task-processor/internal/app/runtime/supplychain"
+	"task-processor/internal/product/collection"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -119,6 +120,9 @@ func execute() error {
 		OpenNotificationCenter: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
+		OpenAgentCustomization: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
 		DialImageAgentWorkflow: func(ctx context.Context, address, namespace string) (imageagent.WorkflowClient, func() error, error) {
 			return appruntime.DialOrganizationImageAgentTemporalWorkflowClient(ctx, address, namespace)
 		},
@@ -130,6 +134,9 @@ func execute() error {
 		},
 		NewApplicationWithFeatures: func(ctx context.Context, source *gorm.DB, features currentapplication.ApplicationFeatures, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
 			options := make([]httpapi.CurrentApplicationOption, 0, 6)
+			if features.AgentCustomizationDB != nil {
+				options = append(options, httpapi.WithAgentCustomization(features.AgentCustomizationDB))
+			}
 			if features.ProjectCenterDB != nil {
 				options = append(options, httpapi.WithProjectCenter(features.ProjectCenterDB))
 			}
@@ -187,6 +194,9 @@ func execute() error {
 			}
 			if features.SourceMediaStorage != nil {
 				options = append(options, httpapi.WithCollectionSourceMedia(features.SourceMediaStorage))
+			}
+			if t := features.PrivateDraftTrial; t != nil {
+				options = append(options, httpapi.WithPrivateDraftTrial(httpapi.PrivateDraftTrialDependencies{Scope: collection.Scope{OrganizationID: t.OrganizationID, ActorID: t.ActorID, MemberID: t.MemberID}, StoreID: t.StoreID}))
 			}
 			if features.SupplyWorkflow != nil {
 				options = append(options, httpapi.WithSupplyChain(httpapi.SupplyChainDependencies{AssetDB: features.SupplyAssetDB, Starter: supplyruntime.TemporalOperationStarter{Client: features.SupplyWorkflow}, NewWorker: supplyruntime.WorkerFactory(features.SupplyWorkflow), Worker: features.SupplyWorker}))

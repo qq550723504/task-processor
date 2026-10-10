@@ -14,17 +14,14 @@ import (
 	"task-processor/internal/httproute"
 	officialstore "task-processor/internal/integration/persistence/listing/official"
 	prepstore "task-processor/internal/integration/persistence/listing/preparation"
-	recordstore "task-processor/internal/integration/persistence/listing/record"
 	submissionstore "task-processor/internal/integration/persistence/listing/submission"
 	assetstore "task-processor/internal/integration/persistence/product/asset"
-	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listing/preparation"
 	record "task-processor/internal/listing/record/target"
 	"task-processor/internal/listing/submission"
 	"task-processor/internal/product/asset"
 	"task-processor/internal/product/collection"
-	"task-processor/internal/product/sourcing"
 	"task-processor/internal/storecenter"
 	"task-processor/internal/workbenchcontext"
 	"time"
@@ -70,32 +67,13 @@ func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d 
 	if err := storecenter.VerifyRuntimePermissionsForCapabilities(ctx, storeDB, capabilities); err != nil {
 		return empty, err
 	}
-	collections, err := buildProductCollectionService(ctx, productDB, deps, permissions, true)
+	core, err := buildNativeDraftReadCore(ctx, productDB, deps, permissions, nil)
 	if err != nil {
 		return empty, err
 	}
-	live := &productReviewLiveOrganizationAccess{resolver: resolver, now: time.Now}
-	auth, err := preparation.NewContextAuthorizer(live, permissions)
-	if err != nil {
-		return empty, err
-	}
+	collections, auth := core.collections, core.app.Authorization
+	preparations, sources, effective, records := core.app.Preparations, core.app.Sources, core.app.Products, core.app.Records
 	executionAuth := supplyapp.OrganizationExecutionAuthorizer{Client: zitadel.NewAuthorizationClient(cfg.ListingKit.Zitadel.AuthorizationAPIURL, &http.Client{Timeout: 5 * time.Second}), ServiceToken: func(context.Context) (string, error) { return cfg.ListingKit.Zitadel.TenantDirectoryToken, nil }, ProjectID: cfg.ListingKit.Zitadel.ProjectID, Permissions: permissions, OrganizationStatus: resolver.BusinessStatusChecker()}
-	repository, err := prepstore.NewRepository(ctx, productDB)
-	if err != nil {
-		return empty, err
-	}
-	preparations, err := preparation.NewService(repository, collections, auth)
-	if err != nil {
-		return empty, err
-	}
-	snapshots, err := catalogstore.NewBoundedSnapshotReader(productDB, sourcing.MaxEncodedSnapshotBytes)
-	if err != nil {
-		return empty, err
-	}
-	sources, err := preparation.NewSourceSelector(preparations, collections, repository, snapshots)
-	if err != nil {
-		return empty, err
-	}
 	sources, err = sources.WithExecution(executionAuth, collection.ExecutionOwnerAuthority{Authorization: executionAuth})
 	if err != nil {
 		return empty, err
@@ -108,11 +86,6 @@ func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d 
 	if err != nil {
 		return empty, err
 	}
-	reviews, err := buildProductReviewCore(productDB, resolver, permissions)
-	if err != nil {
-		return empty, err
-	}
-	effective := supplyapp.EffectiveProductReader{Reviews: reviews.store, Snapshots: snapshots}
 	storeRepo, err := storecenter.NewMemberScopedStoreRepository(storeDB, currentStoreMemberAuthorizer{authorizer: permissions})
 	if err != nil {
 		return empty, err
@@ -143,10 +116,6 @@ func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d 
 	if err != nil {
 		return empty, err
 	}
-	records, err := recordstore.NewRepository(ctx, productDB)
-	if err != nil {
-		return empty, err
-	}
 	targets, err := record.NewTargetService(record.TargetDependencies{Sources: sources, Products: effective, Assets: assets, Rules: rules, Records: records, Images: supplyapp.NewPublicImageProbe(), Authorizer: auth, ExecutionSources: sources, ExecutionAuthorization: executionAuth})
 	if err != nil {
 		return empty, err
@@ -163,7 +132,7 @@ func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d 
 	if err != nil {
 		return empty, err
 	}
-	stageProjection := supplyapp.ReviewProjection{Facts: repository, Reviews: reviews.store}
+	stageProjection := core.app.StageProjection
 	uploader, err := supplyapp.NewUploadService(supplyapp.UploadDependencies{Sources: sources, Products: effective, Assets: assets, Rules: rules, Records: records, Authorization: executionAuth, Stores: supplyapp.OfficialExecutionStore{Access: access}, Images: supplyapp.NewPublicImageProbe(), Kernel: kernel, Intents: official, Receipts: official, ReviewGate: stageProjection.RequireUploadReady})
 	if err != nil {
 		return empty, err
