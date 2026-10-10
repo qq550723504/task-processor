@@ -730,8 +730,11 @@ func failItem(tx *gorm.DB, job *jobRow, row *itemRow, reason string) error {
 	return tx.Exec("UPDATE data_acquisition_items SET state='FAILED',reason=?,terminal_evidence=?,claim_token=NULL,lease_until=NULL WHERE organization_id=? AND actor_id=? AND job_id=? AND id=?", reason, row.TerminalEvidence, row.OrganizationID, row.ActorID, row.JobID, row.ID).Error
 }
 func (r *Repository) Fence(ctx context.Context, job dataacquisition.Job, claimed dataacquisition.Item, reason string) (dataacquisition.Item, error) {
+	providerFailure := false
 	switch reason {
-	case "provider_rejected", "canceled", "deadline", "access_revoked", "resource_unavailable":
+	case "provider_rejected", "provider_challenged", "provider_unsupported":
+		providerFailure = true
+	case "canceled", "deadline", "access_revoked", "resource_unavailable":
 	default:
 		return dataacquisition.Item{}, dataacquisition.ErrInvalid
 	}
@@ -741,7 +744,7 @@ func (r *Repository) Fence(ctx context.Context, job dataacquisition.Job, claimed
 		if err != nil {
 			return err
 		}
-		if reason == "provider_rejected" && row.State != "SAVED" && row.State != "FAILED" && (row.State != "FETCHING" || claimed.ClaimToken == "" || row.ClaimToken != claimed.ClaimToken) {
+		if providerFailure && row.State != "SAVED" && row.State != "FAILED" && (row.State != "FETCHING" || claimed.ClaimToken == "" || row.ClaimToken != claimed.ClaimToken) {
 			return dataacquisition.ErrConflict
 		}
 		if err = failItem(tx, j, &row, reason); err != nil {

@@ -215,7 +215,14 @@ func (s *Service) ProcessItem(ctx context.Context, job Job, item Item, stopReaso
 			return fetchErr
 		}
 		if fetchErr != nil || evidence.Site != job.Query.Site || evidence.ASIN != item.ASIN || evidence.Validate() != nil {
-			fenced, err := s.repo.Fence(ctx, job, claimed, "provider_rejected")
+			reason := "provider_rejected"
+			switch {
+			case errors.Is(fetchErr, ErrSourceChallenge):
+				reason = "provider_challenged"
+			case errors.Is(fetchErr, ErrSourceUnsupported):
+				reason = "provider_unsupported"
+			}
+			fenced, err := s.repo.Fence(ctx, job, claimed, reason)
 			if err != nil {
 				return err
 			}

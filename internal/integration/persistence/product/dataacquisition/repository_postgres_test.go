@@ -257,6 +257,41 @@ func TestPostgresJobQuotaFencingPublicationAndOriginalChargeProof(t *testing.T) 
 		require.Equal(t, "provider_rejected", stopped.Reason)
 		require.Zero(t, stopped.Saved)
 	})
+	for _, reason := range []string{"provider_rejected", "provider_challenged", "provider_unsupported"} {
+		t.Run("terminal provider reason requires current claim "+reason, func(t *testing.T) {
+			access.denied = false
+			original, err := repo.Admit(ctx, dataacquisition.Principal{Scope: scope}, uuid.NewString(), changed, orgresource.FundingMember)
+			require.NoError(t, err)
+			original, err = repo.Discover(ctx, original, []string{"B000123456"})
+			require.NoError(t, err)
+			rows, err := repo.Items(ctx, original)
+			require.NoError(t, err)
+			require.Len(t, rows, 1)
+			intent, err := repo.ChargeIntent(ctx, orgresource.ConsumerChargeIdentity{OrganizationID: scope.OrganizationID, Consumer: orgresource.ConsumerAmazonData, OperationID: rows[0].ID})
+			require.NoError(t, err)
+			reservation := orgresource.ConsumerChargeReceipt{Intent: intent, ReservationID: uuid.NewString(), State: orgresource.ReservationReserved, CreatedAt: time.Now().UTC()}
+			_, err = repo.BindReservation(ctx, original, rows[0].ID, reservation)
+			require.NoError(t, err)
+			oldClaim, err := repo.Claim(ctx, original, rows[0].ID)
+			require.NoError(t, err)
+			require.NoError(t, db.Exec("UPDATE data_acquisition_items SET lease_until=now()-interval '1 second' WHERE id=?", rows[0].ID).Error)
+			currentClaim, err := repo.Claim(ctx, original, rows[0].ID)
+			require.NoError(t, err)
+			_, err = repo.Fence(ctx, original, oldClaim, reason)
+			require.ErrorIs(t, err, dataacquisition.ErrConflict, "a late response cannot fence the replacement claim")
+			fenced, err := repo.Fence(ctx, original, currentClaim, reason)
+			require.NoError(t, err)
+			require.Equal(t, reason, fenced.Reason)
+			require.Equal(t, "FAILED", fenced.State)
+			lateEvidence := evidence
+			lateEvidence.ASIN = oldClaim.ASIN
+			_, err = repo.PrepareEvidence(ctx, original, oldClaim, lateEvidence)
+			require.ErrorIs(t, err, dataacquisition.ErrConflict, "terminal provider failure cannot become a late publication")
+			proof, err := repo.ChargeProof(ctx, reservation)
+			require.NoError(t, err)
+			require.Equal(t, orgresource.ConsumerEffectFailed, proof.State)
+		})
+	}
 	t.Run("cancel after UTC rollover releases only original persisted windows", func(t *testing.T) {
 		access.denied = false
 		s := collection.Scope{OrganizationID: "rollover-org", ActorID: "creator", MemberID: "member"}

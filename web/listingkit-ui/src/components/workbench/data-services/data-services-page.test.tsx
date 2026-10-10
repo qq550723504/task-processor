@@ -13,6 +13,24 @@ const job = { id, commandKey: id, query: { site: "us", mode: "asin", asins: ["B0
 const json = (value: unknown, status = 200) => Response.json(value, { status });
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals(); });
 describe("data service product paths", () => {
+    it.each([
+        ["provider_challenged", "Amazon 页面要求验证，本次获取已停止。"],
+        ["provider_unsupported", "Amazon 页面结构暂不支持，本次获取已停止。"],
+        ["provider_rejected", "来源页面未能取得有效数据"],
+    ])("shows the persisted item failure reason %s", async (reason, label) => {
+        const failed = { ...job, state: "FAILED", discovered: true, failed: 1 };
+        vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+            if (url.endsWith("/results"))
+                return json({ items: [{ id, state: "FAILED", reason }] });
+            if (url.endsWith(id))
+                return json(failed);
+            return json({ options, keys: [], jobs: [failed], keyQuotas: [], usage: { dayRows: 0, monthConfirmedFen: 0, monthPendingFen: 0, finishedJobs: 1, succeededJobs: 0, successRate: 0, window: "UTC calendar month; completed jobs" } });
+        }));
+        render(<DataServicesPage mode="api"/>);
+        fireEvent.click(await screen.findByRole("button", { name: "查看" }));
+        expect(await screen.findByText(`失败 · ${label}`)).toBeInTheDocument();
+        expect(screen.queryByText("失败 · 来源未完成")).not.toBeInTheDocument();
+    });
     it("shows the original customization criteria for the customer and specialist", () => {
         render(<CustomDetails request={{ id, input: { name: "fixture", query: { site: "us", mode: "keyword", keyword: "cordless drill", categoryNode: "12345", asins: ["B000123456"], limit: 5, fields: ["title", "price"] }, purpose: "选品分析", timeRange: "最近三个月", format: "json", notes: "只需品牌官方店" }, state: "SUBMITTED", revision: 1, specRevision: 0, deliveredRows: 0, createdAt: "2026-10-10T00:00:00Z", events: [] }}/>);
         for (const value of ["cordless drill", "12345", "B000123456", "title、price", "最近三个月", "只需品牌官方店"])

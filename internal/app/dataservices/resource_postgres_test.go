@@ -383,11 +383,12 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 		name     string
 		fetchErr error
 		expire   bool
+		reason   string
 	}{
-		{"challenge", dataacquisition.ErrSourceChallenge, false},
-		{"unsupported", dataacquisition.ErrSourceUnsupported, false},
-		{"invalid evidence", dataacquisition.ErrInvalid, false},
-		{"transient then deadline", context.Canceled, true},
+		{"challenge", dataacquisition.ErrSourceChallenge, false, "provider_challenged"},
+		{"unsupported", dataacquisition.ErrSourceUnsupported, false, "provider_unsupported"},
+		{"invalid evidence", dataacquisition.ErrInvalid, false, "provider_rejected"},
+		{"transient then deadline", context.Canceled, true, "deadline"},
 	} {
 		t.Run("fetch "+tc.name, func(t *testing.T) {
 			provider := &executionFixture{fetchErr: tc.fetchErr}
@@ -412,9 +413,7 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 			require.Equal(t, "FAILED", items[0].State)
 			require.Equal(t, orgresource.ReservationReleased, items[0].ChargeState)
 			require.Equal(t, 1, provider.fetches)
-			if tc.expire {
-				require.Equal(t, "deadline", items[0].Reason)
-			}
+			require.Equal(t, tc.reason, items[0].Reason)
 			readBalance()
 			require.Equal(t, int64(3), bucket.Consumed)
 			require.Zero(t, bucket.Reserved)
