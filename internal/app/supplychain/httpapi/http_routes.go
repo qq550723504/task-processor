@@ -171,12 +171,19 @@ func SupplyRoutes(app *supplyapp.Application, bind func(context.Context, string)
 				}
 				output, err = app.ResolveUpload(ctx, in)
 			case "approve":
-				var in asset.SourceApprovalCommand
-				key, e := supplyBody(c.Request, &in, true)
+				var body supplyImageApprovalBody
+				key, e := supplyBody(c.Request, &body, true)
 				if e != nil {
 					supplyError(c, e)
 					return
 				}
+				selection, e := body.Selection.domain()
+				if e != nil {
+					supplyError(c, e)
+					return
+				}
+				in := body.SourceApprovalCommand
+				in.Selection = selection
 				if in.ActionID != "" && in.ActionID != key {
 					supplyError(c, preparation.ErrInvalid)
 					return
@@ -184,13 +191,20 @@ func SupplyRoutes(app *supplyapp.Application, bind func(context.Context, string)
 				in.ActionID = key
 				output, err = app.Approvals.Approve(ctx, in)
 			case "inventory":
-				var in asset.SourceSelectionRequest
-				_, e := supplyBody(c.Request, &in, false)
+				var body supplyImageSourceBody
+				_, e := supplyBody(c.Request, &body, false)
 				if e != nil {
 					supplyError(c, e)
 					return
 				}
-				output, err = app.Inventory(ctx, in)
+				in, e := body.domain()
+				if e != nil {
+					supplyError(c, e)
+					return
+				}
+				inventory, e := app.Inventory(ctx, in)
+				err = e
+				output = supplyImageInventory(inventory)
 			case "create-operation":
 				var in preparation.OperationInput
 				key, e := supplyBody(c.Request, &in, true)

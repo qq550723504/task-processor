@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { supplyRules,supplyInventory,SupplyAPIError,type SupplyScope } from "@/lib/api/supply-chain";
-import { targetInputSchema,inventorySchema,type SupplySourceDetail,type SupplyTarget,type SupplyRules,type OfficialProduct } from "@/lib/contracts/supply-chain";
+import { sourceSelectionSchema,targetInputSchema,inventorySchema,type SupplySourceDetail,type SupplyTarget,type SupplyRules,type OfficialProduct } from "@/lib/contracts/supply-chain";
 import { initialSupplyDraft,applyApplicationMode,categoryLeaves,emptySKC,emptySKU,sampleForSKU,type SupplyDraft,type AttributeValue,type SKU } from "./draft-fields";
 import type { SupplyCommandState } from "./use-supply-command";
 import type {ProductTitleProposal} from "@/lib/api/product-title-review";
@@ -27,7 +27,7 @@ export function SupplyTargetEditor({scope,source,storeId,existing,appliedProposa
  const currentInput=useRef(draft);
  useEffect(()=>{currentInput.current=draft},[draft]);
  const loading=resolvedRuleEpoch!==ruleEpoch;
- const selection={itemId:source.source.id,originalPublicationId:source.source.source.publicationId,originalSnapshotVersion:Number(source.source.source.version),effectiveCatalogVersion:Number(version),...(applied?{applyReceiptId:applied}:{}),targetPlatform:"shein" as const};
+ const selection={itemId:source.source.id,originalPublicationId:source.source.source.publicationId,originalSnapshotVersion:source.source.source.version,effectiveCatalogVersion:version,...(applied?{applyReceiptId:applied}:{}),targetPlatform:"shein" as const};
  function change(edit:(next:SupplyDraft)=>void){setDraft(value=>{const copy=structuredClone(value);edit(copy);return copy})}
  useEffect(()=>{let live=true;const c=new AbortController();
   const input={sourceId:source.source.id,storeId,expectedRevision:existing?.revision??0,effectiveVersion:version,...applied?{applyReceiptId:applied}:{},draft:currentInput.current};
@@ -45,7 +45,7 @@ export function SupplyTargetEditor({scope,source,storeId,existing,appliedProposa
  const priceMode=rules?.merchant.application_type;const warehouses=rules?.rules.warehouses.filter(w=>w.warehouseType===1&&w.saleCountryList.includes("US"))??[];
  const fieldShown=(name:string)=>rules?.rules.fill.fill_in_standard_list.some(f=>f.field_key===name&&f.show);
  function save(){const parsed=targetInputSchema.safeParse({sourceId:source.source.id,storeId,expectedRevision:existing?.revision??0,effectiveVersion:version,...applied?{applyReceiptId:applied}:{},draft});if(!parsed.success){setError("请检查资料格式与数量");return}command.execute("save-target",parsed.data)}
- const selectionSafe=Number.isSafeInteger(selection.originalSnapshotVersion)&&Number.isSafeInteger(selection.effectiveCatalogVersion);
+ const selectionSafe=sourceSelectionSchema.safeParse(selection).success;
  return <div className="space-y-6">
   <ProductImageSetPanel kind="supply" contextId={source.source.id} effectiveVersion={version} applyReceiptId={applied} target={existing?{Platform:"shein",RecordID:existing.id,StoreID:storeId,Site:existing.merchant.site,CategoryID:existing.input.draft.product.category_id}:undefined} onSaved={()=>{setRuleEpoch(old=>old+1);setInventoryEpoch(old=>old+1)}}/>
   <details className="rounded-xl bg-slate-50 p-4"><summary className="cursor-pointer text-sm font-medium">查看原始资料 · 版本 {source.source.source.version}</summary><p className="mt-3 font-medium">{source.product.title}</p><p className="mt-2 whitespace-pre-wrap text-sm">{source.product.description}</p><dl className="mt-3 grid gap-2 sm:grid-cols-2">{source.product.attributes?.map((a,i)=><div key={i} className="text-sm"><dt className="text-slate-500">{a.name}</dt><dd>{a.value}</dd></div>)}</dl></details>
