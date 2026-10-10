@@ -71,6 +71,8 @@ Use these as the main source of truth for structural work:
   - canonical money/wallet, commercial offer/quote/order, and purchased-resource ownership contract for #457
 - `ecosystem-services-v1.md`
   - #603 frozen IMPLEMENTATION_READY third-party onboarding, original service purchase, exact customer acceptance and channel settlement contract; real channel qualification and product acceptance remain separate gates
+- `data-services-v1.md`
+  - #621 frozen IMPLEMENTATION_READY Amazon data acquisition, creator-bound API credentials and specialist custom delivery; shared runtime wiring and real user acceptance remain separate gates
 - `self-service-subscription-purchase-contract.md`
   - tenant self-service subscription offer/quote/order, source-bound subscription activation, settlement and recovery contract for #478/#479
 - `store-center-current-application-v1.md`

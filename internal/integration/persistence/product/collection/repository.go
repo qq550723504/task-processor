@@ -357,7 +357,7 @@ func (r *Repository) ReadOperation(ctx context.Context, scope collection.Scope, 
 }
 func (r *Repository) ReadBatch(ctx context.Context, scope collection.Scope, id string) (collection.Batch, error) {
 	var batch collection.Batch
-	row := r.db.WithContext(ctx).Raw("SELECT id,name,kind,revision,created_at,archived_at FROM product_collection_batches WHERE organization_id=? AND actor_id=? AND id=? AND archived_at IS NULL", scope.OrganizationID, scope.ActorID, id).Scan(&batch)
+	row := r.db.WithContext(ctx).Table("product_collection_batches b").Select(batchReadColumns).Where("b.organization_id=? AND b.actor_id=? AND b.id=? AND b.archived_at IS NULL", scope.OrganizationID, scope.ActorID, id).Scan(&batch)
 	if row.Error != nil {
 		return batch, row.Error
 	}
@@ -369,6 +369,11 @@ func (r *Repository) ReadBatch(ctx context.Context, scope collection.Scope, id s
 func likeKeyword(keyword string) string {
 	return "%" + strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(keyword) + "%"
 }
+
+// Eligibility is a read projection of current active items, including sources
+// moved into another batch. No separate readiness fact or Supply write is owned here.
+const batchReadColumns = "b.id,b.name,b.kind,b.revision,b.created_at,b.archived_at,(SELECT count(*) FROM product_collection_items i WHERE i.organization_id=b.organization_id AND i.actor_id=b.actor_id AND i.batch_id=b.id AND i.archived_at IS NULL) AS count,NOT EXISTS(SELECT 1 FROM product_collection_items i WHERE i.organization_id=b.organization_id AND i.actor_id=b.actor_id AND i.batch_id=b.id AND i.archived_at IS NULL AND i.source_kind NOT IN ('acquisition','own')) AS supply_transfer_supported"
+
 func (r *Repository) ListBatches(ctx context.Context, scope collection.Scope, query collection.Query) (collection.Page[collection.Batch], error) {
 	var page collection.Page[collection.Batch]
 	page.Items = []collection.Batch{}
@@ -382,7 +387,7 @@ func (r *Repository) ListBatches(ctx context.Context, scope collection.Scope, qu
 	if query.After != "" {
 		base = base.Where("b.id>?::uuid", query.After)
 	}
-	if err := base.Select("b.id,b.name,b.kind,b.revision,b.created_at,b.archived_at,(SELECT count(*) FROM product_collection_items i WHERE i.organization_id=b.organization_id AND i.actor_id=b.actor_id AND i.batch_id=b.id AND i.archived_at IS NULL) AS count").Order("b.id").Limit(query.Limit + 1).Find(&page.Items).Error; err != nil {
+	if err := base.Select(batchReadColumns).Order("b.id").Limit(query.Limit + 1).Find(&page.Items).Error; err != nil {
 		return page, err
 	}
 	if len(page.Items) > query.Limit {

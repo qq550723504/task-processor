@@ -2032,6 +2032,16 @@ func TestCurrentStoreDesignPreservesGreenfieldOwnersAndUnopenedServices(t *testi
 	})
 }
 
+func TestDataServicesDesignPreservesOriginalScopeFundsAndDelivery(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "data-services-v1.md"), []string{
+		"IMPLEMENTATION_READY", "PD-DATA-SERVICES-2026-10-09",
+		"成功保存一条消费一个 DATA_ROW，5 分/条", "创建者和企业", "撤权/离职后失效",
+		"不注入伪造的全站", "Resource DB 保持独立", "failed_fenced", "UNKNOWN",
+		"挑战/不支持结构有明确原因，停止相应请求", "DeliveryAuthority", "same-transaction批次回执",
+		"线下确认规格与报价", "#619负责公共导航/runtime", "合并、关单、共享/生产部署、真实数据/付费provider均NOT_AUTHORIZED",
+	})
+}
+
 func TestCockpitDesignPreservesManualFactsAndCurrentStoreOwner(t *testing.T) {
 	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "operations-cockpit-v1.md"), []string{
 		"IMPLEMENTATION_READY / FROZEN", "人工", "创建人", "operations_cockpit", "同一DB transaction", "UNKNOWN", "不能按天", "JS安全", "NOT_RUN",
