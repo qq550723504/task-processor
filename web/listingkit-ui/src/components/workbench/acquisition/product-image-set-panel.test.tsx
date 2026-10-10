@@ -37,6 +37,26 @@ async function prepare(){
  fireEvent.click(await screen.findByRole("checkbox",{name:"共用原始素材 素材 1"}));
  const button=screen.getByRole("button",{name:"准备整套图片计划（2 项）"});await waitFor(()=>expect(button).toBeEnabled());fireEvent.click(button);
 }
+it.each(["disabled","unavailable","read-only"])("keeps admitted runs visible and refreshable when generation is %s",async(mode)=>{
+ state=projection("awaiting_final_approval",templateId);const real=fetch.getMockImplementation()!;
+ const unavailable={...entry,canUse:false,agent:{...entry.agent,activation:mode==="disabled"?"DISABLED":"ENABLED"},capabilities:entry.capabilities.map(c=>({...c,readiness:mode==="unavailable"?"UNAVAILABLE":c.readiness}))};
+ if(mode==="read-only")calls.context.permissions=["listingkit.image_agent.read"];
+ fetch.mockImplementation((url,init)=>String(url).endsWith("/product.image.agent")?Promise.resolve(Response.json(unavailable)):String(url).endsWith("/images/runs")?Promise.resolve(Response.json({items:[{runId,contextKind:"acquisition",contextId:operation,status:state.status,targetPlatform:"product",createdAt:now}],nextCursor:""})):real(url,init));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation} initialRunId={runId}/>);
+ expect(await screen.findByRole("heading",{name:"商品识别主图"})).toBeInTheDocument();
+ expect(await screen.findByLabelText("本商品最近任务")).toHaveValue(runId);
+ expect(screen.queryByRole("button",{name:/准备整套图片计划/})).not.toBeInTheDocument();
+ const reads=fetch.mock.calls.filter(([url])=>String(url).endsWith(`/runs/${runId}`)).length;
+ fireEvent.click(screen.getByRole("button",{name:"刷新原任务"}));
+ await waitFor(()=>expect(fetch.mock.calls.filter(([url])=>String(url).endsWith(`/runs/${runId}`)).length).toBeGreaterThan(reads));
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+ if(mode==="disabled"){
+  fireEvent.click(screen.getAllByRole("button",{name:"选择采用"})[0]);fireEvent.click(screen.getByRole("button",{name:"预览完整选择"}));
+  fireEvent.click(await screen.findByRole("button",{name:"人工批准并保存素材"}));
+  await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/approve"))).toBe(true));
+  expect(fetch.mock.calls.some(([url])=>/\/(prepare|regenerate|confirm)$/.test(String(url)))).toBe(false);
+ }
+});
 it.each([
  "{bad JSON",
  JSON.stringify({action:"read",body:{}}),

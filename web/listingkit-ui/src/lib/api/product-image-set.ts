@@ -26,7 +26,8 @@ export async function imageSetRequest<T>(scope:ImageSetScope,action:ImageSetRout
  if(method==="POST"&&!body?.success)throw new ImageSetError("INVALID_IMAGE_REQUEST",400);
  const controller=new AbortController(),abort=()=>controller.abort();
  if(options.signal?.aborted)throw new ImageSetError("CONTEXT_CHANGED",409);
- options.signal?.addEventListener("abort",abort,{once:true});const deadline=setTimeout(abort,25_000);
+ // Allow the BFF's 32s image window to finish before the browser deadline.
+ options.signal?.addEventListener("abort",abort,{once:true});const deadline=setTimeout(abort,35_000);
  try{
   const headers=new Headers({Accept:"application/json","X-Expected-User-ID":scope.userId,"X-Expected-Organization-ID":scope.organizationId});
   if(method==="POST")headers.set("Content-Type","application/json");
