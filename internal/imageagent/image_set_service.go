@@ -467,10 +467,6 @@ func (s *Service) ConfirmImagePlan(ctx context.Context, input ConfirmImagePlanIn
 		if current.Run.Status == RunStatusCompleted || current.Run.Status == RunStatusCancelled {
 			return current, nil
 		}
-		// A stable workflow may still be running or may have lost its start ACK.
-		if err = s.imageSets.Contexts.RevalidateImageSet(ctx, identity, current); err != nil {
-			return RunProjection{}, err
-		}
 		if ImageSetClosedRunStatus(current.Run.Status) {
 			return current, nil
 		}
@@ -484,13 +480,15 @@ func (s *Service) ConfirmImagePlan(ctx context.Context, input ConfirmImagePlanIn
 	if current.Run.Status != RunStatusAwaitingPlanApproval {
 		return RunProjection{}, ErrCommandBlocked
 	}
-	if err = s.imageSets.Contexts.RevalidateImageSet(ctx, identity, current); err != nil {
-		return RunProjection{}, err
-	}
 	limits := agentconfig.ImageRunLimits{Images: len(current.Plan.Slots), Points: current.Plan.Set.MaxPoints, ElapsedSeconds: int64(current.Run.Budget.MaxElapsed / time.Second)}
 	command := agentconfig.ImageRunAdmissionCommand{Scope: agent.Scope{OrganizationID: identity.TenantID, ActorID: identity.UserID}, Snapshot: current.Plan.Set.Configuration, MemberID: identity.MemberID, RunID: input.RunID, ConfirmActionID: input.ActionID, SourceDigest: ImageSetSourceDigest(current.Plan.Set.Source, current.Plan), InputDigest: current.Plan.Set.InputDigest, PlanDigest: input.PlanDigest, QuoteDigest: input.QuoteDigest, Limits: limits}
 	receipt, err := s.imageSets.Configuration.ReadImageRunAdmission(ctx, command.Scope, command.Snapshot)
 	if errors.Is(err, agentconfig.ErrNotFound) {
+		// Source access gates NEW admission. Restoring an original receipt must
+		// reach its workflow so dispatch checks can close revoked sources.
+		if err = s.imageSets.Contexts.RevalidateImageSet(ctx, identity, current); err != nil {
+			return RunProjection{}, err
+		}
 		if !s.tenantStartAllowed(ctx, identity.TenantID) {
 			return RunProjection{}, ErrCommandBlocked
 		}

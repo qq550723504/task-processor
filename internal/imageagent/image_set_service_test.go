@@ -347,7 +347,7 @@ func TestExpiredImageSetConfirmationDoesNotReviveClosedWorkflowProgress(t *testi
 	}
 }
 
-func TestRestartFailedImageSetKeepsOriginalAdmissionAndRevalidatesSource(t *testing.T) {
+func TestRestartFailedImageSetRestoresOriginalAdmissionAfterSourceRevocation(t *testing.T) {
 	for _, revoked := range []bool{false, true} {
 		t.Run(map[bool]string{false: "original_after_deadline", true: "source_revoked"}[revoked], func(t *testing.T) {
 			service, repo, workflows, config, contexts, quotes, ctx, input := imageSetServiceFixture(t)
@@ -367,21 +367,48 @@ func TestRestartFailedImageSetKeepsOriginalAdmissionAndRevalidatesSource(t *test
 			restarted, err := imageagent.NewService(repo, workflows, staticCatalogResolver{catalog: contexts.preparation.Catalog}, imageagent.WithOrganizationScope(), imageagent.WithTenantStartGate(imageagent.TenantAllowlistStartGate{Enabled: true, AllowedTenantIDs: []string{"another-org"}}), imageagent.WithImageSetDependencies(imageagent.ImageSetDependencies{Configuration: config, Contexts: contexts, Quotes: quotes, HardLimits: agentconfig.ImageRunLimits{Images: 32, Points: 10000, ElapsedSeconds: 3600}, Now: func() time.Time { return config.receipt.Deadline.Add(time.Second) }}))
 			require.NoError(t, err)
 			err = restarted.RestartFailed(ctx, original.Run.ID)
-			if revoked {
-				require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
-				require.Len(t, workflows.starts, 1)
-			} else {
-				require.NoError(t, err)
-				require.Len(t, workflows.starts, 2)
-				require.Equal(t, original.Run, workflows.starts[1].Run)
-				require.Equal(t, original.Plan, workflows.starts[1].Plan)
-				require.Equal(t, original.AssetCatalog, workflows.starts[1].AssetCatalog)
-				require.Equal(t, workflows.starts[0].Identity, workflows.starts[1].Identity)
-			}
+			require.NoError(t, err, "the original workflow must close undispatched slots after its live source check")
+			require.Len(t, workflows.starts, 2)
+			require.Equal(t, original.Run, workflows.starts[1].Run)
+			require.Equal(t, original.Plan, workflows.starts[1].Plan)
+			require.Equal(t, original.AssetCatalog, workflows.starts[1].AssetCatalog)
+			require.Equal(t, workflows.starts[0].Identity, workflows.starts[1].Identity)
 			require.Equal(t, 1, config.admissions)
 			stored, err := repo.GetProjection(ctx, imageagent.ScopeForRun(original.Run))
 			require.NoError(t, err)
 			require.Equal(t, original, stored, "restart only restores the original workflow; its owner controls projection transitions")
+		})
+	}
+}
+
+func TestConfirmAdmittedImageSetRestoresOriginalStartAfterSourceChange(t *testing.T) {
+	for _, kind := range []string{"run_receipt", "config_receipt"} {
+		t.Run(kind, func(t *testing.T) {
+			service, repo, workflows, config, contexts, _, ctx, input := imageSetServiceFixtureWithRepository(t, func(r imageagent.Repository) imageagent.Repository {
+				return &confirmCommitFailure{Repository: r, fail: kind == "config_receipt"}
+			})
+			prepared, err := service.PrepareImageSet(ctx, input)
+			require.NoError(t, err)
+			command := confirmSetInput(prepared)
+			workflows.startErr = errors.New("Temporal start unavailable")
+			_, err = service.ConfirmImagePlan(ctx, command)
+			require.Error(t, err)
+			original := *imageagent.CloneImageAdmission(config.receipt)
+			contexts.revalidationErr = imageagent.ErrRevisionConflict
+			config.enabled = false
+			workflows.startErr = nil
+			resumed, err := service.ConfirmImagePlan(ctx, command)
+			require.NoError(t, err, "source changes cannot prevent recovery of an already admitted immutable input")
+			require.Equal(t, &original, resumed.Run.ImageAdmission)
+			require.Equal(t, 1, config.admissions)
+			last := workflows.starts[len(workflows.starts)-1]
+			require.Equal(t, prepared.Projection.Plan, last.Plan)
+			require.Equal(t, prepared.Projection.AssetCatalog, last.AssetCatalog)
+			require.Equal(t, original, *last.Run.ImageAdmission)
+			require.Equal(t, original.Deadline, last.Run.StartedAt.Add(last.Run.Budget.MaxElapsed))
+			stored, err := repo.GetProjection(ctx, imageagent.ScopeForRun(resumed.Run))
+			require.NoError(t, err)
+			require.Equal(t, &original, stored.Run.ImageAdmission)
 		})
 	}
 }

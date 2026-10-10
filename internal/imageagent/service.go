@@ -405,7 +405,8 @@ func (s *Service) RestartFailed(ctx context.Context, runID string) error {
 	identity.BusinessTaskID = projection.Run.BusinessTaskID
 	if projection.Plan.Set != nil {
 		// Restore the original whole-run admission. Current new-start gates must
-		// not replace its budget or deadline; source/member access remains live.
+		// not replace its budget or deadline. Live source checks belong to the
+		// actual dispatch, allowing the original workflow to close denials.
 		identity, err = s.identityForRun(identity, projection.Run)
 		if err != nil {
 			return err
@@ -418,9 +419,6 @@ func (s *Service) RestartFailed(ctx context.Context, runID string) error {
 		}
 		if _, err := ImageSetClosedEffectsDigest(projection.Plan, projection.Slots, projection.RecoverableEffects); err == nil {
 			return ErrCommandBlocked
-		}
-		if err := s.imageSets.Contexts.RevalidateImageSet(ctx, identity, projection); err != nil {
-			return err
 		}
 		return s.workflows.StartManual(ctx, WorkflowStart{Run: projection.Run, Plan: projection.Plan, Identity: identity, MaxConcurrentSlots: projection.Run.MaxConcurrentSlots, AssetCatalog: projection.AssetCatalog})
 	}
