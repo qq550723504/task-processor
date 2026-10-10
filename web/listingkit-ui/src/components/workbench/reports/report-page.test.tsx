@@ -11,7 +11,31 @@ vi.mock("@/lib/api/shein-records-client", () => ({ fetchSheinRecords: vi.fn() })
 const source = { ref: { kind: "TITLE_REVIEW" as const, id: "550e8400-e29b-41d4-a716-446655440000", version: "2:accepted" }, title: "标题审核 · 商品A", productKey: "product-a", storeId: "" };
 const report: Report = { ...source, id: "550e8400-e29b-41d4-a716-446655440001", capturedAt: "2026-10-10T00:00:00Z", favorite: false, content: { schemaVersion: 1, sections: [{ title: "标题历史", fields: [{ label: "建议标题", value: "已保存的标题内容" }] }] }, digest: "a".repeat(64) };
 beforeEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); sessionStorage.clear(); fixture.context.effectiveOrganization = { id: "org-a" }; fixture.context.permissions = ["workbench.report.read", "workbench.report.manage"]; fixture.sourceList.mockResolvedValue({ items: [{ proposal_id: source.ref.id }], next_cursor: null }); });
-const tree = (client: QueryClient) => <QueryClientProvider client={client}><ReportPage view="all" /></QueryClientProvider>;
+const tree = (client: QueryClient, titleReviewAvailable = true) => <QueryClientProvider client={client}><ReportPage view="all" titleReviewAvailable={titleReviewAvailable} /></QueryClientProvider>;
+it("disables unmounted title capture while saved reports stay readable and downloadable", async () => {
+  const { content, digest, ...summary } = report; void content; void digest;
+  let favorite = false;
+  const fetch = vi.fn(async (path: string, init?: RequestInit) => {
+    if (init?.method === "POST") { favorite = true; return Response.json({ commandId: new Headers(init.headers).get("Idempotency-Key"), report: { ...report, favorite }, replayed: false }); }
+    return path.endsWith("/summary") ? Response.json({ saved: 1, recent: 1, favorites: favorite ? 1 : 0, stores: 0 }) : path.endsWith(report.id) ? Response.json({ ...report, favorite }) : Response.json({ items: [{ ...summary, favorite }], nextCursor: "" });
+  });
+  vi.stubGlobal("fetch", fetch);
+  fixture.sourceList.mockClear();
+  const client = new QueryClient(), view = render(tree(client, false));
+  fireEvent.click(await screen.findByRole("button", { name: source.title }));
+  await screen.findByText("已保存的标题内容");
+  expect(screen.getByRole("button", { name: "保存报告" })).toBeDisabled();
+  expect(screen.getByText(/标题审核报告保存暂未开放/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "保存报告" }));
+  expect(screen.queryByRole("button", { name: "已有审核详情" })).not.toBeInTheDocument();
+  expect(fixture.sourceList).not.toHaveBeenCalled();
+  expect(fetch.mock.calls.some(([path]) => path.includes("/sources/"))).toBe(false);
+  expect(screen.getByRole("button", { name: "下载 JSON" })).toBeEnabled();
+  await waitFor(() => expect(screen.getByRole("button", { name: "收藏报告" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "收藏报告" }));
+  await screen.findByRole("button", { name: "取消收藏" });
+  view.unmount(); client.clear();
+});
 it("clearly disables unmounted SHEIN capture without fetching it and still reads saved SHEIN reports", async () => {
   const sheinReport = { ...report, ref: { ...report.ref, kind: "SHEIN_RECORD", version: `sha256:${"a".repeat(64)}` } };
   const { content, digest, ...summary } = sheinReport; void content; void digest;

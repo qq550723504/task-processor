@@ -88,6 +88,11 @@ UI 沿用现有 `LISTINGKIT_SERVICE_API_BASE=<current application origin>/api/v1
 然后按现有 UI 正常启动方式运行。未设置时导航明确未启用。入口是该 UI origin 下的
 `/workbench/ai/reports`；无额外 provider 配置，不因为 reports 模块授予原来源权限。
 
+标题新保存另消费现有 `PRODUCT_REVIEW_API_ORIGIN`：仅在本正常应用已挂载
+ProductAgent/Review reader 后，将它配置为 `LISTINGKIT_SERVICE_API_BASE` 的同一 origin。
+缺少该配置或指向其他安装时，四个报告入口均禁用新保存，不读取来源；历史报告、
+收藏、下载与原请求恢复仍可用。部署配置声明就绪不代替后端准入或 live 权限。
+
 ## 用户操作路径（接线完成后）
 
 入口：`/workbench/ai/reports`，以及 `/recent`、`/favorites`、`/all`。

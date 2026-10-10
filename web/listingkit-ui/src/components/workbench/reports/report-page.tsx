@@ -16,15 +16,15 @@ const labels = { overview: "我的报告", recent: "最近报告", favorites: "�
 const types = { TITLE_REVIEW: "标题审核", SHEIN_RECORD: "商品资料与离线诊断" };
 const errorText = (e: unknown) => e instanceof ReportError ? ({ OUTCOME_UNKNOWN: "操作结果尚未确认。请使用原请求恢复，避免创建新的保存或收藏请求。", CONFLICT: "来源版本已变化或请求内容冲突，请重新选择来源。", FORBIDDEN: "当前权限不足。已保留原请求，可在权限恢复后重试。", NOT_FOUND: "本人当前企业范围内未找到该来源或报告。", INTENT_STORAGE_UNAVAILABLE: "无法保存操作恢复信息，已停止提交。", ORGANIZATION_CONTEXT_CHANGED: "企业上下文已变化，请返回当前企业后恢复原请求。", IDENTITY_CONTEXT_CHANGED: "登录用户已变化，请重新登录后读取。" }[e.code] ?? "报告服务暂不可用，请稍后重试。") : "报告服务暂不可用，请稍后重试。";
 const policy = { retry: false, gcTime: 0, staleTime: 0, refetchOnWindowFocus: false, refetchOnReconnect: false } as const;
-export function ReportPage({ view = "overview" }: { view?: View }) {
+export function ReportPage({ view = "overview", titleReviewAvailable = false }: { view?: View; titleReviewAvailable?: boolean }) {
   const context = useWorkbenchContext();
   const scope = context.user && context.effectiveOrganization && !context.selectionRequired && !context.isSwitching && !context.isLoading && !context.error && !context.blockingError ? { userId: context.user.id, organizationId: context.effectiveOrganization.id } : null;
   const authorizationKey = JSON.stringify([context.roles, context.permissions]);
   return <ConsolePage title={labels[view]} description={view === "overview" ? "AI成果沉淀与复用，保留本人当前企业的历史结果。" : "查阅已手动保存的只读报告，收藏重要结果并下载复用。"} breadcrumbs={[{ label: "AI工作台" }, { label: "我的报告", href: "/workbench/ai/reports" }, ...(view === "overview" ? [] : [{ label: labels[view] }])]}>
-    {!scope ? <ConsoleState kind={context.isSwitching || context.isLoading ? "loading" : "unavailable"} title="企业上下文不可用">请选择可访问的企业并登录。</ConsoleState> : !context.permissions.includes("workbench.report.read") ? <ConsoleState kind="unavailable" title="报告尚不可用">当前企业尚未启用报告，或当前用户没有查看权限。</ConsoleState> : <ScopedReports key={`${scope.userId}:${scope.organizationId}:${authorizationKey}`} scope={scope} authorizationKey={authorizationKey} view={view} manage={context.permissions.includes("workbench.report.manage")} tasksAvailable={context.aiWorkbenchAvailable} />}
+    {!scope ? <ConsoleState kind={context.isSwitching || context.isLoading ? "loading" : "unavailable"} title="企业上下文不可用">请选择可访问的企业并登录。</ConsoleState> : !context.permissions.includes("workbench.report.read") ? <ConsoleState kind="unavailable" title="报告尚不可用">当前企业尚未启用报告，或当前用户没有查看权限。</ConsoleState> : <ScopedReports key={`${scope.userId}:${scope.organizationId}:${authorizationKey}`} scope={scope} authorizationKey={authorizationKey} view={view} manage={context.permissions.includes("workbench.report.manage")} tasksAvailable={context.aiWorkbenchAvailable} titleReviewAvailable={titleReviewAvailable} />}
   </ConsolePage>;
 }
-function ScopedReports({ scope, authorizationKey, view, manage, tasksAvailable }: { scope: ReportScope; authorizationKey: string; view: View; manage: boolean; tasksAvailable: boolean }) {
+function ScopedReports({ scope, authorizationKey, view, manage, tasksAvailable, titleReviewAvailable }: { scope: ReportScope; authorizationKey: string; view: View; manage: boolean; tasksAvailable: boolean; titleReviewAvailable: boolean }) {
   const client = useQueryClient(), prefix = ["reports", scope.userId, scope.organizationId, authorizationKey];
   const [selected, setSelected] = useState<string>(), [showSave, setShowSave] = useState(false), [intentOverride, setIntent] = useState<ReportIntent | null | undefined>(), [feedback, setFeedback] = useState("");
   const recovery = useQuery({ ...policy, queryKey: [...prefix, "intent"], queryFn: () => readReportIntent(scope), staleTime: Infinity });
@@ -38,9 +38,10 @@ function ScopedReports({ scope, authorizationKey, view, manage, tasksAvailable }
   function submit(command: ReportIntent) { if (!manage || mutation.isPending || intent || !intentReady) return; try { writeReportIntent(scope, command); setIntent(command); setFeedback(""); mutation.mutate(command); } catch (e) { setFeedback(errorText(e)); } }
   const busy = mutation.isPending || !!intent || !intentReady;
   return <>
-    <div className={styles.actions}><span>归属：当前企业 · 本人</span>{manage ? <Button onClick={() => setShowSave(v => !v)} disabled={busy}>{showSave ? "收起保存" : "保存报告"}</Button> : null}</div>
+    <div className={styles.actions}><span>归属：当前企业 · 本人</span>{manage ? <Button onClick={() => setShowSave(v => !v)} disabled={busy || !titleReviewAvailable}>{showSave ? "收起保存" : "保存报告"}</Button> : null}</div>
+    {manage && !titleReviewAvailable ? <p>标题审核报告保存暂未开放；已保存的历史报告仍可查阅、收藏和下载。</p> : null}
     {notice ? <div className={styles.feedback} role="status"><p>{notice}</p>{intent && !mutation.isPending && manage ? <Button variant="outline" onClick={() => mutation.mutate(intent)}>恢复原请求</Button> : null}</div> : null}
-    {showSave && manage ? <ReportSourcePicker scope={scope} authorizationKey={authorizationKey} tasksAvailable={tasksAvailable} disabled={busy} save={(source: ReportSource) => submit({ operation: "save", key: crypto.randomUUID(), source: source.ref })} /> : null}
+    {showSave && manage && titleReviewAvailable ? <ReportSourcePicker scope={scope} authorizationKey={authorizationKey} tasksAvailable={tasksAvailable} disabled={busy} save={(source: ReportSource) => submit({ operation: "save", key: crypto.randomUUID(), source: source.ref })} /> : null}
     {view === "overview" ? <>
       {summary.isPending || summary.isFetching ? <ConsoleState kind="loading" title="正在读取报告汇总" /> : summary.isError ? <ConsoleState kind="error" title="汇总读取失败"><p>{errorText(summary.error)}</p><Button variant="outline" onClick={() => void summary.refetch()}>重试</Button></ConsoleState> : <div className={styles.summary}><strong>已保存 {summary.data.saved} 份报告</strong><span>近30天 {summary.data.recent} 份</span><span>收藏 {summary.data.favorites} 份</span><span>涉及 {summary.data.stores} 个店铺</span><span>项目关联暂未开放</span></div>}
       <div className={styles.cards}>{([
