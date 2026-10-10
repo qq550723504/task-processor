@@ -109,6 +109,7 @@ consider the applicable guards, including:
 - `TestNotificationCenterHTTPBoundaryRegistration` — permits only the approved notification center HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `TestReportCenterHTTPBoundaryRegistration` — permits only the approved Report Center HTTP subtree; rejects the domain core, siblings and similar prefixes.
 - `TestToolMarketHTTPBoundaryRegistration` — permits only the approved Tool Market HTTP subtree; rejects core contracts, siblings and similar prefixes.
+- `TestSupplyMarketHTTPBoundaryRegistration` — permits only the approved Supply Market and POD HTTP subtrees; rejects domain roots, siblings and similar prefixes.
 - `TestProjectCenterHTTPBoundaryRegistration` — permits only the approved Project Center HTTP subtree; rejects the domain root and similar prefixes.
 - `depguard: source_handoff_legacy_http`
 - `TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets`
@@ -400,6 +401,7 @@ Supporting context documents must not be listed as review references unless prom
 - `docs/architecture/ecosystem-services-v1.md`
 - `docs/architecture/self-service-subscription-purchase-contract.md`
 - `docs/architecture/store-center-current-application-v1.md`
+- `docs/architecture/supply-market-v1.md`
 - `docs/architecture/store-center-platform-observations-v1.md`
 - `docs/architecture/operations-cockpit-v1.md`
 - `docs/architecture/httpapi-assembly-boundaries.md`

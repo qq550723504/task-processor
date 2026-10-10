@@ -25,11 +25,14 @@ func TestIssue30PreparedSlicesHaveNoLegacyOwnershipDependencies(t *testing.T) {
 // TestIssue398TrackedCurrentLeafAPIsStayAdmitted limits those files' exact APIs.
 // Product Agent consumes the same current Catalog/SRC binding and Review UoW
 // under product-agent-runtime-contract §8.5; this is one explicit consumer.
+// Supply Market/POD consume the current Product receivers at the precise
+// composition root admitted by supply-market-v1 §4 and its frozen port mapping.
 func TestIssue30InternalProducerIsOnlyWiredByAdmittedProductReview(t *testing.T) {
 	allowed := map[string]struct{}{
 		filepath.Join("..", "internal", "app", "httpapi", "collection_source_media.go"):                    {},
 		filepath.Join("..", "internal", "app", "httpapi", "product_collection_application.go"):             {},
 		filepath.Join("..", "internal", "app", "httpapi", "supply_chain_agents.go"):                        {},
+		filepath.Join("..", "internal", "app", "httpapi", "supply_market_application.go"):                  {},
 		filepath.Join("..", "internal", "app", "runtime", "currentapplication", "source_media_storage.go"): {},
 		filepath.Join("..", "internal", "app", "runtime", "currentapplication", "runtime.go"):              {},
 		filepath.Join("..", "internal", "app", "httpapi", "product_agent_application.go"):                  {},

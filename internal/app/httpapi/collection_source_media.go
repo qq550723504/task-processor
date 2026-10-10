@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-func buildProductCollectionModuleWithSourceMedia(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, permissions *authz.ListingKitAuthorizer, cfg *config.Config, supply bool, media *collectionSourceMediaDependencies) (kernelmodule.Module, error) {
-	service, err := buildProductCollectionService(ctx, db, dependencies, permissions, supply)
+func buildProductCollectionModuleWithSourceMedia(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, permissions *authz.ListingKitAuthorizer, cfg *config.Config, supply bool, media *collectionSourceMediaDependencies, marketPOD ...bool) (kernelmodule.Module, error) {
+	service, err := buildProductCollectionService(ctx, db, dependencies, permissions, append([]bool{supply}, marketPOD...)...)
 	if err != nil {
 		return nil, err
 	}

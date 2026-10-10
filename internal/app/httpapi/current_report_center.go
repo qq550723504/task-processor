@@ -33,6 +33,9 @@ func validateReportCenterPool(o currentApplicationOptions, source *gorm.DB) erro
 	if o.supplyChain != nil {
 		others = append(others, o.supplyChain.AssetDB)
 	}
+	if o.pod != nil {
+		others = append(others, o.pod.AssetDB)
+	}
 	if o.productAgent != nil {
 		others = append(others, o.productAgent.RunDB, o.productAgent.ReviewDB, o.productAgent.AssetDB)
 	}

@@ -52,6 +52,7 @@ func TestReportCenterRejectsOwnerAliasAndElevatedConfig(t *testing.T) {
 		"tool":          func(c *Config, d DatabaseConfig) { c.ToolMarket = &ToolMarketConfig{Database: d} },
 		"review":        func(c *Config, d DatabaseConfig) { c.ProductAgent = &ProductAgentConfig{ReviewDatabase: d} },
 		"asset":         func(c *Config, d DatabaseConfig) { c.SupplyChain = &SupplyChainConfig{AssetDatabase: d} },
+		"pod":           func(c *Config, d DatabaseConfig) { c.POD = &PODConfig{AssetDatabase: d} },
 		"trial":         func(c *Config, d DatabaseConfig) { c.LocalTrial = &LocalTrialConfig{Enabled: true, Database: d} },
 	} {
 		t.Run(name, func(t *testing.T) {

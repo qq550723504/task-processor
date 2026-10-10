@@ -41,7 +41,7 @@ func TestReportCenterNativeAdmissionRequiresExactBoundaryAndAllRoutes(t *testing
 }
 func TestReportCenterOptionRequiresOneIndependentPool(t *testing.T) {
 	source, reports := &gorm.DB{}, &gorm.DB{}
-	for _, options := range [][]CurrentApplicationOption{{WithReportCenter(nil)}, {WithReportCenter(source)}, {WithReportCenter(reports), WithReportCenter(reports)}, {WithReportCenter(reports), WithProjectCenter(reports)}} {
+	for _, options := range [][]CurrentApplicationOption{{WithReportCenter(nil)}, {WithReportCenter(source)}, {WithReportCenter(reports), WithReportCenter(reports)}, {WithReportCenter(reports), WithProjectCenter(reports)}, {WithReportCenter(reports), WithPOD(PODDependencies{AssetDB: reports})}} {
 		var o currentApplicationOptions
 		for _, opt := range options {
 			opt(&o)

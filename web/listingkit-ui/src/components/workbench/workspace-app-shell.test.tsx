@@ -62,6 +62,17 @@ function renderShell(child = <p>organization child</p>) {
 }
 
 describe("WorkspaceAppShell", () => {
+  it.each(["/workbench/supply/operator", "/workbench/supply/operator/22222222-2222-4222-8222-222222222222"])("opens the enabled specialist route %s without enterprise selection", pathname => {
+    navigation.pathname=pathname; injectProfileContext({blockingError:{code:"ORGANIZATION_ACCESS_REVOKED"}});
+    render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><WorkspaceAppShell supplyMarketAvailable><p>market specialist consumer</p></WorkspaceAppShell></QueryClientProvider>);
+    expect(screen.getByText("market specialist consumer")).toBeVisible();
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+  it.each(["/workbench/supply/operator/extra", "/workbench/supply/applications"])("retains enterprise gates on %s", pathname => {
+    navigation.pathname=pathname; injectProfileContext();
+    render(<WorkspaceAppShell supplyMarketAvailable><p>hidden market consumer</p></WorkspaceAppShell>);
+    expect(screen.queryByText("hidden market consumer")).not.toBeInTheDocument();
+  });
   it("allows the enabled exact tool review route without customer enterprise membership", () => {
     navigation.pathname = "/workbench/tools/custom/review";
     injectProfileContext({ selectionRequired: true });

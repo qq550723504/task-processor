@@ -48,6 +48,9 @@ func (c *Config) validateReportCenter() error {
 	if c.SupplyChain != nil {
 		owners = append(owners, &c.SupplyChain.AssetDatabase)
 	}
+	if c.POD != nil {
+		owners = append(owners, &c.POD.AssetDatabase)
+	}
 	if c.Referrals.Enabled {
 		owners = append(owners, &c.Referrals.Database)
 	}

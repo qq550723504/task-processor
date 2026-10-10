@@ -94,6 +94,7 @@ var workbenchCommercialPermissions = []string{
 func WorkbenchPermissions() []string {
 	result := []string{PermissionListingKitAdminRead, PermissionListingKitAdminWrite, PermissionProductSourcingWrite, PermissionLocalAgentWrite, PermissionImageAgentRead, PermissionImageAgentWrite, PermissionWorkbenchAgentRead, PermissionWorkbenchAgentUse, PermissionWorkbenchAgentConfigure}
 	result = append(result, workbenchReportPermissions...)
+	result = append(result, supplyMarketPermissions...)
 	for _, group := range [][]string{cockpitPermissions, []string{"workbench.project.read", "workbench.project.manage"}, workbenchToolPermissions, workbenchChatPermissions, workbenchKnowledgePermissions, workbenchEcoservicesPermissions, workbenchSupplyPermissions, workbenchStorePermissions, workbenchStoreObservationPermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
 		result = append(result, group...)
 	}
@@ -275,6 +276,16 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 			}
 		}
 	}
+	for _, role := range append([]string{"listingkit_viewer", "listingkit_operator", "listingkit_admin", "platform_admin"}, normalizeUnique(platformAdminRoles)...) {
+		for _, permission := range supplyMarketPermissions {
+			if role == "listingkit_viewer" && permission != "workbench.supply-market.read" {
+				continue
+			}
+			if _, err := enforcer.AddPolicy(role, permission); err != nil {
+				return nil, err
+			}
+		}
+	}
 	for _, userID := range normalizeUnique(platformAdminUsers) {
 		for _, permission := range workbenchReportPermissions {
 			if _, err := enforcer.AddPolicy(userSubject(userID), permission); err != nil {
@@ -300,6 +311,11 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		}
 	}
 	for _, userID := range normalizeUnique(platformAdminUsers) {
+		for _, permission := range supplyMarketPermissions {
+			if _, err := enforcer.AddPolicy(userSubject(userID), permission); err != nil {
+				return nil, err
+			}
+		}
 		for _, permission := range workbenchSupplyPermissions {
 			if _, err := enforcer.AddPolicy(userSubject(userID), permission); err != nil {
 				return nil, err

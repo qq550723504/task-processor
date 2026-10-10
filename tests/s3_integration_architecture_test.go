@@ -33,6 +33,7 @@ func TestProductionS3UploaderConstructorInventoryIsComplete(t *testing.T) {
 		"cmd/current-application/ecoservices.go":                          1,
 		"internal/app/runtime/currentapplication/source_media_storage.go": 1,
 		"cmd/current-application/knowledge.go":                            1,
+		"cmd/current-application/supply_market.go":                        1,
 		"internal/app/worker/imageagent/dependencies.go":                  1,
 		"internal/listingkit/httpapi/builders_image_store.go":             1,
 	}
