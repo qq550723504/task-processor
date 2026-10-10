@@ -120,3 +120,33 @@ func TestDownloadRejectsStreamedBodyOverLimit(t *testing.T) {
 		t.Fatalf("Download() data = %d bytes, want nil", len(data))
 	}
 }
+
+type rejectedResponseBody struct{ read, closed bool }
+
+func (b *rejectedResponseBody) Read([]byte) (int, error) { b.read = true; return 0, io.EOF }
+func (b *rejectedResponseBody) Close() error             { b.closed = true; return nil }
+
+func TestDownloadPreservesRejectedResponseStatus(t *testing.T) {
+	for _, status := range []int{http.StatusForbidden, http.StatusGone, http.StatusNotFound, http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			body := &rejectedResponseBody{}
+			client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.Method != http.MethodGet {
+					t.Fatalf("unexpected method %s", req.Method)
+				}
+				return &http.Response{StatusCode: status, Body: body, Header: make(http.Header), Request: req}, nil
+			})}
+			data, err := Download(context.Background(), client, "https://example.com/image?signature=private", 10)
+			var response *HTTPStatusError
+			if !errors.As(err, &response) || response.StatusCode != status {
+				t.Fatalf("Download() error = %v, want status %d", err, status)
+			}
+			if data != nil || body.read || !body.closed {
+				t.Fatal("rejected response must close its unread body without returning bytes")
+			}
+			if strings.Contains(err.Error(), "signature") {
+				t.Fatal("download error exposed signed result locator")
+			}
+		})
+	}
+}

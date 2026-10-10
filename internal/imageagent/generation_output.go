@@ -5,8 +5,9 @@ import (
 	"errors"
 )
 
-// ErrInvalidGeneratedOutput proves a fetched success artifact is permanently
-// unusable. Identity, network and unavailable-artifact errors do not qualify.
+// ErrInvalidGeneratedOutput proves the original success artifact is unusable
+// under its bound retrieval contract. Identity, network and retryable
+// unavailable-artifact errors do not qualify.
 var ErrInvalidGeneratedOutput = errors.New(InvalidGeneratedOutputCode)
 
 // GenerationOutputRecovery performs only bounded GET/materialization of an

@@ -3,6 +3,7 @@ package imageagentworker
 import (
 	"context"
 	"errors"
+	"net/http"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/integration/httpimage"
 	"task-processor/internal/pkg/imagex"
@@ -52,7 +53,10 @@ func generationOutputRecovery(fetch func(context.Context, string) ([]byte, error
 		}
 		data, err := fetch(ctx, fact.Success.ResultURL)
 		if err != nil {
-			if errors.Is(err, httpimage.ErrBodyTooLarge) {
+			var response *httpimage.HTTPStatusError
+			// This is the original success's fixed public URL; no alternate
+			// credentials or replacement locator are part of this recovery.
+			if errors.Is(err, httpimage.ErrBodyTooLarge) || errors.As(err, &response) && (response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusGone) {
 				return imageagent.SlotGeneratedOutput{}, imageagent.ErrInvalidGeneratedOutput
 			}
 			return bad()

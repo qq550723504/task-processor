@@ -26,6 +26,12 @@ func (t outputBodyLimitTransport) RoundTrip(req *http.Request) (*http.Response, 
 	return &http.Response{StatusCode: http.StatusOK, ContentLength: t.declared, Body: io.NopCloser(strings.NewReader("01234567890")), Header: make(http.Header), Request: req}, nil
 }
 
+type outputResponseTransport struct{ status int }
+
+func (t outputResponseTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: t.status, Body: io.NopCloser(strings.NewReader("provider artifact unavailable")), Header: make(http.Header), Request: req}, nil
+}
+
 func TestGenerationOutputRecoveryOnlyFetchesBoundOriginalResult(t *testing.T) {
 	var encoded bytes.Buffer
 	require.NoError(t, png.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 2, 2))))
@@ -46,12 +52,13 @@ func TestGenerationOutputRecoveryOnlyFetchesBoundOriginalResult(t *testing.T) {
 	proof := imageagent.GenerationSuccess{ResponseID: "generated-1", ResultDigest: strings.Repeat("c", 64)}.WithResultLocator("https://output.example/image.png?signature=private", "")
 	fact, err = fact.RecordSuccess(proof)
 	require.NoError(t, err)
-	for _, mode := range []string{"valid", "image_set", "changed_set", "bad_set", "truncated_pixels", "wrong_size", "empty_set", "oversized_declared", "oversized_streamed", "fetch_failure_set", "private", "oversized_locator", "member", "catalog", "unknown", "bad_image", "fetch_failure"} {
+	responseStatuses := map[string]int{"forbidden_set": http.StatusForbidden, "gone_set": http.StatusGone, "not_found_set": http.StatusNotFound, "timeout_set": http.StatusRequestTimeout, "throttle_set": http.StatusTooManyRequests, "unavailable_set": http.StatusServiceUnavailable}
+	for _, mode := range []string{"valid", "image_set", "changed_set", "bad_set", "truncated_pixels", "wrong_size", "empty_set", "oversized_declared", "oversized_streamed", "fetch_failure_set", "forbidden_set", "gone_set", "not_found_set", "timeout_set", "throttle_set", "unavailable_set", "canceled_set", "private", "oversized_locator", "member", "catalog", "unknown", "bad_image", "fetch_failure"} {
 		t.Run(mode, func(t *testing.T) {
 			calls := 0
 			in, current := input, fact
 			switch mode {
-			case "image_set", "changed_set", "bad_set", "truncated_pixels", "wrong_size", "empty_set", "oversized_declared", "oversized_streamed", "fetch_failure_set":
+			case "image_set", "changed_set", "bad_set", "truncated_pixels", "wrong_size", "empty_set", "oversized_declared", "oversized_streamed", "fetch_failure_set", "forbidden_set", "gone_set", "not_found_set", "timeout_set", "throttle_set", "unavailable_set", "canceled_set":
 				hash := strings.Repeat("a", 64)
 				in.ImageSet = &imageagent.ImageSetPlan{Schema: imageagent.ImageSetSchema, Source: imageagent.ImageSourceBinding{ContextKind: imageagent.ImageSourceAcquisition, ProductID: "product-1", OperationID: "source-operation", OriginalPublicationID: "publication-1", OriginalVersion: 1, EffectiveVersion: 1, CatalogHash: catalog.Manifest.Hash}, Target: imageagent.ImageTarget{Platform: "product"}, Configuration: agent.ConfigurationSnapshotRef{Kind: "agent-configuration-v1", ID: "9e7afaa9-a9f9-48ba-a11a-b5bb377f08e9", Digest: hash}, ConfigurationEpoch: "1", ParametersDigest: hash, InputDigest: hash, MaxPoints: 12}
 				in.TargetPlatform = "product"
@@ -92,6 +99,12 @@ func TestGenerationOutputRecoveryOnlyFetchesBoundOriginalResult(t *testing.T) {
 			materialize := generationOutputRecovery(func(_ context.Context, raw string) ([]byte, error) {
 				calls++
 				require.Equal(t, proof.ResultURL, raw)
+				if status := responseStatuses[mode]; status != 0 {
+					return httpimage.Download(context.Background(), &http.Client{Transport: outputResponseTransport{status: status}}, raw, 10)
+				}
+				if mode == "canceled_set" {
+					return nil, context.Canceled
+				}
 				if mode == "oversized_declared" || mode == "oversized_streamed" {
 					length := int64(-1)
 					if mode == "oversized_declared" {
@@ -138,12 +151,12 @@ func TestGenerationOutputRecoveryOnlyFetchesBoundOriginalResult(t *testing.T) {
 				require.NotContains(t, err.Error(), "signature")
 				require.Empty(t, got.Assets)
 			}
-			if mode == "bad_set" || mode == "truncated_pixels" || mode == "wrong_size" || mode == "empty_set" || mode == "oversized_declared" || mode == "oversized_streamed" {
+			if mode == "bad_set" || mode == "truncated_pixels" || mode == "wrong_size" || mode == "empty_set" || mode == "oversized_declared" || mode == "oversized_streamed" || mode == "forbidden_set" || mode == "gone_set" {
 				require.ErrorIs(t, err, imageagent.ErrInvalidGeneratedOutput)
 			} else if mode != "bad_image" {
 				require.NotErrorIs(t, err, imageagent.ErrInvalidGeneratedOutput)
 			}
-			if mode == "valid" || mode == "image_set" || mode == "bad_image" || mode == "fetch_failure" || mode == "bad_set" || mode == "truncated_pixels" || mode == "wrong_size" || mode == "empty_set" || mode == "oversized_declared" || mode == "oversized_streamed" || mode == "fetch_failure_set" {
+			if mode == "valid" || mode == "image_set" || mode == "bad_image" || mode == "fetch_failure" || mode == "bad_set" || mode == "truncated_pixels" || mode == "wrong_size" || mode == "empty_set" || mode == "oversized_declared" || mode == "oversized_streamed" || mode == "fetch_failure_set" || responseStatuses[mode] != 0 || mode == "canceled_set" {
 				require.Equal(t, 1, calls)
 			} else {
 				require.Zero(t, calls)
