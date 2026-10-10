@@ -14,7 +14,7 @@
 
 ## 配置与启动
 
-沿用 [当前供应链运行配置](my-supply-chain-shein-v1.md) 与 [企业智能体配置](organization-agent-configuration-v1.md)。当前默认 Account Compose 不自动启用供应链、完整图片 worker、付费 provider 或正式应用。已有单图试验 overlay 的 OpenAI 合成协议不是本实现的 GRSAI 接线；不要同时运行其旧 worker 来消费完整集合任务。
+沿用 [企业智能体配置](organization-agent-configuration-v1.md)。通用素材模式直接消费当前采集 Product/Review 与 IAM，不要求 Store 官方应用或 Supply worker。接入实际平台后，再按 [当前供应链运行配置](my-supply-chain-shein-v1.md) 装配平台来源、店铺授权和官方规则；未装配的目标拒绝生成与批准。当前默认 Account Compose 不自动启用完整图片 worker、付费 provider 或正式应用。已有单图试验 overlay 的 OpenAI 合成协议不是本实现的 GRSAI 接线；不要同时运行其旧 worker 来消费完整集合任务。
 
 维护者在已经获准的全新业务环境准备私有 current-application JSON 和现有 worker YAML。服务启动验证已有 schema/grant，不安装或迁移业务表，也不自动启用企业。
 
@@ -22,8 +22,9 @@
 | --- | --- |
 | `productAcquisitionDatabase` / `productCollections` | 当前 Product owner 和现有集合/采集/Review schema，真实原始发布与 Apply 读取 |
 | `productAgent.database` | 已安装 `agent_configuration` 的当前配置 owner；仅图片配置可用 `enabled:false`，无需启用标题执行 |
-| `supplyChain` | 实际 Product/Store/Asset ports、当前官方规则及同一 namespace 的 Supply Temporal |
-| `supplyChain.assetDatabase` | 与 `imageAgent.database` 同一物理 Image/Asset 数据库，使用独立 `supply_asset_runtime` pool，最多8连接 |
+| `imageAgent.assetDatabase` | 与 `imageAgent.database` 同一物理 Image/Asset 数据库，使用独立 `supply_asset_runtime` pool，最多8连接；通用模式也必须明确配置 |
+| 可选 `supplyChain` | 仅在实际接入平台时提供当前 Product/Store ports、官方规则及 Supply Temporal。通用模式不提供伪造的应用配置 |
+| `supplyChain.assetDatabase`（接入平台时） | 完整配置必须与 `imageAgent.assetDatabase` 相同；运行时共用上述一个窄 Asset pool，只关闭一次 |
 | `imageAgent.database` | `image_agent_runtime` 独立 HTTP pool，最多8连接；当前 Organization Image schema。候选核验须只读 `image_agent_v3_slot_external_effects` 的原生成/物化事实，不授予该表写权限 |
 | `imageAgent.workerConfigFile` | 受保护的绝对路径，指向现有 worker YAML，例如 `C:\private\image-set-worker.yaml`；提供相同物理 Image DB 的 `image_agent_worker_runtime` pool，1–8连接 |
 | 两份配置的 generation | 同一个真实 `priceVersion` 与已确认正整数 `pointsPerImage`；无默认价格，不能用美元 costMicros 代替点数 |
@@ -31,9 +32,10 @@
 | 两份配置的 artifactStore | 相同公开 base 与 bucket；worker YAML 含既有 S3 私有凭据、region/endpoint 与不可覆盖模式。API manifest 不含 worker 的存储凭据 |
 | `commercialOwnerDatabase` | 当前 orgresource owner 的窄权限 pool，实际点数与成员月限；无需另建账本 |
 | 企业模型 credential owner | 当前企业的 `image_gpt_image_2` route；HTTPS submit URL、`api_style=grsai`、`model=gpt-image-2.5`、有效私有 credential，超时最多5分钟 |
-| 可选 `sourceMedia` | 已有商品 JPEG/PNG 文件上传与不可变读回。缺少该 port 时只关闭人工上传替换 |
+| 当前 IAM | `identity.tenantDirectoryToken` 与当前授权 API，逐次核对实际企业、成员与来源权限；通用模式同样必须提供 |
+| 可选 `sourceMedia` | 依赖当前 Product collections 与既有不可变存储，提供商品 JPEG/PNG 文件上传和读回，无需官方应用。缺少该 port 时只关闭人工上传替换 |
 
-JSON 的 `imageAgent` 除上述 database/workerConfigFile/generation 还须提供 `temporalAddress`（literal IPv4 loopback）、`temporalNamespace`、`allowedOrganizationIds`、`publicBase`、`bucket`。worker YAML 使用现有 `imageagent.generation`、`imageagent.admission`、`imageagent.artifactStore` 字段；两份配置不一致拒绝启动。模型密钥只由现有企业 credential owner 提供，模板不能改变模型、凭据、权限或价格。
+JSON 的 `imageAgent` 除上述 database/assetDatabase/workerConfigFile/generation 还须提供 `temporalAddress`（literal IPv4 loopback）、`temporalNamespace`、`allowedOrganizationIds`、`publicBase`、`bucket`。worker YAML 使用现有 `imageagent.generation`、`imageagent.admission`、`imageagent.artifactStore` 字段；两份配置不一致拒绝启动。模型密钥只由现有企业 credential owner 提供，模板不能改变模型、凭据、权限或价格。
 
 新配置 schema 通过已有 `cmd/agent-configuration-schema-init` 安装；Image schema 与窄 HTTP/worker grant 通过已有 `cmd/product-listing-api-schema-migrate` 的 Organization Image 初始化选项安装；Image 空库初始化已同时安装当前 Asset schema；随后用已有 `cmd/supply-asset-init` 对同一物理 owner 补 `supply_asset_runtime` 授权，省略 `-install-empty-schema`。只能对获准的新环境执行维护命令。旧的单图配置/状态不迁移、不包装到新流程。
 

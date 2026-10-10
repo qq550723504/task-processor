@@ -5,6 +5,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"math"
+	"net/http"
 	"reflect"
 	"task-processor/internal/agentconfig"
 	imageapp "task-processor/internal/app/imageagent"
@@ -12,6 +13,8 @@ import (
 	supplyapp "task-processor/internal/app/supplychain"
 	imageworker "task-processor/internal/app/worker/imageagent"
 	"task-processor/internal/authidentity"
+	"task-processor/internal/authruntime/zitadel"
+	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/assetpublication"
@@ -22,7 +25,7 @@ import (
 	"task-processor/internal/product/asset"
 	"task-processor/internal/product/collection"
 	productimage "task-processor/internal/product/image"
-	"task-processor/internal/product/review"
+	"task-processor/internal/workbenchcontext"
 	"time"
 )
 
@@ -86,13 +89,13 @@ func (a imageSourceScopeAuthority) AuthorizeImageExecution(ctx context.Context, 
 
 // The caller owns the API/worker, configuration, source, resource and Asset
 // pools. This assembly installs no schema and starts no provider or worker.
-func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB, configurationDB, resourceDB, assetDB *gorm.DB, workflows imageagent.WorkflowClient, supply supplyChainModule, current, workerConfig *config.Config, logger *logrus.Logger, mediaReaders ...asset.ManualImageReader) (*fullImageApplication, appruntime.ImageAgentTemporalDependencies, error) {
+func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB, configurationDB, resourceDB, assetDB *gorm.DB, workflows imageagent.WorkflowClient, products imageapp.EffectiveImageProductReader, live supplyapp.OrganizationExecutionAuthorizer, supply *supplyChainModule, current, workerConfig *config.Config, logger *logrus.Logger, mediaReaders ...asset.ManualImageReader) (*fullImageApplication, appruntime.ImageAgentTemporalDependencies, error) {
 	var empty appruntime.ImageAgentTemporalDependencies
 	if len(mediaReaders) > 1 {
 		return nil, empty, imageagent.ErrValidation
 	}
 	var manual asset.ManualImageReader
-	if ctx == nil || productDB == nil || imageDB == nil || workerDB == nil || workerDB == imageDB || configurationDB == nil || resourceDB == nil || assetDB == nil || workflows == nil || supply.app == nil || current == nil || workerConfig == nil || !current.ImageAgent.Generation.Configured() || workerConfig.ImageAgent.Generation != current.ImageAgent.Generation || !reflect.DeepEqual(workerConfig.ImageAgent.Admission, current.ImageAgent.Admission) || workerConfig.ImageAgent.ArtifactStore.PublicBase != current.ImageAgent.ArtifactStore.PublicBase || workerConfig.ImageAgent.ArtifactStore.S3.Bucket != current.ImageAgent.ArtifactStore.S3.Bucket {
+	if ctx == nil || productDB == nil || imageDB == nil || workerDB == nil || workerDB == imageDB || configurationDB == nil || resourceDB == nil || assetDB == nil || assetDB == imageDB || assetDB == workerDB || workflows == nil || products.Snapshots == nil || products.Applied == nil || live.Permissions == nil || current == nil || workerConfig == nil || !current.ImageAgent.Generation.Configured() || workerConfig.ImageAgent.Generation != current.ImageAgent.Generation || !reflect.DeepEqual(workerConfig.ImageAgent.Admission, current.ImageAgent.Admission) || workerConfig.ImageAgent.ArtifactStore.PublicBase != current.ImageAgent.ArtifactStore.PublicBase || workerConfig.ImageAgent.ArtifactStore.S3.Bucket != current.ImageAgent.ArtifactStore.S3.Bucket {
 		return nil, empty, imageagent.ErrCommandBlocked
 	}
 	if current.ImageAgent.Generation.PointsPerImage > math.MaxInt64/32 {
@@ -116,15 +119,6 @@ func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB
 	if err != nil {
 		return nil, empty, err
 	}
-	effective, ok := supply.app.Products.(supplyapp.EffectiveProductReader)
-	if !ok || effective.Snapshots == nil {
-		return nil, empty, imageagent.ErrCommandBlocked
-	}
-	applied, ok := effective.Reviews.(review.AppliedPublicationLookup)
-	if !ok {
-		return nil, empty, imageagent.ErrCommandBlocked
-	}
-	live := supply.executionAuthorization
 	if len(mediaReaders) == 1 {
 		manual = mediaReaders[0]
 	}
@@ -135,11 +129,20 @@ func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB
 	if err != nil {
 		return nil, empty, err
 	}
-	sources := imageapp.ImageSetSourceRouter{Acquisition: imageapp.AcquisitionImageSetSources{Receipts: receipts, Authorization: sourceAuth, Products: imageapp.EffectiveImageProductReader{Snapshots: effective.Snapshots, Applied: applied}}, Supply: supplyapp.ImageSetSources{ExecutionSources: supply.app.Sources, ExecutionAuthorization: live, Products: supply.app.Products}}
+	sources := imageapp.ImageSetSourceRouter{Acquisition: imageapp.AcquisitionImageSetSources{Receipts: receipts, Authorization: sourceAuth, Products: products}}
+	if supply != nil {
+		if supply.app == nil {
+			return nil, empty, imageagent.ErrCommandBlocked
+		}
+		sources.Supply = supplyapp.ImageSetSources{ExecutionSources: supply.app.Sources, ExecutionAuthorization: live, Products: supply.app.Products}
+	}
 	readSources := sources
-	readSources.Supply = supplyapp.ImageSetSources{Permission: preparation.PermissionRead, ExecutionSources: supply.app.Sources, ExecutionAuthorization: live, Products: supply.app.Products}
 	sourceSelections := imageapp.ImageSetSourceSelectionReader{Sources: sources}
-	rules := supplyapp.ImageSetTargetRules{Records: supply.app.Records, Sources: sourceSelections, Rules: supply.app.Rules}
+	rules := supplyapp.ImageSetTargetRules{}
+	if supply != nil {
+		readSources.Supply = supplyapp.ImageSetSources{Permission: preparation.PermissionRead, ExecutionSources: supply.app.Sources, ExecutionAuthorization: live, Products: supply.app.Products}
+		rules = supplyapp.ImageSetTargetRules{Records: supply.app.Records, Sources: sourceSelections, Rules: supply.app.Rules}
+	}
 	contexts, err := imageapp.NewImageSetContextReader(sources, rules, newImageSetSourceByteReader(), productimage.MaxInlineArtifactBytes)
 	if err != nil {
 		return nil, empty, err
@@ -222,6 +225,24 @@ func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB
 		return nil, empty, err
 	}
 	return &fullImageApplication{service: service, readSources: readSources, contexts: contexts, quotes: quotes, selections: selections, inventories: inventories, approvals: approvals, publicURLs: publicURLs, trial: trial, configuration: configuration, recent: recent, gate: gate, rules: rules, manualAvailable: manual != nil}, dependencies, nil
+}
+
+// Generic Acquisition consumes the existing Product/Review and live IAM ports
+// directly; official Store and Supply execution are separate optional consumers.
+func buildFullImageProducts(db *gorm.DB, deps routeAuthDependencies, permissions *authz.ListingKitAuthorizer, cfg *config.Config) (imageapp.EffectiveImageProductReader, supplyapp.OrganizationExecutionAuthorizer, error) {
+	var products imageapp.EffectiveImageProductReader
+	var authorization supplyapp.OrganizationExecutionAuthorizer
+	resolver, ok := deps.organizationResolver.(*workbenchcontext.Resolver)
+	if !ok || resolver == nil || permissions == nil || cfg == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "" {
+		return products, authorization, imageagent.ErrCommandBlocked
+	}
+	reviews, err := buildProductReviewCore(db, resolver, permissions)
+	if err != nil {
+		return products, authorization, err
+	}
+	products = imageapp.EffectiveImageProductReader{Snapshots: reviews.reader, Applied: reviews.store}
+	authorization = supplyapp.OrganizationExecutionAuthorizer{Client: zitadel.NewAuthorizationClient(cfg.ListingKit.Zitadel.AuthorizationAPIURL, &http.Client{Timeout: 5 * time.Second}), ServiceToken: func(context.Context) (string, error) { return cfg.ListingKit.Zitadel.TenantDirectoryToken, nil }, ProjectID: cfg.ListingKit.Zitadel.ProjectID, Permissions: permissions, OrganizationStatus: resolver.BusinessStatusChecker()}
+	return products, authorization, nil
 }
 
 func newFullImageWorkerAuthorizer(live supplyapp.OrganizationExecutionAuthorizer) imageagent.ExecutionAuthorizer {

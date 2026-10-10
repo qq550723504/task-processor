@@ -81,6 +81,7 @@ type ReferralsConfig struct {
 // worker, opened with a bounded API runtime role, never the SRC role.
 type ImageAgentConfig struct {
 	WorkerConfigFile           string                                `json:"workerConfigFile,omitempty"`
+	AssetDatabase              DatabaseConfig                        `json:"assetDatabase,omitempty"`
 	Generation                 coreconfig.ImageAgentGenerationConfig `json:"generation,omitempty"`
 	Database                   DatabaseConfig                        `json:"database"`
 	TemporalAddress            string                                `json:"temporalAddress"`
@@ -415,8 +416,8 @@ func (cfg *Config) validate() error {
 		return err
 	}
 	if cfg.SourceMedia != nil {
-		if !cfg.ProductCollections || cfg.SupplyChain == nil {
-			return errors.New("source media requires current collections and supply chain")
+		if !cfg.ProductCollections || cfg.ProductAcquisitionDatabase == nil {
+			return errors.New("source media requires current Product collections")
 		}
 		if err := ValidateSourceMediaStorage(*cfg.SourceMedia); err != nil {
 			return errors.New("source media storage configuration unavailable")
@@ -443,8 +444,22 @@ func (cfg *Config) validate() error {
 		}
 	}
 	if image := cfg.ImageAgent; image != nil {
-		if image.WorkerConfigFile != "" && (!filepath.IsAbs(image.WorkerConfigFile) || !boundedValue(image.WorkerConfigFile, 4096) || cfg.SupplyChain == nil || cfg.ProductAgent == nil || !image.Generation.Configured()) {
-			return errors.New("full image agent requires an absolute private worker config, Supply, enterprise configuration and a points price")
+		if image.WorkerConfigFile != "" {
+			if !filepath.IsAbs(image.WorkerConfigFile) || !boundedValue(image.WorkerConfigFile, 4096) || cfg.ProductAgent == nil || !image.Generation.Configured() || cfg.Identity.TenantDirectoryToken == "" {
+				return errors.New("full image agent requires a private worker config, enterprise configuration, current membership and a points price")
+			}
+			if err := image.AssetDatabase.validate("imageAgent.assetDatabase"); err != nil {
+				return err
+			}
+			if image.AssetDatabase.User != "supply_asset_runtime" || image.AssetDatabase.MaxConnections > 8 || !sameDatabaseTarget(image.AssetDatabase, image.Database) {
+				return errors.New("full image requires the narrow Asset role in the current Image/Asset owner")
+			}
+			if cfg.SupplyChain != nil && cfg.SupplyChain.AssetDatabase != image.AssetDatabase {
+				return errors.New("full image and Supply must share the same explicit Asset pool configuration")
+			}
+			if cfg.ProductAgent.Enabled && !sameDatabaseTarget(image.AssetDatabase, cfg.ProductAgent.AssetDatabase) {
+				return errors.New("full image and title must use the current canonical Asset owner")
+			}
 		}
 		if image.Generation != (coreconfig.ImageAgentGenerationConfig{}) && (!image.Generation.Configured() || cfg.CommercialOwnerDatabase == nil) {
 			return errors.New("image generation requires an explicit versioned points price and commercial owner database")

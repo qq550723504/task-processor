@@ -182,12 +182,12 @@ func execute() error {
 			if features.SourceMediaStorage != nil {
 				options = append(options, httpapi.WithCollectionSourceMedia(features.SourceMediaStorage))
 			}
-			if features.SupplyAssetDB != nil {
+			if features.SupplyWorkflow != nil {
 				options = append(options, httpapi.WithSupplyChain(httpapi.SupplyChainDependencies{AssetDB: features.SupplyAssetDB, Starter: supplyruntime.TemporalOperationStarter{Client: features.SupplyWorkflow}, NewWorker: supplyruntime.WorkerFactory(features.SupplyWorkflow), Worker: features.SupplyWorker}))
 			}
 			if features.ImageAgentDB != nil {
 				if features.ImageSetWorkerConfig != nil {
-					options = append(options, httpapi.WithFullImageSet(features.ImageAgentDB, features.ImageAgentWorkflow, httpapi.FullImageSetDependencies{WorkerDB: features.ImageSetWorkerDB, WorkerConfig: features.ImageSetWorkerConfig, Client: features.ImageSetTemporal, Worker: features.ImageSetWorker}))
+					options = append(options, httpapi.WithFullImageSet(features.ImageAgentDB, features.ImageAgentWorkflow, httpapi.FullImageSetDependencies{AssetDB: features.ImageSetAssetDB, WorkerDB: features.ImageSetWorkerDB, WorkerConfig: features.ImageSetWorkerConfig, Client: features.ImageSetTemporal, Worker: features.ImageSetWorker}))
 				} else {
 					options = append(options, httpapi.WithAcquisitionImageAgent(features.ImageAgentDB, features.ImageAgentWorkflow))
 				}

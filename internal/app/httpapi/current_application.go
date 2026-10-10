@@ -415,7 +415,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	if supplied.imageAgents > 0 && (supplied.imageAgentDB == nil || supplied.imageAgentWorkflows == nil || supplied.productAcquisitionDB == nil || supplied.imageAgentDB == sourceAccountDB || supplied.imageAgentDB == supplied.productAcquisitionDB || supplied.imageAgentDB == supplied.commercialOwnerDB || supplied.imageAgentDB == supplied.referralDB) {
 		return nil, errors.New("acquisition image agent requires its owner pool, organization workflow, and product acquisition pool")
 	}
-	if d := supplied.fullImages; d != nil && (d.WorkerDB == nil || d.WorkerDB == supplied.imageAgentDB || d.WorkerConfig == nil || d.Client == nil || d.Worker == nil || supplied.agentConfigurationDB == nil || supplied.supplyChain == nil || supplied.commercialOwnerDB == nil || factories.buildAcquisitionImage != nil) {
+	if d := supplied.fullImages; d != nil && (d.AssetDB == nil || d.AssetDB == supplied.imageAgentDB || d.AssetDB == d.WorkerDB || d.AssetDB == supplied.productAcquisitionDB || d.AssetDB == sourceAccountDB || d.AssetDB == supplied.commercialOwnerDB || d.WorkerDB == nil || d.WorkerDB == supplied.imageAgentDB || d.WorkerConfig == nil || d.Client == nil || d.Worker == nil || supplied.agentConfigurationDB == nil || supplied.commercialOwnerDB == nil || factories.buildAcquisitionImage != nil || supplied.supplyChain != nil && supplied.supplyChain.AssetDB != d.AssetDB) {
 		return nil, errors.New("full image application requires all current owner ports and an explicit worker")
 	}
 	if supplied.referralDB != nil && (supplied.referralDB == sourceAccountDB || supplied.referralDB == supplied.productAcquisitionDB) {
@@ -702,14 +702,18 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	}
 	if supplied.agentConfigurationDB != nil {
 		if supplied.fullImages != nil {
-			if supplyRuntime == nil || supplied.supplyChain == nil || supplied.fullImages.Worker == nil || supplied.fullImages.Client == nil {
+			if supplied.fullImages.Worker == nil || supplied.fullImages.Client == nil {
 				return nil, imageagent.ErrCommandBlocked
+			}
+			products, live, e := buildFullImageProducts(supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, cfg)
+			if e != nil {
+				return nil, fmt.Errorf("build full image Product context: %w", e)
 			}
 			var sourceMedia asset.ManualImageReader
 			if supplied.collectionSourceMedia != nil && cfg.ProductCollectionSourceMedia.Enabled {
-				sourceMedia = newImageSetManualMedia(supplied.collectionSourceMedia, imageMediaScopeAuthority{current: supplyRuntime.executionAuthorization})
+				sourceMedia = newImageSetManualMedia(supplied.collectionSourceMedia, imageMediaScopeAuthority{current: live})
 			}
-			full, dependencies, e := buildFullImageApplication(ctx, supplied.productAcquisitionDB, supplied.imageAgentDB, supplied.fullImages.WorkerDB, supplied.agentConfigurationDB, supplied.commercialOwnerDB, supplied.supplyChain.AssetDB, supplied.imageAgentWorkflows, *supplyRuntime, cfg, supplied.fullImages.WorkerConfig, logger, sourceMedia)
+			full, dependencies, e := buildFullImageApplication(ctx, supplied.productAcquisitionDB, supplied.imageAgentDB, supplied.fullImages.WorkerDB, supplied.agentConfigurationDB, supplied.commercialOwnerDB, supplied.fullImages.AssetDB, supplied.imageAgentWorkflows, products, live, supplyRuntime, cfg, supplied.fullImages.WorkerConfig, logger, sourceMedia)
 			if e != nil {
 				return nil, fmt.Errorf("build full image application: %w", e)
 			}

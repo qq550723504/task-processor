@@ -233,6 +233,23 @@ Threat Model沿已有#487/#503及当前Source/Asset/Store边界：不可信浏�
 
 ## 8. Legacy 与验证范围
 
+### 8.1 实际启动阻碍：通用集合与平台装配解耦（IMPLEMENTATION_READY）
+
+2026-10-10 在最终运行准备中发现可执行 BLOCKER：§4 允许无平台目标的通用素材生成与审核，但完整 ImageAgent 启动强制 Supply，Supply 又强制正式 SHEIN 应用。`TestFullImageGenericManifestNeedsCurrentOwnersWithoutOfficialPlatform` 在无 Supply/Store、具有当前 Product/config/resource/Image/Temporal 的 manifest 上实际 RED，失败原因为强制 Supply。受影响 Must 是通用商品整套参数→生成→人工选择→Asset 保存；阻塞层级为完整模式试用和正式交付，不涉及平台规则降低。
+
+最小组合修正只消费当前合格 owner：
+
+- `imageAgent.assetDatabase` 显式声明与 `imageAgent.database` 同一物理 Image/Asset owner 的独立 `supply_asset_runtime` pool，最多8连接；API、worker、Asset 角色仍分离。已有 Asset 初始化/授权/启动校验不变。
+- Supply 是可选消费者。有 Supply 时其 Asset `DatabaseConfig` 必须与 image 的 Asset 配置完整一致，装配共用这一原窄 Asset pool；不开第二 owner/pool。无 Supply 时只打开 image 的该 Asset pool，不构造 Supply worker、官方应用或平台 adapter。
+- Acquisition 通用来源直接复用当前有界 Product snapshot、Review AppliedPublicationLookup、作用域 publication reader、现 OrganizationExecutionAuthorizer 与原 source/actor/member 检查。配置 owner、ImageAgent、orgresource、Asset 调用及恢复协议不变；不从另一来源 fallback。
+- 只有真实 Supply 已装配时才注入 Supply source 与官方 target/rule ports。无该 port 时平台来源、平台规则与批准明确拒绝；不能用 generic 冒充平台，不能削弱 Supply/Store 的原正式应用准入。
+- SourceMedia 与同根手动替换依赖当前 Product/Collections、current IAM 和既有 immutable storage，不以 Supply/正式应用为前置。保持现文件、权限、SSRF、不可覆盖与真实字节读回要求。
+- 不新增数据库、schema、状态、财务、准入回执、外部副作用、IAM 或通用启动/验收框架。不包装历史单图 overlay；此前无完整模式实例，使用当前明确 manifest，不新增旧配置兼容路径。
+
+contract → implementation → injection → consumer：当前 source/Review/组织执行授权与 Asset contracts → HTTP 有界原 owner 构造 → full ImageAgent 注入；有 Supply 时注入其已批准 ports → 采集通用面板/原 Supply 面板与 worker。前后端仅按实际规则配置开放平台选择；generic 仍无发布合规声称。
+
+验证限于本阻碍：先保留上述 RED，再验证无官方应用的 generic 配置/独立 Asset 角色与生命周期；错误角色、不同物理 owner、与其它 owner 混池拒绝；有 Supply 的单 Asset pool 与原 worker 保留；未接入平台来源/规则拒绝；当前来源授权/Asset 选择及 SourceMedia 不变量使用已有测试。其余冻结的状态/计费/UNKNOWN/恢复证据不重跑全局矩阵。2026-10-10 本增量经对应独立检查明确达到 IMPLEMENTATION_READY；仅对该启动 BLOCKER 进入正式装配修复，原冻结合同保持有效。
+
 Legacy decision: **EXTRACT | RETIRE**。抽取当前合格计划/逐图 effect/文件校验/资源计费/回执行为到正确 owner；不 Wrap 已退休 root ListingKit、Task-first 或旧 Service，不增加双读/双写/第二事实源、旧数据迁移或 compatibility。
 
 2026-10-09已按AGENTS完成两轮正常独立架构评审，技术设计收束为IMPLEMENTATION_READY。R1配置准入BLOCKER已由§7.2整套事务准入回执解除；R1的批准ACK/cancel、set digest/持久化、官方位置映射、Asset CAS/replay及多来源proof接缝为IMPLEMENTATION_TEST，正式实现与必要测试内收敛，不重开全局设计。正式实现使用本Delivery Batch一个Writer/分支/主要PR；复用现PG/Temporal/provider fixtures，不建设runner/验收平台。评审候选合同SHA256为417e65c9fdd0f1705d5e0a174fe63efc8647b78f36f532ffcc47035dcdb7179c；本次状态标记和R2提出的非阻塞停用文案清理不新增合同边界。
