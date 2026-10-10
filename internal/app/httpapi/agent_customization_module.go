@@ -22,7 +22,7 @@ func validateAgentCustomizationPool(o currentApplicationOptions, source *gorm.DB
 	if o.agentCustomizations != 1 || o.agentCustomizationDB == nil {
 		return errors.New("agent customization requires one existing owner pool")
 	}
-	others := []*gorm.DB{source, o.commercialOwnerDB, o.moneyOwnerDB, o.referralDB, o.productAcquisitionDB, o.imageAgentDB, o.accountAuditImageDB, o.accountAuditProductDB, o.storeCenterDB, o.localTrialDB, o.agentConfigurationDB, o.notificationDB}
+	others := []*gorm.DB{source, o.commercialOwnerDB, o.moneyOwnerDB, o.referralDB, o.productAcquisitionDB, o.imageAgentDB, o.accountAuditImageDB, o.accountAuditProductDB, o.storeCenterDB, o.localTrialDB, o.agentConfigurationDB, o.notificationDB, o.projectCenterDB}
 	if o.toolMarket != nil {
 		others = append(others, o.toolMarket.DB)
 	}

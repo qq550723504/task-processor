@@ -107,6 +107,7 @@ consider the applicable guards, including:
 - `TestEcoservicesHTTPBoundaryRegistration` — permits only the approved ecosystem HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `TestNotificationCenterHTTPBoundaryRegistration` — permits only the approved notification center HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `TestToolMarketHTTPBoundaryRegistration` — permits only the approved Tool Market HTTP subtree; rejects core contracts, siblings and similar prefixes.
+- `TestProjectCenterHTTPBoundaryRegistration` — permits only the approved Project Center HTTP subtree; rejects the domain root and similar prefixes.
 - `depguard: source_handoff_legacy_http`
 - `TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets`
 - `TestAlibaba1688CrawlerDoesNotImportListingKitRoot`

@@ -85,6 +85,7 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
     - `agent-configuration-schema-init`
     - `agent-customization-schema-init`
     - `ai-workbench-schema-init`
+    - `project-center-schema-init`
     - `notification-center-schema-init`
     - `product-agent-credential-provision`
     - `1688-batch-import`

@@ -103,6 +103,9 @@ func execute() error {
 		OpenProductAgent: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
+		OpenProjectCenter: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
 		OpenAIWorkbench: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
@@ -125,6 +128,9 @@ func execute() error {
 			options := make([]httpapi.CurrentApplicationOption, 0, 6)
 			if features.AgentCustomizationDB != nil {
 				options = append(options, httpapi.WithAgentCustomization(features.AgentCustomizationDB))
+			}
+			if features.ProjectCenterDB != nil {
+				options = append(options, httpapi.WithProjectCenter(features.ProjectCenterDB))
 			}
 			if features.Ecoservices != nil {
 				e := features.Ecoservices

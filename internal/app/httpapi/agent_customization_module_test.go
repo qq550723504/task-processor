@@ -39,6 +39,8 @@ func TestAgentCustomizationModuleRejectsMissingDuplicateAndAliasedPool(t *testin
 		{"source alias", []CurrentApplicationOption{WithAgentCustomization(source)}, false},
 		{"tool market independent", []CurrentApplicationOption{WithAgentCustomization(custom), WithToolMarket(ToolMarketDependencies{DB: tool})}, true},
 		{"tool market alias", []CurrentApplicationOption{WithAgentCustomization(custom), WithToolMarket(ToolMarketDependencies{DB: custom})}, false},
+		{"project independent", []CurrentApplicationOption{WithAgentCustomization(custom), WithProjectCenter(tool)}, true},
+		{"project alias", []CurrentApplicationOption{WithAgentCustomization(custom), WithProjectCenter(custom)}, false},
 	} {
 		t.Run(candidate.name, func(t *testing.T) {
 			options := currentApplicationOptions{}
