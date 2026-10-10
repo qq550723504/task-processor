@@ -128,6 +128,53 @@ func TestPostgresDataPublicationBatchAtomicityReplayAndActorIsolation(t *testing
 		check(own.BatchID, true)
 		check(batch.ID, false)
 	})
+	t.Run("original producer appends remain saved while archived batch stays hidden", func(t *testing.T) {
+		owner := collection.Scope{OrganizationID: "org", ActorID: "archive-creator", MemberID: "archive-grant"}
+		publication, err := collection.NewPublicationBatch(owner, uuid.NewString(), "amazon_data", "Amazon · us")
+		require.NoError(t, err)
+		appendProduct := func(op string) string {
+			t.Helper()
+			var itemID string
+			err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+				envelope, err := collection.OwnEnvelope(op, collection.OwnProduct{Title: "archive fixture"})
+				if err != nil {
+					return err
+				}
+				source, err := (testOwnPublisher{tx}).PublishOwn(ctx, owner, op, envelope)
+				if err != nil {
+					return err
+				}
+				source.Kind, source.OperationID = "amazon_data", op
+				itemID, err = AppendDataPublication(ctx, tx, owner, publication, source, time.Now())
+				return err
+			})
+			require.NoError(t, err)
+			return itemID
+		}
+		appendProduct(uuid.NewString())
+		visible, err := r.ReadBatch(ctx, owner, publication.ID)
+		require.NoError(t, err)
+		_, err = r.Execute(ctx, testCommand(owner, uuid.NewString(), collection.Mutation{Action: "archive_batch", BatchID: visible.ID, ExpectedRevision: visible.Revision}))
+		require.NoError(t, err)
+		var archivedAt time.Time
+		require.NoError(t, db.Raw("SELECT archived_at FROM product_collection_batches WHERE organization_id=? AND actor_id=? AND id=?", owner.OrganizationID, owner.ActorID, publication.ID).Scan(&archivedAt).Error)
+		second := uuid.NewString()
+		require.Equal(t, appendProduct(second), appendProduct(second), "replay retains original item identity")
+		var row struct {
+			Count      int64
+			ArchivedAt time.Time
+		}
+		require.NoError(t, db.Raw("SELECT b.archived_at,count(i.id) FROM product_collection_batches b JOIN product_collection_items i ON i.organization_id=b.organization_id AND i.actor_id=b.actor_id AND i.batch_id=b.id WHERE b.organization_id=? AND b.actor_id=? AND b.id=? GROUP BY b.archived_at", owner.OrganizationID, owner.ActorID, publication.ID).Scan(&row).Error)
+		require.Equal(t, int64(2), row.Count)
+		require.Equal(t, archivedAt, row.ArchivedAt, "producer must not restore an archived batch")
+		_, err = r.ReadBatch(ctx, owner, publication.ID)
+		require.ErrorIs(t, err, collection.ErrNotFound)
+		hidden, err := r.ListItems(ctx, owner, "", collection.Query{Limit: 100})
+		require.NoError(t, err)
+		require.Empty(t, hidden.Items)
+		_, err = r.Execute(ctx, testCommand(owner, uuid.NewString(), collection.Mutation{Action: "rename_batch", BatchID: publication.ID, ExpectedRevision: visible.Revision + 1, Name: "must stay archived"}))
+		require.ErrorIs(t, err, collection.ErrNotFound, "new user mutations still reject archived batches")
+	})
 	require.NoError(t, db.Exec("ALTER TABLE product_collection_items DROP CONSTRAINT product_collection_items_source_kind_check; ALTER TABLE product_collection_items ADD CONSTRAINT product_collection_items_source_kind_check CHECK(source_kind IN ('acquisition','own')) NOT VALID").Error)
 	require.ErrorIs(t, VerifySchema(ctx, db), collection.ErrUnavailable)
 }
