@@ -1,0 +1,28 @@
+{
+  "create": {
+    "ret": 0,
+    "msg": "SUCCESS",
+    "data": [
+      {
+        "id": 480968536,
+        "name": "sds-pod-6464cb0d-9ebe-4e3d-b306-e0ed5e889a24",
+        "file_code": "test-file.png",
+        "width": 1334,
+        "height": 2000,
+        "file_format": "png",
+        "merchant_id": 123,
+        "img_url": "https://cdn.sdspod.com/imagesThumbs/test-account/test-file.png"
+      }
+    ]
+  },
+  "findByIds": [
+    {
+      "height": 2000,
+      "id": 480968536,
+      "imgUrl": "https://cdn.sdspod.com/imagesThumbs/test-account/test-file.png",
+      "name": "sds-pod-6464cb0d-9ebe-4e3d-b306-e0ed5e889a24",
+      "width": 1334,
+      "ziguangFolder": 0
+    }
+  ]
+}

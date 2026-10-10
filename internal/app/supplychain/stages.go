@@ -81,7 +81,7 @@ func validStage(v string) bool {
 }
 func (a *Application) Stages(ctx context.Context, id, storeID, stage string, q collection.Query, sourceKind string) (StagePage, error) {
 	out := StagePage{Items: []StageItem{}, Counts: map[string]int64{"all": 0, "waiting": 0, "missing": 0, "ready": 0, "review": 0, "uploaded": 0}}
-	if sourceKind != "" && sourceKind != "own" && sourceKind != "acquisition" || a.StageProjection.Facts == nil || !collection.ValidID(id) || !collection.ValidID(storeID) || !validStage(stage) || q.Validate() != nil {
+	if sourceKind != "" && !collection.ValidSourceKind(sourceKind) || a.StageProjection.Facts == nil || !collection.ValidID(id) || !collection.ValidID(storeID) || !validStage(stage) || q.Validate() != nil {
 		return out, preparation.ErrInvalid
 	}
 	ctx, cancel := context.WithTimeout(ctx, 18*time.Second)

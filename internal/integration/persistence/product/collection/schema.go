@@ -16,12 +16,12 @@ func InstallSchema(db *gorm.DB) error {
  organization_id varchar(128) NOT NULL, actor_id varchar(128) NOT NULL, member_id varchar(128) NOT NULL,
  id uuid NOT NULL, name varchar(200) NOT NULL, kind varchar(32) NOT NULL,
  revision bigint NOT NULL CHECK(revision>0), created_at timestamptz NOT NULL, archived_at timestamptz,
- PRIMARY KEY(organization_id,actor_id,id), CHECK(name<>''), CHECK(kind IN ('acquisition','own','manual','amazon_data','custom_dataset')));
+ PRIMARY KEY(organization_id,actor_id,id), CHECK(name<>''), CHECK(kind IN ('acquisition','own','manual','market','sds_template','sds_finished','amazon_data','custom_dataset')));
 CREATE TABLE IF NOT EXISTS product_collection_items (
  organization_id varchar(128) NOT NULL, actor_id varchar(128) NOT NULL, member_id varchar(128) NOT NULL,
  id uuid NOT NULL, batch_id uuid NOT NULL, product_key varchar(128) NOT NULL,
  publication_id varchar(128) NOT NULL, original_version bigint NOT NULL CHECK(original_version>0),
- source_kind varchar(32) NOT NULL CHECK(source_kind IN ('acquisition','own','amazon_data','custom_dataset')), source_operation_id varchar(128) NOT NULL,
+ source_kind varchar(32) NOT NULL CHECK(source_kind IN ('acquisition','own','market','sds_template','sds_finished','amazon_data','custom_dataset')), source_operation_id varchar(128) NOT NULL,
  revision bigint NOT NULL CHECK(revision>0), created_at timestamptz NOT NULL, archived_at timestamptz,
  PRIMARY KEY(organization_id,actor_id,id), UNIQUE(organization_id,actor_id,publication_id),
  FOREIGN KEY(organization_id,actor_id,batch_id) REFERENCES product_collection_batches(organization_id,actor_id,id),
@@ -80,6 +80,28 @@ func VerifySchema(ctx context.Context, db *gorm.DB) error {
  WHERE c.conrelid=to_regclass(e.relation) AND c.contype='c' AND a.attnum=ANY(c.conkey)
  AND (NOT c.convalidated OR EXISTS(SELECT 1 FROM unnest(e.kinds) AS k(value)
  WHERE position(quote_literal(k.value) IN pg_get_constraintdef(c.oid))=0))))`).Scan(&ready).Error
+	if err != nil || !ready {
+		return collection.ErrUnavailable
+	}
+	return nil
+}
+
+// Receiver capability is admitted separately from an existing Collection-only
+// deployment. A runtime on the earlier schema fails before exposing select;
+// this read-only check never modifies an existing business database.
+func VerifyReceiverSchema(ctx context.Context, db *gorm.DB) error {
+	if VerifySchema(ctx, db) != nil {
+		return collection.ErrUnavailable
+	}
+	var ready bool
+	err := db.WithContext(ctx).Raw(`WITH expected(relation,field) AS (VALUES
+ ('product_collection_batches','kind'),('product_collection_items','source_kind'))
+ SELECT NOT EXISTS(SELECT 1 FROM expected e WHERE NOT EXISTS(
+ SELECT 1 FROM pg_constraint c JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=ANY(c.conkey)
+ WHERE c.conrelid=to_regclass(e.relation) AND c.contype='c' AND c.convalidated AND a.attname=e.field
+ AND position('''market''' IN pg_get_constraintdef(c.oid))>0
+ AND position('''sds_template''' IN pg_get_constraintdef(c.oid))>0
+ AND position('''sds_finished''' IN pg_get_constraintdef(c.oid))>0))`).Scan(&ready).Error
 	if err != nil || !ready {
 		return collection.ErrUnavailable
 	}

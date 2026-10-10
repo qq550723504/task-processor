@@ -23,13 +23,13 @@ type nativeDraftReadCore struct {
 }
 
 // Both serving modes consume the same native, live-authorized read owners.
-func buildNativeDraftReadCore(ctx context.Context, db *gorm.DB, deps routeAuthDependencies, permissions *authz.ListingKitAuthorizer, constrain func(preparation.Authorizer) preparation.Authorizer) (nativeDraftReadCore, error) {
+func buildNativeDraftReadCore(ctx context.Context, db *gorm.DB, deps routeAuthDependencies, permissions *authz.ListingKitAuthorizer, constrain func(preparation.Authorizer) preparation.Authorizer, marketPOD ...bool) (nativeDraftReadCore, error) {
 	var empty nativeDraftReadCore
 	resolver, ok := deps.organizationResolver.(*workbenchcontext.Resolver)
 	if !ok || resolver == nil || permissions == nil || db == nil {
 		return empty, preparation.ErrUnavailable
 	}
-	collections, err := buildProductCollectionService(ctx, db, deps, permissions, true)
+	collections, err := buildProductCollectionService(ctx, db, deps, permissions, append([]bool{true}, marketPOD...)...)
 	if err != nil {
 		return empty, err
 	}

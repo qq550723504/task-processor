@@ -372,7 +372,7 @@ func likeKeyword(keyword string) string {
 
 // Eligibility is a read projection of current active items, including sources
 // moved into another batch. No separate readiness fact or Supply write is owned here.
-const batchReadColumns = "b.id,b.name,b.kind,b.revision,b.created_at,b.archived_at,(SELECT count(*) FROM product_collection_items i WHERE i.organization_id=b.organization_id AND i.actor_id=b.actor_id AND i.batch_id=b.id AND i.archived_at IS NULL) AS count,NOT EXISTS(SELECT 1 FROM product_collection_items i WHERE i.organization_id=b.organization_id AND i.actor_id=b.actor_id AND i.batch_id=b.id AND i.archived_at IS NULL AND i.source_kind NOT IN ('acquisition','own')) AS supply_transfer_supported"
+const batchReadColumns = "b.id,b.name,b.kind,b.revision,b.created_at,b.archived_at,(SELECT count(*) FROM product_collection_items i WHERE i.organization_id=b.organization_id AND i.actor_id=b.actor_id AND i.batch_id=b.id AND i.archived_at IS NULL) AS count,NOT EXISTS(SELECT 1 FROM product_collection_items i WHERE i.organization_id=b.organization_id AND i.actor_id=b.actor_id AND i.batch_id=b.id AND i.archived_at IS NULL AND i.source_kind NOT IN ('acquisition','own','market','sds_finished')) AS supply_transfer_supported"
 
 func (r *Repository) ListBatches(ctx context.Context, scope collection.Scope, query collection.Query) (collection.Page[collection.Batch], error) {
 	var page collection.Page[collection.Batch]

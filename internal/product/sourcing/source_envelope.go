@@ -34,6 +34,7 @@ func (e SourceEnvelope) Normalize() SourceEnvelope {
 		for i := range e.ProductCandidate.Variants {
 			variants[i] = e.ProductCandidate.Variants[i]
 			variants[i].Attributes = cloneSourceMetadata(e.ProductCandidate.Variants[i].Attributes)
+			variants[i].Images = append([]AssetCandidate(nil), e.ProductCandidate.Variants[i].Images...)
 		}
 		e.ProductCandidate.Variants = variants
 	}
@@ -122,6 +123,7 @@ type ProductVariantCandidate struct {
 	Currency   string
 	Price      float64
 	Stock      int
+	Images     []AssetCandidate `json:",omitempty"`
 }
 
 // AssetCandidate carries neutral image/design facts from the source.

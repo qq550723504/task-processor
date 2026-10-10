@@ -18,6 +18,14 @@ func TestPrivateDraftTrialAdmission(t *testing.T) {
 		return c
 	}
 	require.NoError(t, makeConfig().validate())
+	for _, pod := range []bool{false, true} {
+		c := makeConfig()
+		c.SupplyMarket = &SupplyMarketConfig{Storage: KnowledgeStorageConfig{Region: "local", Bucket: "private", AccessKeyID: "fixture", SecretAccessKey: "fixture", Mode: "aws"}}
+		if pod {
+			c.POD = &PODConfig{}
+		}
+		require.Error(t, c.validatePrivateDraftTrial(), "offline trial excludes market and POD services")
+	}
 	for _, mutate := range []func(*Config){
 		func(c *Config) { c.PrivateDraftTrial.Acknowledgment = "" },
 		func(c *Config) { c.PrivateDraftTrial.MemberID = "" },

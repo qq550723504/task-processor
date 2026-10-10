@@ -144,6 +144,9 @@ func snapshotVariants(envelope SourceEnvelope) []catalog.Variant {
 			Price:      price,
 			Stock:      candidate.Stock,
 		}
+		variantEnvelope := envelope
+		variantEnvelope.AssetCandidates = candidate.Images
+		variants[index].Images = snapshotImages(variantEnvelope)
 	}
 	return variants
 }
