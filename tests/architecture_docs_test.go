@@ -2042,6 +2042,12 @@ func TestDataServicesDesignPreservesOriginalScopeFundsAndDelivery(t *testing.T) 
 	})
 }
 
+func TestCockpitDesignPreservesManualFactsAndCurrentStoreOwner(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "operations-cockpit-v1.md"), []string{
+		"IMPLEMENTATION_READY / FROZEN", "人工", "创建人", "operations_cockpit", "同一DB transaction", "UNKNOWN", "不能按天", "JS安全", "NOT_RUN",
+	})
+}
+
 func TestStoreObservationDesignPreservesReadOnlyPlatformAndScopedFacts(t *testing.T) {
 	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "store-center-platform-observations-v1.md"), []string{
 		"IMPLEMENTATION_READY / FROZEN", "PD-STORE-CENTER-READONLY-COMMERCE-2026-10-09",

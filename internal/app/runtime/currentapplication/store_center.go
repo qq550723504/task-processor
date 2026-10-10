@@ -4,6 +4,7 @@ import "errors"
 
 // StoreCenterConfig uses the independently owned native record database.
 type StoreCenterConfig struct {
+	OperationsCockpit    bool                            `json:"operationsCockpit,omitempty"`
 	Observations         *StoreObservationsConfig        `json:"observations,omitempty"`
 	Enabled              bool                            `json:"enabled"`
 	Database             DatabaseConfig                  `json:"database"`
@@ -11,6 +12,9 @@ type StoreCenterConfig struct {
 }
 
 func (c *Config) validateStoreCenter() error {
+	if c.StoreCenter != nil && c.StoreCenter.OperationsCockpit && !c.StoreCenter.Enabled {
+		return errors.New("operations cockpit requires enabled Store center")
+	}
 	if c.StoreCenter == nil || !c.StoreCenter.Enabled {
 		return nil
 	}

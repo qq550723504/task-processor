@@ -96,6 +96,7 @@ consider the applicable guards, including:
 - `TestListingSubmissionPersistenceAdapterImplementsOnlySubmissionPort`
 - `TestSupplyPersistenceAndOfficialTransportOnlyImportAdmittedPorts`
 - `TestSupplyAndCollectionHTTPRegistrationKeepsBusinessSiblingsFrameworkFree`
+- `TestCockpitHTTPBoundaryRegistration`
 - `TestProductCatalogPersistenceGuardRejectsEverySiblingProductDomainFixture`
 - `depguard: infrastructure_business_boundaries`
 - `depguard: product_catalog_persistence_boundary`
@@ -401,6 +402,7 @@ Supporting context documents must not be listed as review references unless prom
 - `docs/architecture/self-service-subscription-purchase-contract.md`
 - `docs/architecture/store-center-current-application-v1.md`
 - `docs/architecture/store-center-platform-observations-v1.md`
+- `docs/architecture/operations-cockpit-v1.md`
 - `docs/architecture/httpapi-assembly-boundaries.md`
 - `docs/architecture/app-assembly-boundaries.md`
 - `docs/architecture/temporal-boundaries.md`
