@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CockpitPage } from "./cockpit-page";
 const id = "123e4567-e89b-42d3-a456-426614174000";
@@ -11,6 +11,22 @@ const emptyGoal = { goal: null, evaluation: null, head: null, goalUnavailable: f
 function mount() { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CockpitPage mode="settings" /></QueryClientProvider>); }
 beforeEach(() => { sessionStorage.clear(); context.effectiveOrganization = { id: "org-a" }; context.operationsCockpitAvailable = true;context.permissions=["workbench.cockpit.goals.read"]; });
 afterEach(() => { cleanup(); vi.unstubAllGlobals();vi.restoreAllMocks(); });
+it.each([
+ ["critical", "异常"],
+ ["attention", "需关注"],
+ ["data", "数据不完整"],
+])("preserves %s severity when selecting advice", async (level, label) => {
+ context.permissions = ["workbench.cockpit.advice.read"];
+ const rule = { id: "goal:1", kind: "goal_assessment", level, title: "目标进度偏低", reason: "按已完成期间核查经营目标", advice: "核查本期收入与成本", actionPath: "/workbench/overview/goals", actionLabel: "核查经营目标", source: "manual", capturedAt: "2026-10-10T01:00:00Z", period: { startDate: "2026-10-03", endDate: "2026-10-09" } };
+ const rules = { rules: [rule], total: 1, page: 1, capturedAt: rule.capturedAt, goalUnavailable: false, observations: { state: "unavailable", exceptional: 0, complete: false, sources: [], latest: [], actionPath: "/workbench/store-orders" } };
+ vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json(url.endsWith("capabilities") ? { ...capabilities, access: { ...capabilities.access, adviceRead: true } } : rules)));
+ render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CockpitPage mode="advice" /></QueryClientProvider>);
+ const queuedAdvice = await screen.findByRole("button", { name: /目标进度偏低/ });
+ expect(within(queuedAdvice).getByText(label)).toBeVisible();
+ fireEvent.click(queuedAdvice);
+ expect(screen.getByText(rule.reason)).toBeVisible();
+ expect(screen.getByRole("link", { name: "核查经营目标 →" })).toHaveAttribute("href", rule.actionPath);
+});
 it("retains the identical original operation after an unknown save result", async () => {
  const writes: { body: string; key: string }[] = [];
  vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
