@@ -137,6 +137,7 @@ func stockState(text string) string {
 }
 
 var priceNumber = regexp.MustCompile(`[0-9][0-9.,\x{00a0} ]*`)
+var dotGroupedPrice = regexp.MustCompile(`^[0-9]{1,3}(\.[0-9]{3})+$`)
 
 func parsePrice(text, site string) (float64, string) {
 	code := map[string]string{"us": "USD", "uk": "GBP", "de": "EUR", "fr": "EUR", "it": "EUR", "es": "EUR", "ca": "CAD", "jp": "JPY", "au": "AUD", "mx": "MXN", "br": "BRL", "in": "INR", "ae": "AED", "sa": "SAR"}[site]
@@ -158,6 +159,15 @@ func parsePrice(text, site string) (float64, string) {
 	value = strings.ReplaceAll(strings.ReplaceAll(value, " ", ""), "\u00a0", "")
 	comma, dot := strings.LastIndex(value, ","), strings.LastIndex(value, ".")
 	european := comma > dot && comma >= 0 && len(value)-comma-1 == 2
+	if comma < 0 {
+		// These marketplaces use dots for integer grouping even when the
+		// displayed price omits its decimal comma. Keep ordinary dot decimals
+		// and other marketplaces' interpretation unchanged.
+		switch site {
+		case "de", "it", "es", "br":
+			european = dotGroupedPrice.MatchString(value)
+		}
+	}
 	if european {
 		value = strings.ReplaceAll(value, ".", "")
 		value = strings.ReplaceAll(value, ",", ".")

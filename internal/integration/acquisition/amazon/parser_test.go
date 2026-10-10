@@ -2,6 +2,7 @@ package amazon
 
 import (
 	"errors"
+	"fmt"
 	"task-processor/internal/product/dataacquisition"
 	"testing"
 	"time"
@@ -15,6 +16,37 @@ func TestDiscoveryDoesNotCollectAdvertisementsOrForeignLinks(t *testing.T) {
 	}
 	if _, err := ParseDiscovery(`<form action="/errors/validateCaptcha"><input name="field-keywords"></form>`, 1); !errors.Is(err, ErrChallenge) {
 		t.Fatalf("challenge was not rejected: %v", err)
+	}
+}
+
+func TestProductPricePreservesMarketplaceThousandsAndDecimals(t *testing.T) {
+	for _, tc := range []struct {
+		site, text, currency string
+		price                float64
+	}{
+		{"de", "1.234 €", "EUR", 1234},
+		{"it", "1.234 €", "EUR", 1234},
+		{"es", "1.234 €", "EUR", 1234},
+		{"br", "R$ 1.234", "BRL", 1234},
+		{"de", "1.234.567 €", "EUR", 1234567},
+		{"br", "R$ 1.234.567,89", "BRL", 1234567.89},
+		{"de", "1.234,56 €", "EUR", 1234.56},
+		{"it", "19,95 €", "EUR", 19.95},
+		{"fr", "1\u00a0234,56 €", "EUR", 1234.56},
+		{"fr", "1\u202f234,56 €", "EUR", 1234.56},
+		{"de", "19.95 EUR", "EUR", 19.95},
+		{"us", "$1,234.56", "USD", 1234.56},
+		{"us", "$1.234", "USD", 1.234},
+		{"jp", "￥1,234", "JPY", 1234},
+		{"in", "₹1,23,456.78", "INR", 123456.78},
+	} {
+		t.Run(tc.site+"/"+tc.text, func(t *testing.T) {
+			raw := fmt.Sprintf(`<input id="ASIN" value="B000123456"><span id="productTitle">Price fixture</span><img id="landingImage" src="https://m.media-amazon.com/images/a.jpg"><div id="availability">In Stock</div><span class="a-price"><span class="a-offscreen">%s</span></span>`, tc.text)
+			evidence, err := ParseProduct(raw, tc.site, "B000123456", time.Now())
+			if err != nil || evidence.Price != tc.price || evidence.Currency != tc.currency {
+				t.Fatalf("expected %v %s, got %v %s: %v", tc.price, tc.currency, evidence.Price, evidence.Currency, err)
+			}
+		})
 	}
 }
 func TestProductParserUsesActualPriceAndExplicitUnavailable(t *testing.T) {
