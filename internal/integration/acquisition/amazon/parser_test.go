@@ -3,7 +3,6 @@ package amazon
 import (
 	"errors"
 	"fmt"
-	"task-processor/internal/product/dataacquisition"
 	"testing"
 	"time"
 )
@@ -56,8 +55,20 @@ func TestProductParserUsesActualPriceAndExplicitUnavailable(t *testing.T) {
 		t.Fatalf("%#v %v", e, err)
 	}
 	missing := `<input id="ASIN" value="B000123456"><span id="productTitle">Chair</span><img id="landingImage" src="https://m.media-amazon.com/images/a.jpg">`
-	if _, err := ParseProduct(missing, "us", "B000123456", time.Now()); !errors.Is(err, dataacquisition.ErrInvalid) {
-		t.Fatalf("unknown availability fabricated: %v", err)
+	for _, suffix := range []string{"", `<div id="availability">Check delivery details</div>`} {
+		e, err := ParseProduct(missing+suffix, "us", "B000123456", time.Now())
+		if err != nil || e.Availability != "unknown" {
+			t.Fatalf("valid row with unknown stock was lost: %#v %v", e, err)
+		}
+		found := false
+		for _, field := range e.Missing {
+			if field == "availability" {
+				found = true
+			}
+		}
+		if !found || e.Price != 0 || e.Currency != "" {
+			t.Fatalf("unknown source fact was fabricated: %#v", e)
+		}
 	}
 }
 

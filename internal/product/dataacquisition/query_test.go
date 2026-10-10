@@ -62,3 +62,25 @@ func TestEnvelopePreservesMissingFields(t *testing.T) {
 		t.Fatalf("missing field reasons lost: %#v %v", envelope.Warnings, err)
 	}
 }
+
+func TestUnknownAvailabilityIsSavedAsMissingWithoutFabricatingSalePrice(t *testing.T) {
+	e := Evidence{Site: "us", ASIN: "B000123456", Title: "Chair", MainImage: "https://m.media-amazon.com/images/a.jpg", CapturedAt: "2026-10-09T12:00:00Z", ParserVersion: "amazon-v1", Availability: "unknown", Missing: []string{"availability", "price", "currency"}}
+	if err := e.Validate(); err != nil {
+		t.Fatalf("valid incomplete evidence rejected: %v", err)
+	}
+	envelope, err := e.Envelope("0511e1d2-b555-4970-b323-3b629a901901")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(envelope.ProductCandidate.Variants) != 0 || envelope.ProductCandidate.Attributes["availability"] != "unknown" || len(envelope.Warnings) != 3 {
+		t.Fatalf("unknown state or missing reasons changed: %#v", envelope)
+	}
+	e.Missing = nil
+	if e.Validate() == nil {
+		t.Fatal("unknown availability must carry its missing reason")
+	}
+	e.Availability = "available"
+	if e.Validate() == nil {
+		t.Fatal("explicitly available without real price must still fail")
+	}
+}

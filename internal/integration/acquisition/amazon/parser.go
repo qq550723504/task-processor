@@ -248,6 +248,9 @@ func ParseProduct(raw, site, asin string, at time.Time) (dataacquisition.Evidenc
 		e.Brand = brand
 	}
 	e.Missing = []string{"variants", "rating", "reviewCount"}
+	if e.Availability == "unknown" {
+		e.Missing = append(e.Missing, "availability")
+	}
 	if e.Description == "" {
 		e.Missing = append(e.Missing, "description")
 	}

@@ -177,7 +177,10 @@ func (e Evidence) Validate() error {
 			return ErrInvalid
 		}
 	}
-	if e.Availability != "available" && e.Availability != "unavailable" {
+	if e.Availability != "available" && e.Availability != "unavailable" && e.Availability != "unknown" {
+		return ErrInvalid
+	}
+	if e.Availability == "unknown" && !includes(e.Missing, "availability") {
 		return ErrInvalid
 	}
 	if e.Price < 0 || math.IsNaN(e.Price) || math.IsInf(e.Price, 0) || (e.Currency != "" && !currencyPattern.MatchString(e.Currency)) {

@@ -78,6 +78,16 @@ type lostReserveAck struct {
 	lose bool
 }
 
+type unknownAvailabilityFixture struct {
+	*executionFixture
+}
+
+func (f *unknownAvailabilityFixture) Fetch(_ context.Context, site, asin string) (dataacquisition.Evidence, error) {
+	f.fetches++
+	raw := `<input id="ASIN" value="` + asin + `"><span id="productTitle">Incomplete public product</span><img id="landingImage" src="https://m.media-amazon.com/images/I/fixture.jpg">`
+	return amazon.ParseProduct(raw, site, asin, time.Now())
+}
+
 type unavailableReconcile struct {
 	*orgresource.ConsumerChargeService
 	unavailable bool
@@ -508,5 +518,36 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 		readBalance()
 		require.Equal(t, before+2, bucket.Consumed)
 		require.Zero(t, bucket.Reserved)
+	})
+	t.Run("unknown availability saves original evidence and charges once", func(t *testing.T) {
+		owner := collection.Scope{OrganizationID: "org", ActorID: "unknown-creator", MemberID: "unknown-grant"}
+		provider := &unknownAvailabilityFixture{executionFixture: fixture}
+		runner, err := dataacquisition.NewService(repo, fixture, provider, charges, fixture)
+		require.NoError(t, err)
+		query := dataacquisition.Query{Site: "us", Mode: "asin", ASINs: []string{"B000123456"}, Limit: 1, Fields: []string{"title", "availability", "price", "currency"}}
+		readBalance()
+		before, fetches := bucket.Consumed, fixture.fetches
+		original, err := runner.Start(ctx, dataacquisition.Principal{Scope: owner}, uuid.NewString(), query, orgresource.FundingEnterprise, 5)
+		require.NoError(t, err)
+		require.NoError(t, runner.Run(ctx, owner, original.ID))
+		require.NoError(t, runner.Run(ctx, owner, original.ID))
+		finished, err := runner.Read(ctx, dataacquisition.Principal{Scope: owner}, original.ID)
+		require.NoError(t, err)
+		require.Equal(t, "SUCCEEDED", finished.State)
+		require.Equal(t, 1, finished.Saved)
+		require.Zero(t, finished.Failed)
+		require.Equal(t, int64(5), finished.ConfirmedFen)
+		results, err := runner.Results(ctx, dataacquisition.Principal{Scope: owner}, original.ID, "", 100, capturedResultReader{store})
+		require.NoError(t, err)
+		require.Len(t, results.Items, 1)
+		require.Equal(t, "Incomplete public product", results.Items[0].Data["title"])
+		require.Equal(t, "unknown", results.Items[0].Data["availability"])
+		require.ElementsMatch(t, []string{"availability", "price", "currency"}, results.Items[0].Missing)
+		require.NotContains(t, results.Items[0].Data, "price")
+		require.NotContains(t, results.Items[0].Data, "currency")
+		readBalance()
+		require.Equal(t, before+1, bucket.Consumed)
+		require.Zero(t, bucket.Reserved)
+		require.Equal(t, fetches+1, fixture.fetches)
 	})
 }

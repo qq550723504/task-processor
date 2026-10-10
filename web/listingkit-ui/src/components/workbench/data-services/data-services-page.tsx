@@ -207,21 +207,35 @@ function JobDialog({ scope, job: initial, onClose, onCancel, disabled = false }:
 function APIManagement({ scope }: {
     scope: DataScope;
 }) {
-    const [overview, setOverview] = useState<Overview | null>(null), [error, setError] = useState(""), [refresh, setRefresh] = useState(0), [tab, setTab] = useState("overview"), [dialog, setDialog] = useState<"create" | "docs" | null>(null), [editing, setEditing] = useState<DataKey | null>(null), [confirmation, setConfirmation] = useState<{
+    const [overview, setOverview] = useState<Overview | null>(null), [overviewError, setOverviewError] = useState(""), [keys, setKeys] = useState<DataKey[] | null>(null), [error, setError] = useState(""), [refresh, setRefresh] = useState(0), [tab, setTab] = useState("overview"), [dialog, setDialog] = useState<"create" | "docs" | null>(null), [editing, setEditing] = useState<DataKey | null>(null), [confirmation, setConfirmation] = useState<{
         key: DataKey;
         state: "DISABLED" | "ACTIVE" | "REVOKED";
     } | null>(null), [secret, setSecret] = useState<{
         key: DataKey;
         value?: string;
-    } | null>(null), [job, setJob] = useState<DataJob | null>(null), [jobs, setJobs] = useState<DataJob[]>([]), [history, setHistory] = useState<DataKey[]>([]), [nextHistory, setNextHistory] = useState(""), [historyLoaded, setHistoryLoaded] = useState(false);
+    } | null>(null), [job, setJob] = useState<DataJob | null>(null), [jobs, setJobs] = useState<DataJob[] | null>(null), [history, setHistory] = useState<DataKey[]>([]), [nextHistory, setNextHistory] = useState(""), [historyLoaded, setHistoryLoaded] = useState(false);
     const command = useDataCommand(scope);
     const { registerOrganizationSwitchGuard } = useWorkbenchContext();
     useEffect(() => registerOrganizationSwitchGuard(() => !command.pending && !command.busy), [registerOrganizationSwitchGuard, command.pending, command.busy]);
     useEffect(() => {
         const controller = new AbortController();
-        dataRequest(scope, "overview", overviewSchema, undefined, controller.signal).then(setOverview).catch(e => {
+        dataRequest(scope, "keys", z.array(keySchema).max(20), undefined, controller.signal).then(value => {
             if (!controller.signal.aborted)
+                setKeys(value);
+        }).catch(e => {
+            if (!controller.signal.aborted) {
+                setKeys(null);
                 setError(e instanceof DataAPIError ? e.code : "DATA_UNAVAILABLE");
+            }
+        });
+        dataRequest(scope, "overview", overviewSchema, undefined, controller.signal).then(value => {
+            if (!controller.signal.aborted)
+                setOverview(value);
+        }).catch(e => {
+            if (!controller.signal.aborted) {
+                setOverview(null);
+                setOverviewError(e instanceof DataAPIError ? e.code : "DATA_UNAVAILABLE");
+            }
         });
         return () => controller.abort();
     }, [scope, refresh]);
@@ -229,12 +243,23 @@ function APIManagement({ scope }: {
         if (tab !== "calls")
             return;
         const controller = new AbortController();
-        dataRequest(scope, "amazon/jobs", z.array(jobSchema).max(100), undefined, controller.signal).then(setJobs).catch(e => {
+        dataRequest(scope, "amazon/jobs", z.array(jobSchema).max(100), undefined, controller.signal).then(value => {
+            if (!controller.signal.aborted)
+                setJobs(value);
+        }).catch(e => {
             if (!controller.signal.aborted)
                 setError(e instanceof DataAPIError ? e.code : "DATA_UNAVAILABLE");
         });
         return () => controller.abort();
     }, [scope, tab, refresh]);
+    const reload = () => {
+        setKeys(null);
+        setOverview(null);
+        setJobs(null);
+        setError("");
+        setOverviewError("");
+        setRefresh(n => n + 1);
+    };
     const received = (value: unknown, path: string) => {
         if (path === "keys") {
             const created = keyCreatedSchema.safeParse(value);
@@ -249,17 +274,17 @@ function APIManagement({ scope }: {
         setDialog(null);
         setEditing(null);
         setConfirmation(null);
-        setRefresh(n => n + 1);
+        reload();
     };
     const usage = overview?.usage, disabled = command.busy || !!command.pending;
     const keyTable = (keys: DataKey[], controls: boolean, compact = false) => <div className={`${styles.table} ${compact ? styles.compactTable : ""}`}><table><thead><tr>{["名称", "密钥", compact ? "额度限制" : "权限／额度", ...(!compact ? ["有效期"] : []), "状态", ...(controls ? ["操作"] : [])].map(x => <th key={x}>{x}</th>)}</tr></thead><tbody>{keys.map(key => <tr key={key.id}><td className="font-medium">{key.limits.name}</td><td className="font-mono text-xs">••••{key.suffix}</td><td>{!compact ? <p>{key.limits.permissions.map(p => p === "amazon.acquire" ? "抓取" : "读结果").join(" / ")}</p> : null}<p className={compact ? "text-muted-foreground" : "mt-1 text-muted-foreground"}>每日 {key.limits.dailyRows} 条 · 月预算 {money(key.limits.monthlyCostFen)}</p></td>{!compact ? <td>{moment(key.limits.expiresAt)}</td> : null}<td><span className={`${styles.badge} ${key.state !== "ACTIVE" ? styles.neutralBadge : ""}`}>{stateNames[key.state]}</span></td>{controls ? <td><div className="flex gap-2"><Button size="sm" variant="ghost" disabled={disabled} onClick={() => setEditing(key)}>编辑</Button><Button size="sm" variant="ghost" disabled={disabled} onClick={() => setConfirmation({ key, state: key.state === "ACTIVE" ? "DISABLED" : "ACTIVE" })}>{key.state === "ACTIVE" ? "禁用" : "启用"}</Button><Button size="sm" variant="ghost" disabled={disabled} onClick={() => setConfirmation({ key, state: "REVOKED" })}>撤销</Button></div></td> : null}</tr>)}</tbody></table>{!keys.length ? <p className={styles.empty}>暂无密钥</p> : null}</div>;
     const callTable = (records: DataJob[]) => <div className={styles.table}><table><thead><tr>{["任务／来源", "请求时间", "状态", "保存条数", "已确认／待确认", "结果"].map(s => <th key={s}>{s}</th>)}</tr></thead><tbody>{records.map(j => <tr key={j.id}><td><p>Amazon {j.query.site.toUpperCase()}</p><p className="text-xs text-muted-foreground">{j.credentialId ? "API 密钥调用" : "控制台抓取"}</p></td><td>{moment(j.createdAt)}</td><td>{stateNames[j.state]}</td><td>{j.saved}</td><td>{money(j.confirmedFen)} / {money(j.pendingFen)}</td><td><Button variant="ghost" size="sm" onClick={() => setJob(j)}>查看</Button></td></tr>)}</tbody></table>{!records.length ? <p className={styles.empty}>暂无调用记录</p> : null}</div>;
-    return <Frame title="API 管理" subtitle="管理 API 接入、密钥、调用记录与额度，便于业务系统获取产品数据。" actions={<><Button variant="outline" onClick={() => setDialog("docs")}>开发文档</Button><Button disabled={disabled || !overview} onClick={() => setDialog("create")}>创建API密钥</Button></>}>
-  <DataNotice error={error}/><Recovery command={command} onRecovered={received}/><nav aria-label="API 管理内容" className={styles.tabs}>{[["overview", "概览"], ["keys", "API 密钥"], ["calls", "调用记录"], ["usage", "用量与费用"]].map(([value, title]) => <button key={value} aria-current={tab === value ? "page" : undefined} onClick={() => setTab(value)}>{title}</button>)}<span className={`${styles.badge} ${!overview?.options.acquisitionReady ? styles.neutralBadge : ""}`}>{overview ? overview.options.acquisitionReady ? "抓取环境已配置" : "抓取环境待配置" : "正在读取配置"}</span></nav>
-  {!overview && !error ? <p role="status">正在读取实际用量…</p> : null}
-  {overview ? <><div className={styles.stats}>{[{ title: "启用的密钥", value: String(overview.keys.filter(k => k.state === "ACTIVE").length) }, { title: "今日保存数据", value: `${usage!.dayRows} 条` }, { title: "本月已确认费用", value: money(usage!.monthConfirmedFen) }, { title: "本月任务成功率", value: usage!.successRate === null ? "暂无样本" : `${(usage!.successRate * 100).toFixed(1)}%` }].map(({ title, value }) => <Card key={title} className={styles.stat}><h2>{title}</h2><p>{value}</p></Card>)}</div>
-   {tab === "overview" ? <><div className={styles.apiGrid}><Card className={styles.card}><div className={styles.cardHeading}><div><h2>API 接入与密钥</h2><p>凭据绑定创建者与企业，原身份撤权后失效</p></div><Button variant="outline" size="sm" onClick={() => setTab("keys")}>管理密钥</Button></div><div className={styles.capability}><div><h3>Amazon 产品数据 API</h3><p>¥0.05 / 成功保存一条 · 使用预付 DATA_ROW</p></div><span className={`${styles.badge} ${!overview.options.acquisitionReady ? styles.neutralBadge : ""}`}>{overview.options.acquisitionReady ? `已配置 ${overview.options.sites.length} 个站点` : "抓取环境待配置"}</span></div>{keyTable(overview.keys.slice(0, 2), false, true)}<p className={styles.caption}>完整密钥仅在创建时显示一次；历史凭据不会重放明文。</p></Card><Card className={styles.card}><div className={styles.cardHeading}><h2>用量与额度</h2><Button variant="outline" size="sm" onClick={() => setTab("usage")}>查看详情</Button></div><BudgetPreview overview={overview}/><p className="text-xs text-muted-foreground">已保存待确认 {money(usage!.monthPendingFen)}</p><p className={styles.caption}>预算占用包含待确认项与预留量；实际费用以确认金额为准。</p></Card></div><Card className={`${styles.card} ${styles.recent}`}><div className={styles.cardHeading}><div><h2>最近调用记录</h2><p>本人实时抓取与 API 任务 · UTC 日/月统计</p></div><Button variant="outline" size="sm" onClick={() => setTab("calls")}>查看全部</Button></div>{callTable(overview.jobs)}<p className={styles.caption}>成功率仅统计本月已结束任务；没有已结束任务时显示“暂无样本”。</p></Card></> : <p className="text-xs text-muted-foreground">用量包含本人实时抓取与 API 任务；按 UTC 日/月统计，成功率仅计算本月已结束任务。</p>}
-   {tab === "keys" ? <Card className="gap-4 p-6"><h2 className="font-semibold">有效 API 密钥</h2><p className="text-sm text-muted-foreground">密钥绑定当前创建者及企业。撤权或离职后失效；禁用的有效密钥仍占用名额，最多 20 个。</p>{keyTable(overview.keys, true)}<Button variant="outline" disabled={historyLoaded && !nextHistory} onClick={async () => {
+    return <Frame title="API 管理" subtitle="管理 API 接入、密钥、调用记录与额度，便于业务系统获取产品数据。" actions={<><Button variant="outline" onClick={() => setDialog("docs")}>开发文档</Button><Button disabled={disabled || keys === null} onClick={() => setDialog("create")}>创建API密钥</Button></>}>
+  <DataNotice error={error}/><Recovery command={command} onRecovered={received}/><nav aria-label="API 管理内容" className={styles.tabs}>{[["overview", "概览"], ["keys", "API 密钥"], ["calls", "调用记录"], ["usage", "用量与费用"]].map(([value, title]) => <button key={value} aria-current={tab === value ? "page" : undefined} onClick={() => { if (value !== tab && value === "calls") setJobs(null); setTab(value); }}>{title}</button>)}<span className={`${styles.badge} ${!overview?.options.acquisitionReady ? styles.neutralBadge : ""}`}>{overview ? overview.options.acquisitionReady ? "抓取环境已配置" : "抓取环境待配置" : overviewError ? "配置未读取" : "正在读取配置"}</span></nav>
+  {keys === null && !error ? <p role="status">正在读取密钥…</p> : null}{!overview && !overviewError ? <p role="status">正在读取实际用量…</p> : null}{overviewError && keys !== null ? <p role="status" className="text-sm text-muted-foreground">用量、费用与抓取配置暂未读取；密钥管理仍可使用。{overviewError === "FORBIDDEN" ? " 当前身份没有相关读取权限。" : " 请稍后刷新重试。"}</p> : null}
+  {keys !== null ? <>{overview ? <div className={styles.stats}>{[{ title: "启用的密钥", value: String(keys.filter(k => k.state === "ACTIVE").length) }, { title: "今日保存数据", value: `${usage!.dayRows} 条` }, { title: "本月已确认费用", value: money(usage!.monthConfirmedFen) }, { title: "本月任务成功率", value: usage!.successRate === null ? "暂无样本" : `${(usage!.successRate * 100).toFixed(1)}%` }].map(({ title, value }) => <Card key={title} className={styles.stat}><h2>{title}</h2><p>{value}</p></Card>)}</div> : null}
+   {tab === "overview" ? <><div className={styles.apiGrid}><Card className={styles.card}><div className={styles.cardHeading}><div><h2>API 接入与密钥</h2><p>凭据绑定创建者与企业，原身份撤权后失效</p></div><Button variant="outline" size="sm" onClick={() => setTab("keys")}>管理密钥</Button></div><div className={styles.capability}><div><h3>Amazon 产品数据 API</h3><p>¥0.05 / 成功保存一条 · 使用预付 DATA_ROW</p></div><span className={`${styles.badge} ${!overview?.options.acquisitionReady ? styles.neutralBadge : ""}`}>{overview ? overview.options.acquisitionReady ? `已配置 ${overview.options.sites.length} 个站点` : "抓取环境待配置" : "配置未读取"}</span></div>{keyTable(keys.slice(0, 2), false, true)}<p className={styles.caption}>完整密钥仅在创建时显示一次；历史凭据不会重放明文。</p></Card>{overview ? <Card className={styles.card}><div className={styles.cardHeading}><h2>用量与额度</h2><Button variant="outline" size="sm" onClick={() => setTab("usage")}>查看详情</Button></div><BudgetPreview overview={overview}/><p className="text-xs text-muted-foreground">已保存待确认 {money(usage!.monthPendingFen)}</p><p className={styles.caption}>预算占用包含待确认项与预留量；实际费用以确认金额为准。</p></Card> : null}</div>{overview ? <Card className={`${styles.card} ${styles.recent}`}><div className={styles.cardHeading}><div><h2>最近调用记录</h2><p>本人实时抓取与 API 任务 · UTC 日/月统计</p></div><Button variant="outline" size="sm" onClick={() => setTab("calls")}>查看全部</Button></div>{callTable(overview.jobs)}<p className={styles.caption}>成功率仅统计本月已结束任务；没有已结束任务时显示“暂无样本”。</p></Card> : null}</> : <p className="text-xs text-muted-foreground">用量包含本人实时抓取与 API 任务；按 UTC 日/月统计，成功率仅计算本月已结束任务。</p>}
+   {tab === "keys" ? <Card className="gap-4 p-6"><h2 className="font-semibold">有效 API 密钥</h2><p className="text-sm text-muted-foreground">密钥绑定当前创建者及企业。撤权或离职后失效；禁用的有效密钥仍占用名额，最多 20 个。</p>{keyTable(keys, true)}<Button variant="outline" disabled={historyLoaded && !nextHistory} onClick={async () => {
                     try {
                         const p = await dataRequest(scope, `keys/history${nextHistory ? `?cursor=${nextHistory}` : ""}`, keyHistorySchema);
                         setHistory(v => nextHistory ? [...v, ...p.items] : p.items);
@@ -270,8 +295,8 @@ function APIManagement({ scope }: {
                         setError(e instanceof DataAPIError ? e.code : "DATA_UNAVAILABLE");
                     }
                 }}>{historyLoaded ? nextHistory ? "读取更多历史密钥" : "历史密钥已全部读取" : "查看已撤销／过期密钥"}</Button>{history.length ? keyTable(history, false) : null}</Card> : null}
-   {tab === "calls" ? <Card className="gap-4 p-6"><div className="flex justify-between"><h2 className="font-semibold">最近 100 条任务调用记录</h2><Button variant="ghost" size="sm" onClick={() => setRefresh(n => n + 1)}>刷新</Button></div>{callTable(jobs)}</Card> : null}
-   {tab === "usage" ? <Card className="gap-4 p-6"><h2 className="font-semibold">用量与费用</h2><p className="text-sm">本月已确认：{money(usage!.monthConfirmedFen)} · 已保存待确认：{money(usage!.monthPendingFen)}</p><p className="text-sm text-muted-foreground">成功保存才计量；抓取失败或取消的未保存项不计费。取消不会删除已保存数据，定制数据不计入实时抓取消耗。</p><div className="grid gap-3 sm:grid-cols-2">{overview.keyQuotas.map(q => { const key = overview.keys.find(k => k.id === q.keyId); return key ? <div key={q.keyId} className="rounded-lg border p-4 text-sm"><p className="font-semibold">{key.limits.name}</p><p className="mt-2">当日已保存 {q.dayConsumedRows} 条 · 预留 {q.dayReservedRows} 条 · 上限 {key.limits.dailyRows} 条</p><p className="mt-2">月预算已计量 {money(q.monthConsumedFen)} · 预留 {money(q.monthReservedFen)} · 上限 {money(key.limits.monthlyCostFen)}</p><p className="mt-2 text-xs text-muted-foreground">预算计量包含已保存待确认项；实际费用以上方确认金额为准。</p></div> : null; })}</div>{keyTable(overview.keys, false)}<Button variant="outline" asChild><Link href="/workbench/account/organization/resources">查看资源余额与账单</Link></Button></Card> : null}
+   {tab === "calls" ? <Card className="gap-4 p-6"><div className="flex justify-between"><h2 className="font-semibold">最近 100 条任务调用记录</h2><Button variant="ghost" size="sm" onClick={reload}>刷新</Button></div>{jobs !== null ? callTable(jobs) : <p role="status">调用记录尚未读取。</p>}</Card> : null}
+   {tab === "usage" && overview ? <Card className="gap-4 p-6"><h2 className="font-semibold">用量与费用</h2><p className="text-sm">本月已确认：{money(usage!.monthConfirmedFen)} · 已保存待确认：{money(usage!.monthPendingFen)}</p><p className="text-sm text-muted-foreground">成功保存才计量；抓取失败或取消的未保存项不计费。取消不会删除已保存数据，定制数据不计入实时抓取消耗。</p><div className="grid gap-3 sm:grid-cols-2">{overview.keyQuotas.map(q => { const key = keys.find(k => k.id === q.keyId); return key ? <div key={q.keyId} className="rounded-lg border p-4 text-sm"><p className="font-semibold">{key.limits.name}</p><p className="mt-2">当日已保存 {q.dayConsumedRows} 条 · 预留 {q.dayReservedRows} 条 · 上限 {key.limits.dailyRows} 条</p><p className="mt-2">月预算已计量 {money(q.monthConsumedFen)} · 预留 {money(q.monthReservedFen)} · 上限 {money(key.limits.monthlyCostFen)}</p><p className="mt-2 text-xs text-muted-foreground">预算计量包含已保存待确认项；实际费用以上方确认金额为准。</p></div> : null; })}</div>{keyTable(keys, false)}<Button variant="outline" asChild><Link href="/workbench/account/organization/resources">查看资源余额与账单</Link></Button></Card> : null}
   </> : null}
   {dialog === "create" || editing ? <CollectionDialog title={editing ? "编辑密钥限制" : "创建 API 密钥"} onClose={() => { setDialog(null); setEditing(null); }}><KeyForm initial={editing?.limits} disabled={disabled} onSubmit={async (input) => {
                 const path = editing ? `keys/${editing.id}/changes` : "keys";

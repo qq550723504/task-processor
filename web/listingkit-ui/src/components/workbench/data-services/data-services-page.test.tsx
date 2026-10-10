@@ -14,6 +14,56 @@ const job = { id, commandKey: id, query: { site: "us", mode: "asin", asins: ["B0
 const json = (value: unknown, status = 200) => Response.json(value, { status });
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals(); });
 describe("data service product paths", () => {
+    it.each([403, 503])("keeps key management usable when optional overview returns %s", async status => {
+        const expiresAt = new Date(Date.now() + 3600000).toISOString();
+        let key = { id, suffix: "test", state: "ACTIVE", revision: 1, createdAt: job.createdAt, limits: { name: "manage fixture", expiresAt, dailyRows: 10, monthlyCostFen: 100, permissions: ["amazon.acquire", "amazon.result.read"] } };
+        const mutations: unknown[] = [];
+        vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+            if (init?.method === "POST") {
+                const body = JSON.parse(String(init.body));
+                mutations.push(body);
+                key = { ...key, state: body.patch.state ?? key.state, limits: body.patch.limits ?? key.limits, revision: key.revision + 1 };
+                return json(key);
+            }
+            if (url.endsWith("/keys")) return json(key.state === "REVOKED" ? [] : [key]);
+            if (url.endsWith("/overview")) return json({ error: { code: status === 403 ? "FORBIDDEN" : "DATA_UNAVAILABLE" } }, status);
+            return json([]);
+        }));
+        render(<DataServicesPage mode="api"/>);
+        const create = screen.getByRole("button", { name: "创建API密钥" });
+        await waitFor(() => expect(create).toBeEnabled());
+        fireEvent.click(create);
+        expect(screen.getByRole("dialog", { name: "创建 API 密钥" })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+        fireEvent.click(screen.getByRole("button", { name: "API 密钥" }));
+        expect(await screen.findByText("manage fixture")).toBeInTheDocument();
+        expect(screen.getByText(/用量、费用与抓取配置暂未读取；密钥管理仍可使用。/)).toBeInTheDocument();
+        expect(screen.queryByText("今日保存数据")).not.toBeInTheDocument();
+        expect(screen.queryByText("暂无样本")).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+        fireEvent.change(screen.getByLabelText("每日最大成功条数"), { target: { value: "20" } });
+        fireEvent.click(screen.getByRole("button", { name: "保存限制" }));
+        await waitFor(() => expect(mutations).toHaveLength(1));
+        expect(mutations[0]).toMatchObject({ expectedRevision: 1, patch: { limits: { expiresAt, dailyRows: 20 } } });
+        await screen.findByText("每日 20 条 · 月预算 ¥1.00");
+        const action = status === 403 ? "撤销" : "禁用";
+        fireEvent.click(await screen.findByRole("button", { name: action }));
+        fireEvent.click(screen.getByRole("button", { name: status === 403 ? "确认已撤销" : "确认禁用" }));
+        await waitFor(() => expect(mutations).toHaveLength(2));
+        expect(mutations[1]).toMatchObject({ expectedRevision: 2, patch: { state: status === 403 ? "REVOKED" : "DISABLED" } });
+        await waitFor(() => expect(sessionStorage.length).toBe(0));
+    });
+    it("does not grant key controls from overview when the independent key read fails", async () => {
+        vi.stubGlobal("fetch", vi.fn(async (url: string) => url.endsWith("/keys")
+            ? json({ error: { code: "FORBIDDEN" } }, 403)
+            : json({ options, keys: [], jobs: [], keyQuotas: [], usage: { dayRows: 0, monthConfirmedFen: 0, monthPendingFen: 0, finishedJobs: 0, succeededJobs: 0, successRate: null, window: "UTC month" } })));
+        render(<DataServicesPage mode="api"/>);
+        await screen.findByText("当前身份或权限已失效，请确认登录及企业。");
+        expect(screen.getByRole("button", { name: "创建API密钥" })).toBeDisabled();
+        fireEvent.click(screen.getByRole("button", { name: "API 密钥" }));
+        expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
     it.each(["2026-10-20T15:00:00Z", new Date(Date.now() + 3600000).toISOString()])("preserves the exact existing expiry %s when only limits change", async expiresAt => {
         const key = { id, suffix: "test", state: "ACTIVE", revision: 1, createdAt: job.createdAt, limits: { name: "fixture", expiresAt, dailyRows: 10, monthlyCostFen: 100, permissions: ["amazon.acquire", "amazon.result.read"] } };
         const mutations: unknown[] = [];
@@ -23,7 +73,7 @@ describe("data service product paths", () => {
                 mutations.push(body);
                 return json({ ...key, limits: body.patch.limits, revision: 2 });
             }
-            void url;
+            if (url.endsWith("/keys")) return json([key]);
             return json({ options, keys: [key], jobs: [], keyQuotas: [], usage: { dayRows: 0, monthConfirmedFen: 0, monthPendingFen: 0, finishedJobs: 0, succeededJobs: 0, successRate: null, window: "UTC month" } });
         }));
         render(<DataServicesPage mode="api"/>);
@@ -35,7 +85,7 @@ describe("data service product paths", () => {
         expect(mutations[0]).toMatchObject({ patch: { limits: { expiresAt, dailyRows: 20 } } });
     });
     it("rejects a key name exceeding the existing 80 UTF-8 bytes before dispatch", async () => {
-        vi.stubGlobal("fetch", vi.fn(async () => json({ options, keys: [], jobs: [], keyQuotas: [], usage: { dayRows: 0, monthConfirmedFen: 0, monthPendingFen: 0, finishedJobs: 0, succeededJobs: 0, successRate: null, window: "UTC month" } })));
+        vi.stubGlobal("fetch", vi.fn(async (url: string) => json(url.endsWith("/keys") ? [] : { options, keys: [], jobs: [], keyQuotas: [], usage: { dayRows: 0, monthConfirmedFen: 0, monthPendingFen: 0, finishedJobs: 0, succeededJobs: 0, successRate: null, window: "UTC month" } })));
         render(<DataServicesPage mode="api"/>);
         const create = await screen.findByRole("button", { name: "创建API密钥" });
         await waitFor(() => expect(create).toBeEnabled());
@@ -93,6 +143,7 @@ describe("data service product paths", () => {
     ])("shows the persisted item failure reason %s", async (reason, label) => {
         const failed = { ...job, state: "FAILED", discovered: true, failed: 1 };
         vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+            if (url.endsWith("/keys")) return json([]);
             if (url.endsWith("/results"))
                 return json({ items: [{ id, state: "FAILED", reason }] });
             if (url.endsWith(id))
@@ -162,7 +213,7 @@ describe("data service product paths", () => {
         await waitFor(() => expect(sessionStorage.length).toBe(0));
     });
     it("shows null success sample and separates confirmed fees from pending", async () => {
-        vi.stubGlobal("fetch", vi.fn(async () => json({ options, keys: [], jobs: [], keyQuotas: [], usage: { dayRows: 0, monthConfirmedFen: 0, monthPendingFen: 5, finishedJobs: 0, succeededJobs: 0, successRate: null, window: "UTC calendar month; completed jobs" } })));
+        vi.stubGlobal("fetch", vi.fn(async (url: string) => json(url.endsWith("/keys") ? [] : { options, keys: [], jobs: [], keyQuotas: [], usage: { dayRows: 0, monthConfirmedFen: 0, monthPendingFen: 5, finishedJobs: 0, succeededJobs: 0, successRate: null, window: "UTC calendar month; completed jobs" } })));
         render(<DataServicesPage mode="api"/>);
         await screen.findByText("暂无样本");
         expect(screen.getByText("已保存待确认 ¥0.05")).toBeInTheDocument();
