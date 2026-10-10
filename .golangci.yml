@@ -528,6 +528,9 @@ linters-settings:
           - "!**/internal/integration/shein/official_goods.go"
           - "!**/internal/integration/shein/official_goods_rules.go"
           - "!**/internal/integration/shein/official_readback.go"
+          - "!**/internal/integration/shein/official_observations.go"
+          - "!**/internal/integration/persistence/sheinobservations/repository.go"
+          - "!**/internal/integration/persistence/sheinobservations/schema.go"
           - "!**/internal/integration/persistence/product/catalog/*.go"
           - "!**/internal/integration/persistence/product/catalog/**/*.go"
           - "**/internal/platform/*.go"
@@ -1163,6 +1166,29 @@ linters-settings:
           - "task-processor/internal/integration/httpimage$"
           - "task-processor/internal/marketplace/shein/goods$"
           - "task-processor/internal/marketplace/shein/model$"
+          - "task-processor/internal/storecenter$"
+
+      store_observation_persistence:
+        # #614 IMPLEMENTATION_READY: exact adapters consume only the frozen observation port.
+        list-mode: strict
+        files:
+          - "**/internal/integration/persistence/sheinobservations/repository.go"
+          - "**/internal/integration/persistence/sheinobservations/schema.go"
+        allow:
+          - "$gostd"
+          - "github.com/google/uuid$"
+          - "gorm.io/gorm$"
+          - "task-processor/internal/authidentity$"
+          - "task-processor/internal/marketplace/shein/observations$"
+
+      store_observation_official_transport:
+        # #614 IMPLEMENTATION_READY: exact signed read adapter, no application or legacy imports.
+        list-mode: strict
+        files:
+          - "**/internal/integration/shein/official_observations.go"
+        allow:
+          - "$gostd"
+          - "task-processor/internal/marketplace/shein/observations$"
           - "task-processor/internal/storecenter$"
 
   govet:

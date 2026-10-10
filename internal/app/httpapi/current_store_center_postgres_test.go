@@ -82,7 +82,7 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	records, quota := open("store_center", "store_center_runtime"), open("commercial", "store_quota_runtime")
 	charges, err := orgresource.NewConsumerChargeService(currentStoreChargeFixture{}, map[orgresource.ResourceConsumer]orgresource.ConsumerChargeOwner{orgresource.ConsumerStoreService: currentStoreChargeFixture{}})
 	require.NoError(t, err)
-	module, err := buildCurrentStoreCenterModule(ctx, records, authz.DefaultListingKitAuthorizer(), charges, nil)
+	module, err := buildCurrentStoreCenterModule(ctx, records, authz.DefaultListingKitAuthorizer(), charges, nil, storecenter.RuntimeCapabilities{})
 	require.NoError(t, err)
 	f := newAccountFixture(t)
 	cfg := &config.Config{Workbench: config.WorkbenchConfig{Enabled: true}, ListingKit: config.ListingKitConfig{Zitadel: config.ListingKitZitadelConfig{IssuerURL: f.provider.URL, ClientID: "fixture-client", ClientSecret: "fixture-secret", ProjectID: "project", AuthorizationAPIURL: f.provider.URL}}}
@@ -159,7 +159,7 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	require.Equal(t, 404, status, out)
 	require.Greater(t, f.grantReads.Load(), int32(5))
 	// A fresh module/pool reads the durable results after reconstructing runtime.
-	fresh, err := buildCurrentStoreCenterModule(ctx, open("store_center", "store_center_runtime"), authz.DefaultListingKitAuthorizer(), charges, nil)
+	fresh, err := buildCurrentStoreCenterModule(ctx, open("store_center", "store_center_runtime"), authz.DefaultListingKitAuthorizer(), charges, nil, storecenter.RuntimeCapabilities{})
 	require.NoError(t, err)
 	reg = kernelmodule.NewRegistry()
 	require.NoError(t, fresh.Register(reg))

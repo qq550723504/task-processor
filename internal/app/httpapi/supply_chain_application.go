@@ -55,7 +55,7 @@ func (s supplyChainModule) Register(r *kernelmodule.Registry) error {
 	return nil
 }
 
-func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d SupplyChainDependencies, deps routeAuthDependencies, permissions *authz.ListingKitAuthorizer, apps *storeapp.OfficialApplicationRegistry, cfg *config.Config, productAgent *productAgentApplication) (supplyChainModule, error) {
+func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d SupplyChainDependencies, deps routeAuthDependencies, permissions *authz.ListingKitAuthorizer, apps *storeapp.OfficialApplicationRegistry, cfg *config.Config, productAgent *productAgentApplication, capabilities storecenter.RuntimeCapabilities) (supplyChainModule, error) {
 	var empty supplyChainModule
 	resolver, ok := deps.organizationResolver.(*workbenchcontext.Resolver)
 	if !ok || resolver == nil || permissions == nil || d.AssetDB == nil || d.Starter == nil || d.NewWorker == nil || d.Worker == nil || apps == nil || productDB == nil || storeDB == nil || cfg == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "" {
@@ -67,7 +67,7 @@ func buildSupplyChainModule(ctx context.Context, productDB, storeDB *gorm.DB, d 
 	if err := storecenter.VerifyCurrentSchema(ctx, storeDB); err != nil {
 		return empty, err
 	}
-	if err := storecenter.VerifyRuntimePermissions(ctx, storeDB); err != nil {
+	if err := storecenter.VerifyRuntimePermissionsForCapabilities(ctx, storeDB, capabilities); err != nil {
 		return empty, err
 	}
 	collections, err := buildProductCollectionService(ctx, productDB, deps, permissions, true)
