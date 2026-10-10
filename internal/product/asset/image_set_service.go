@@ -122,7 +122,9 @@ func (s *ImageSetService) prepare(ctx context.Context, input ImageSetCommand) (A
 	if ctx == nil || !validIdentityPart(input.ActionID) || len(input.Choices) < 1 || len(input.Choices) > 40 || !input.ExpectedHead.Valid() {
 		return ApprovalCommit{}, ErrInvalidApproval
 	}
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	// Leave the bounded material reader its window within the request budget.
+	// A shorter caller deadline still takes precedence.
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	source, err := s.sources.ReadSourceSelection(ctx, input.Source)
 	if err != nil {

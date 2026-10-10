@@ -3,6 +3,7 @@ package assetpersistence
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"github.com/stretchr/testify/require"
 	"image"
 	"image/png"
@@ -11,7 +12,55 @@ import (
 	"task-processor/internal/imageagent"
 	productasset "task-processor/internal/product/asset"
 	"testing"
+	"time"
 )
+
+type completeSetReadBudget struct{ calls int }
+
+func (r *completeSetReadBudget) ResolveImageSetTarget(ctx context.Context, _ productasset.SourceSelection, _ *productasset.ImageSetTarget, selected []productasset.ApprovedAsset) (productasset.ImageSetTargetResolution, error) {
+	r.calls++
+	deadline, ok := ctx.Deadline()
+	if !ok || time.Until(deadline) < 20*time.Second {
+		return productasset.ImageSetTargetResolution{}, context.DeadlineExceeded
+	}
+	if len(selected) != 40 {
+		return productasset.ImageSetTargetResolution{}, productasset.ErrInvalidApproval
+	}
+	return productasset.ImageSetTargetResolution{}, nil
+}
+
+func TestCompleteImageSetPreviewAndSelectAllowDeclaredMaterialBudget(t *testing.T) {
+	sources, input := setSelectionFixture()
+	sources.selection.Images, input.Choices = nil, nil
+	for i := 1; i <= 40; i++ {
+		id := fmt.Sprintf("source-%d", i)
+		url := "https://images.example.org/" + id + ".png"
+		sources.selection.Images = append(sources.selection.Images, productasset.SourceImage{ID: id, URL: url, ReferenceHash: productasset.ReferenceHash(id, url), Width: 1024, Height: 1024})
+		input.Choices = append(input.Choices, productasset.ImageSetChoice{Kind: "source", SourceID: id, Presentation: productasset.ImagePresentation{Group: "detail", Order: i}})
+	}
+	candidates := &setCandidateReader{}
+	_, repo := setSelectionService(t, sources, candidates)
+	reader := &completeSetReadBudget{}
+	service, err := productasset.NewImageSetService(sources, repo, repo.(productasset.ImageSetInventoryReader), repo.(productasset.ApprovalCommitReader), candidates, reader)
+	require.NoError(t, err)
+	short, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, err = service.Preview(short, input)
+	require.ErrorIs(t, err, context.DeadlineExceeded, "a shorter caller deadline remains authoritative")
+	preview, err := service.Preview(context.Background(), input)
+	require.NoError(t, err, "complete material verification receives its declared 20-second window")
+	require.Len(t, preview.Assets, 40)
+	input.SelectionDigest = preview.Digest
+	receipt, err := service.Select(context.Background(), input)
+	require.NoError(t, err)
+	require.Len(t, receipt.AssetIDs, 40)
+	reads := reader.calls
+	replayed, err := service.Select(context.Background(), input)
+	require.NoError(t, err)
+	require.Equal(t, receipt, replayed)
+	require.Equal(t, reads, reader.calls, "immutable replay does not start new material reads")
+	require.Zero(t, candidates.calls)
+}
 
 type setSourceReader struct {
 	selection productasset.SourceSelection
