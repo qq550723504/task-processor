@@ -32,6 +32,7 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
+	ProjectCenter              *ProjectCenterConfig                      `json:"projectCenter,omitempty"`
 	ToolMarket                 *ToolMarketConfig                         `json:"toolMarket,omitempty"`
 	Ecoservices                *EcoservicesConfig                        `json:"ecoservices,omitempty"`
 	NotificationCenterDatabase *DatabaseConfig                           `json:"notificationCenterDatabase,omitempty"`
@@ -292,6 +293,9 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 func (cfg *Config) validate() error {
 	if cfg == nil || cfg.SchemaVersion != manifestSchemaVersion {
 		return fmt.Errorf("unsupported current application manifest schema version")
+	}
+	if err := cfg.validateProjectCenter(); err != nil {
+		return err
 	}
 	if err := cfg.validateToolMarket(); err != nil {
 		return err
