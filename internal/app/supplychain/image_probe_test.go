@@ -7,15 +7,28 @@ import (
 	"image/png"
 	"io"
 	"net/http"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	record "task-processor/internal/listing/record/target"
 	"task-processor/internal/marketplace/shein/goods"
 	model "task-processor/internal/marketplace/shein/model"
 	"task-processor/internal/product/asset"
 )
 
 type imageTransport func(*http.Request) (*http.Response, error)
+
+func TestOfficialImageProbeStillRejectsGenericWebP(t *testing.T) {
+	content, err := os.ReadFile("../imageagent/testdata/source.webp")
+	require.NoError(t, err)
+	probe := NewPublicImageProbe()
+	probe.client = &http.Client{Transport: imageTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"image/png"}}, Body: io.NopCloser(bytes.NewReader(content))}, nil
+	})}
+	_, err = probe.Probe(context.Background(), asset.ApprovedAsset{ID: "source", URL: "https://images.example.org/source.webp"}, 1)
+	require.ErrorIs(t, err, record.ErrNotReady)
+}
 
 func TestStockProofProbeUsesActualBytesAndRejectsMIMEForgeryAndPrivateURLs(t *testing.T) {
 	content := []byte("%PDF-1.7\n1 0 obj <<>> endobj\n%%EOF\n")

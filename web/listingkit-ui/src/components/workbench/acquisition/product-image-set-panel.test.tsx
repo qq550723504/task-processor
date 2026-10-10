@@ -189,6 +189,26 @@ const sheinTarget={Platform:"shein",StoreID:"saved-store",Site:"US",CategoryID:1
 const officialPlacement={Group:"spu",SKC:0,SKU:0,Type:1,Sort:1,Site:"US"};
 const sheinRequirements={platform:"shein",site:"US",categoryId:123,version:"current-official-rules",nativeWidth:1024,nativeHeight:1024,groups:[{group:"spu",skc:0,sku:0,types:[{type:1,minimum:1,maximum:8,nativeCompatible:true}]}]};
 function sheinProjection(){const p=projection("awaiting_final_approval",templateId);return {...p,plan:{...p.plan,Source:{...source,EffectiveVersion:2,ApplyReceiptID:operation},Target:sheinTarget},slots:p.slots.map(slot=>({...slot,recipe:{...slot.recipe,OfficialPlacement:officialPlacement}}))}}
+it("returns from a historical platform run to the current page target for fresh preparation",async()=>{
+ const p=sheinProjection(),liveTarget={...sheinTarget,StoreID:"current-store",RecordID:"current-record",CategoryID:456},real=fetch.getMockImplementation()!;
+ fetch.mockImplementation((url,init)=>String(url).endsWith("/requirements")?Promise.resolve(Response.json({...sheinRequirements,categoryId:JSON.parse(String(init!.body)).target.CategoryID})):String(url).endsWith(`/runs/${runId}`)?Promise.resolve(Response.json(p)):String(url).endsWith("/images/runs")?Promise.resolve(Response.json({items:[{runId,contextKind:"acquisition",contextId:operation,status:p.status,targetPlatform:"shein",createdAt:now}],nextCursor:""})):real(url,init));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation} target={liveTarget}/>);
+ fireEvent.change(await screen.findByLabelText("本商品最近任务"),{target:{value:runId}});
+ await screen.findByText("店铺 saved-store · 站点 US · 类目 123");
+ fireEvent.click(screen.getByRole("button",{name:"使用当前页面目标准备新计划"}));
+ expect(screen.getByText("店铺 current-store · 站点 US · 类目 456")).toBeInTheDocument();
+ expect(screen.queryByRole("button",{name:"准备所选 0 项的新计划"})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole("button",{name:"读取当前图片规则"}));
+ await screen.findByText(/规则 current-official-rules/);
+ screen.getAllByLabelText("官方图片位置").forEach(input=>fireEvent.change(input,{target:{value:"spu:0:0"}}));
+ await prepare();
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/prepare"))).toBe(true));
+ const rules=fetch.mock.calls.filter(([url])=>String(url).endsWith("/requirements")).at(-1)!;
+ expect(JSON.parse(String(rules[1]!.body))).toEqual({target:liveTarget,effectiveCatalogVersion:1});
+ const request=fetch.mock.calls.find(([url])=>String(url).endsWith("/prepare"))!;
+ expect(JSON.parse(String(request[1]!.body))).toMatchObject({target:liveTarget,effectiveCatalogVersion:1});
+ expect(JSON.parse(String(request[1]!.body))).not.toHaveProperty("applyReceiptId");
+});
 for(const restoration of ["initial","recent"]){
 it(`restores a SHEIN ${restoration} run's saved target and current rules for original selection and subset regeneration`,async()=>{
  const p=sheinProjection(),real=fetch.getMockImplementation()!;

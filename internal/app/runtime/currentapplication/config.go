@@ -454,6 +454,9 @@ func (cfg *Config) validate() error {
 			if image.AssetDatabase.User != "supply_asset_runtime" || image.AssetDatabase.MaxConnections > 8 || !sameDatabaseTarget(image.AssetDatabase, image.Database) {
 				return errors.New("full image requires the narrow Asset role in the current Image/Asset owner")
 			}
+			if err := cfg.validateAssetOwnerIsolation(image.AssetDatabase); err != nil {
+				return err
+			}
 			if cfg.SupplyChain != nil && cfg.SupplyChain.AssetDatabase != image.AssetDatabase {
 				return errors.New("full image and Supply must share the same explicit Asset pool configuration")
 			}

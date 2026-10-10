@@ -31,6 +31,15 @@ func TestFullImageGenericManifestNeedsCurrentOwnersWithoutOfficialPlatform(t *te
 		"different owner":    func(c *Config) { c.ImageAgent.AssetDatabase.Database = "other_assets" },
 		"unbounded pool":     func(c *Config) { c.ImageAgent.AssetDatabase.MaxConnections = 9 },
 		"no live membership": func(c *Config) { c.Identity.TenantDirectoryToken = "" },
+		"configuration owner with disabled title": func(c *Config) {
+			c.ImageAgent.Database.Database = c.ProductAgent.Database.Database
+			c.ImageAgent.AssetDatabase.Database = c.ProductAgent.Database.Database
+		},
+		"Money owner": func(c *Config) {
+			money := c.ImageAgent.Database
+			money.User = "money_owner_runtime"
+			c.MoneyOwnerDatabase = &money
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			changed := fullImageGenericRuntimeConfig(t)

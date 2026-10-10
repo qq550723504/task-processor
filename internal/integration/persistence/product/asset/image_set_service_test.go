@@ -1,11 +1,14 @@
 package assetpersistence
 
 import (
+	"bytes"
 	"context"
 	"github.com/stretchr/testify/require"
+	"image"
+	"image/png"
 	"strings"
 	imageapp "task-processor/internal/app/imageagent"
-	"task-processor/internal/marketplace/shein/goods"
+	"task-processor/internal/imageagent"
 	productasset "task-processor/internal/product/asset"
 	"testing"
 )
@@ -242,20 +245,19 @@ func (genericMaterialIdentity) ResolveImageSetTarget(context.Context, productass
 	return productasset.ImageSetTargetResolution{}, nil
 }
 
-type originalImageProbe struct{ calls int }
-
-func (p *originalImageProbe) Probe(_ context.Context, a productasset.ApprovedAsset, typ int) (goods.OfficialImageObservation, error) {
-	p.calls++
-	return goods.OfficialImageObservation{AssetID: a.ID, SourceURL: a.URL, Type: typ, Width: 900, Height: 1200, ContentHash: strings.Repeat("a", 64), Bytes: 123, MediaType: "image/png"}, nil
-}
 func TestGenericSourceSelectionProbesRealDimensionsThroughTheMaterialResolver(t *testing.T) {
 	sources, input := setSelectionFixture()
 	sources.selection.Images[0].Width, sources.selection.Images[0].Height = 0, 0
 	input.Choices = input.Choices[:1]
 	candidates := &setCandidateReader{}
 	_, repo := setSelectionService(t, sources, candidates)
-	probe := &originalImageProbe{}
-	service, err := productasset.NewImageSetService(sources, repo, repo.(productasset.ImageSetInventoryReader), repo.(productasset.ApprovalCommitReader), candidates, imageapp.ImageSetMaterialTargetResolver{Images: probe})
+	var content bytes.Buffer
+	require.NoError(t, png.Encode(&content, image.NewRGBA(image.Rect(0, 0, 900, 1200))))
+	reads := 0
+	service, err := productasset.NewImageSetService(sources, repo, repo.(productasset.ImageSetInventoryReader), repo.(productasset.ApprovalCommitReader), candidates, imageapp.ImageSetMaterialTargetResolver{ReadBytes: func(context.Context, imageagent.AuthorizedAsset, int64) ([]byte, error) {
+		reads++
+		return content.Bytes(), nil
+	}})
 	require.NoError(t, err)
 	preview, err := service.Preview(context.Background(), input)
 	require.NoError(t, err)
@@ -270,5 +272,5 @@ func TestGenericSourceSelectionProbesRealDimensionsThroughTheMaterialResolver(t 
 	require.Equal(t, 900, inventory.Assets[0].Width)
 	require.Equal(t, 1200, inventory.Assets[0].Height)
 	require.Zero(t, candidates.calls)
-	require.Equal(t, 2, probe.calls)
+	require.Equal(t, 2, reads)
 }

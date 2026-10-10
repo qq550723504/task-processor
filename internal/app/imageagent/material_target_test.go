@@ -1,22 +1,38 @@
 package imageagentapp
 
 import (
+	"bytes"
 	"context"
 	"github.com/stretchr/testify/require"
+	"image"
+	"image/png"
+	"os"
 	"strings"
-	"task-processor/internal/marketplace/shein/goods"
+	"task-processor/internal/imageagent"
 	"task-processor/internal/product/asset"
 	"testing"
 )
 
-type materialProbeFixture struct{}
-
-func (materialProbeFixture) Probe(_ context.Context, a asset.ApprovedAsset, typ int) (goods.OfficialImageObservation, error) {
-	return goods.OfficialImageObservation{AssetID: a.ID, SourceURL: a.URL, Type: typ, Width: 900, Height: 900, ContentHash: strings.Repeat("a", 64), Bytes: 123, MediaType: "image/png"}, nil
+func TestGenericMaterialApprovalAcceptsSupportedWebPSource(t *testing.T) {
+	// Existing Go x/image test fixture; its license is retained in testdata.
+	content, err := os.ReadFile("testdata/source.webp")
+	require.NoError(t, err)
+	r := ImageSetMaterialTargetResolver{ReadBytes: func(context.Context, imageagent.AuthorizedAsset, int64) ([]byte, error) { return content, nil }}
+	selected := []asset.ApprovedAsset{{ID: "source", URL: "https://source.example/image.webp", SourceApproval: &asset.SourceApprovalProvenance{}}}
+	resolved, err := r.ResolveImageSetTarget(context.Background(), asset.SourceSelection{TargetPlatform: "product"}, nil, selected)
+	require.NoError(t, err, "WebP accepted by preparation must remain selectable as generic material")
+	require.Nil(t, resolved.Target)
+	require.Positive(t, selected[0].Width)
+	require.Positive(t, selected[0].Height)
+	content = content[:20]
+	_, err = r.ResolveImageSetTarget(context.Background(), asset.SourceSelection{TargetPlatform: "product"}, nil, selected)
+	require.ErrorIs(t, err, asset.ErrInvalidApproval)
 }
 
 func TestGenericMaterialApprovalRequiresActualBytesWithoutOfficialPublishingClaims(t *testing.T) {
-	r := ImageSetMaterialTargetResolver{Images: materialProbeFixture{}}
+	var content bytes.Buffer
+	require.NoError(t, png.Encode(&content, image.NewRGBA(image.Rect(0, 0, 900, 900))))
+	r := ImageSetMaterialTargetResolver{ReadBytes: func(context.Context, imageagent.AuthorizedAsset, int64) ([]byte, error) { return content.Bytes(), nil }}
 	selected := []asset.ApprovedAsset{{ID: "source", URL: "https://source.example/image.png", SourceApproval: &asset.SourceApprovalProvenance{}}}
 	resolved, err := r.ResolveImageSetTarget(context.Background(), asset.SourceSelection{TargetPlatform: "product"}, nil, selected)
 	require.NoError(t, err)

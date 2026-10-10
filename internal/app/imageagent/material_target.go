@@ -1,17 +1,23 @@
 package imageagentapp
 
 import (
+	"bytes"
 	"context"
-	record "task-processor/internal/listing/record/target"
-	"task-processor/internal/marketplace/shein/goods"
+	"crypto/sha256"
+	"encoding/hex"
+	"golang.org/x/sync/errgroup"
+	"image"
+	"task-processor/internal/imageagent"
 	"task-processor/internal/product/asset"
+	productimage "task-processor/internal/product/image"
+	"time"
 )
 
 // Original material has no official publishing claim. Its actual artifact is
 // still validated by the existing bounded probe before the Asset transaction.
 type ImageSetMaterialTargetResolver struct {
-	Official asset.ImageSetTargetResolver
-	Images   record.TargetImageReader
+	Official  asset.ImageSetTargetResolver
+	ReadBytes SourceByteReader
 }
 
 func (r ImageSetMaterialTargetResolver) ResolveImageSetTarget(ctx context.Context, source asset.SourceSelection, target *asset.ImageSetTarget, selected []asset.ApprovedAsset) (asset.ImageSetTargetResolution, error) {
@@ -21,31 +27,49 @@ func (r ImageSetMaterialTargetResolver) ResolveImageSetTarget(ctx context.Contex
 		}
 		return r.Official.ResolveImageSetTarget(ctx, source, target, selected)
 	}
-	if target != nil || r.Images == nil || len(selected) == 0 || len(selected) > 40 {
+	if ctx == nil || target != nil || r.ReadBytes == nil || len(selected) == 0 || len(selected) > 40 {
 		return asset.ImageSetTargetResolution{}, asset.ErrInvalidApproval
 	}
-	slots := make([]goods.OfficialImageSlot, 0, len(selected))
 	for _, item := range selected {
 		if item.OfficialPlacement != nil {
 			return asset.ImageSetTargetResolution{}, asset.ErrInvalidApproval
 		}
-		slots = append(slots, goods.OfficialImageSlot{AssetID: item.ID, Type: 1})
 	}
-	observations, err := record.ProbeTargetImages(ctx, r.Images, goods.OfficialDraftInput{Images: slots}, asset.ApprovedAssetInventory{Assets: selected})
-	if err != nil || len(observations) != len(selected) {
-		return asset.ImageSetTargetResolution{}, asset.ErrInvalidApproval
-	}
+	bounded, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	group, probeContext := errgroup.WithContext(bounded)
+	group.SetLimit(4)
 	for index, item := range selected {
-		observed := observations[index]
-		if item.GenerationEvidence != nil && (observed.ContentHash != item.GenerationEvidence.ArtifactHash || observed.Width != item.Width || observed.Height != item.Height) {
-			return asset.ImageSetTargetResolution{}, asset.ErrApprovalConflict
-		}
-		if item.SourceApproval == nil && (observed.Width != item.Width || observed.Height != item.Height) {
-			return asset.ImageSetTargetResolution{}, asset.ErrApprovalConflict
-		}
-		if item.SourceApproval != nil {
-			selected[index].Width, selected[index].Height = observed.Width, observed.Height
-		}
+		group.Go(func() error {
+			if _, err := imageagent.ValidateSafeImageURL(item.URL); err != nil {
+				return asset.ErrInvalidApproval
+			}
+			content, err := r.ReadBytes(probeContext, imageagent.AuthorizedAsset{ID: item.ID, URL: item.URL}, productimage.MaxInlineArtifactBytes)
+			if err != nil || len(content) == 0 || len(content) > productimage.MaxInlineArtifactBytes {
+				return asset.ErrInvalidApproval
+			}
+			configuration, format, err := image.DecodeConfig(bytes.NewReader(content))
+			if err != nil || (format != "jpeg" && format != "png" && format != "webp") || configuration.Width <= 0 || configuration.Height <= 0 || configuration.Width > 10000 || configuration.Height > 10000 || int64(configuration.Width)*int64(configuration.Height) > 20_000_000 {
+				return asset.ErrInvalidApproval
+			}
+			if _, _, err = image.Decode(bytes.NewReader(content)); err != nil || probeContext.Err() != nil {
+				return asset.ErrInvalidApproval
+			}
+			hash := sha256.Sum256(content)
+			if item.GenerationEvidence != nil && (hex.EncodeToString(hash[:]) != item.GenerationEvidence.ArtifactHash || configuration.Width != item.Width || configuration.Height != item.Height) {
+				return asset.ErrApprovalConflict
+			}
+			if item.SourceApproval == nil && (configuration.Width != item.Width || configuration.Height != item.Height) {
+				return asset.ErrApprovalConflict
+			}
+			if item.SourceApproval != nil {
+				selected[index].Width, selected[index].Height = configuration.Width, configuration.Height
+			}
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return asset.ImageSetTargetResolution{}, err
 	}
 	return asset.ImageSetTargetResolution{}, nil
 }

@@ -193,7 +193,7 @@ func buildFullImageApplication(ctx context.Context, productDB, imageDB, workerDB
 			return nil, err
 		}
 		images := supplyapp.NewPublicImageProbe()
-		targets := imageapp.ImageSetMaterialTargetResolver{Images: images, Official: supplyapp.ImageSetAssetTargetResolver{Rules: rules, Images: images}}
+		targets := imageapp.ImageSetMaterialTargetResolver{ReadBytes: newImageSetSourceByteReader(), Official: supplyapp.ImageSetAssetTargetResolver{Rules: rules, Images: images}}
 		service, err := asset.NewImageSetService(sourceSelections, assetRepository, inventories, approvals, candidates, targets)
 		if err != nil {
 			return nil, err
