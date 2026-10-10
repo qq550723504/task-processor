@@ -39,6 +39,30 @@ func TestPostgresMerchantFenceSurvivesCredentialRotationAndScopedReplay(t *testi
 	require.NoError(t, submissionstore.InstallSchema(db))
 	r, e := podstore.NewRepository(ctx, db)
 	require.NoError(t, e)
+	t.Run("template import null identity replays and recovers its original receipt", func(t *testing.T) {
+		scope := collection.Scope{"org-a", "actor-a", "member-a"}
+		key, hash := uuid.NewString(), collection.Digest("template-import")
+		calls := 0
+		receive := func(_ context.Context, _ *gorm.DB, _ collection.Scope, operation string) (collection.Receipt, error) {
+			calls++
+			return collection.Receipt{OperationID: operation}, nil
+		}
+		guard := func(context.Context) error { return nil }
+		first, err := r.Import(ctx, scope, key, hash, "template", "", receive, guard)
+		require.NoError(t, err)
+		var isNull bool
+		require.NoError(t, db.Raw("SELECT operation_id IS NULL FROM product_pod_commands WHERE organization_id=? AND actor_id=? AND command_key=?", scope.OrganizationID, scope.ActorID, key).Scan(&isNull).Error)
+		require.True(t, isNull, "template commands intentionally have no design operation")
+		replay, err := r.Import(ctx, scope, key, hash, "template", "", receive, guard)
+		require.NoError(t, err)
+		require.Equal(t, first, replay)
+		recovered, err := r.ReceiptByKey(ctx, scope, key)
+		require.NoError(t, err)
+		require.Equal(t, first, recovered)
+		require.Equal(t, 1, calls, "same-key replay and recovery never repeat the receiver")
+		_, err = r.Import(ctx, scope, key, collection.Digest("other-template"), "template", "", receive, guard)
+		require.ErrorIs(t, err, pod.ErrConflict)
+	})
 	guard := func(context.Context, *gorm.DB, pod.Plan) error { return nil }
 	p := storedPlan()
 	key := uuid.NewString()
