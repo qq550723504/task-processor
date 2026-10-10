@@ -23,6 +23,7 @@ type Handler struct {
 	workbenchAuthorizer          *authz.ListingKitAuthorizer
 	profileReader                authidentity.SelfProfileReader
 	storeObservationsReadiness   func() bool
+	operationsCockpitAvailable   bool
 	aiWorkbenchAvailable         bool
 	projectCenterAvailable       bool
 	aiWorkbenchAdmission         func(string) bool
@@ -38,6 +39,12 @@ func (h *Handler) SetProjectCenterAvailable(v bool) {
 
 // The runtime installs this callback before serving. Its worker readiness is
 // atomic; module admission and display permissions alone cannot make it true.
+func (h *Handler) SetOperationsCockpitAvailable(available bool) {
+	if h != nil {
+		h.operationsCockpitAvailable = available
+	}
+}
+
 func (h *Handler) SetStoreObservationsReadiness(ready func() bool) {
 	if h != nil {
 		h.storeObservationsReadiness = ready
@@ -224,6 +231,7 @@ func (h *Handler) writeContext(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, contextResponse{
+		OperationsCockpitAvailable:   h.operationsCockpitAvailable && effectiveOrganizationID != nil,
 		StoreObservationsAvailable:   observationsAvailable,
 		User:                         userResponse{ID: identity.UserID},
 		HomeOrganizationID:           identity.HomeOrganizationID,
@@ -247,6 +255,7 @@ func containsRole(roles []string, want string) bool {
 }
 
 type contextResponse struct {
+	OperationsCockpitAvailable   bool                   `json:"operationsCockpitAvailable,omitempty"`
 	StoreObservationsAvailable   bool                   `json:"storeObservationsAvailable,omitempty"`
 	User                         userResponse           `json:"user"`
 	HomeOrganizationID           string                 `json:"homeOrganizationId"`

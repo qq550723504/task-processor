@@ -46,7 +46,7 @@ func (m storeObservationModule) Register(r *kernelmodule.Registry) error {
 	return nil
 }
 
-func buildCurrentStoreObservations(ctx context.Context, db *gorm.DB, d StoreObservationsDependencies, deps routeAuthDependencies, permissions *authz.ListingKitAuthorizer, applications *storeapp.OfficialApplicationRegistry, cfg *config.Config) (storeObservationModule, error) {
+func buildCurrentStoreObservations(ctx context.Context, db *gorm.DB, d StoreObservationsDependencies, deps routeAuthDependencies, permissions *authz.ListingKitAuthorizer, applications *storeapp.OfficialApplicationRegistry, cfg *config.Config, capabilities storecenter.RuntimeCapabilities) (storeObservationModule, error) {
 	var empty storeObservationModule
 	resolver, ok := deps.organizationResolver.(*workbenchcontext.Resolver)
 	if !ok || resolver == nil || permissions == nil || applications == nil || db == nil || d.Starter == nil || d.NewWorker == nil || d.Lifecycle == nil || cfg == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "" {
@@ -55,7 +55,10 @@ func buildCurrentStoreObservations(ctx context.Context, db *gorm.DB, d StoreObse
 	if err := storecenter.VerifyCurrentSchema(ctx, db); err != nil {
 		return empty, err
 	}
-	if err := storecenter.VerifyRuntimePermissionsForCapabilities(ctx, db, storecenter.RuntimeCapabilities{Observations: true}); err != nil {
+	if !capabilities.Observations {
+		return empty, o.ErrUnavailable
+	}
+	if err := storecenter.VerifyRuntimePermissionsForCapabilities(ctx, db, capabilities); err != nil {
 		return empty, err
 	}
 	repo, err := observationstore.NewRepository(ctx, db)
