@@ -1,5 +1,5 @@
 import {StrictMode} from "react";
-import {act,cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
+import {act,cleanup,fireEvent,render,screen,waitFor,within} from "@testing-library/react";
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {ProductImageSetPanel} from "./product-image-set-panel";
 import {imageTemplateSchema} from "@/lib/contracts/image-set-configuration";
@@ -37,6 +37,34 @@ async function prepare(){
  fireEvent.click(await screen.findByRole("checkbox",{name:"共用原始素材 素材 1"}));
  const button=screen.getByRole("button",{name:"准备整套图片计划（2 项）"});await waitFor(()=>expect(button).toBeEnabled());fireEvent.click(button);
 }
+it("shows all eight exact references used by a generated slot",async()=>{
+ state=projection("awaiting_final_approval",templateId);
+ const originals=Array.from({length:8},(_,i)=>({ID:i?`original-${i+1}`:"original",DisplayURL:`https://images.test/reference-${i+1}.png`,Width:1024,Height:1024}));
+ state={...state,originals,slots:state.slots.map((slot,i)=>i?slot:{...slot,recipe:{...slot.recipe,References:originals.map(image=>({AssetID:image.ID}))}})};
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation} initialRunId={runId}/>);
+ const heading=await screen.findByRole("heading",{name:"商品识别主图"});
+ const images=within(heading.closest("article")!).getAllByRole("img",{name:"本图使用的原始素材"});
+ expect(images.map(image=>image.getAttribute("src"))).toEqual(originals.map(image=>image.DisplayURL));
+ expect(fetch.mock.calls.some(([,init])=>init?.method==="POST")).toBe(false);
+});
+it("can select an untouched source original outside the generation references without generating again",async()=>{
+ state=projection("awaiting_final_approval",templateId);
+ const real=fetch.getMockImplementation()!;
+ fetch.mockImplementation(async(url,init)=>String(url).endsWith("/sources")?Response.json({contextKind:"acquisition",contextId:operation,source,manualReplacementAvailable:false,originals:[{id:"original",displayUrl:"https://images.test/original.png",width:1024,height:1024},{id:"untouched",displayUrl:"https://images.test/untouched.png",width:1024,height:1024}],evidence:{}}):real(url,init));
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation} initialRunId={runId}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"选择原图 2"}));
+ expect(screen.getByRole("img",{name:"拟采用：原图 2"})).toHaveAttribute("src","https://images.test/untouched.png");
+ fireEvent.click(screen.getByRole("button",{name:"预览完整选择"}));
+ fireEvent.click(await screen.findByRole("button",{name:"人工批准并保存素材"}));
+ await screen.findByText("本次批准已保存为正式商品素材。");
+ for(const action of ["preview","approve"]){
+  const request=fetch.mock.calls.find(([url])=>String(url).endsWith(`/${action}`))!;
+  const body=JSON.parse(String(request[1]!.body));
+  expect(body.choices).toEqual([{kind:"source",source_id:"untouched",presentation:{group:"carousel",order:1}}]);
+  expect(body.planRevision).toBe(1);expect(body.resultDigest).toBe(sha);
+ }
+ expect(fetch.mock.calls.some(([url])=>/\/(prepare|regenerate|confirm)$/.test(String(url)))).toBe(false);
+});
 it("runs both groups from shared originals and saves only a previewed explicit complete selection",async()=>{
  const saved=vi.fn();render(<StrictMode><ProductImageSetPanel kind="acquisition" contextId={operation} onSaved={saved}/></StrictMode>);
  await prepare();fireEvent.click(await screen.findByRole("button",{name:"确认点数并生成"}));
