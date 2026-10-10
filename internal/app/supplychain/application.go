@@ -31,6 +31,8 @@ type Application struct {
 	OptimizationOptions   func(context.Context, collection.Query) (OptimizationOptions, error)
 	StageProjection       ReviewProjection
 	Uploader              *UploadService
+	// Trial admission narrows reads to explicitly prepared test records.
+	ValidateDraftRead func(context.Context, collection.Scope, record.TargetRecord) error
 }
 type SourceImageView struct {
 	ID     string `json:"id"`
@@ -100,7 +102,20 @@ func (a *Application) ReadTarget(ctx context.Context, sourceID, storeID string) 
 	if !collection.ValidID(storeID) {
 		return record.TargetRecord{}, record.ErrInvalid
 	}
-	return a.Targets.ReadHead(ctx, record.TargetIdentity(scope, sourceID, storeID))
+	ctx, cancel := context.WithTimeout(ctx, record.Timeout)
+	defer cancel()
+	current, err := a.Authorization.Authorize(ctx, preparation.PermissionRead)
+	if err != nil {
+		return record.TargetRecord{}, err
+	}
+	if current != scope {
+		return record.TargetRecord{}, preparation.ErrForbidden
+	}
+	value, err := a.Records.ReadTargetHead(ctx, scope, record.TargetIdentity(scope, sourceID, storeID))
+	if err == nil && a.ValidateDraftRead != nil {
+		err = a.ValidateDraftRead(ctx, scope, value)
+	}
+	return value, err
 }
 func (a *Application) ReadRecord(ctx context.Context, id string) (record.TargetRecord, error) {
 	scope, err := a.Authorization.Authorize(ctx, preparation.PermissionRead)
@@ -116,6 +131,11 @@ func (a *Application) ReadRecord(ctx context.Context, id string) (record.TargetR
 	}
 	if _, err = a.Sources.Select(ctx, value.Source.ID); err != nil {
 		return record.TargetRecord{}, err
+	}
+	if a.ValidateDraftRead != nil {
+		if err = a.ValidateDraftRead(ctx, scope, value); err != nil {
+			return record.TargetRecord{}, err
+		}
 	}
 	return value, nil
 }

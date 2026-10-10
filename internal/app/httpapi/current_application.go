@@ -9,12 +9,15 @@ import (
 	"strings"
 	supplyhttp "task-processor/internal/app/supplychain/httpapi"
 	billinghttp "task-processor/internal/commercial/billing/httpapi"
+	"task-processor/internal/product/collection"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
 	confighttp "task-processor/internal/agentconfig/httpapi"
+	customhttp "task-processor/internal/agentcustomization/httpapi"
+	ph "task-processor/internal/aiworkbench/projectcenter/httpapi"
 	registration "task-processor/internal/app/referralregistration"
 	storeapp "task-processor/internal/app/storecenter"
 	observationhttp "task-processor/internal/app/storeobservations/httpapi"
@@ -34,6 +37,7 @@ import (
 	"task-processor/internal/ledger/orgresource"
 	notificationhttp "task-processor/internal/notificationcenter/httpapi"
 	collectionhttp "task-processor/internal/product/collection/httpapi"
+	"task-processor/internal/product/sourcing"
 	"task-processor/internal/storecenter"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
 	tm "task-processor/internal/toolmarket"
@@ -118,6 +122,10 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
+	privateDraftTrials           int
+	privateDraftTrial            *PrivateDraftTrialDependencies
+	agentCustomizations          int
+	agentCustomizationDB         *gorm.DB
 	toolMarketConfigs            int
 	toolMarket                   *ToolMarketDependencies
 	ecoservicesConfigs           int
@@ -160,6 +168,18 @@ type currentApplicationOptions struct {
 	productAgents                int
 	aiWorkbench                  *AIWorkbenchDependencies
 	aiWorkbenches                int
+	projectCenterDB              *gorm.DB
+	projectCenters               int
+}
+
+func (o currentApplicationOptions) supplyRouteFeatures() (full, trial bool) {
+	return o.supplyChains > 0, o.privateDraftTrials > 0
+}
+
+func (o currentApplicationOptions) installSupplyWorker(module *supplyChainModule) {
+	if o.supplyChains > 0 && module != nil {
+		*o.supplyChain.Worker = module.worker
+	}
 }
 
 // WithRuntimeContext supplies the long-lived application context for bounded
@@ -331,7 +351,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		option(&supplied)
 	}
-	if supplied.storeObservations > 1 || supplied.storeCenters > 1 || supplied.localTrials > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.productCollections > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 || supplied.accountAuditSources > 1 {
+	if supplied.storeObservations > 1 || supplied.storeCenters > 1 || supplied.localTrials > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.productCollections > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 || supplied.aiWorkbenches > 1 || supplied.projectCenters > 1 || supplied.projectCenters == 1 && supplied.projectCenterDB == nil || supplied.accountAuditSources > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
 	}
 	if supplied.collectionSourceMedias > 1 || cfg.ProductCollectionSourceMedia.Enabled != (supplied.collectionSourceMedias == 1) || supplied.collectionSourceMedias == 1 && (supplied.productCollections != 1 || supplied.collectionSourceMedia == nil || supplied.collectionSourceMedia.Storage == nil) {
@@ -343,6 +363,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	storeCapabilities := storecenter.RuntimeCapabilities{Observations: supplied.storeObservations == 1}
 	if supplied.productCollections > 0 && supplied.productAcquisitionDB == nil {
 		return nil, errors.New("collections require their current Product owner pool")
+	}
+	if supplied.privateDraftTrials > 1 || supplied.privateDraftTrials > 0 && (supplied.privateDraftTrial == nil || supplied.privateDraftTrial.Scope.Validate() != nil || !collection.ValidID(supplied.privateDraftTrial.StoreID) || supplied.supplyChains > 0 || supplied.localTrials > 0 || supplied.officialStoreApplications != nil || supplied.productAgents > 0 || supplied.imageAgents > 0 || supplied.agentCustomizations != 1 || supplied.productCollections != 1 || supplied.storeCenters != 1 || supplied.productAcquisitionDB == nil) {
+		return nil, errors.New("private draft trial assembly not admitted")
 	}
 	if supplied.supplyChains > 1 || supplied.supplyChains > 0 && (supplied.supplyChain == nil || supplied.supplyChain.AssetDB == nil || supplied.supplyChain.Starter == nil || supplied.supplyChain.NewWorker == nil || supplied.supplyChain.Worker == nil || supplied.productCollections != 1 || supplied.productAcquisitionDB == nil || supplied.storeCenters != 1 || supplied.officialStoreApplications == nil || cfg.ListingKit.Zitadel.TenantDirectoryToken == "") {
 		return nil, errors.New("supply chain requires current Product, Store, Asset and workflow owners")
@@ -358,6 +381,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 	}
 	auditSources, auditSourceErr := currentInvocationAuditSources(supplied)
+	if err := validateAgentCustomizationPool(supplied, sourceAccountDB); err != nil {
+		return nil, err
+	}
 	if auditSourceErr != nil {
 		return nil, auditSourceErr
 	}
@@ -458,7 +484,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 			if err != nil {
 				return nil, err
 			}
-			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges, supplied.productCollections > 0, supplied.supplyChains > 0)
+			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges, supplied.productCollections > 0, (supplied.supplyChains > 0 || supplied.privateDraftTrials > 0))
 		}
 	}
 	if supplied.browserCaptures > 1 {
@@ -473,7 +499,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		browserDB := supplied.productAcquisitionDB
 		factories.buildBrowserCapture = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer, supplied.productCollections > 0, supplied.supplyChains > 0)
+			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer, supplied.productCollections > 0, (supplied.supplyChains > 0 || supplied.privateDraftTrials > 0))
 		}
 	}
 	if supplied.imageAgents > 0 {
@@ -648,7 +674,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, acquisition)
 	}
 	if supplied.productCollections > 0 {
-		collections, err := buildProductCollectionModuleWithSourceMedia(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, cfg, supplied.supplyChains > 0, supplied.collectionSourceMedia)
+		collections, err := buildProductCollectionModuleWithSourceMedia(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, cfg, (supplied.supplyChains > 0 || supplied.privateDraftTrials > 0), supplied.collectionSourceMedia)
 		if err != nil {
 			return nil, fmt.Errorf("build current product collections: %w", err)
 		}
@@ -693,6 +719,14 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		modules = append(modules, module)
 		supplyRuntime = &module
 	}
+	if supplied.privateDraftTrial != nil {
+		module, e := buildPrivateDraftTrialModule(ctx, supplied.productAcquisitionDB, supplied.storeCenterDB, *supplied.privateDraftTrial, *workbench.authDependencies, authorizer, cfg)
+		if e != nil {
+			return nil, fmt.Errorf("build private draft trial: %w", e)
+		}
+		modules = append(modules, module)
+		supplyRuntime = &module
+	}
 	if supplied.agentConfigurationDB != nil {
 		m, e := buildAgentConfigurationModule(ctx, supplied.agentConfigurationDB, workbench.authDependencies.organizationResolver, authorizer, supplied.knowledge, productRuntime)
 		if e != nil {
@@ -700,17 +734,52 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		modules = append(modules, m)
 	}
+	if supplied.agentCustomizations > 0 {
+		m, err := buildAgentCustomizationModule(ctx, supplied.agentCustomizationDB, privateDraftInspector(supplyRuntime))
+		if err != nil {
+			return nil, fmt.Errorf("build current agent customization: %w", err)
+		}
+		modules = append(modules, m)
+	}
+	var projectChat *aiWorkbenchApplication
 	if supplied.aiWorkbench != nil {
 		module, e := buildAIWorkbenchModule(ctx, *supplied.aiWorkbench, productRuntime)
 		if e != nil {
 			return nil, fmt.Errorf("build AI Workbench: %w", e)
 		}
 		modules = append(modules, module)
+		projectChat = module.(aiWorkbenchModule).application
 		if workbench.handler != nil {
 			workbench.handler.SetAIWorkbenchAvailable(true)
 			workbench.handler.SetAIWorkbenchAdmission(module.(aiWorkbenchModule).AdmittedOrganization)
 			workbench.handler.SetAIWorkbenchPlanningReadiness(module.(aiWorkbenchModule).PlanningReadiness)
 			workbench.handler.SetAIWorkbenchTitleReadiness(module.(aiWorkbenchModule).TitleReadiness)
+		}
+	}
+	if supplied.projectCenterDB != nil {
+		for _, other := range []*gorm.DB{sourceAccountDB, supplied.commercialOwnerDB, supplied.storeCenterDB, supplied.productAcquisitionDB, supplied.agentCustomizationDB} {
+			if other == supplied.projectCenterDB {
+				return nil, errors.New("project center requires its own pool")
+			}
+		}
+		if supplied.aiWorkbench != nil && supplied.aiWorkbench.DB == supplied.projectCenterDB {
+			return nil, errors.New("project and chat pools must be distinct")
+		}
+		var products sourcing.PublishedAcquisitionReader
+		if supplied.productAcquisitionDB != nil {
+			var e error
+			products, e = buildPublishedAcquisitionReader(ctx, supplied.productAcquisitionDB, cfg, *workbench.authDependencies, authorizer)
+			if e != nil {
+				return nil, e
+			}
+		}
+		module, e := buildProjectCenter(ctx, supplied.projectCenterDB, *workbench.authDependencies, authorizer, projectChat, supplied.knowledge, supplied.storeCenterDB, products)
+		if e != nil {
+			return nil, e
+		}
+		modules = append(modules, module)
+		if workbench.handler != nil {
+			workbench.handler.SetProjectCenterAvailable(true)
 		}
 	}
 	if factories.buildBrowserCapture != nil {
@@ -799,10 +868,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	if err != nil {
 		return nil, err
 	}
+	fullSupply, privateDraftTrial := supplied.supplyRouteFeatures()
 	routeFeatures := currentApplicationOptionalRoutes{
+		AgentCustomization:  supplied.agentCustomizations > 0,
+		PrivateDraftTrial:   privateDraftTrial,
 		ToolMarket:          supplied.toolMarket != nil,
 		Ecoservices:         supplied.ecoservices != nil,
-		SupplyChain:         supplied.supplyChains > 0,
+		SupplyChain:         fullSupply,
 		Collections:         supplied.productCollections > 0,
 		NotificationCenter:  supplied.notifications > 0,
 		ZitadelSMS:          true,
@@ -813,6 +885,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		AcquisitionImage:    factories.buildAcquisitionImage != nil,
 		ProductAgent:        supplied.productAgent != nil,
 		AIWorkbench:         supplied.aiWorkbench != nil,
+		ProjectCenter:       supplied.projectCenterDB != nil,
 		AgentConfiguration:  supplied.agentConfigurationDB != nil,
 		MemberPoints:        includeMemberPoints,
 		MemberResources:     includeMemberResources,
@@ -830,9 +903,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		}
 		startCommercialRecoveryLoop(runtimeContext, server, ecoservicesRecovery, 15*time.Second, "ecoservices original commands", logger)
 	}
-	if supplyRuntime != nil {
-		*supplied.supplyChain.Worker = supplyRuntime.worker
-	}
+	supplied.installSupplyWorker(supplyRuntime)
 	if resourceRecovery != nil {
 		runtimeContext := supplied.runtimeContext
 		if runtimeContext == nil {
@@ -904,6 +975,8 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	PrivateDraftTrial   bool
+	AgentCustomization  bool
 	ToolMarket          bool
 	Ecoservices         bool
 	SupplyChain         bool
@@ -920,12 +993,18 @@ type currentApplicationOptionalRoutes struct {
 	AcquisitionImage    bool
 	ProductAgent        bool
 	AIWorkbench         bool
+	ProjectCenter       bool
 	MemberPoints        bool
 	MemberResources     bool
 }
 
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if optional.AgentCustomization {
+		for _, r := range customhttp.Routes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
 	if optional.ToolMarket {
 		for _, r := range tmhttp.Routes(nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
@@ -933,6 +1012,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	if optional.Ecoservices {
 		for _, r := range ehttp.Routes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
+	if optional.PrivateDraftTrial {
+		for _, r := range supplyhttp.PrivateDraftReadRoutes(nil, nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
 		}
 	}
@@ -1052,6 +1136,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
 		}
 	}
+	if optional.ProjectCenter {
+		for _, r := range ph.Routes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
 	if optional.AIWorkbench {
 		for _, r := range aiWorkbenchRoutes(nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
@@ -1091,6 +1180,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {
+		if descriptor.Path == customhttp.Base || strings.HasPrefix(descriptor.Path, customhttp.Base+"/") || descriptor.Path == customhttp.AdminBase || strings.HasPrefix(descriptor.Path, customhttp.AdminBase+"/") || descriptor.Path == customhttp.PrivateBase || strings.HasPrefix(descriptor.Path, customhttp.PrivateBase+"/") {
+			if !optional.AgentCustomization {
+				return errors.New("agent customization not admitted")
+			}
+			if err := customhttp.ValidateDescriptor(descriptor); err != nil {
+				return err
+			}
+		}
 		if descriptor.Path == tmhttp.Base || strings.HasPrefix(descriptor.Path, tmhttp.Base+"/") || descriptor.Path == tmhttp.AdminBase || strings.HasPrefix(descriptor.Path, tmhttp.AdminBase+"/") {
 			if !optional.ToolMarket {
 				return errors.New("tool market feature not admitted")
@@ -1108,7 +1205,7 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			}
 		}
 		if descriptor.Path == supplyhttp.SupplyBasePath || strings.HasPrefix(descriptor.Path, supplyhttp.SupplyBasePath+"/") {
-			if !optional.SupplyChain {
+			if !optional.SupplyChain && (!optional.PrivateDraftTrial || !supplyhttp.IsPrivateDraftReadRoute(descriptor.Method, descriptor.Path)) {
 				return errors.New("supply chain feature not admitted")
 			}
 			if e := validateSupplyDescriptor(descriptor); e != nil {
@@ -1215,6 +1312,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 		}
 		if strings.HasPrefix(descriptor.Path, productAgentBase) && (descriptor.Module != "product-agent" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionLocalAgentWrite || descriptor.RequestTimeout != 2*time.Minute) {
 			return errors.New("product agent loses fresh permission boundary")
+		}
+		if strings.HasPrefix(descriptor.Path, ph.Base) {
+			if !optional.ProjectCenter {
+				return errors.New("project center not admitted")
+			}
+			if e := ph.ValidateDescriptor(descriptor); e != nil {
+				return e
+			}
 		}
 		if strings.HasPrefix(descriptor.Path, workbenchChatBase) || strings.HasPrefix(descriptor.Path, workbenchTaskBase) {
 			if !optional.AIWorkbench || descriptor.Module != "ai-workbench" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Handler == nil {

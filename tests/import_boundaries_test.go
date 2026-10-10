@@ -3989,6 +3989,8 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "reportcenter", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #570 / PR #571 admits only Agent Configuration's feature-local HTTP adapter.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "agentconfig", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	// #611 admits only the approved customization HTTP adapter, not its domain.
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "agentcustomization", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "listingsubscription", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "workbenchcontext", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "compatibility", "listingkit", "sourcehandoff", "a1688", "httpapi"))+string(os.PathSeparator)] = struct{}{}
@@ -4005,7 +4007,19 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	// #614 admits only the observations feature-local HTTP adapter.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "app", "storeobservations", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "product", "collection", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	// #624 admits only Project Center's HTTP adapter; its domain stays framework-free.
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "aiworkbench", "projectcenter", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	return allowedHTTPPackages
+}
+
+func TestProjectCenterHTTPBoundaryRegistration(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowed := businessHTTPPackages(root)
+	for path, want := range map[string]bool{"aiworkbench/projectcenter/httpapi/handler.go": true, "aiworkbench/projectcenter/service.go": false, "aiworkbench/projectcenter/httpapi_extra/handler.go": false} {
+		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(path)), allowed); got != want {
+			t.Errorf("HTTP boundary allows %s = %v, want %v", path, got, want)
+		}
+	}
 }
 
 func TestEcoservicesHTTPBoundaryRegistration(t *testing.T) {
@@ -4108,6 +4122,22 @@ func TestReportCenterHTTPBoundaryRegistration(t *testing.T) {
 		"reportcenter/service.go":                false,
 		"reportcenter/httpapi_extra/handler.go":  false,
 		"reportcenter-extra/httpapi/handler.go":  false,
+	} {
+		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(path)), allowed); got != want {
+			t.Errorf("HTTP boundary allows %s = %v, want %v", path, got, want)
+		}
+	}
+}
+
+func TestAgentCustomizationHTTPBoundaryRegistration(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowed := businessHTTPPackages(root)
+	for path, want := range map[string]bool{
+		"agentcustomization/httpapi/handler.go":       true,
+		"agentcustomization/service.go":               false,
+		"agentcustomization/httpapi_extra/handler.go": false,
+		"agentcustomization/httpapi2/handler.go":      false,
+		"agentcustomization-extra/httpapi/handler.go": false,
 	} {
 		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(path)), allowed); got != want {
 			t.Errorf("HTTP boundary allows %s = %v, want %v", path, got, want)

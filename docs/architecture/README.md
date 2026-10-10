@@ -149,6 +149,11 @@ source of truth for long-lived rules.
   - IMPLEMENTATION_READY #36 bounded completed-work v2 projection of Listing's
     historical Store ID and local preparation action; no Store name read,
     remote publication claim, or Product Review dependency.
+- [`ai-workbench-project-center-v1.md`](./ai-workbench-project-center-v1.md)
+  - APPROVED / IMPLEMENTATION_READY #624: creator-private current-enterprise
+    long-term projects, manually authorized references and personal templates;
+    independent persistence/runtime, receipt-first replay and slot removal.
+    Does not own execution, source facts or shared project permissions.
 - [`ai-workbench-chat-business-task-v1.md`](./ai-workbench-chat-business-task-v1.md)
   - APPROVED / IMPLEMENTATION_READY #576 Slice E: owner-scoped Conversation,
     no-tool Eino/eino-ext planning, immutable execution proposals and BusinessTask,
@@ -176,6 +181,22 @@ source of truth for long-lived rules.
     targeted review found no major issues and CI `36566072746` completed SUCCESS
     including Required CI Gate. Production Writer starts only after PR #571 merges
     to main; rollout/provider use remain separately gated.
+
+- [`agent-customization-v1.md`](./agent-customization-v1.md)
+  - APPROVED / IMPLEMENTATION_READY #611: enterprise customization requests,
+    contact consent, private files and verified-platform manual progress.
+    Submission is free; proposals and fees are confirmed offline. Runtime
+    assembly and user acceptance remain separate from the owner implementation.
+
+- [`private-agent-delivery-v1.md`](./private-agent-delivery-v1.md)
+  - APPROVED / IMPLEMENTATION_READY #611: fixed-version platform draft checks
+    privately delivered to the original request enterprise, atomic publication,
+    actor-private immutable reports and current source authorization. Existing
+    Listing saved validation is reused;
+    no model/provider, product mutation or second generic Agent runtime.
+  - Bounded isolated trial admission: [`private-draft-offline-trial.md`](./private-draft-offline-trial.md).
+    Explicit offline test scope/store and seven existing native read routes;
+    test-rule reports remain distinct from real platform acceptance.
 
 - [`product-agent-text-provider-neutral-v1.md`](./product-agent-text-provider-neutral-v1.md)
   - IMPLEMENTATION_READY #573 architecture for organization-scoped,

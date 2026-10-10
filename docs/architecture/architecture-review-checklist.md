@@ -101,12 +101,14 @@ consider the applicable guards, including:
 - `depguard: product_catalog_persistence_boundary`
 - `depguard: listing_submission_persistence_boundary`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
+- `TestAgentCustomizationHTTPBoundaryRegistration` — permits only the approved agent customization HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `TestMembershipHTTPBoundaryRegistration` — permits only the membership HTTP subtree; rejects the domain root, siblings, other organizations and similar prefixes.
 - `TestSubjectVerificationHTTPBoundaryRegistration` — permits only the approved subject verification HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `TestEcoservicesHTTPBoundaryRegistration` — permits only the approved ecosystem HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `TestNotificationCenterHTTPBoundaryRegistration` — permits only the approved notification center HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `TestReportCenterHTTPBoundaryRegistration` — permits only the approved Report Center HTTP subtree; rejects the domain core, siblings and similar prefixes.
 - `TestToolMarketHTTPBoundaryRegistration` — permits only the approved Tool Market HTTP subtree; rejects core contracts, siblings and similar prefixes.
+- `TestProjectCenterHTTPBoundaryRegistration` — permits only the approved Project Center HTTP subtree; rejects the domain root and similar prefixes.
 - `depguard: source_handoff_legacy_http`
 - `TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets`
 - `TestAlibaba1688CrawlerDoesNotImportListingKitRoot`
