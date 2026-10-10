@@ -56,21 +56,23 @@ Domain不importGin/GORM/app/SDK。Repository只访问自己的schema，当前Sto
 
 ## 4. 经营事实及计算合同
 
-录入一条事实绑定`organization + store + startDate + endDate`，日期为UTC+8自然日闭区间（1–366日），结束不晚于昨日。运营人员可按每日/每周/每月或明确自定义已完成区间录入；当期累计录入可到昨日，今日不完整数据不冒充完整自然日。新期不得与该店已有不同区间重叠；修正同一精确区间走版本，不新加可重叠记录。
+录入一条事实绑定`organization + store + record UUID`，携带`startDate + endDate`，日期为UTC+8自然日闭区间（1–366日），结束不晚于昨日。运营人员可按每日/每周/每月或明确自定义已完成区间录入；当期累计录入可到昨日，今日不完整数据不冒充完整自然日。新记录不得与该店现有记录区间重叠；稳定record ID/store不变，修正金额或误输日期都创建新revision，事务内排除该记录自身后重新检查与其他当前记录不重叠，保留原revision。不能因为永久绑定错误日期而留下无合法修复路径的数据。
 
-币种首版CNY，与Figma人民币目标一致。UI明确“人工录入·人民币”；外币平台观察绝不自动混加。不用浮点金额：每项非负整数分，单项≤10^12分；持久和JSON整数都在JS安全范围。录入字段：销售收入（退款前）、退款、采购成本、物流成本、平台费用、广告成本、其他成本、备注（≤1000字符，可空）。
+币种首版CNY，与Figma人民币目标一致。UI明确“人工录入·人民币”；外币平台观察绝不自动混加。不用浮点金额：每项非负整数分，单项≤10^12分；持久和JSON整数都在JS安全范围。录入字段：销售收入（退款前）、退款、本期已销售商品采购成本、物流成本、平台费用、广告成本、其他成本、备注（≤1000字符，可空）。采购入库付款不自动当本期售出成本，录入人员明确填写对应期经营成本。
 
-净收入=销售收入−退款；净利润=净收入−各项成本；利润率=净利润÷净收入，净收入≤0则不评价利润率。允许退款超过本期销售/亏损，不能压成0。录入不是支付/会计账本、商品供货成本或预测；显示录入者、更新时间和revision。修正保留旧revision，不提供删除/暗改历史。
+净收入=销售收入−退款；净利润=净收入−各项成本；利润率=净利润÷净收入，净收入≤0则不评价利润率。允许退款超过本期销售/亏损，不能压成0。所有加总和差值使用checked arithmetic，输出绝对值不得超过JS安全整数；超过则拒绝该汇总并提示缩小查询，不能wrap、截断或产生近似经营事实。目标/比例阈值交叉乘法使用标准库math/big精确比较。录入不是支付/会计账本、商品供货成本或预测；显示录入者、更新时间和revision。修正保留旧revision，不提供删除/暗改历史。
 
 查询区间只能加总**完整落在查询内**的非重叠记录，不能按天摊销一个月总数。若存在跨越查询边界的记录，或没有覆盖区间所有自然日，返回`coverage=incomplete`并列缺口/被排除区间；可显示“已录入部分”，不得以其评价完整利润/同比/目标完成度。完整且显式0录入才0。最多366天，最多500家可访问店铺；每页≤50，服务器aggregate不从前端页态求和。
 
-矩阵同周期及其前一等长周期使用相同规则；完整且上期利润>0才给变化百分比，否则“不可比较”。净利润排序仅在覆盖完整店铺间，缺失排后；filters不会扩大Store授权。2–5店比较为同查询事实的只读子集，非新owner。
+矩阵同周期及其前一等长周期使用相同规则；完整且上期利润>0才给变化百分比，否则“不可比较”。净利润排序仅在覆盖完整店铺间，缺失排后；filters不会扩大Store授权。2–5店比较为同查询事实的只读子集，非新owner。企业多店总目标不自动分配给各店：单店状态表达“亏损/收支平衡/录入完整/数据不完整”，完整且盈利也不冒称全维度经营健康；目标正常/关注/异常只评价其完整目标范围。
 
 ## 5. 目标与评判
 
 企业目标配置：一个当前启用revision，引用1–50家明确Store ID、日/周/月（周以周一为起点）、对应自然日期、正人民币利润目标、可选最低净利润率（0–100%，整数basis points）、正常/关注阈值（推荐90%/70%，可配置，0<关注<正常≤100%）。相同店铺组不推断企业全部店铺。
 
-保存并启用一次事务：append不可变version + 更新当前head + append操作回执；编辑仅浏览器草稿。恢复历史版本也是以当前权限验证后创建新revision，不回滚行或复用旧approval。所有读目标/历史/恢复必须当前可访问其全部店铺；任何店铺撤权时不泄漏名称、目标金额或关联数据，返回不可访问；运营人员可重新配置自己获授权的范围。
+保存并启用一次事务：append不可变version + 更新当前head + append操作回执；编辑仅浏览器草稿。恢复历史版本也是以当前权限验证后创建新revision，不回滚行或复用旧approval。所有读目标/历史/恢复必须当前可访问其全部店铺；任何店铺撤权时不泄漏名称、目标金额或关联数据，返回不可访问。
+
+**目标归属待用户决定，阻正式准入**：本草案暂拟企业singleton，但普通运营不可读旧head时既不能获得expectedRevision，也不能盲覆盖他人范围。已向用户提交两种具体路径：企业共同目标/管理员设置，或每成员个人目标。确定前不实现singleton schema或角色规则。若选择企业共同，旧/新目标写均只允许当前企业管理员，运营只读/录入；若选择个人，则head/revision/receipt均必须加入actor身份、个人只修改自己的目标，不能在企业singleton上隐藏actor过滤。无论哪种路径，原scope权限失效的历史恢复仍拒绝，目标范围内店铺被退休时只显示安全失效信息，由合法目标owner以当前version创建新scope，不尝试读取退休店铺历史来“恢复兼容”。
 
 评估到`min(昨日,目标结束日)`，未开始/今日目标尚无完整日则`not_started/pending_data`；截至该日全部所选店铺完整覆盖才计算。应达利润=目标金额×已过去自然日÷目标总自然日，使用整数/有界有理数比较，不浮点舍入触发阈值。完整数据下完成度≥正常阈值为正常、≥关注阈值为需关注、否则异常；利润率低于启用底线至少需关注。目标过期不隐式续期。
 
@@ -96,7 +98,7 @@ Figma的安全底线只消费真正存在的平台异常事实；库存为0/平�
 
 新增有界四read permission：`workbench.cockpit.goals.read`、`.stores.read`、`.alerts.read`、`.advice.read`；`workbench.cockpit.manage`用于事实/目标写。沿当前native enterprise module grant、平台既有角色policy、当前tenant admin规则；不开放旧viewer/operator角色，不创建新角色体系。读取相应read并需要Store read/current member grant；写需要manage和Store当前访问；模块授予manage仅适用目标/矩阵，不以alerts/advice只读授予写。
 
-全部请求live重验当前member/module/organization；不信客户端org/user/member/角色。持久化使用Store专用数据库中的独立`operations_cockpit` schema，便于借用当前Store事务和grant行锁。本repo不拥有Store表。feature-local integration在写事务中借用同一DB transaction的既有member-scoped Store repository，按排序Store ID锁定当前记录/grant并验证；锁保持到commit，避免撤权写穿透。当前IAMlive recheck在进入事务及提交前执行；不创长期凭据/工作流身份。
+全部请求live重验当前member/module/organization；不信客户端org/user/member/角色。持久化使用Store专用数据库中的独立`operations_cockpit` schema，便于借用当前Store事务和grant行锁。本repo不拥有Store表。feature-local integration在写事务中借用同一DB transaction的既有member-scoped Store repository，按排序Store ID锁定当前记录/grant并验证；锁保持到commit，避免撤权写穿透。当前Get只在非admin路径锁grant，不锁Store，不能当作满足此合同：由Store当前owner最小提供借用tx的锁读能力，同时admin路径锁Store，integration不得自己直读/锁Store表。当前IAMlive recheck在进入事务及提交前执行；不创长期凭据/工作流身份。
 
 每个写绑定`org + actor + UUID operationKey + normalized intent hash`（含expected revision、精确stores/周期/金额）。org-head/店铺事实head锁并由DB唯一键串行化；同key同payload回放原已提交结果，同key不同payload409。expectedRevision必填，create=0，stale=412。一次事务包含新revision、head及成功回执；未commit无结果，响应丢失按原key重发/读回。不blind生成新key；权限撤销后的回放仍重验原资源，不泄漏旧回执。
 
