@@ -474,6 +474,35 @@ it.each(["target","generic"] as const)("reselects %s version assets with their o
 });
 const sheinRequirements={platform:"shein",site:"US",categoryId:123,version:"current-official-rules",nativeWidth:1024,nativeHeight:1024,groups:[{group:"spu",skc:0,sku:0,types:[{type:1,minimum:1,maximum:1,nativeCompatible:true},{type:2,minimum:0,maximum:7,nativeCompatible:true}]}]};
 function sheinProjection(){const p=projection("awaiting_final_approval",templateId);return {...p,plan:{...p.plan,Source:{...source,EffectiveVersion:"2",ApplyReceiptID:operation},Target:sheinTarget},slots:p.slots.map(slot=>({...slot,recipe:{...slot.recipe,OfficialPlacement:officialPlacement}}))}}
+it.each(["source","approved"] as const)("validates final official %s choices before preview",async(kind)=>{
+ const p=sheinProjection(),real=fetch.getMockImplementation()!;
+ const rules={...sheinRequirements,groups:[{...sheinRequirements.groups[0],types:[...sheinRequirements.groups[0].types,{type:5,minimum:0,maximum:1,nativeCompatible:false}]}]};
+ const pool={approval_action_id:templateId,head:{action_id:templateId,payload_hash:sha},assets:[0,1].map(i=>({id:`formal-${i}`,role:"main",url:`https://images.test/formal-${i}.png`,presentation:{group:"carousel",order:i+1},official_placement:{group:"spu",skc:0,sku:0,type:2,sort:1,site:"US"}}))};
+ fetch.mockImplementation((url,init)=>{
+  const path=new URL(String(url),"http://localhost").pathname;
+  if(path.endsWith("/requirements"))return Promise.resolve(Response.json(rules));
+  if(path.endsWith(`/runs/${runId}`))return Promise.resolve(Response.json(p));
+  if(path.endsWith("/inventory"))return Promise.resolve(Response.json({target:pool,generic:null}));
+  if(path.endsWith("/sources"))return real(url,init).then(async response=>Response.json({...await response.json(),originals:[0,1].map(i=>({id:`original-${i}`,displayUrl:`https://images.test/original-${i}.png`,width:1024,height:1024}))}));
+  return real(url,init);
+ });
+ render(<ProductImageSetPanel kind="acquisition" contextId={operation} initialRunId={runId}/>);
+ await screen.findByText(/规则 current-official-rules/);
+ for(const i of [1,2])fireEvent.click(screen.getByRole("button",{name:kind==="source"?`选择原图 ${i}`:`采用素材 ${i}`}));
+ const selection=within(screen.getByRole("list")),positions=selection.getAllByLabelText("官方图片位置"),types=selection.getAllByLabelText("官方图片类型"),sorts=selection.getAllByLabelText("官方图片排序");
+ if(kind==="source")positions.forEach(position=>fireEvent.change(position,{target:{value:"spu:0:0"}}));
+ types.forEach(type=>fireEvent.change(type,{target:{value:"2"}}));
+ const preview=screen.getByRole("button",{name:"预览完整选择"});
+ expect(preview).toBeDisabled();fireEvent.click(preview);expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/preview"))).toBe(false);
+ fireEvent.change(sorts[1],{target:{value:"2"}});types.forEach(type=>fireEvent.change(type,{target:{value:"5"}}));
+ expect(preview).toBeDisabled();fireEvent.click(preview);expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/preview"))).toBe(false);
+ fireEvent.change(types[1],{target:{value:"2"}});expect(preview).toBeEnabled();fireEvent.click(preview);
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith("/preview"))).toBe(true));
+ const request=fetch.mock.calls.find(([url])=>String(url).endsWith("/preview"))!,command=JSON.parse(String(request[1]!.body));
+ expect(command.choices.map((choice:{kind:string;official_placement:unknown})=>({kind:choice.kind,position:choice.official_placement}))).toEqual([{kind,position:{group:"spu",skc:0,sku:0,type:5,sort:1,site:"US"}},{kind,position:{group:"spu",skc:0,sku:0,type:2,sort:2,site:"US"}}]);
+ expect(command.choices.map((choice:{presentation:{order:number}})=>choice.presentation.order)).toEqual([1,2]);
+ expect(fetch.mock.calls.some(([url])=>/\/(prepare|regenerate|confirm|approve)$/.test(String(url)))).toBe(false);
+});
 it("blocks a platform-specific default until its target matches",async()=>{
  const pinned={...template,targetPlatform:"shein"},real=fetch.getMockImplementation()!;
  fetch.mockImplementation((url,init)=>String(url).includes("/revisions/")?Promise.resolve(Response.json(pinned)):String(url).includes("/templates")?Promise.resolve(Response.json({items:[pinned],nextCursor:""})):String(url).endsWith("/requirements")?Promise.resolve(Response.json(sheinRequirements)):real(url,init));
