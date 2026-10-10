@@ -34,7 +34,7 @@
 | 参数 | 现有 runtime 提供 |
 | --- | --- |
 | ProductDB | 当前受限 Product pool；同 DB 当前 SRC/Catalog/Collection |
-| Access / Live / Specialist / Funding | 同一个 `dataserviceauth.Authorizer`，消费正式 IAM、用户 active 状态、native RoleModules 和企业 deny-only suspension |
+| Access / Live / Specialist / Funding | 同一个 `dataserviceauth.Authorizer`，消费正式 IAM、用户 active 状态、native RoleModules 和正式 resolver 的 optional deny-only suspension port |
 | Provider | `amazon.New(amazon.Options{ExecutablePath, DriverDirectory, EnabledSites})` |
 | Starter | `dataservicesruntime.TemporalStarter{Client: currentTemporalClient}`（`internal/app/runtime/dataservices`） |
 | Charges | 接收本 module 的 `ConsumerChargeOwner`，登记到当前 Resource `ConsumerChargeService`；返回带 Lookup 的该服务 |
@@ -44,7 +44,7 @@
 
 - exactReader 复用正式 `ReadExactServiceProjectAuthorization`，核对原 subject/project/org/member grant；不能替换为缓存 membership 或本地表。
 - activeUserReader 使用 `NewActiveUserClient(currentZitadelBase, normalHTTPClient)` 的官方 `/v2/users/{id}`，需 service credential 具备准确读取用户/项目授权的权限。server-only token，不保存/刷新用户 bearer。
-- nativePolicy 复用正式 Casbin/RoleModules，suspensionChecker 复用当前企业 owner，任何依赖缺失均 fail closed。
+- nativePolicy 复用正式 Casbin/RoleModules；按 2026-10-10 用户阶段决定及[已准入授权补充](../architecture/data-services-native-authorization.md)，suspensionChecker 沿正式 resolver 的 optional deny-only port，nil 表示本轮没有附加本地业务停用策略。有 checker 时停用/错误仍拒绝；准确 IAM、用户、凭据、policy 依赖缺失及取消/deadline 仍 fail closed。
 
 公共 module catalog 消费 `dataservicesapp.ModulePermissions("data-market")` / `("data-api")`：分别为 `workbench.data-market.use`、`workbench.data-api.manage`。**不会隐式授予已有“我的数据”权限**：
 
@@ -69,7 +69,7 @@ feature-local `internal/dataservice/httpapi` 负责框架 adapter，app module �
 
 ## 浏览器、Temporal 与 Resource 恢复
 
-#619 的正常接线候选使用 [原生 Data Services Compose profile](../../deployments/docker/account-compose/DATA_SERVICES.md)，显式安装于新空 Product 库；`data_services_runtime` 与原 `source_acquisition_runtime` 使用同一物理库、不同受限 pool，原 pool 不增权。当前正式 Workbench 没有企业业务停用 owner，而本特性 Authorizer 要求非空 suspensionChecker，故候选 **BLOCKED**、尚不能作为可用实例交付。此授权边界等待用户产品决定及适用设计准入；不能用永远允许的假 checker 接线。既有运行实例和数据保留。
+#619 的正常接线使用 [原生 Data Services Compose profile](../../deployments/docker/account-compose/DATA_SERVICES.md)，显式安装于新空 Product 库；`data_services_runtime` 与原 `source_acquisition_runtime` 使用同一物理库、不同受限 pool，原 pool 不增权。用户已决定本轮沿正式 IAM、不新增本地企业业务停用；[授权窄补充](../architecture/data-services-native-authorization.md) 独立准入后修复原 mandatory checker 的组合假定，不使用假 checker。既有运行实例和数据保留；实际运行证据写 #619/PR，不由此设计说明代签。
 
 Amazon 复用现有 Playwright Go SDK，先安装匹配 SDK 的 driver 与 Chromium，再显式配置路径。`DriverDirectory` 下必须有 `node`（Windows `node.exe`）及 `package/cli.js`；另提供真实 browser executable。`PLAYWRIGHT_NODEJS_PATH` / `PLAYWRIGHT_CLI_PATH` 如果存在必须等于这两个明确路径，否则 fail closed。serving 不下载安装，也不清空进程全局环境。
 

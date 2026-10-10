@@ -8,17 +8,15 @@ import (
 	datahttp "task-processor/internal/dataservice/httpapi"
 	"task-processor/internal/httproute"
 	"task-processor/internal/storecenter"
-	"task-processor/internal/workbenchcontext"
 	"testing"
 	"time"
 )
 
-func TestDataServicesRejectsMissingOrganizationSuspensionOwner(t *testing.T) {
+func TestDataServicesRejectsMissingFormalOrganizationAuthority(t *testing.T) {
 	a, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
-	resolver := workbenchcontext.NewResolver(nil, "project", "contract", nil)
-	_, _, err = buildDataServices(context.Background(), currentApplicationOptions{dataServices: &DataServicesDependencies{}}, routeAuthDependencies{organizationResolver: resolver}, a, &config.Config{}, storecenter.RuntimeCapabilities{})
-	require.ErrorContains(t, err, "organization suspension authority")
+	_, _, err = buildDataServices(context.Background(), currentApplicationOptions{dataServices: &DataServicesDependencies{}}, routeAuthDependencies{}, a, &config.Config{}, storecenter.RuntimeCapabilities{})
+	require.ErrorContains(t, err, "formal organization authority")
 }
 
 func TestDataServicesNativeAdmissionPreservesAllThreeAuthBoundaries(t *testing.T) {

@@ -64,8 +64,8 @@ func (m dataServicesModule) Register(r *kernelmodule.Registry) error {
 func buildDataServices(ctx context.Context, o currentApplicationOptions, deps routeAuthDependencies, a *authz.ListingKitAuthorizer, cfg *config.Config, capabilities storecenter.RuntimeCapabilities) (dataServicesModule, *orgresource.ConsumerChargeService, error) {
 	d := o.dataServices
 	resolver, ok := deps.organizationResolver.(*workbenchcontext.Resolver)
-	if !ok || resolver == nil || resolver.BusinessStatusChecker() == nil || a == nil {
-		return dataServicesModule{}, nil, errors.New("data services require current organization suspension authority")
+	if !ok || resolver == nil || a == nil {
+		return dataServicesModule{}, nil, errors.New("data services require formal organization authority")
 	}
 	if err := acquisitionstore.VerifyDataServicesRuntimePermissions(ctx, d.ProductDB); err != nil {
 		return dataServicesModule{}, nil, err

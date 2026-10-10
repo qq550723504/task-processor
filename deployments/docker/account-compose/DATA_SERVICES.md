@@ -1,13 +1,15 @@
 # Native Data Services profile (#619)
 
-**Current status: BLOCKED, candidate only.** The integration in #619 consumes
+The integration candidate in #619 consumes
 the frozen [Data Services architecture](../../../docs/architecture/data-services-v1.md)
 and [feature handoff](../../../docs/engineering/data-services-runtime-handoff.md).
-The normal Workbench resolver currently has no organization business-suspension
-owner. The feature authorizer requires that owner. Startup refuses the missing
-dependency; this profile cannot yet deliver a working Data Services instance.
-The product decision and any applicable design admission must precede a change
-to that authorization boundary. An always-allow status adapter is not supplied.
+The user selected the current formal IAM boundary without a local enterprise
+business-suspension feature. The independently admitted
+[native authorization supplement](../../../docs/architecture/data-services-native-authorization.md)
+consumes the formal Workbench resolver's optional deny-only port unchanged.
+Exact original member grants, active users, current permissions and deadlines
+remain required; explicitly supplied status checks still deny failures/suspension.
+No always-allow adapter or new local status owner is supplied.
 
 ## Installation and configuration
 
@@ -48,7 +50,7 @@ paths and never downloads browser dependencies. This does not prove that Amazon
 pages can be collected. No paid call, login, CAPTCHA bypass or proxy rotation is
 part of startup.
 
-## Start and retain after the blocker is resolved
+## Start and retain
 
 Use the base README's new-project port checks, private login handoff and normal
 TLS setup. Set a fresh project name and three free ports in a private `.env`.
@@ -60,9 +62,9 @@ docker compose --env-file .env -f docker-compose.yml -f docker-compose.data-serv
 docker compose --env-file .env -f docker-compose.yml -f docker-compose.data-services.yml ps --all
 ```
 
-These commands currently stop at the documented authorization blocker. Do not
-report the candidate as a usable deployment until that blocker is resolved and
-the normal application starts.
+Report actual startup and normal-login evidence separately from developer checks
+and business acceptance. Missing installed schema, grants, IAM, browser paths or
+worker lifecycle stops the application; serving does not repair prerequisites.
 
 After normal login and enterprise selection, intended entries are
 `/workbench/data/market`, `/workbench/data/api`, and `/workbench/data/mine`.
@@ -91,4 +93,4 @@ and user acceptance need their separate applicable authority/evidence.
 Installer/PostgreSQL, native policy/descriptor and lifecycle checks, plus UI and
 Linux image builds, are developer evidence. Normal IAM login, actual worker
 recovery, Amazon requests and user business acceptance remain **NOT_RUN** for
-this candidate while its authorization prerequisite is blocked.
+each candidate until those specific operations are actually executed.
