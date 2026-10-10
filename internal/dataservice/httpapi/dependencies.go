@@ -25,7 +25,10 @@ type Dependencies struct {
 	Funding     interface {
 		Funding(context.Context, collection.Scope) (orgresource.ResourceFunding, error)
 	}
-	Provider          interface{ Ready(context.Context) error }
+	Provider interface {
+		Ready(context.Context) error
+		Sites() []dataacquisition.Site
+	}
 	Results           dataacquisition.CapturedResultReader
 	Repository        ReadRepository
 	Options           func(context.Context) Options

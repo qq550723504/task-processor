@@ -281,7 +281,7 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 						starts := fixture.starts
 						w := send("POST", route.path, `{"query":{"site":"br","mode":"asin","asins":["B000123456"],"limit":1},"maximumRows":1,"maximumCostFen":5}`, route.header, command)
 						require.Equal(t, 400, w.Code, "unopened site must be rejected before durable admission")
-						require.Contains(t, w.Body.String(), "DATA_INVALID")
+						require.Contains(t, w.Body.String(), "INVALID_DATA_REQUEST")
 						require.Equal(t, starts, fixture.starts)
 						var count, reserved int64
 						require.NoError(t, productDB.Raw("SELECT count(*) FROM data_acquisition_jobs WHERE organization_id=? AND actor_id=? AND command_key=?", scope.OrganizationID, scope.ActorID, command).Scan(&count).Error)
@@ -446,6 +446,21 @@ func TestTwoDatabasesRecoverOriginalReservationAndChargeOnlySavedProduct(t *test
 			w = send("GET", APIBase+"/"+originalID, "", header, "")
 			require.Equal(t, 200, w.Code)
 			require.Contains(t, w.Body.String(), "CANCELED")
+			fixture.startErr = nil
+			w = send("POST", APIBase, body, header, uuid.NewString())
+			require.Equal(t, http.StatusAccepted, w.Code)
+			var another dataacquisition.Job
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &another))
+			fixture.startErr = dataacquisition.ErrUnavailable
+			w = send("POST", ConsoleBase+"/amazon/jobs/"+another.ID+"/cancel", `{}`, "", cancelCommand)
+			require.Equal(t, 409, w.Code, "the original cancellation command cannot cancel another job")
+			unchanged, err := repo.Read(ctx, scope, another.ID)
+			require.NoError(t, err)
+			require.Equal(t, "ADMITTED", unchanged.State)
+			checkQuota(1, 5)
+			w = send("POST", ConsoleBase+"/amazon/jobs/"+another.ID+"/cancel", `{}`, "", uuid.NewString())
+			require.Equal(t, 200, w.Code)
+			checkQuota(0, 0)
 			fixture.startErr = nil
 		})
 		w = send("POST", ConsoleBase+"/custom", `{"name":"HTTP fixture","query":{"site":"us","mode":"asin","asins":["B000123456"],"limit":1},"purpose":"controlled fixture","format":"json"}`, "", uuid.NewString())

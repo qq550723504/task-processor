@@ -3,6 +3,7 @@ package dataacquisitionpersistence
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -460,6 +461,10 @@ func (r *Repository) Admit(ctx context.Context, p dataacquisition.Principal, com
 // Every mutation follows key -> original UTC quota buckets -> job -> item.
 // Proof/binding/fencing deliberately do not require continuing execution rights.
 func (r *Repository) withJob(ctx context.Context, job dataacquisition.Job, active bool, action func(*gorm.DB, *jobRow, dataacquisition.Job) error) error {
+	return r.withJobCommand(ctx, job, active, "", action)
+}
+
+func (r *Repository) withJobCommand(ctx context.Context, job dataacquisition.Job, active bool, command string, action func(*gorm.DB, *jobRow, dataacquisition.Job) error) error {
 	if job.Scope.Validate() != nil || !collection.ValidID(job.ID) {
 		return dataacquisition.ErrInvalid
 	}
@@ -474,41 +479,53 @@ func (r *Repository) withJob(ctx context.Context, job dataacquisition.Job, activ
 	}
 	finished := false
 	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		key, err := lockKey(tx, job.Scope, pre.CredentialID)
-		if err != nil {
-			return err
-		}
-		if err = lockQuota(tx, pre, false); err != nil {
-			return err
-		}
-		row, err := readJob(tx, job.Scope, job.ID, true)
-		if err != nil {
-			return err
-		}
-		current, err := row.job()
-		if err != nil {
-			return err
-		}
-		if active {
-			var now time.Time
-			if err = tx.Raw("SELECT now()").Scan(&now).Error; err != nil {
+		apply := func(tx *gorm.DB) error {
+			key, err := lockKey(tx, job.Scope, pre.CredentialID)
+			if err != nil {
 				return err
 			}
-			if row.Canceled || !now.Before(row.Deadline) || (row.State != "ADMITTED" && row.State != "RUNNING") {
-				return dataacquisition.ErrForbidden
-			}
-			if err = activeKey(tx, key, job.Scope); err != nil {
+			if err = lockQuota(tx, pre, false); err != nil {
 				return err
 			}
-			if err = r.live.CheckExecution(ctx, dataacquisition.Principal{Scope: current.Scope, CredentialID: current.CredentialID}, current.Funding); err != nil {
+			row, err := readJob(tx, job.Scope, job.ID, true)
+			if err != nil {
 				return err
 			}
+			current, err := row.job()
+			if err != nil {
+				return err
+			}
+			if active {
+				var now time.Time
+				if err = tx.Raw("SELECT now()").Scan(&now).Error; err != nil {
+					return err
+				}
+				if row.Canceled || !now.Before(row.Deadline) || (row.State != "ADMITTED" && row.State != "RUNNING") {
+					return dataacquisition.ErrForbidden
+				}
+				if err = activeKey(tx, key, job.Scope); err != nil {
+					return err
+				}
+				if err = r.live.CheckExecution(ctx, dataacquisition.Principal{Scope: current.Scope, CredentialID: current.CredentialID}, current.Funding); err != nil {
+					return err
+				}
+			}
+			if err = action(tx, &row, current); err != nil {
+				return err
+			}
+			return nil
 		}
-		if err = action(tx, &row, current); err != nil {
-			return err
+		var err error
+		if command == "" {
+			err = apply(tx)
+		} else {
+			err = keystore.ApplyCancellationCommand(tx, job.Scope, command, job.ID, apply)
+			if errors.Is(err, dataservice.ErrConflict) {
+				err = dataacquisition.ErrConflict
+			}
 		}
-		finished = true
-		return nil
+		finished = err == nil
+		return err
 	})
 	if err != nil && finished {
 		return dataacquisition.ErrUnknown
@@ -855,7 +872,7 @@ func (r *Repository) Cancel(ctx context.Context, s collection.Scope, id, command
 	if err != nil {
 		return job, err
 	}
-	err = r.withJob(ctx, job, false, func(tx *gorm.DB, row *jobRow, current dataacquisition.Job) error {
+	err = r.withJobCommand(ctx, job, false, command, func(tx *gorm.DB, row *jobRow, current dataacquisition.Job) error {
 		if row.Canceled {
 			return nil
 		}

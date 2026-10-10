@@ -209,6 +209,15 @@ func (m *handler) handle(c *gin.Context, action, permission string, special, ext
 			err = dataacquisition.ErrInvalid
 		}
 		if err == nil {
+			enabled := false
+			for _, site := range m.Provider.Sites() {
+				enabled = enabled || site.Code == input.Query.Site
+			}
+			if !enabled {
+				err = dataacquisition.ErrInvalid
+			}
+		}
+		if err == nil {
 			err = m.Provider.Ready(ctx)
 		}
 		if err == nil {

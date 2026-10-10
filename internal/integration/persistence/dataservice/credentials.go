@@ -161,6 +161,41 @@ func writeCommand(tx *gorm.DB, s collection.Scope, command, hash, action, target
 func actorLock(tx *gorm.DB, s collection.Scope) error {
 	return tx.Exec("SELECT pg_advisory_xact_lock(hashtextextended(?,0))", "data-actor:"+collection.Digest([]string{s.OrganizationID, s.ActorID})).Error
 }
+
+// ApplyCancellationCommand binds one verified actor command to one target in
+// the caller's Product transaction. The callback takes key/quota/job/item locks
+// after this owner's actor lock and must reuse the supplied connection.
+func ApplyCancellationCommand(tx *gorm.DB, s collection.Scope, command, target string, apply func(*gorm.DB) error) error {
+	if s.Validate() != nil || !collection.ValidID(command) || !collection.ValidID(target) || apply == nil {
+		return dataservice.ErrInvalid
+	}
+	if tx == nil || tx.Statement == nil {
+		return dataservice.ErrUnavailable
+	}
+	if _, ok := tx.Statement.ConnPool.(gorm.TxCommitter); !ok {
+		return dataservice.ErrUnavailable
+	}
+	if err := actorLock(tx, s); err != nil {
+		return err
+	}
+	const action = "cancel_job"
+	hash := collection.Digest(struct{ Action, Target string }{action, target})
+	row, replay, err := readCommand(tx, s, command, hash, action)
+	if err != nil {
+		return err
+	}
+	if replay {
+		if row.TargetID != target {
+			return dataservice.ErrConflict
+		}
+		return nil
+	}
+	if err := apply(tx); err != nil {
+		return err
+	}
+	return writeCommand(tx, s, command, hash, action, target, struct{ TargetID string }{target})
+}
+
 func (r *CredentialRepository) Create(ctx context.Context, key dataservice.Credential, command, hash string) (dataservice.Credential, bool, error) {
 	if key.Scope.Validate() != nil || !collection.ValidID(key.ID) || !collection.ValidID(command) || len(hash) != 64 || len(key.Digest) != 64 || len(key.Suffix) != 4 || key.State != "ACTIVE" || key.Revision != 1 {
 		return dataservice.Credential{}, false, dataservice.ErrInvalid
