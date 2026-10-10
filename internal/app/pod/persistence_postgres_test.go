@@ -1,20 +1,22 @@
-package podpersistence
+package podapp
 
 import (
 	"context"
+	"strings"
+	submissionstore "task-processor/internal/integration/persistence/listing/submission"
+	podstore "task-processor/internal/integration/persistence/product/pod"
+	"task-processor/internal/listing/submission"
+	"task-processor/internal/product/collection"
+	"task-processor/internal/product/pod"
+	"testing"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"strings"
-	submissionstore "task-processor/internal/integration/persistence/listing/submission"
-	"task-processor/internal/listing/submission"
-	"task-processor/internal/product/collection"
-	"task-processor/internal/product/pod"
-	"testing"
-	"time"
 )
 
 func storedPlan() pod.Plan {
@@ -33,9 +35,9 @@ func TestPostgresMerchantFenceSurvivesCredentialRotationAndScopedReplay(t *testi
 	pool, e := db.DB()
 	require.NoError(t, e)
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
-	require.NoError(t, InstallSchema(db))
+	require.NoError(t, podstore.InstallSchema(db))
 	require.NoError(t, submissionstore.InstallSchema(db))
-	r, e := NewRepository(ctx, db)
+	r, e := podstore.NewRepository(ctx, db)
 	require.NoError(t, e)
 	guard := func(context.Context, *gorm.DB, pod.Plan) error { return nil }
 	p := storedPlan()
@@ -94,7 +96,7 @@ func TestPostgresMerchantFenceSurvivesCredentialRotationAndScopedReplay(t *testi
 		object := pod.ObjectReceipt{FileCode: "approved.png", Hash: p.Artwork.Hash}
 		oss := acquire(o, pod.StepOSS)
 		failingUpdate()
-		require.Error(t, r.SaveStep(ctx, o, pod.StepOSS, oss, object, guard))
+		require.Error(t, r.SaveStep(ctx, o, pod.StepOSS, object, completeStep(pod.StepOSS, oss, object), guard))
 		allowUpdate()
 		require.Equal(t, submission.ExecutionClaimed, attempt(pod.StepOSS).Status)
 		o, e = r.Read(ctx, p.Scope, p.OperationID)
@@ -105,13 +107,13 @@ func TestPostgresMerchantFenceSurvivesCredentialRotationAndScopedReplay(t *testi
 		replay, e := kernel.Acquire(ctx, command)
 		require.NoError(t, e)
 		require.Nil(t, replay.Permit)
-		require.NoError(t, r.SaveStep(ctx, o, pod.StepOSS, oss, object, guard))
+		require.NoError(t, r.SaveStep(ctx, o, pod.StepOSS, object, completeStep(pod.StepOSS, oss, object), guard))
 		require.Equal(t, submission.ExecutionSucceeded, attempt(pod.StepOSS).Status)
 		o, e = r.Read(ctx, p.Scope, p.OperationID)
 		require.NoError(t, e)
 		material := pod.MaterialReceipt{ID: "480953643", FileCode: object.FileCode, Hash: object.Hash, Name: pod.MaterialName(p.OperationID), URL: "https://cdn.sdspod.com/images1000Thumbs/test/approved.png?material_id=480953643", Width: 100, Height: 100}
 		permit := acquire(o, pod.StepMaterial)
-		require.NoError(t, r.SaveStep(ctx, o, pod.StepMaterial, permit, material, guard))
+		require.NoError(t, r.SaveStep(ctx, o, pod.StepMaterial, material, completeStep(pod.StepMaterial, permit, material), guard))
 		o, e = r.FreezeSync(ctx, o, guard)
 		require.NoError(t, e)
 		sync := acquire(o, pod.StepSync)
@@ -126,10 +128,10 @@ func TestPostgresMerchantFenceSurvivesCredentialRotationAndScopedReplay(t *testi
 		altered := *o.Intent
 		altered.Layers = append([]pod.DesignLayer(nil), o.Intent.Layers...)
 		altered.Layers[0].FabricJSON = strings.Replace(altered.Layers[0].FabricJSON, `"left":300`, `"left":301`, 1)
-		require.ErrorIs(t, r.Finish(ctx, o, qualify(altered), guard), pod.ErrUnknown)
+		require.ErrorIs(t, r.Finish(ctx, o, qualify(altered), finishExecution(qualify(altered)), guard), pod.ErrUnknown)
 		q := qualify(*o.Intent)
 		failingUpdate()
-		require.Error(t, r.Finish(ctx, o, q, guard))
+		require.Error(t, r.Finish(ctx, o, q, finishExecution(q), guard))
 		allowUpdate()
 		require.Equal(t, submission.ExecutionOutcomeUnknown, attempt(pod.StepSync).Status)
 		o, e = r.Read(ctx, p.Scope, p.OperationID)
@@ -137,8 +139,8 @@ func TestPostgresMerchantFenceSurvivesCredentialRotationAndScopedReplay(t *testi
 		require.Nil(t, o.Finished)
 		require.NoError(t, db.Table("product_pod_fences").Count(&count).Error)
 		require.EqualValues(t, 1, count)
-		require.NoError(t, r.Finish(ctx, o, q, guard))
-		require.NoError(t, r.Finish(ctx, o, q, guard))
+		require.NoError(t, r.Finish(ctx, o, q, finishExecution(q), guard))
+		require.NoError(t, r.Finish(ctx, o, q, finishExecution(q), guard))
 		require.Equal(t, submission.ExecutionSucceeded, attempt(pod.StepSync).Status)
 		o, e = r.Read(ctx, p.Scope, p.OperationID)
 		require.NoError(t, e)

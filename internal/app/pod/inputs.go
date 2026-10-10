@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"gorm.io/gorm"
 	"image"
 	"net/http"
 	"reflect"
@@ -21,6 +20,8 @@ import (
 	"task-processor/internal/product/review"
 	"task-processor/internal/product/supplymarket"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type DesignExecutionAuthorizer interface {

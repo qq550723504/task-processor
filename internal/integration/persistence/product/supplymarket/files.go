@@ -2,10 +2,11 @@ package supplymarketpersistence
 
 import (
 	"context"
-	"gorm.io/gorm"
 	"task-processor/internal/product/collection"
 	"task-processor/internal/product/supplymarket"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type fileRow struct {

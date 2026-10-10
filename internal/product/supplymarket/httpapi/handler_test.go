@@ -2,9 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +9,10 @@ import (
 	"task-processor/internal/httproute"
 	"task-processor/internal/product/supplymarket"
 	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 )
 
 type fixtureService struct {

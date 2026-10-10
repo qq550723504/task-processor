@@ -3,8 +3,6 @@ package podapp
 import (
 	"bytes"
 	"context"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
 	"image"
 	"image/png"
 	"io"
@@ -14,6 +12,9 @@ import (
 	"task-processor/internal/product/collection"
 	"task-processor/internal/product/pod"
 	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 )
 
 type approvalReader struct{ commit asset.ApprovalCommit }

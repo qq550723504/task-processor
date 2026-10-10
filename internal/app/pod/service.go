@@ -2,8 +2,6 @@ package podapp
 
 import (
 	"context"
-	"gorm.io/gorm"
-	"task-processor/internal/app/productsourcing"
 	supplyapp "task-processor/internal/app/supplychain"
 	"task-processor/internal/authidentity"
 	podstore "task-processor/internal/integration/persistence/product/pod"
@@ -12,23 +10,28 @@ import (
 	"task-processor/internal/product/asset"
 	"task-processor/internal/product/collection"
 	"task-processor/internal/product/pod"
+	"task-processor/internal/product/sourcing"
 	"task-processor/internal/product/supplymarket"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type Starter interface {
 	Ensure(context.Context, Execution) error
 }
+type ProductReceiver func(context.Context, *gorm.DB, collection.Authorizer, collection.Scope, string, string, string, sourcing.SourceEnvelope) (collection.Receipt, error)
 type Service struct {
-	Authorization collection.Authorizer
-	Repository    *podstore.Repository
-	Inputs        OriginalInputs
-	Templates     Templates
-	Credentials   sds.CredentialSource
-	Approvals     *asset.SourceApprovalService
-	Processor     *Processor
-	Starter       Starter
-	Intents       submission.ExecutionIntentReader
+	Authorization  collection.Authorizer
+	Repository     *podstore.Repository
+	Inputs         OriginalInputs
+	Templates      Templates
+	Credentials    sds.CredentialSource
+	Approvals      *asset.SourceApprovalService
+	Processor      *Processor
+	Starter        Starter
+	Intents        submission.ExecutionIntentReader
+	ReceiveProduct ProductReceiver
 }
 type DesignRequest struct {
 	TemplateItem     pod.InputReference `json:"templateItem"`
@@ -375,7 +378,10 @@ func (s *Service) ImportTemplate(ctx context.Context, key, id, digest string) (c
 		if e != nil {
 			return collection.Receipt{}, e
 		}
-		return productsourcing.ReceivePOD(ctx, tx, s.Authorization, scope, operation, "sds_template", "SDS 模板 · 未定制", envelope)
+		if s.ReceiveProduct == nil {
+			return collection.Receipt{}, pod.ErrUnavailable
+		}
+		return s.ReceiveProduct(ctx, tx, s.Authorization, scope, operation, "sds_template", "SDS 模板 · 未定制", envelope)
 	}, func(ctx context.Context) error { return s.guard(ctx, scope, supplymarket.PermissionSelect) })
 }
 func (s *Service) ImportFinished(ctx context.Context, key, id string) (collection.Receipt, error) {
@@ -393,7 +399,10 @@ func (s *Service) ImportFinished(ctx context.Context, key, id string) (collectio
 		if e != nil {
 			return collection.Receipt{}, e
 		}
-		return productsourcing.ReceivePOD(ctx, tx, s.Authorization, scope, operation, "sds_finished", "SDS 定制成品", envelope)
+		if s.ReceiveProduct == nil {
+			return collection.Receipt{}, pod.ErrUnavailable
+		}
+		return s.ReceiveProduct(ctx, tx, s.Authorization, scope, operation, "sds_finished", "SDS 定制成品", envelope)
 	}, func(ctx context.Context) error { return s.guard(ctx, scope, supplymarket.PermissionSelect) })
 }
 func (s *Service) ImportByKey(ctx context.Context, key string) (collection.Receipt, error) {

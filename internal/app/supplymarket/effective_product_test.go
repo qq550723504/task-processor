@@ -2,8 +2,6 @@ package supplymarketapp
 
 import (
 	"context"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/collection"
@@ -12,6 +10,9 @@ import (
 	"task-processor/internal/product/supplymarket"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 )
 
 type snapshotFixture struct{ original, applied catalog.PublishedSnapshot }

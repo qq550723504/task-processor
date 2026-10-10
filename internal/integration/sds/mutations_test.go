@@ -2,7 +2,6 @@ package sds
 
 import (
 	"context"
-	"github.com/stretchr/testify/require"
 	"io"
 	"net/http"
 	"strings"
@@ -10,6 +9,8 @@ import (
 	"task-processor/internal/product/pod"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSyncEmptyResponseRemainsUnknownAndDoesNotRetry(t *testing.T) {
@@ -24,7 +25,7 @@ func TestSyncEmptyResponseRemainsUnknownAndDoesNotRetry(t *testing.T) {
 	require.NoError(t, e)
 	p := pod.Plan{Binding: pod.AccountBinding{"binding", "revision", "36811", pod.ProtocolRevision}, OperationID: "12752596-6056-4316-9f2f-380c97df9675"}
 	permit := &submission.SendPermit{AttemptID: "attempt", ClaimToken: "test", LeaseExpiresAt: time.Now().Add(time.Minute)}
-	e = c.Sync(context.Background(), p, []byte(`{"product_id":95147}`), permit)
+	e = c.Sync(context.Background(), p, []byte(`{"product_id":95147}`), pod.TransportPermit(permit))
 	require.ErrorIs(t, e, pod.ErrUnknown)
 	require.Equal(t, 1, calls)
 	_, e = c.Upload(context.Background(), p, nil, nil)

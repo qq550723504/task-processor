@@ -2,8 +2,9 @@ package podpersistence
 
 import (
 	"context"
-	"gorm.io/gorm"
 	"task-processor/internal/product/pod"
+
+	"gorm.io/gorm"
 )
 
 var Tables = []string{"product_pod_operations", "product_pod_fences", "product_pod_commands"}

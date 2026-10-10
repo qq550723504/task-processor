@@ -2,8 +2,9 @@ package supplymarketpersistence
 
 import (
 	"context"
-	"gorm.io/gorm"
 	"task-processor/internal/product/supplymarket"
+
+	"gorm.io/gorm"
 )
 
 var Tables = []string{"supply_market_records", "supply_market_events", "supply_market_releases", "supply_market_commands", "supply_market_private_uploads"}

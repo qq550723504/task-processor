@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/gin-gonic/gin"
 	"io"
 	"mime"
 	"net/http"
 	"net/url"
-	sigjson "sigs.k8s.io/json"
 	"strconv"
 	"strings"
 	podapp "task-processor/internal/app/pod"
@@ -20,6 +18,9 @@ import (
 	"task-processor/internal/product/supplymarket"
 	"time"
 	"unicode/utf8"
+
+	"github.com/gin-gonic/gin"
+	sigjson "sigs.k8s.io/json"
 )
 
 const BasePath = "/api/v1/workbench/pod"

@@ -16,9 +16,9 @@ type MutationKernel interface {
 	MarkUnknown(context.Context, submission.ExecutionClaim, submission.UnknownReason) (submission.ExecutionAttempt, error)
 }
 type Mutations interface {
-	Upload(context.Context, pod.Plan, []byte, *submission.SendPermit) (pod.ObjectReceipt, error)
-	CreateMaterial(context.Context, pod.Plan, pod.ObjectReceipt, *submission.SendPermit) (pod.MaterialReceipt, error)
-	Sync(context.Context, pod.Plan, []byte, *submission.SendPermit) error
+	Upload(context.Context, pod.Plan, []byte, *pod.MutationPermit) (pod.ObjectReceipt, error)
+	CreateMaterial(context.Context, pod.Plan, pod.ObjectReceipt, *pod.MutationPermit) (pod.MaterialReceipt, error)
+	Sync(context.Context, pod.Plan, []byte, *pod.MutationPermit) error
 }
 type Templates interface {
 	List(context.Context, int, int, string) (pod.TemplatePage, error)
@@ -85,22 +85,23 @@ func (p *Processor) send(ctx context.Context, o pod.Operation, step string, comm
 		return nil, pod.ErrForbidden
 	}
 	var value any
+	permit := pod.TransportPermit(a.Permit)
 	switch step {
 	case pod.StepOSS:
-		value, e = p.Mutations.Upload(ctx, o.Plan, raw, a.Permit)
+		value, e = p.Mutations.Upload(ctx, o.Plan, raw, permit)
 	case pod.StepMaterial:
 		if o.Object == nil {
 			e = pod.ErrInvalid
 		} else {
-			value, e = p.Mutations.CreateMaterial(ctx, o.Plan, *o.Object, a.Permit)
+			value, e = p.Mutations.CreateMaterial(ctx, o.Plan, *o.Object, permit)
 		}
 	case pod.StepSync:
-		e = p.Mutations.Sync(ctx, o.Plan, o.Payload, a.Permit)
+		e = p.Mutations.Sync(ctx, o.Plan, o.Payload, permit)
 	default:
 		e = pod.ErrInvalid
 	}
 	if e == nil && step != pod.StepSync {
-		e = p.Repository.SaveStep(ctx, o, step, a.Permit, value, p.Inputs.Guard)
+		e = p.Repository.SaveStep(ctx, o, step, value, completeStep(step, a.Permit, value), p.Inputs.Guard)
 	}
 	if e != nil {
 		_, _ = p.Kernel.MarkUnknown(ctx, pod.PermitClaim(o.Plan.Scope, a.Permit), submission.UnknownResponseLost)
@@ -181,7 +182,7 @@ func (p *Processor) Observe(ctx context.Context, in Execution) (ExecutionResult,
 		return ExecutionResult{Wait: true}, nil
 	}
 	q, e := p.Observer.Observe(ctx, sds.Binding{ID: o.Plan.Binding.ID, Revision: o.Plan.Binding.Revision, MerchantID: o.Plan.Binding.MerchantID}, *o.Intent)
-	if e != nil || p.Repository.Finish(ctx, o, q, p.Inputs.Guard) != nil {
+	if e != nil || p.Repository.Finish(ctx, o, q, finishExecution(q), p.Inputs.Guard) != nil {
 		return ExecutionResult{Wait: true}, nil
 	}
 	return ExecutionResult{Done: true}, nil

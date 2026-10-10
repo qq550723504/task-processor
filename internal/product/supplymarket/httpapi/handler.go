@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/gin-gonic/gin"
 	"io"
 	"mime"
 	"net/http"
 	"net/url"
-	sigjson "sigs.k8s.io/json"
 	"strconv"
 	"strings"
 	"task-processor/internal/authz"
@@ -18,6 +16,9 @@ import (
 	"task-processor/internal/product/supplymarket"
 	"time"
 	"unicode/utf8"
+
+	"github.com/gin-gonic/gin"
+	sigjson "sigs.k8s.io/json"
 )
 
 const BasePath = "/api/v1/workbench/supply-market"
@@ -48,9 +49,7 @@ func Routes(service Service, files Files, bind func(context.Context, string) (co
 	specs := []routeSpec{{http.MethodGet, BasePath + "/releases", "market", false}, {http.MethodGet, BasePath + "/releases/:id", "product", false}, {http.MethodGet, BasePath + "/choices/:id", "choice", false}, {http.MethodPost, BasePath + "/select", "select", false}, {http.MethodPost, BasePath + "/uploads", "upload", false}}
 	for _, base := range []string{BasePath, AdminPath} {
 		platform := base == AdminPath
-		for _, spec := range []routeSpec{{http.MethodGet, base + "/records", "records", platform}, {http.MethodGet, base + "/records/:id", "record", platform}, {http.MethodGet, base + "/records/:id/releases", "record-releases", platform}, {http.MethodGet, base + "/records/:id/events", "events", platform}, {http.MethodGet, base + "/records/:id/files/:file_id", "download", platform}, {http.MethodGet, base + "/by-key/:key", "operation", platform}, {http.MethodPost, base + "/commands", "command", platform}} {
-			specs = append(specs, spec)
-		}
+		specs = append(specs, []routeSpec{{http.MethodGet, base + "/records", "records", platform}, {http.MethodGet, base + "/records/:id", "record", platform}, {http.MethodGet, base + "/records/:id/releases", "record-releases", platform}, {http.MethodGet, base + "/records/:id/events", "events", platform}, {http.MethodGet, base + "/records/:id/files/:file_id", "download", platform}, {http.MethodGet, base + "/by-key/:key", "operation", platform}, {http.MethodPost, base + "/commands", "command", platform}}...)
 	}
 	routes := make([]httproute.Descriptor, 0, len(specs))
 	for _, spec := range specs {

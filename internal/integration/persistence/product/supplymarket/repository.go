@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"time"
 
-	"gorm.io/gorm"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/product/collection"
 	"task-processor/internal/product/supplymarket"
+
+	"gorm.io/gorm"
 )
 
 type DisclosureVerifier interface {

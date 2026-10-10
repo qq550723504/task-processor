@@ -3,16 +3,17 @@ package supplymarketpersistence
 import (
 	"context"
 	"errors"
+	"task-processor/internal/product/collection"
+	"task-processor/internal/product/supplymarket"
+	"testing"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"task-processor/internal/product/collection"
-	"task-processor/internal/product/supplymarket"
-	"testing"
-	"time"
 )
 
 type verifierFixture struct{ fail error }

@@ -1,12 +1,13 @@
 package httpapi
 
 import (
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
 	"net/http/httptest"
 	"strings"
 	podapp "task-processor/internal/app/pod"
 	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPODWriteRejectsDuplicateAndCredentialsBeforeService(t *testing.T) {

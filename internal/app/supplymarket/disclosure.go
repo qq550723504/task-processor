@@ -2,7 +2,6 @@ package supplymarketapp
 
 import (
 	"context"
-	"gorm.io/gorm"
 	"reflect"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	collectionstore "task-processor/internal/integration/persistence/product/collection"
@@ -11,6 +10,8 @@ import (
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/collection"
 	"task-processor/internal/product/supplymarket"
+
+	"gorm.io/gorm"
 )
 
 type disclosureVerifier struct {

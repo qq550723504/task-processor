@@ -3,9 +3,10 @@ package podpersistence
 import (
 	"context"
 	"encoding/json"
-	"gorm.io/gorm"
 	"task-processor/internal/product/collection"
 	"task-processor/internal/product/pod"
+
+	"gorm.io/gorm"
 )
 
 type Receiver func(context.Context, *gorm.DB, collection.Scope, string) (collection.Receipt, error)

@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"task-processor/internal/integration/httpimage"
-	"task-processor/internal/listing/submission"
 	"task-processor/internal/product/pod"
 	"time"
 )
@@ -46,9 +45,6 @@ func NewMutationClient(h *http.Client, credentials CredentialSource, ossHosts []
 	copy.Timeout = 45 * time.Second
 	return &MutationClient{r, &copy, allowed}, nil
 }
-func permitValid(p *submission.SendPermit) bool {
-	return p != nil && p.AttemptID != "" && p.ClaimToken != "" && time.Now().Before(p.LeaseExpiresAt)
-}
 func (c *MutationClient) credentials(ctx context.Context, p pod.Plan) (Credentials, error) {
 	v, e := c.read.credentials.Current(ctx)
 	if e != nil || !matchesBinding(v, p.Binding) {
@@ -56,8 +52,8 @@ func (c *MutationClient) credentials(ctx context.Context, p pod.Plan) (Credentia
 	}
 	return v, nil
 }
-func (c *MutationClient) Upload(ctx context.Context, p pod.Plan, raw []byte, permit *submission.SendPermit) (pod.ObjectReceipt, error) {
-	if ctx == nil || !permitValid(permit) || len(raw) < 1 || len(raw) > pod.MaxArtworkBytes {
+func (c *MutationClient) Upload(ctx context.Context, p pod.Plan, raw []byte, permit *pod.MutationPermit) (pod.ObjectReceipt, error) {
+	if ctx == nil || !permit.Valid() || len(raw) < 1 || len(raw) > pod.MaxArtworkBytes {
 		return pod.ObjectReceipt{}, pod.ErrInvalid
 	}
 	sum := sha256.Sum256(raw)
@@ -104,7 +100,7 @@ func (c *MutationClient) Upload(ctx context.Context, p pod.Plan, raw []byte, per
 	if _, e = part.Write(raw); e != nil || writer.Close() != nil {
 		return pod.ObjectReceipt{}, pod.ErrUnknown
 	}
-	if _, e = c.credentials(ctx, p); e != nil || !permitValid(permit) {
+	if _, e = c.credentials(ctx, p); e != nil || !permit.Valid() {
 		return pod.ObjectReceipt{}, pod.ErrUnknown
 	}
 	request, e := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(body.Bytes()))
@@ -138,8 +134,8 @@ type materialDTO struct {
 	AltURL    string   `json:"imgUrl"`
 }
 
-func (c *MutationClient) CreateMaterial(ctx context.Context, p pod.Plan, object pod.ObjectReceipt, permit *submission.SendPermit) (pod.MaterialReceipt, error) {
-	if ctx == nil || !permitValid(permit) || object.Hash != p.Artwork.Hash || object.FileCode == "" || strings.ContainsAny(object.FileCode, "/\\?#\x00") {
+func (c *MutationClient) CreateMaterial(ctx context.Context, p pod.Plan, object pod.ObjectReceipt, permit *pod.MutationPermit) (pod.MaterialReceipt, error) {
+	if ctx == nil || !permit.Valid() || object.Hash != p.Artwork.Hash || object.FileCode == "" || strings.ContainsAny(object.FileCode, "/\\?#\x00") {
 		return pod.MaterialReceipt{}, pod.ErrInvalid
 	}
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
@@ -209,8 +205,8 @@ func (c *MutationClient) CreateMaterial(ctx context.Context, p pod.Plan, object 
 	}
 	return pod.MaterialReceipt{ID: string(m.ID), Name: m.Name, FileCode: m.FileCode, URL: u.String(), Hash: p.Artwork.Hash, Width: w, Height: h}, nil
 }
-func (c *MutationClient) Sync(ctx context.Context, p pod.Plan, payload []byte, permit *submission.SendPermit) error {
-	if ctx == nil || !permitValid(permit) || len(payload) < 1 || len(payload) > 2<<20 || !json.Valid(payload) {
+func (c *MutationClient) Sync(ctx context.Context, p pod.Plan, payload []byte, permit *pod.MutationPermit) error {
+	if ctx == nil || !permit.Valid() || len(payload) < 1 || len(payload) > 2<<20 || !json.Valid(payload) {
 		return pod.ErrInvalid
 	}
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
@@ -220,8 +216,8 @@ func (c *MutationClient) Sync(ctx context.Context, p pod.Plan, payload []byte, p
 	// response stays unknown until exact saved-design/task/render observation.
 	return pod.ErrUnknown
 }
-func (c *MutationClient) post(ctx context.Context, p pod.Plan, path string, payload []byte, permit *submission.SendPermit) ([]byte, error) {
-	if path != "/materials/one" && path != "/ps/design/syncDesign" || !permitValid(permit) {
+func (c *MutationClient) post(ctx context.Context, p pod.Plan, path string, payload []byte, permit *pod.MutationPermit) ([]byte, error) {
+	if path != "/materials/one" && path != "/ps/design/syncDesign" || !permit.Valid() {
 		return nil, pod.ErrInvalid
 	}
 	credentials, e := c.credentials(ctx, p)

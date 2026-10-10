@@ -2,12 +2,13 @@ package supplymarket
 
 import (
 	"context"
-	"github.com/stretchr/testify/require"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	"task-processor/internal/product/collection"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 type liveRoles struct{}

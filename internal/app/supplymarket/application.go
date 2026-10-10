@@ -2,14 +2,14 @@ package supplymarketapp
 
 import (
 	"context"
-	"gorm.io/gorm"
-	"task-processor/internal/app/productsourcing"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	collectionstore "task-processor/internal/integration/persistence/product/collection"
 	reviewstore "task-processor/internal/integration/persistence/product/review"
 	marketstore "task-processor/internal/integration/persistence/product/supplymarket"
 	"task-processor/internal/product/collection"
 	"task-processor/internal/product/supplymarket"
+
+	"gorm.io/gorm"
 )
 
 type Dependencies struct {
@@ -18,6 +18,7 @@ type Dependencies struct {
 	OriginalAuthorization collection.ExecutionAuthorizer
 	Collections           *collection.Service
 	PrivateStorage        supplymarket.PrivateFileStorage
+	Receiver              func(*gorm.DB) (marketstore.Receiver, error)
 }
 type Application struct {
 	Market *supplymarket.Service
@@ -28,7 +29,7 @@ type Application struct {
 // currentapplication/runtime owner installs fresh schemas and grants separately;
 // constructing this feature never migrates, seeds or manufactures authority.
 func NewApplication(ctx context.Context, d Dependencies) (*Application, error) {
-	if ctx == nil || d.ProductDB == nil || d.Authorization == nil || d.OriginalAuthorization == nil || d.Collections == nil || d.PrivateStorage == nil {
+	if ctx == nil || d.ProductDB == nil || d.Authorization == nil || d.OriginalAuthorization == nil || d.Collections == nil || d.PrivateStorage == nil || d.Receiver == nil {
 		return nil, supplymarket.ErrUnavailable
 	}
 	if collectionstore.VerifyReceiverSchema(ctx, d.ProductDB) != nil {
@@ -41,9 +42,7 @@ func NewApplication(ctx context.Context, d Dependencies) (*Application, error) {
 		Files: func(tx *gorm.DB) (marketstore.FileVerifier, error) {
 			return marketstore.NewFileVerifier(tx, d.PrivateStorage)
 		},
-		Receiver: func(tx *gorm.DB) (marketstore.Receiver, error) {
-			return productsourcing.NewMarketReceiver(tx, d.Authorization)
-		},
+		Receiver: d.Receiver,
 	})
 	if err != nil {
 		return nil, err

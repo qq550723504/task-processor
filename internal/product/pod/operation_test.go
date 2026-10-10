@@ -2,11 +2,12 @@ package pod
 
 import (
 	"encoding/json"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
 	"math"
 	"task-processor/internal/product/collection"
 	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 )
 
 func testPlan() Plan {

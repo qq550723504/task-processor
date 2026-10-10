@@ -2,11 +2,12 @@ package podapp
 
 import (
 	"context"
-	"github.com/stretchr/testify/require"
 	"task-processor/internal/listing/submission"
 	"task-processor/internal/product/collection"
 	"task-processor/internal/product/pod"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type startAuthorization struct {

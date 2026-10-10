@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"gorm.io/gorm"
 	submissionstore "task-processor/internal/integration/persistence/listing/submission"
-	"task-processor/internal/listing/submission"
 	"task-processor/internal/product/collection"
 	"task-processor/internal/product/pod"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type Guard func(context.Context, *gorm.DB, pod.Plan) error
+type Finalize func(context.Context, *gorm.DB, pod.Operation) error
 type Repository struct{ db *gorm.DB }
 
 func NewRepository(ctx context.Context, db *gorm.DB) (*Repository, error) {
@@ -46,7 +47,6 @@ func read(db *gorm.DB, scope collection.Scope, id string, lock bool) (pod.Operat
 	var row operationRow
 	q := db.Table("product_pod_operations").Where("id=? AND organization_id=? AND actor_id=? AND member_id=?", id, scope.OrganizationID, scope.ActorID, scope.MemberID)
 	if lock {
-		q = q.Set("gorm:query_option", "FOR UPDATE")
 		result := db.Raw("SELECT id,organization_id,actor_id,member_id,operation_json,created_at,next_observation_at FROM product_pod_operations WHERE id=? AND organization_id=? AND actor_id=? AND member_id=? FOR UPDATE", id, scope.OrganizationID, scope.ActorID, scope.MemberID).Scan(&row)
 		if result.Error != nil {
 			return pod.Operation{}, result.Error
@@ -192,8 +192,8 @@ func (r *Repository) Check(ctx context.Context, o pod.Operation, guard Guard) er
 }
 
 // Provider evidence and retained step reference are committed in one Product UoW.
-func (r *Repository) SaveStep(ctx context.Context, o pod.Operation, step string, permit *submission.SendPermit, value any, guard Guard) error {
-	if permit == nil || guard == nil || step != pod.StepOSS && step != pod.StepMaterial {
+func (r *Repository) SaveStep(ctx context.Context, o pod.Operation, step string, value any, finalize Finalize, guard Guard) error {
+	if finalize == nil || guard == nil || step != pod.StepOSS && step != pod.StepMaterial {
 		return pod.ErrInvalid
 	}
 	return r.write(ctx, func(tx *gorm.DB) error {
@@ -221,20 +221,7 @@ func (r *Repository) SaveStep(ctx context.Context, o pod.Operation, step string,
 			}
 			current.Material = &v
 		}
-		finalizer, e := submissionstore.NewTransactionFinalizer(ctx, tx)
-		if e != nil {
-			return e
-		}
-		kernel, e := submission.NewExecutionKernel(finalizer)
-		if e != nil {
-			return e
-		}
-		attempt, e := exactAttempt(ctx, finalizer, current, step)
-		if e != nil || attempt.AttemptID != permit.AttemptID {
-			return pod.ErrUnknown
-		}
-		evidence := submission.ExecutionEvidence{Kind: submission.EvidenceProviderResponse, Outcome: submission.ExecutionSucceeded, Reference: current.Plan.OperationID + ":" + step, Fingerprint: collection.Digest(value), ObservedAt: time.Now().UTC()}
-		if _, e = kernel.Complete(ctx, pod.PermitClaim(current.Plan.Scope, permit), evidence); e != nil {
+		if e = finalize(ctx, tx, current); e != nil {
 			return e
 		}
 		return update(tx, current)
@@ -301,9 +288,9 @@ func (r *Repository) ObservePermit(ctx context.Context, scope collection.Scope, 
 
 // All sent steps must be terminal. A late sync readback resolves only its
 // original attempt; the global template fence is released in this transaction.
-func (r *Repository) Finish(ctx context.Context, o pod.Operation, q pod.QualifiedFinished, guard Guard) error {
+func (r *Repository) Finish(ctx context.Context, o pod.Operation, q pod.QualifiedFinished, finalize Finalize, guard Guard) error {
 	f := q.Reference()
-	if f.OperationID != o.Plan.OperationID {
+	if finalize == nil || guard == nil || f.OperationID != o.Plan.OperationID {
 		return pod.ErrUnknown
 	}
 	return r.write(ctx, func(tx *gorm.DB) error {
@@ -326,35 +313,7 @@ func (r *Repository) Finish(ctx context.Context, o pod.Operation, q pod.Qualifie
 		if current.Object == nil || current.Material == nil || current.Intent == nil || !q.MatchesIntent(*current.Intent) || f.MerchantID != current.Plan.Binding.MerchantID {
 			return pod.ErrUnknown
 		}
-		finalizer, e := submissionstore.NewTransactionFinalizer(ctx, tx)
-		if e != nil {
-			return e
-		}
-		kernel, e := submission.NewExecutionKernel(finalizer)
-		if e != nil {
-			return e
-		}
-		for _, step := range []string{pod.StepOSS, pod.StepMaterial} {
-			attempt, e := exactAttempt(ctx, finalizer, current, step)
-			if e != nil || attempt.Status != submission.ExecutionSucceeded || attempt.Target.Platform != "sds" || attempt.Target.StoreID != current.Plan.Binding.MerchantID || attempt.Target.SubjectID != current.Plan.OperationID+":"+step {
-				return pod.ErrUnknown
-			}
-		}
-		attempt, e := exactAttempt(ctx, finalizer, current, pod.StepSync)
-		if e != nil {
-			return pod.ErrUnknown
-		}
-		if attempt.Status == submission.ExecutionClaimed {
-			attempt, e = kernel.Expire(ctx, submission.ExecutionScope{OrganizationID: current.Plan.Scope.OrganizationID}, attempt.AttemptID)
-			if e != nil {
-				return e
-			}
-		}
-		if attempt.Status != submission.ExecutionOutcomeUnknown {
-			return pod.ErrUnknown
-		}
-		evidence := submission.ExecutionEvidence{Kind: submission.EvidenceProviderReadBack, Outcome: submission.ExecutionSucceeded, Reference: f.ID, Fingerprint: f.EvidenceDigest, ObservedAt: time.Now().UTC()}
-		if _, e = kernel.ResolveUnknown(ctx, submission.ExecutionScope{OrganizationID: current.Plan.Scope.OrganizationID}, attempt.AttemptID, attempt.FenceEpoch, evidence); e != nil {
+		if e = finalize(ctx, tx, current); e != nil {
 			return e
 		}
 		current.Finished = &f
@@ -370,20 +329,4 @@ func (r *Repository) Finish(ctx context.Context, o pod.Operation, q pod.Qualifie
 		}
 		return nil
 	})
-}
-
-func exactAttempt(ctx context.Context, r *submissionstore.Repository, o pod.Operation, step string) (submission.ExecutionAttempt, error) {
-	a, err := r.ReadIntent(ctx, submission.ExecutionScope{OrganizationID: o.Plan.Scope.OrganizationID}, pod.StepIntent(o.Plan.OperationID, step))
-	if err != nil {
-		return a, pod.ErrUnknown
-	}
-	command, err := pod.StepCommand(o, step, a.ClaimOwnerID)
-	if err != nil {
-		return a, pod.ErrUnknown
-	}
-	expected, err := submission.NewExecutionReservation(command, a.AttemptID, "validation-only", a.CreatedAt)
-	if err != nil || submission.ValidateExecutionReplay(a, expected.Attempt) != nil {
-		return a, pod.ErrUnknown
-	}
-	return a, nil
 }

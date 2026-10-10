@@ -3,11 +3,12 @@ package podapp
 import (
 	"context"
 	"errors"
-	"github.com/stretchr/testify/require"
 	"task-processor/internal/listing/submission"
 	"task-processor/internal/product/pod"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 type kernelFixture struct {
@@ -28,15 +29,15 @@ func (k *kernelFixture) MarkUnknown(context.Context, submission.ExecutionClaim, 
 
 type mutationFixture struct{ calls int }
 
-func (m *mutationFixture) Upload(context.Context, pod.Plan, []byte, *submission.SendPermit) (pod.ObjectReceipt, error) {
+func (m *mutationFixture) Upload(context.Context, pod.Plan, []byte, *pod.MutationPermit) (pod.ObjectReceipt, error) {
 	m.calls++
 	return pod.ObjectReceipt{}, pod.ErrUnknown
 }
-func (m *mutationFixture) CreateMaterial(context.Context, pod.Plan, pod.ObjectReceipt, *submission.SendPermit) (pod.MaterialReceipt, error) {
+func (m *mutationFixture) CreateMaterial(context.Context, pod.Plan, pod.ObjectReceipt, *pod.MutationPermit) (pod.MaterialReceipt, error) {
 	m.calls++
 	return pod.MaterialReceipt{}, pod.ErrUnknown
 }
-func (m *mutationFixture) Sync(context.Context, pod.Plan, []byte, *submission.SendPermit) error {
+func (m *mutationFixture) Sync(context.Context, pod.Plan, []byte, *pod.MutationPermit) error {
 	m.calls++
 	return pod.ErrUnknown
 }

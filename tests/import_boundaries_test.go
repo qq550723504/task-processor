@@ -3985,6 +3985,9 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "knowledge", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #608 admits only Notification Center's feature-local HTTP adapter.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "notificationcenter", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	// #622 frozen design admits only these feature-local adapters; core remains Gin-free.
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "product", "supplymarket", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "app", "pod", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	// #570 / PR #571 admits only Agent Configuration's feature-local HTTP adapter.
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "agentconfig", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "listingsubscription", "httpapi"))+string(os.PathSeparator)] = struct{}{}
@@ -4089,6 +4092,23 @@ func TestNotificationCenterHTTPBoundaryRegistration(t *testing.T) {
 	root := filepath.Join("..", "internal")
 	allowed := businessHTTPPackages(root)
 	for path, want := range map[string]bool{"notificationcenter/httpapi/handler.go": true, "notificationcenter/service.go": false, "notificationcenter/httpapi_extra/handler.go": false} {
+		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(path)), allowed); got != want {
+			t.Errorf("HTTP boundary allows %s = %v, want %v", path, got, want)
+		}
+	}
+}
+
+func TestSupplyMarketHTTPBoundaryRegistration(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowed := businessHTTPPackages(root)
+	for path, want := range map[string]bool{
+		"product/supplymarket/httpapi/handler.go":       true,
+		"app/pod/httpapi/handler.go":                    true,
+		"product/supplymarket/service.go":               false,
+		"app/pod/service.go":                            false,
+		"app/pod/httpapi_extra/handler.go":              false,
+		"product/supplymarket-extra/httpapi/handler.go": false,
+	} {
 		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(path)), allowed); got != want {
 			t.Errorf("HTTP boundary allows %s = %v, want %v", path, got, want)
 		}

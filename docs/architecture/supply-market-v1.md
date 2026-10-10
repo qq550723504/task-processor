@@ -414,11 +414,15 @@ tokenless窄执行入口，不能传递已清空组织scope的平台HTTP context
 也未部署保留实例。开关和编译成功不等于实际接入或用户验收。
 
 - 市场：`internal/app/supplymarket.NewApplication`注入ProductDB、市场ContextAuthorizer、
-  当前Collection tokenless ExecutionAuthorizer、Collection Service及私密immutable S3。
+  当前Collection tokenless ExecutionAuthorizer、Collection Service、私密immutable S3以及
+  `Receiver(tx)`factory。当前组合根注入`productsourcing.NewMarketReceiver`，feature不自行
+  引入内部Producer；未注入接收器时构造fail closed。
   `internal/product/supplymarket/httpapi.Routes`暴露成员和平台专员窄入口。
 - SDS：`internal/app/pod.NewApplication(ctx, Dependencies)`注入同一ProductDB、当前AssetDB、
   当前Collection Authorizer/Service、原成员ExecutionAuthorizer、DesignExecutionAuthorizer、
-  server-only `sds.CredentialSource`、有界HTTP、精确OSSHosts allowlist及Starter。
+  server-only `sds.CredentialSource`、有界HTTP、精确OSSHosts allowlist、Starter及
+  `ReceiveProduct`。当前组合根把`productsourcing.ReceivePOD`注入该有界port；正式feature
+  不直接创建Source producer或扩大Collection scope。
   `internal/app/supplychain.OrganizationExecutionAuthorizer.AuthorizePODDesign`复用当前live IAM，
   仅核对原成员Collection read/manage与supply-market.design，不接受任意permission。
   CredentialSource须为每个凭据revision返回已核对的实际merchant身份；不能把浏览器请求、
@@ -427,6 +431,10 @@ tokenless窄执行入口，不能传递已清空组织scope的平台HTTP context
   安装当前Submission schema及Collection的`market/sds_template/sds_finished`约束。
   运行构造只Verify，不执行DDL/迁移/种子。`productsourcing.ReceivePOD`复用Source、Catalog、
   Collection及原命令回执的同库事务，模板保存状态为not_started，完整成品为saved。
+- `internal/app/pod/finalization.go`编排原Submission Kernel回执；POD repository只在原
+  Product SQL transaction内调用必填finalize callback，再保存POD引用/释放原fence。
+  callback读取同一原intent/attempt并使用NewTransactionFinalizer，无新增事务或恢复协议。
+  transport只消费POD对原SendPermit的opaque live view，不读取Listing业务规则或复制权威状态。
 - `internal/app/pod/httpapi.Routes(app.Service, bind)`挂载`/api/v1/workbench/pod`，
   module为supply-market；权限为当前read/select/design，写入还要求Collection manage。
   CurrentIdentity、CachedRead/LiveWrite及原tenant/member范围不变；只读verify仍由服务执行
@@ -451,3 +459,9 @@ Kernel SaveStep及Finish失败回滚/成功终结、物理fence、错误意图�
 typecheck、范围ESLint及Next生产构建通过。自检、controlled provider qualification和产品
 验收分别记录；同图案素材去重、后台凭据、共享接线、正式真实1688/SDS路径和用户验收
 尚未收敛，不将Draft PR视为完整交付。
+
+PR候选8e32c6564的首次CI发现结构接线与未使用导出问题，已按同一冻结设计修正：
+基础设施依赖业务Kernel的编排移到app层，Source receiver改为组合根注入；移除未使用导出，
+登记本设计的两个HTTP adapter和exact当前httpimage文件/API。沿用既有HTTP/current-leaf
+登记机制及否定测试；历史ceiling=8、全tracked/OS/build-tag扫描、depguard和必需CI策略不变。
+本增量不修改CI workflow、保护规则或引入legacy例外；候选CI结果绑定后续准确HEAD单列。

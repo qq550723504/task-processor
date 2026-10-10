@@ -6,7 +6,7 @@ export type MarketScope=CollectionScope;
 export class MarketAPIError extends Error{constructor(public readonly code:string,public readonly status:number){super(code)}}
 export type MarketIntent={key:string;command:c.MarketCommand;admin:boolean};
 export const marketIntentSchema=z.object({key:c.marketID,command:c.marketCommandSchema,admin:z.boolean()}).strict().refine(i=>i.admin?["evaluate","request_supplement","approve","reject","confirm_plan","close","publish","revoke"].includes(i.command.action):["create_official_draft","submit_selected","submit_connection","supplement","select_release"].includes(i.command.action));
-export function marketRequest<T>(scope:MarketScope,path:string,schema:z.ZodType<T>,signal?:AbortSignal,admin=false,write?:{key:string;command?:c.MarketCommand;file?:File}):Promise<T>{
+function marketRequest<T>(scope:MarketScope,path:string,schema:z.ZodType<T>,signal?:AbortSignal,admin=false,write?:{key:string;command?:c.MarketCommand;file?:File}):Promise<T>{
  const headers=new Headers({Accept:"application/json","X-Expected-User-ID":scope.userId});if(!admin)headers.set("X-Expected-Organization-ID",scope.organizationId);
  let body:string|File|undefined;if(write){headers.set("Idempotency-Key",c.marketID.parse(write.key));if(write.file){headers.set("Content-Type",write.file.type);body=write.file}else{const command=c.marketCommandSchema.parse(write.command);headers.set("Content-Type","application/json");if("id"in command)headers.set("If-Match",'"'+command.expectedRevision+'"');body=JSON.stringify(command)}}
  return (async()=>{const controller=new AbortController(),abort=()=>controller.abort();signal?.addEventListener("abort",abort,{once:true});if(signal?.aborted)abort();const timer=setTimeout(abort,37000);let sent=false;

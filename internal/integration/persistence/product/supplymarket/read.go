@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"strings"
 
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 	"task-processor/internal/product/collection"
 	"task-processor/internal/product/supplymarket"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type recordRow struct {

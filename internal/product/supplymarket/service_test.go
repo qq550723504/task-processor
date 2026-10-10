@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/collection"
 	"task-processor/internal/product/sourcing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 )
 
 type testAuthority struct {

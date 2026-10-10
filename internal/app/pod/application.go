@@ -2,7 +2,6 @@ package podapp
 
 import (
 	"context"
-	"gorm.io/gorm"
 	"net/http"
 	"task-processor/internal/integration/httpimage"
 	submissionstore "task-processor/internal/integration/persistence/listing/submission"
@@ -16,6 +15,8 @@ import (
 	"task-processor/internal/product/asset"
 	"task-processor/internal/product/collection"
 	"task-processor/internal/product/pod"
+
+	"gorm.io/gorm"
 )
 
 type Dependencies struct {
@@ -28,6 +29,7 @@ type Dependencies struct {
 	HTTP                  *http.Client
 	OSSHosts              []string
 	Starter               Starter
+	ReceiveProduct        ProductReceiver
 }
 type Application struct {
 	Service   *Service
@@ -35,7 +37,7 @@ type Application struct {
 }
 
 func NewApplication(ctx context.Context, d Dependencies) (*Application, error) {
-	if ctx == nil || d.ProductDB == nil || d.AssetDB == nil || d.Authorization == nil || d.OriginalAuthorization == nil || d.DesignAuthorization == nil || d.Collections == nil || d.Credentials == nil || d.HTTP == nil || d.Starter == nil || collectionstore.VerifyReceiverSchema(ctx, d.ProductDB) != nil {
+	if ctx == nil || d.ProductDB == nil || d.AssetDB == nil || d.Authorization == nil || d.OriginalAuthorization == nil || d.DesignAuthorization == nil || d.Collections == nil || d.Credentials == nil || d.HTTP == nil || d.Starter == nil || d.ReceiveProduct == nil || collectionstore.VerifyReceiverSchema(ctx, d.ProductDB) != nil {
 		return nil, pod.ErrUnavailable
 	}
 	repo, e := podstore.NewRepository(ctx, d.ProductDB)
@@ -84,6 +86,6 @@ func NewApplication(ctx context.Context, d Dependencies) (*Application, error) {
 		return nil, e
 	}
 	processor := &Processor{Repository: repo, Inputs: inputs, Templates: templates, Credentials: d.Credentials, Kernel: kernel, Mutations: mutations, Observer: observer}
-	service := &Service{Authorization: d.Authorization, Repository: repo, Inputs: inputs, Templates: templates, Credentials: d.Credentials, Approvals: approvalService, Processor: processor, Starter: d.Starter, Intents: kernel}
+	service := &Service{Authorization: d.Authorization, Repository: repo, Inputs: inputs, Templates: templates, Credentials: d.Credentials, Approvals: approvalService, Processor: processor, Starter: d.Starter, Intents: kernel, ReceiveProduct: d.ReceiveProduct}
 	return &Application{service, processor}, nil
 }

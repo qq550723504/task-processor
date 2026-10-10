@@ -2,12 +2,13 @@ package sds
 
 import (
 	"context"
-	"github.com/stretchr/testify/require"
 	"io"
 	"net/http"
 	"strings"
 	"task-processor/internal/product/pod"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestManifestRejectsUnsupportedLayersAndCrossVariant(t *testing.T) {

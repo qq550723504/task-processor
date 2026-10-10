@@ -46,3 +46,15 @@ func PermitClaim(scope collection.Scope, p *submission.SendPermit) submission.Ex
 	}
 	return submission.ExecutionClaim{Scope: submission.ExecutionScope{OrganizationID: scope.OrganizationID}, AttemptID: p.AttemptID, FenceEpoch: p.FenceEpoch, OwnerID: p.ClaimOwnerID, Token: p.ClaimToken}
 }
+
+// MutationPermit exposes only the live check of the original Kernel capability
+// to the provider transport. It has no durable state or independent authority.
+type MutationPermit struct{ original *submission.SendPermit }
+
+func TransportPermit(original *submission.SendPermit) *MutationPermit {
+	return &MutationPermit{original: original}
+}
+
+func (p *MutationPermit) Valid() bool {
+	return p != nil && p.original != nil && p.original.AttemptID != "" && p.original.ClaimToken != "" && time.Now().Before(p.original.LeaseExpiresAt)
+}

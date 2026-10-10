@@ -3,13 +3,14 @@ package sds
 import (
 	"context"
 	"encoding/json"
-	"github.com/stretchr/testify/require"
 	"io"
 	"net/http"
 	"os"
 	"strings"
 	"task-processor/internal/product/pod"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // Captured GETs from the retained controlled test, with account/image paths and
