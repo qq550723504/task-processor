@@ -121,7 +121,7 @@ func (a *Authorizer) stores(ctx context.Context, scope c.Scope, db *gorm.DB) (*s
 		return nil, c.ErrForbidden
 	}
 	id, _ := authidentity.AuthenticatedIdentityFromContext(ctx)
-	r, err := storecenter.NewMemberScopedStoreRepository(db, memberAuthorization{storecenter.StoreMemberAccess{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID, MemberID: id.EffectiveMemberID, Administrator: a.policy.IsTenantAdmin("", p.Roles)}})
+	r, err := storecenter.NewMemberScopedStoreRepository(db, memberAuthorization{storecenter.StoreMemberAccess{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID, MemberID: id.EffectiveMemberID, Administrator: a.policy.IsTenantAdmin(p.UserID, p.Roles)}})
 	return r, storeError(err)
 }
 func storeError(err error) error {

@@ -47,6 +47,19 @@ it("retains the identical original operation after an unknown save result", asyn
  expect(JSON.parse(writes[0].body).goal.profit).toBe(10025);
  expect(sessionStorage.length).toBe(0);
 });
+it("counts complete loss stores across the entire matrix, including other pages", async () => {
+ context.permissions = ["workbench.cockpit.stores.read"];
+ const totals = { revenue: 10000, refunds: 0, procurement: 12000, logistics: 0, platform: 0, advertising: 0, other: 0, netRevenue: 10000, netProfit: -2000, margin: { numerator: "-1", denominator: "5" } };
+ const matrix = { rows: [{ store: capabilities.stores[0], complete: true, state: "loss", totals, growth: null, gapCount: 0, excludedCount: 0, recordCount: 1 }], total: 60, page: 1, summary: totals, summaryComplete: false, states: { loss: 12, break_even: 6, recorded_complete: 18, data_incomplete: 24 }, capturedAt: "2026-10-10T01:00:00Z" };
+ vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json(url.endsWith("capabilities") ? { ...capabilities, access: { ...capabilities.access, storesRead: true } } : matrix)));
+ render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CockpitPage mode="stores" /></QueryClientProvider>);
+ for (const [label, count] of [["当前授权店铺", "60"], ["录入完整", "36"], ["本期亏损", "12"], ["数据不完整", "24"]]) {
+  const card = (await screen.findByText(label, { selector: "span" })).parentElement!;
+  expect(within(card).getByText(count, { selector: "strong" })).toBeVisible();
+ }
+ expect(screen.getByText("亏损", { selector: "span" })).toBeVisible();
+ expect(screen.getByRole("button", { name: "下一页" })).toBeEnabled();
+});
 it("does not advertise an unmounted cockpit or fetch its data", async () => {
  vi.stubGlobal("fetch", vi.fn(async () => Response.json(capabilities)));
  context.operationsCockpitAvailable = false;mount();
