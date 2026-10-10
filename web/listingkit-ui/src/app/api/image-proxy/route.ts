@@ -13,7 +13,14 @@ export const runtime = "nodejs";
 
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
+const AMAZON_IMAGE_HOSTS = [
+  "m.media-amazon.com",
+  "images-na.ssl-images-amazon.com",
+  "images-eu.ssl-images-amazon.com",
+  "images-fe.ssl-images-amazon.com",
+];
 export const DEFAULT_ALLOWED_HOSTS = [
+  ...AMAZON_IMAGE_HOSTS,
   "cbu01.alicdn.com",
   "cdn.sdspod.com",
   "e.sdspod.com",
@@ -48,6 +55,7 @@ function allowPrivateHosts() {
 }
 
 function hostMatches(hostname: string, allowedHost: string) {
+  if (AMAZON_IMAGE_HOSTS.includes(allowedHost)) return hostname === allowedHost;
   return hostname === allowedHost || hostname.endsWith(`.${allowedHost}`);
 }
 

@@ -13,6 +13,7 @@ type ResourceConsumer string
 const (
 	ConsumerStoreService       ResourceConsumer = "store_service_v1"
 	ConsumerProductAcquisition ResourceConsumer = "product_acquisition_v1"
+	ConsumerAmazonData         ResourceConsumer = "amazon_data_v1"
 )
 
 type ResourceFunding string
@@ -81,6 +82,12 @@ type ConsumerChargePort interface {
 	Reserve(context.Context, ConsumerChargeIdentity) (ConsumerChargeReceipt, error)
 	Reconcile(context.Context, ConsumerChargeIdentity) (ConsumerChargeReceipt, error)
 }
+
+// ConsumerChargeLookupPort only verifies the original durable reservation. It
+// cannot reserve resources, change funding, or manufacture terminal evidence.
+type ConsumerChargeLookupPort interface {
+	Lookup(context.Context, ConsumerChargeIdentity) (ConsumerChargeReceipt, error)
+}
 type ConsumerChargeService struct {
 	repository ConsumerChargeRepository
 	owners     map[ResourceConsumer]ConsumerChargeOwner
@@ -117,6 +124,23 @@ func (s *ConsumerChargeService) Reserve(ctx context.Context, identity ConsumerCh
 		return ConsumerChargeReceipt{}, ErrOwnerScopeMismatch
 	}
 	return s.repository.Reserve(ctx, intent)
+}
+
+func (s *ConsumerChargeService) Lookup(ctx context.Context, identity ConsumerChargeIdentity) (ConsumerChargeReceipt, error) {
+	if !ValidConsumerChargeIdentity(identity) {
+		return ConsumerChargeReceipt{}, ErrInvalidInput
+	}
+	if _, ok := s.owners[identity.Consumer]; !ok {
+		return ConsumerChargeReceipt{}, ErrReservationOwnerNotRegistered
+	}
+	receipt, err := s.repository.Read(ctx, identity)
+	if err != nil {
+		return ConsumerChargeReceipt{}, err
+	}
+	if receipt.Intent.Identity != identity || !ValidConsumerChargeIntent(receipt.Intent) {
+		return ConsumerChargeReceipt{}, ErrOwnerScopeMismatch
+	}
+	return receipt, nil
 }
 func (s *ConsumerChargeService) Reconcile(ctx context.Context, identity ConsumerChargeIdentity) (ConsumerChargeReceipt, error) {
 	if !ValidConsumerChargeIdentity(identity) {
@@ -183,7 +207,7 @@ func ValidConsumerChargeIntent(intent ConsumerChargeIntent) bool {
 		return false
 	}
 	switch intent.Identity.Consumer {
-	case ConsumerProductAcquisition:
+	case ConsumerProductAcquisition, ConsumerAmazonData:
 		return intent.ResourceType == ResourceDataRow && intent.Quantity == 1
 	case ConsumerStoreService:
 		return intent.ResourceType == ResourceStoreRenewalPeriod && intent.Quantity > 0
@@ -192,7 +216,7 @@ func ValidConsumerChargeIntent(intent ConsumerChargeIntent) bool {
 	}
 }
 func validResourceConsumer(consumer ResourceConsumer) bool {
-	return consumer == ConsumerProductAcquisition || consumer == ConsumerStoreService
+	return consumer == ConsumerProductAcquisition || consumer == ConsumerStoreService || consumer == ConsumerAmazonData
 }
 func ValidConsumerChargeIdentity(identity ConsumerChargeIdentity) bool {
 	return validLimitIdentity(identity.OrganizationID) && validLimitIdentity(identity.OperationID) && validResourceConsumer(identity.Consumer)

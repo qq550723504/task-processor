@@ -38,10 +38,10 @@ describe("private product collection proxy", () => {
     }
   });
   it("projects only public batch fields and preserves an uncertain write", async () => {
-    const batch = { id, name: "批次", kind: "manual", revision: 1, count: 0, createdAt: "2026-10-08T00:00:00Z", credential: "never expose" };
+    const batch = { id, name: "批次", kind: "manual", revision: 1, count: 0, supplyTransferSupported:true, createdAt: "2026-10-08T00:00:00Z", credential: "never expose" };
     const response = await buildWorkbenchBrowserResponse(Response.json({ items: [batch], total: 1 }), "collection-batches");
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ items: [{ id, name: batch.name, kind: batch.kind, revision: 1, count: 0, createdAt: batch.createdAt }], total: 1 });
+    expect(await response.json()).toEqual({ items: [{ id, name: batch.name, kind: batch.kind, revision: 1, count: 0, supplyTransferSupported:true, createdAt: batch.createdAt }], total: 1 });
     const unknown = await buildWorkbenchBrowserResponse(Response.json({ success: true }), "collection-command", undefined, { sourceMutation: true });
     expect(unknown.status).toBe(503);
     expect(await unknown.json()).toMatchObject({ code: "OUTCOME_UNKNOWN" });
