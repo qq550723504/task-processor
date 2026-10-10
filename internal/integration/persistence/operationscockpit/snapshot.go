@@ -168,6 +168,7 @@ func (s *Store) Snapshot(ctx context.Context, scope c.Scope, query c.Query) (c.S
 		return c.Snapshot{}, err
 	}
 	if result.Goal != nil {
+		result.GoalStores = goalStores
 		evaluation, err := c.EvaluateGoal(result.Goal.Config, result.CapturedAt, goalStores)
 		if err != nil {
 			return c.Snapshot{}, err

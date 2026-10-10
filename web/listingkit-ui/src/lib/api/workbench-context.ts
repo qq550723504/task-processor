@@ -36,6 +36,7 @@ const workbenchContextSchema = z
     selectionRequired: z.boolean(),
     aiWorkbenchAvailable: z.boolean().optional(),
     storeObservationsAvailable: z.boolean().optional(),
+    operationsCockpitAvailable: z.boolean().optional(),
     aiWorkbenchPlanningReadiness: z.enum(["AVAILABLE", "NEEDS_CONFIGURATION", "UNAVAILABLE"]).optional(),
     aiWorkbenchTitleReadiness: z.enum(["AVAILABLE", "NEEDS_CONFIGURATION", "UNAVAILABLE"]).optional(),
     organizations: z.array(organizationSchema).max(1000),

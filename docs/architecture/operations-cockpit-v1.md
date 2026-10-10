@@ -113,7 +113,7 @@ Figma的安全底线只消费真正存在的平台异常事实；库存为0/平�
 
 最小表：经营区间事实head及不可变revision；organization唯一目标head（稳定goal ID与不可变creator）及不可变revision；actor-scoped command receipts。本地店铺事实/企业目标/命令串行锁使用PostgreSQL事务级锁，不新增独立锁状态或恢复协议；Store原生行/grant锁仍由既有owner借用同一事务持有。payload有界JSON，显式check/唯一键/索引，SQL schema-qualified。head metadata只返回安全CAS标识；SQL不联表IAM、不创建第二身份owner。初始化是显式空schema安装，同事务，serving只VerifySchema、不建表；运行账号只获得本schema必要SELECT/INSERT/UPDATE，不授予DDL/DELETE。
 
-共享增量已在[#137接单通知](https://github.com/qq550723504/task-processor/issues/137#issuecomment-6091453232)登记：Console四菜单/三级goal路径、authz四module/policy、currentapplication config/schema initializer/HTTP injection/Store serving role本schema grant和preflight。**未协调前不写共享路径**。feature-local可在准入后由本唯一Writer实现，完整运行交付仍需共享owner接线。
+共享增量已在[#137接单通知](https://github.com/qq550723504/task-processor/issues/137#issuecomment-6091453232)登记：Console四菜单/三级goal路径、authz四module/policy、currentapplication config/schema initializer/HTTP injection/Store serving role本schema grant和preflight。**未协调前不写共享路径**。2026-10-10 用户已直接指定“本线程负责，并通知接线线程协调”，本线程继续为驾驶舱唯一Writer，已按授权通知 #625 接线线程；见[#137当前协调记录](https://github.com/qq550723504/task-processor/issues/137#issuecomment-6092463187)。此决定解除驾驶舱共享接线gate，不改变冻结的产品、权限、持久化和副作用边界，也不接手 #625。
 
 拟正常页面：`/workbench/overview/goals`（设置子页`/settings`）、`/workbench/overview/stores`（录入/详情在此）、`/workbench/overview/alerts`、`/workbench/overview/advice`；复用WorkspaceAppShell、ConsolePage、Card/Input/Button、现有主题/tokens。feature-local CSS表达Figma的两列目标、矩阵表/选择条、预警列表、建议队列详情。既有品牌及导航资产复用确认完全相同的asset，不新增临时URL。
 

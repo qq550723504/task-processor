@@ -43,7 +43,15 @@ func (s Scope) Valid() bool {
 }
 
 // Access is returned by the server's current authorizer, never decoded from input.
-type Access struct{ GoalsRead, GoalsCreate, GoalsManage, StoresRead, FactsWrite, AlertsRead, AdviceRead bool }
+type Access struct {
+	GoalsRead   bool `json:"goalsRead"`
+	GoalsCreate bool `json:"goalsCreate"`
+	GoalsManage bool `json:"goalsManage"`
+	StoresRead  bool `json:"storesRead"`
+	FactsWrite  bool `json:"factsWrite"`
+	AlertsRead  bool `json:"alertsRead"`
+	AdviceRead  bool `json:"adviceRead"`
+}
 
 type Period struct {
 	Start string `json:"startDate"`

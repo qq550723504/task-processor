@@ -12,24 +12,33 @@ import (
 // Rule is a current, evidence-based projection. It has no acknowledged,
 // processing or recovered lifecycle and never creates an AI or external task.
 type Rule struct {
-	ID            string    `json:"id"`
-	Kind          string    `json:"kind"`
-	Level         string    `json:"level"`
-	Title         string    `json:"title"`
-	Reason        string    `json:"reason"`
-	Advice        string    `json:"advice"`
-	ActionPath    string    `json:"actionPath"`
-	ActionLabel   string    `json:"actionLabel"`
-	Source        string    `json:"source"`
-	CapturedAt    time.Time `json:"capturedAt"`
-	StoreID       string    `json:"storeId,omitempty"`
-	Period        Period    `json:"period"`
-	Profit        *int64    `json:"profit,omitempty"`
-	GoalRevision  string    `json:"goalRevision,omitempty"`
-	RecordCount   int       `json:"recordCount,omitempty"`
-	GapCount      int       `json:"gapCount,omitempty"`
-	ExcludedCount int       `json:"excludedCount,omitempty"`
-	RecordDigest  string    `json:"recordDigest,omitempty"`
+	ID            string         `json:"id"`
+	Kind          string         `json:"kind"`
+	Level         string         `json:"level"`
+	Title         string         `json:"title"`
+	Reason        string         `json:"reason"`
+	Advice        string         `json:"advice"`
+	ActionPath    string         `json:"actionPath"`
+	ActionLabel   string         `json:"actionLabel"`
+	Source        string         `json:"source"`
+	CapturedAt    time.Time      `json:"capturedAt"`
+	StoreID       string         `json:"storeId,omitempty"`
+	Period        Period         `json:"period"`
+	Profit        *int64         `json:"profit,omitempty"`
+	GoalRevision  string         `json:"goalRevision,omitempty"`
+	RecordCount   int            `json:"recordCount,omitempty"`
+	GapCount      int            `json:"gapCount,omitempty"`
+	ExcludedCount int            `json:"excludedCount,omitempty"`
+	RecordDigest  string         `json:"recordDigest,omitempty"`
+	GoalBasis     *GoalRuleBasis `json:"goalBasis,omitempty"`
+}
+
+type GoalRuleBasis struct {
+	Target           int64          `json:"target"`
+	NormalBPS        int64          `json:"normalBps"`
+	AttentionBPS     int64          `json:"attentionBps"`
+	MinimumMarginBPS *int64         `json:"minimumMarginBps"`
+	Evaluation       GoalEvaluation `json:"evaluation"`
 }
 
 func Rules(snapshot Snapshot) ([]Rule, error) {
@@ -41,7 +50,7 @@ func Rules(snapshot Snapshot) ([]Rule, error) {
 		if !UUID(id) || aggregate.StoreID != id || aggregate.Period != snapshot.Period {
 			return nil, ErrInvalid
 		}
-		rule := Rule{Source: "manual", CapturedAt: snapshot.CapturedAt, StoreID: id, Period: snapshot.Period, ActionPath: "/workbench/overview/stores?storeId=" + id, ActionLabel: "查看经营明细", RecordCount: len(aggregate.Records)}
+		rule := Rule{Source: "manual", CapturedAt: snapshot.CapturedAt, StoreID: id, Period: snapshot.Period, ActionPath: "/workbench/overview/stores?storeId=" + id + "&startDate=" + snapshot.Period.Start + "&endDate=" + snapshot.Period.End, ActionLabel: "查看经营明细", RecordCount: len(aggregate.Records)}
 		if !aggregate.Complete {
 			rule.Kind = "data_missing"
 			rule.Level = "data"
@@ -84,7 +93,8 @@ func Rules(snapshot Snapshot) ([]Rule, error) {
 			level = "critical"
 		}
 		profit := evaluation.Totals.NetProfit
-		result = append(result, Rule{ID: "goal_assessment:" + goal.ID + ":" + strconv.FormatInt(goal.Revision, 10) + ":" + evaluation.Through, Kind: "goal_assessment", Level: level, Title: "目标评判需关注", Reason: "完整经营数据下，利润进度或已启用的利润率底线未达到目标评判阈值。", Advice: "查看目标评判依据及收入成本明细，由创建人或具备管理权限的人维护目标。", ActionPath: "/workbench/overview/goals", ActionLabel: "查看目标依据", Source: "manual", CapturedAt: snapshot.CapturedAt, Period: Period{Start: goal.Config.Period.Start, End: evaluation.Through}, Profit: &profit, GoalRevision: strconv.FormatInt(goal.Revision, 10)})
+		basis := &GoalRuleBasis{Target: goal.Config.Profit, NormalBPS: goal.Config.NormalBPS, AttentionBPS: goal.Config.AttentionBPS, MinimumMarginBPS: goal.Config.MinimumMarginBPS, Evaluation: *evaluation}
+		result = append(result, Rule{ID: "goal_assessment:" + goal.ID + ":" + strconv.FormatInt(goal.Revision, 10) + ":" + evaluation.Through, Kind: "goal_assessment", Level: level, Title: "目标评判需关注", Reason: "完整经营数据下，利润进度或已启用的利润率底线未达到目标评判阈值。", Advice: "查看目标评判依据及收入成本明细，由创建人或具备管理权限的人维护目标。", ActionPath: "/workbench/overview/goals", ActionLabel: "查看目标依据", Source: "manual", CapturedAt: snapshot.CapturedAt, Period: Period{Start: goal.Config.Period.Start, End: evaluation.Through}, Profit: &profit, GoalRevision: strconv.FormatInt(goal.Revision, 10), GoalBasis: basis})
 	}
 	rank := map[string]int{"critical": 0, "attention": 1, "data": 2}
 	sort.Slice(result, func(i, j int) bool {

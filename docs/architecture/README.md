@@ -79,6 +79,10 @@ Use these as the main source of truth for structural work:
   - #614 IMPLEMENTATION_READY readonly SHEIN products, consumer orders and logistics;
     scoped observations, original-member sync receipts and bounded recovery. Shared
     runtime readiness and real merchant/user acceptance remain separate evidence.
+- `operations-cockpit-v1.md`
+  - #627 frozen IMPLEMENTATION_READY manual period financial facts, creator or
+    current manager goal maintenance, and evidence-based operating projections;
+    shared wiring and user acceptance remain separate delivery evidence.
 - `httpapi-assembly-boundaries.md`
   - HTTP API ownership, route/module builder boundaries, and app/httpapi limits
 - `app-assembly-boundaries.md`

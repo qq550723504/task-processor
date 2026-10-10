@@ -52,6 +52,11 @@ export function findConsoleRoute(pathname: string): ConsoleRoute | undefined {
   }
   const exact = visit(consoleNavigation, []);
   if (exact) return exact;
+  if (pathname === "/workbench/overview/goals/settings") {
+    const parent = findConsoleRoute("/workbench/overview/goals")!;
+    const node: ConsoleNavNode = { label: "设置经营目标", href: pathname, availability: parent.node.availability };
+    return { node, trail: [...parent.trail, node] };
+  }
   if (pathname === "/workbench/account/organization/resources/source-accounts") {
     const parent = findConsoleRoute("/workbench/account/organization/resources")!;
     const node: ConsoleNavNode = { label: "源账号", href: pathname, availability: parent.node.availability };

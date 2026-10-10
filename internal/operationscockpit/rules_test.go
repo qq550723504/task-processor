@@ -28,7 +28,7 @@ func TestRuleAdviceUsesLossAndMissingEvidenceWithoutInventingProfit(t *testing.T
 	if rules[1].Kind != "data_missing" || rules[1].Profit != nil || rules[1].Level != "data" {
 		t.Fatalf("missing facts must not imply profitability: %+v", rules[1])
 	}
-	if rules[0].ActionPath != "/workbench/overview/stores?storeId="+testStore {
+	if rules[0].ActionPath != "/workbench/overview/stores?storeId="+testStore+"&startDate="+period.Start+"&endDate="+period.End {
 		t.Fatal("unsafe action path")
 	}
 	for _, rule := range rules {

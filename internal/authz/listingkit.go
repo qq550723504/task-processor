@@ -91,7 +91,7 @@ var workbenchCommercialPermissions = []string{
 // WorkbenchPermissions is a bounded display contract, never a policy source.
 func WorkbenchPermissions() []string {
 	result := []string{PermissionListingKitAdminRead, PermissionListingKitAdminWrite, PermissionProductSourcingWrite, PermissionLocalAgentWrite, PermissionImageAgentRead, PermissionImageAgentWrite, PermissionWorkbenchAgentRead, PermissionWorkbenchAgentUse, PermissionWorkbenchAgentConfigure}
-	for _, group := range [][]string{workbenchToolPermissions, workbenchChatPermissions, workbenchKnowledgePermissions, workbenchEcoservicesPermissions, workbenchSupplyPermissions, workbenchStorePermissions, workbenchStoreObservationPermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
+	for _, group := range [][]string{cockpitPermissions, workbenchToolPermissions, workbenchChatPermissions, workbenchKnowledgePermissions, workbenchEcoservicesPermissions, workbenchSupplyPermissions, workbenchStorePermissions, workbenchStoreObservationPermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
 		result = append(result, group...)
 	}
 	return result
@@ -240,7 +240,7 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		}
 	}
 
-	for _, policy := range ToolMarketPolicies() {
+	for _, policy := range append(ToolMarketPolicies(), CockpitPolicies()...) {
 		if _, err := enforcer.AddPolicy(policy); err != nil {
 			return nil, err
 		}

@@ -167,6 +167,8 @@ func TestPostgresGoalCreatorManagerCASAndReplay(t *testing.T) {
 	require.NoError(t, err)
 	_, err = restricted.Execute(ctx, c.Command{Scope: command.Scope, Key: uuid.NewString(), Operation: "goal_restore", ID: command.ID, Expected: 3, SourceRevision: 1})
 	require.ErrorIs(t, err, c.ErrForbidden)
+	_, err = restricted.GoalHistory(ctx, command.Scope, 0)
+	require.ErrorIs(t, err, c.ErrForbidden, "historical scope must remain authorized")
 	var savedFact c.Command
 	t.Run("date correction remains one record and rejects overlap", func(t *testing.T) {
 		fact := c.FactInput{Period: c.Period{Start: "2026-10-01", End: "2026-10-02"}, Amounts: c.Amounts{Revenue: 1000, Procurement: 300}}
@@ -196,6 +198,15 @@ func TestPostgresGoalCreatorManagerCASAndReplay(t *testing.T) {
 		_, err = repository.Execute(ctx, other)
 		require.Error(t, err)
 		savedFact = cmd
+		current, err := repository.Fact(ctx, cmd.Scope, cmd.ID)
+		require.NoError(t, err)
+		require.EqualValues(t, 2, current.Revision)
+		history, err := repository.FactHistory(ctx, cmd.Scope, cmd.ID, 0)
+		require.NoError(t, err)
+		require.Len(t, history, 2)
+		require.Equal(t, "2026-10-01", history[1].Period.Start)
+		_, err = restricted.Fact(ctx, cmd.Scope, cmd.ID)
+		require.ErrorIs(t, err, c.ErrForbidden)
 	})
 	t.Run("goal and financial revisions share one read snapshot", func(t *testing.T) {
 		hooked := &snapshotBoundary{fixtureBoundary: boundary, trigger: newGoal.StoreIDs[0]}

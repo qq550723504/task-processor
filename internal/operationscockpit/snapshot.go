@@ -77,6 +77,7 @@ type Snapshot struct {
 	Stores          map[string]StoreAggregate
 	Previous        map[string]StoreAggregate
 	Goal            *GoalVersion
+	GoalStores      map[string]StoreAggregate
 	Evaluation      *GoalEvaluation
 	Head            *HeadMetadata
 	GoalUnavailable bool
