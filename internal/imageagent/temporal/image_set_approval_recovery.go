@@ -113,7 +113,13 @@ func (a *Activities) restoreImageSetPendingRecoveryIdentity(ctx context.Context,
 		after.Status == "pending" && reflect.DeepEqual(current.CommandIngress, input.CommandIngress) {
 		// This is the first durable publication marker. Asset has not been
 		// called yet; live IAM, rather than receipt recovery, authorizes it.
-		return a.liveRunProjectionIdentity(ctx, input.RunID, input.Identity)
+		ctx, err = a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
+		if err != nil {
+			return nil, nil, err
+		}
+		// Preserve the projection checked above as the write's CAS version.
+		// A change during authorization must not be replaced by this marker.
+		return ctx, &current, nil
 	}
 	_, committed, err := a.readCommittedImageSetApproval(ctx, current)
 	if err != nil {

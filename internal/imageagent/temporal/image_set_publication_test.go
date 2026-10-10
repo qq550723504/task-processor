@@ -17,14 +17,18 @@ import (
 )
 
 type approvalRecoveryAuthorization struct {
-	revoked bool
-	calls   int
+	revoked     bool
+	calls       int
+	onAuthorize func()
 }
 
 func (a *approvalRecoveryAuthorization) AuthorizeExecution(context.Context, imageagent.ExecutionIdentity) error {
 	a.calls++
 	if a.revoked {
 		return imageagent.ErrIdentityRequired
+	}
+	if a.onAuthorize != nil {
+		a.onAuthorize()
 	}
 	return nil
 }
@@ -186,6 +190,38 @@ func TestImageSetFirstPublicationMarkerCannotReplacePendingApproval(t *testing.T
 			retained, err := f.activities.repository.GetProjection(context.Background(), scope)
 			require.NoError(t, err)
 			require.Equal(t, current, retained)
+			require.Zero(t, f.selector.calls)
+		})
+	}
+}
+
+func TestImageSetFirstPublicationMarkerUsesCheckedProjectionCAS(t *testing.T) {
+	for _, changed := range []string{"attempt", "ingress"} {
+		t.Run(changed, func(t *testing.T) {
+			f := newApprovalRecoveryFixtureAtPhase(t, string(updatePhaseApprovalPublish))
+			scope := imageagent.RunScope{TenantID: f.publish.Identity.TenantID, OwnerUserID: f.publish.Identity.UserID, RunID: f.publish.RunID}
+			current, err := f.activities.repository.GetProjection(context.Background(), scope)
+			require.NoError(t, err)
+			pending := clonePendingReceipt(current.PendingCommand)
+			pending.Phase = imageagent.ImageSetApprovalPublicationStarted
+			var concurrent imageagent.RunProjection
+			f.auth.onAuthorize = func() {
+				f.auth.onAuthorize = nil
+				updated := current
+				updated.PendingCommand = clonePendingReceipt(current.PendingCommand)
+				if changed == "attempt" {
+					updated.PendingCommand.Attempt++
+				} else {
+					updated.CommandIngress.Used++
+				}
+				concurrent, err = f.activities.repository.CommitProjection(context.Background(), imageagent.ProjectionCommit{Scope: scope, CommitID: "concurrent-before-publication-marker", ExpectedProjectionVersion: current.ProjectionVersion, Snapshot: updated, EventType: "command.receipt.updated", EventPayload: []byte(`{}`)})
+				require.NoError(t, err)
+			}
+			err = f.activities.PersistPendingCommand(context.Background(), PersistPendingCommandActivityInput{RunID: f.publish.RunID, Identity: f.publish.Identity, Receipt: pending, CommandIngress: current.CommandIngress, CommitID: "stale-first-publication-marker"})
+			require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+			retained, err := f.activities.repository.GetProjection(context.Background(), scope)
+			require.NoError(t, err)
+			require.Equal(t, concurrent, retained)
 			require.Zero(t, f.selector.calls)
 		})
 	}
