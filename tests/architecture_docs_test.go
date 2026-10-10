@@ -2041,6 +2041,15 @@ func TestStoreObservationDesignPreservesReadOnlyPlatformAndScopedFacts(t *testin
 	})
 }
 
+func TestSupplyMarketDesignPreservesDisclosureAndOriginalExecutionOwners(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "supply-market-v1.md"), []string{
+		"IMPLEMENTATION_READY", "Independent Architecture", "硕米平台账号",
+		"同 Product UoW", "verified global platform authorizer",
+		"SendPermit", "UNKNOWN", "productsourcing.NewMarketReceiver",
+		"productsourcing.ReceivePOD", "运行构造只Verify", "不下单、不付款、不删除",
+	})
+}
+
 func TestEcoservicesDesignPreservesOriginalFundsAndPrivateDomainOwners(t *testing.T) {
 	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "ecosystem-services-v1.md"), []string{
 		"IMPLEMENTATION_READY", "internal/ecoservices", "internal/commercial/billing", "money",
