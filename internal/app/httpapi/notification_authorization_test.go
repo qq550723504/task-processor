@@ -14,10 +14,23 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	memberstore "task-processor/internal/integration/persistence/organization/membership"
+	kernelmodule "task-processor/internal/kernel/module"
 	n "task-processor/internal/notificationcenter"
 	"task-processor/internal/organization/membership"
 	"task-processor/internal/workbenchcontext"
 )
+
+func TestNotificationAssemblyWithoutWorkbenchExecutionOwner(t *testing.T) {
+	sources, err := notificationBusinessSources([]kernelmodule.Module{aiWorkbenchModule{application: &aiWorkbenchApplication{conversationOnly: true}}}, currentApplicationOptions{}, nil)
+	require.NoError(t, err)
+	names := map[string]int{}
+	for _, source := range sources {
+		names[source.Name()]++
+	}
+	require.Equal(t, 1, names["workbench-plan"])
+	require.Equal(t, 1, names["workbench-task"])
+	require.Equal(t, 1, names["product-review"], "missing Review owner must retain an unavailable source")
+}
 
 func TestNotificationModuleRejectsSupplyAssetPoolBeforeSchemaAccess(t *testing.T) {
 	db := &gorm.DB{Config: &gorm.Config{Dialector: sqlite.Open(":memory:")}}
