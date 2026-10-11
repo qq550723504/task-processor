@@ -4,6 +4,18 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 describe("Figma Console navigation contract", () => {
+  it("keeps the two catalog entries under their Figma parent and real pages", () => {
+    const parent = findConsoleRoute("/workbench/supply/catalogs")!;
+    expect(parent.node.children?.map(node => [node.label, node.href])).toEqual([
+      ["货盘选品", "/workbench/supply/catalogs/selection"],
+      ["申请对接", "/workbench/supply/catalogs/apply"],
+    ]);
+    for (const child of parent.node.children ?? []) {
+      expect(findConsoleRoute(child.href)?.node).toBe(child);
+      expect(findConsoleRoute(child.href)?.trail.map(node => node.label)).toEqual(["供应市场", "货盘集成", child.label]);
+      expect(existsSync(join(process.cwd(), "src/app", child.href.slice(1), "page.tsx"))).toBe(true);
+    }
+  });
   it("keeps the three selected-application entries and shared detail under their real parent", () => {
     const parent = findConsoleRoute("/workbench/supply/applications")!;
     expect(parent.node.children?.map(node => [node.label, node.href])).toEqual([

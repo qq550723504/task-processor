@@ -7,6 +7,21 @@ import { ConsoleNavigation } from "./console-navigation";
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 
 const query=vi.hoisted(()=>({value:""}));
+it.each([
+  ["/workbench/supply/catalogs/selection", "货盘选品"],
+  ["/workbench/supply/catalogs/apply", "申请对接"],
+])("opens the catalog hierarchy at %s only with its installed runtime", (pathname, label) => {
+  const view=render(<ConsoleNavigation pathname={pathname} ariaLabel="主导航" supplyMarketAvailable/>);
+  expect(screen.getByRole("button", {name:"收起货盘集成"})).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getByRole("link", {name:label})).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("link", {name:label}).closest("li")).toHaveClass("console-nav-level-3");
+  for (const child of ["货盘选品", "申请对接"]) {
+    expect(screen.getByRole("link", {name:child})).toHaveAttribute("title", child);
+    if(child!==label)expect(screen.getByRole("link", {name:child})).not.toHaveAttribute("aria-current");
+  }
+  view.rerender(<ConsoleNavigation pathname={pathname} ariaLabel="主导航"/>);
+  expect(screen.getByRole("link", {name:label})).toHaveAttribute("title", `${label}：业务暂未启用`);
+});
 it.each(["productAcquisitionAvailable", "supplyMarketAvailable", "supplyChainAvailable"])("connects the Supply parent with %s", capability => {
   const view = render(<ConsoleNavigation pathname="/workbench/supply" ariaLabel="主导航" />);
   expect(screen.getByRole("link", {name: "供应市场"})).toHaveAttribute("title", "供应市场：业务暂未启用");
