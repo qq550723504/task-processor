@@ -42,7 +42,7 @@ an approved contract. Follow the explicit responsibility/supersession above.
 ## Recommended Reading Order
 
 Official Knowledge's approved reading scope and admission record are tracked in
-[official-knowledge-v1.md](official-knowledge-v1.md) / execution Issue #632. Its
+[`official-knowledge-v1.md`](official-knowledge-v1.md) / execution Issue #632. Its
 reviewed status must be checked before implementation; it is separate from the
 enterprise Knowledge owner and has no AI-consumption or online-publisher scope.
 

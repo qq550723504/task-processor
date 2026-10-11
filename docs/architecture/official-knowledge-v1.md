@@ -139,8 +139,10 @@ there is no alternate owner or fallback. Wrong identity/digest fails closed.
 ## 6. Access, content safety and bounded reads
 
 Reuse existing signed-in Workbench identity, fresh Effective Organization admission
-and `workbench.knowledge.read`. Operator/admin grants remain as currently defined;
-viewer/anonymous access is not expanded. `knowledge.manage` does not authorize
+and `workbench.knowledge.read`. The current scoped authorizer resolves the native
+enterprise role's saved `knowledge` module and existing protected/admin policy;
+retired static operator/viewer roles and anonymous access are not expanded.
+`knowledge.manage` does not authorize
 official publication. No new publisher identity or online mutation endpoint exists.
 
 The public projection contains no enterprise documents, actor credentials, private

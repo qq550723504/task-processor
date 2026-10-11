@@ -38,6 +38,7 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/knowledge"
 	knowledgehttp "task-processor/internal/knowledge/httpapi"
+	officialhttp "task-processor/internal/knowledge/official/httpapi"
 	"task-processor/internal/ledger/orgresource"
 	o "task-processor/internal/marketplace/shein/observations"
 	notificationhttp "task-processor/internal/notificationcenter/httpapi"
@@ -583,6 +584,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		return nil, fmt.Errorf("build current commercial module: %w", err)
 	}
 	modules := []kernelmodule.Module{workbench.module, commercial, sourceAccount}
+	if cfg.Workbench.Enabled {
+		officialModule, err := buildOfficialKnowledgeModule()
+		if err != nil {
+			return nil, err
+		}
+		modules = append(modules, officialModule)
+	}
 	if supplied.dataServices != nil {
 		module, charges, err := buildDataServices(ctx, supplied, *workbench.authDependencies, authorizer, cfg, storeCapabilities)
 		if err != nil {
@@ -990,6 +998,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 		StoreObservations:   supplied.storeObservations > 0,
 		LocalTrial:          supplied.localTrials > 0,
 		Knowledge:           supplied.knowledgeServices > 0,
+		OfficialKnowledge:   cfg.Workbench.Enabled,
 		AcquisitionImage:    factories.buildAcquisitionImage != nil,
 		FullImageSet:        imageRuntime != nil,
 		ProductAgent:        supplied.productAgent != nil,
@@ -1101,6 +1110,7 @@ type currentApplicationOptionalRoutes struct {
 	NotificationCenter  bool
 	AgentConfiguration  bool
 	Knowledge           bool
+	OfficialKnowledge   bool
 	StoreCenter         bool
 	StoreObservations   bool
 	LocalTrial          bool
@@ -1198,6 +1208,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	if optional.Knowledge {
 		for _, r := range knowledgehttp.Routes(&knowledgehttp.Handler{}) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
+	if optional.OfficialKnowledge {
+		for _, r := range officialhttp.Routes(&officialhttp.Handler{}) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
 		}
 	}
@@ -1425,6 +1440,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 				return errors.New("knowledge feature not admitted")
 			}
 			if err := validateKnowledgeDescriptor(descriptor); err != nil {
+				return err
+			}
+		}
+		if strings.HasPrefix(descriptor.Path, officialhttp.Base) {
+			if !optional.OfficialKnowledge {
+				return errors.New("official knowledge not admitted")
+			}
+			if err := officialhttp.ValidateDescriptor(descriptor); err != nil {
 				return err
 			}
 		}

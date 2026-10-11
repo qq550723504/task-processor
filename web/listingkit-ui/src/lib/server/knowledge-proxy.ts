@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { baseSchema,basesSchema,sourceSchema,sourcesSchema,previewSchema,resultSchema,knowledgeId } from "@/lib/api/knowledge";
 import { readBoundedStrictJSON } from "@/lib/api/strict-json-response";
+import { officialListSchema, officialArticleSchema, officialArticleID, officialRevision } from "@/lib/api/official-knowledge";
 import { hasTrustedSameOriginWrite } from "./same-origin-write";
 import { WORKBENCH_COOKIE_NAME } from "./workbench-proxy";
 import { hasEmptyBody } from "./members-proxy";
@@ -9,10 +10,13 @@ export function knowledgeFailure(status:number,code:string) {return Response.jso
 function endpoint(url:URL,method:string) {
  const parts = url.pathname.slice("/api/workbench/".length).split("/");
  const [root,id,action,revision,preview] = parts;
- if(!["knowledge-bases","knowledge-sources"].includes(root)) return null;
+ if(!["knowledge-bases","knowledge-sources","official-knowledge"].includes(root)) return null;
+ const official=root==="official-knowledge";
  const mutation = method !== "GET";
  let schema:z.ZodType; let upload=false, json=false, cas=false;
- if(root === "knowledge-bases" && parts.length === 1 && ["GET","POST"].includes(method)) {schema=method==="GET"?basesSchema:resultSchema; json=mutation;}
+ if(official && parts.length===1 && method==="GET") schema=officialListSchema;
+ else if(official && parts.length===4 && action==="revisions" && officialArticleID.safeParse(id).success && officialRevision.safeParse(revision).success && method==="GET") schema=officialArticleSchema;
+ else if(root === "knowledge-bases" && parts.length === 1 && ["GET","POST"].includes(method)) {schema=method==="GET"?basesSchema:resultSchema; json=mutation;}
  else if(root==="knowledge-bases" && knowledgeId.safeParse(id).success && parts.length===2 && ["GET","PUT"].includes(method)) {schema=mutation?resultSchema:baseSchema; json=mutation; cas=mutation;}
  else if(root==="knowledge-bases" && knowledgeId.safeParse(id).success && parts.length===3 && action==="sources" && ["GET","POST"].includes(method)) {schema=mutation?resultSchema:sourcesSchema; upload=mutation;}
  else if(root==="knowledge-bases" && knowledgeId.safeParse(id).success && parts.length===3 && action==="disable" && method==="POST") {schema=resultSchema;cas=true;}
@@ -23,7 +27,7 @@ function endpoint(url:URL,method:string) {
  if(url.search && !(root==="knowledge-bases" && parts.length===1 && method==="GET")) return null;
  if(url.search.length>256) return null;
  for(const [key,value] of url.searchParams) {if(!["page","pageSize"].includes(key) || url.searchParams.getAll(key).length!==1 || !/^[1-9][0-9]*$/.test(value) || Number(value)>(key==="page"?100000:100)) return null;}
- return {path:parts.join("/"),schema,upload,json,cas,mutation};
+ return {path:parts.join("/"),schema,upload,json,cas,mutation,official,id,revision};
 }
 async function boundedBytes(request:Request,signal:AbortSignal):Promise<Uint8Array> {
  const reader=request.body?.getReader(); if(!reader) throw new Error("missing body");
@@ -38,6 +42,7 @@ export async function proxyKnowledge(request:Request,token:string,userId:string)
  if(request.headers.get("X-Expected-User-ID")!==userId) return knowledgeFailure(409,"IDENTITY_CONTEXT_CHANGED");
  const url=new URL(request.url), route=endpoint(url,request.method);
  if(!route || request.url.endsWith("?") || request.headers.has("content-encoding")) return knowledgeFailure(400,"KNOWLEDGE_INVALID_REQUEST");
+ if(route.official && (request.body!==null || request.headers.has("transfer-encoding") || request.headers.has("content-length") && request.headers.get("content-length")!=="0")) return knowledgeFailure(400,"KNOWLEDGE_INVALID_REQUEST");
  if(route.mutation && !hasTrustedSameOriginWrite(request)) return knowledgeFailure(403,"PERMISSION_DENIED");
  const cookies=(request.headers.get("cookie")??"").split(";").map(v=>v.trim()).filter(v=>v.startsWith(WORKBENCH_COOKIE_NAME+"="));
  let organization="";
@@ -46,7 +51,7 @@ export async function proxyKnowledge(request:Request,token:string,userId:string)
  let origin:string;
  try{const upstream=new URL(process.env.LISTINGKIT_SERVICE_API_BASE??"");if(!["http:","https:"].includes(upstream.protocol)||upstream.username||upstream.password||upstream.search||upstream.hash||!["/api/v1","/api/v1/"].includes(upstream.pathname))throw new Error();origin=upstream.origin;}
  catch{return knowledgeFailure(503,"KNOWLEDGE_UNAVAILABLE");}
- const controller=new AbortController();const abort=()=>controller.abort();request.signal.addEventListener("abort",abort,{once:true});if(request.signal.aborted)abort();const timer=setTimeout(abort,40000);let dispatched=false;
+ const controller=new AbortController();const abort=()=>controller.abort();request.signal.addEventListener("abort",abort,{once:true});if(request.signal.aborted)abort();const timer=setTimeout(abort,route.official?10000:40000);let dispatched=false;
  try{
  const headers=new Headers({Accept:"application/json",Authorization:"Bearer "+token,"X-Requested-Organization-ID":organization});
  let body:string|ArrayBuffer|undefined;
@@ -61,10 +66,10 @@ export async function proxyKnowledge(request:Request,token:string,userId:string)
  }else if(route.upload){
  const contentType=request.headers.get("Content-Type")??"";if(!/^multipart\/form-data;\s*boundary=/i.test(contentType))return knowledgeFailure(400,"KNOWLEDGE_INVALID_REQUEST");
  const bytes=await boundedBytes(request,controller.signal);body=bytes.buffer as ArrayBuffer;headers.set("Content-Type",contentType);
- }else if(!(await hasEmptyBody(request,controller.signal)))return knowledgeFailure(400,"KNOWLEDGE_INVALID_REQUEST");
+ }else if(!route.official && !(await hasEmptyBody(request,controller.signal)))return knowledgeFailure(400,"KNOWLEDGE_INVALID_REQUEST");
  controller.signal.throwIfAborted();dispatched=true;
  const response=await fetch(origin+"/api/v1/workbench/"+route.path+url.search,{method:request.method,headers,body,signal:controller.signal,cache:"no-store",redirect:"manual"});
- const payload=await readBoundedStrictJSON(response,route.schema===previewSchema?13*1024*1024:1024*1024,controller.signal);
+ const payload=await readBoundedStrictJSON(response,route.official?(route.schema===officialListSchema?128*1024:256*1024):route.schema===previewSchema?13*1024*1024:1024*1024,controller.signal);
  controller.signal.throwIfAborted();
  if(![200,201,202].includes(response.status)){
  if(route.mutation && response.status>=500)return knowledgeFailure(response.status,"OUTCOME_UNKNOWN");
@@ -72,6 +77,7 @@ export async function proxyKnowledge(request:Request,token:string,userId:string)
  return knowledgeFailure(response.status>=400 && response.status<600 ? response.status : 502,error.success?error.data.code:(route.mutation?"OUTCOME_UNKNOWN":"INVALID_UPSTREAM_RESPONSE"));
  }
  const parsed=route.schema.safeParse(payload);if(!parsed.success)throw new Error("invalid response");
+ if(route.schema===officialArticleSchema) {const article=officialArticleSchema.parse(parsed.data);if(article.id!==route.id || article.revision!==route.revision)throw new Error("wrong official version");}
  return Response.json(parsed.data,{status:response.status,headers:safeHeaders});
  }catch{return knowledgeFailure(controller.signal.aborted?504:dispatched?502:400,dispatched&&route.mutation?"OUTCOME_UNKNOWN":dispatched?"KNOWLEDGE_UNAVAILABLE":"KNOWLEDGE_INVALID_REQUEST");}
  finally{clearTimeout(timer);request.signal.removeEventListener("abort",abort);}
