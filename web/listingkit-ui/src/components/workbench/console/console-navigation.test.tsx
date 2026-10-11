@@ -7,6 +7,12 @@ import { ConsoleNavigation } from "./console-navigation";
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 
 const query=vi.hoisted(()=>({value:""}));
+it.each(["aiWorkbenchAvailable", "projectCenterAvailable", "knowledgeAvailable", "reportCenterAvailable", "productReviewAvailable", "sheinRecordsAvailable"])("marks the AI parent connected when %s is connected", (capability) => {
+  const view = render(<ConsoleNavigation pathname="/workbench" ariaLabel="主导航" />);
+  expect(screen.getByRole("link", {name: "AI工作台"})).toHaveAttribute("title", "AI工作台：业务暂未启用");
+  view.rerender(<ConsoleNavigation pathname="/workbench" ariaLabel="主导航" {...{[capability]: true}} />);
+  expect(screen.getByRole("link", {name: "AI工作台"})).toHaveAttribute("title", "AI工作台");
+});
 it("opens data market and API only with their runtime and keeps My Data separate", () => {
  const view=render(<ConsoleNavigation pathname="/workbench/data/api" ariaLabel="主导航" productCollectionsAvailable />);
  expect(screen.getByRole("link",{name:"数据市场"})).toHaveAttribute("title","数据市场：业务暂未启用");

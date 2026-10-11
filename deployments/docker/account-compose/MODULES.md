@@ -75,6 +75,7 @@ After normal login and enterprise selection, this combination provides:
 | Cockpit goals, store matrix, manual financial facts, alerts/advice | `/workbench/overview/goals`, `/workbench/overview/stores`, `/workbench/overview/alerts`, `/workbench/overview/advice` |
 | Accounts, members, roles, resources, audit and store management | `/workbench/account`, `/workbench/stores` |
 | Knowledge, personal projects and reports | `/workbench/ai/knowledge`, `/workbench/ai/projects`, `/workbench/ai/reports` |
+| AI Workbench entry | `/workbench/ai` opens the first connected AI child; this profile opens Project Center while Chat and business-task execution remain unconfigured |
 | 1688 acquisition and Product Collection | `/workbench/supply/acquisition`, `/workbench/data/mine` |
 | Supply Market | `/workbench/supply/official`, `/workbench/supply/selected`, `/workbench/supply/catalogs` |
 | Official/my/custom tools and capture plugin package | `/workbench/tools/official`, `/workbench/tools/mine`, `/workbench/tools/custom` |
