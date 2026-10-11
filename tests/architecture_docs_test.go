@@ -2078,3 +2078,12 @@ func TestEcoservicesDesignPreservesOriginalFundsAndPrivateDomainOwners(t *testin
 		"CurrentIdentityWithVerifiedRoles", "LiveWrite", "全新", "原订单", "私有",
 	})
 }
+
+func TestEcoservicesQualificationDesignKeepsFinancialAdmissionSeparate(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "ecoservices-qualification-runtime.md"), []string{
+		"IMPLEMENTATION_READY", "ecoservices.nonPaymentOnly=true", "application_submit",
+		"application_review", "application_reject", "agreement_accept", "before repository Apply/replay",
+		"ACTIVE plus MerchantID", "No Commercial/Money purchase service", "incompatible retained facts fails startup",
+		"ecoservices_runtime", "NOT_RUN",
+	})
+}
