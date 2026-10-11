@@ -88,6 +88,8 @@ Use these as the main source of truth for structural work:
   - #552 current Console Store record management, owner pools, quota, authorization and single-state hard-cut; service activation remains a separate unopened capability
 - `supply-market-v1.md`
   - #622 frozen IMPLEMENTATION_READY market disclosure, manual qualification and shared-account SDS design contract; current implementation and protocol evidence do not imply runtime or user acceptance
+- `selected-application-overview-v1.md`
+  - #619 frozen IMPLEMENTATION_READY member-only selected-application counts and bounded optimized own-product preview; original qualification, submit, authorization and fact owners remain unchanged
 - `store-center-platform-observations-v1.md`
   - #614 IMPLEMENTATION_READY readonly SHEIN products, consumer orders and logistics;
     scoped observations, original-member sync receipts and bounded recovery. Shared

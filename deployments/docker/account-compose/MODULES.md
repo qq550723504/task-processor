@@ -133,8 +133,8 @@ operations, and keeps model/task execution closed. See
 Preserve the two Chat state/runtime volumes alongside every original volume.
 
 ```powershell
-docker compose --env-file .env -f docker-compose.yml -f docker-compose.knowledge.yml -f docker-compose.data-services.yml -f docker-compose.modules.yml stop
-docker compose --env-file .env -f docker-compose.yml -f docker-compose.knowledge.yml -f docker-compose.data-services.yml -f docker-compose.modules.yml up -d --no-build --wait
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.knowledge.yml -f docker-compose.data-services.yml -f docker-compose.modules.yml -f docker-compose.ecoservices.yml -f docker-compose.chat.yml stop
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.knowledge.yml -f docker-compose.data-services.yml -f docker-compose.modules.yml -f docker-compose.ecoservices.yml -f docker-compose.chat.yml up -d --no-build --wait
 ```
 
 Keep project/env/source/images/plugin origin and all overlays consistent. Stop

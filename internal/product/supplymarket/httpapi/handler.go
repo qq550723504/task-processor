@@ -25,6 +25,7 @@ const BasePath = "/api/v1/workbench/supply-market"
 const AdminPath = "/api/v1/admin/supply-market"
 
 type Service interface {
+	ApplicationOverview(context.Context) (supplymarket.ApplicationOverview, error)
 	ExecuteMember(context.Context, string, supplymarket.Mutation) (supplymarket.Receipt, error)
 	ExecutePlatform(context.Context, string, supplymarket.Mutation) (supplymarket.Receipt, error)
 	ListMarket(context.Context, supplymarket.Query) (supplymarket.Page[supplymarket.Release], error)
@@ -46,7 +47,7 @@ type routeSpec struct {
 }
 
 func Routes(service Service, files Files, bind func(context.Context, string) (context.Context, error)) []httproute.Descriptor {
-	specs := []routeSpec{{http.MethodGet, BasePath + "/releases", "market", false}, {http.MethodGet, BasePath + "/releases/:id", "product", false}, {http.MethodGet, BasePath + "/choices/:id", "choice", false}, {http.MethodPost, BasePath + "/select", "select", false}, {http.MethodPost, BasePath + "/uploads", "upload", false}}
+	specs := []routeSpec{{http.MethodGet, BasePath + "/releases", "market", false}, {http.MethodGet, BasePath + "/releases/:id", "product", false}, {http.MethodGet, BasePath + "/choices/:id", "choice", false}, {http.MethodGet, BasePath + "/application-overview", "overview", false}, {http.MethodPost, BasePath + "/select", "select", false}, {http.MethodPost, BasePath + "/uploads", "upload", false}}
 	for _, base := range []string{BasePath, AdminPath} {
 		platform := base == AdminPath
 		specs = append(specs, []routeSpec{{http.MethodGet, base + "/records", "records", platform}, {http.MethodGet, base + "/records/:id", "record", platform}, {http.MethodGet, base + "/records/:id/releases", "record-releases", platform}, {http.MethodGet, base + "/records/:id/events", "events", platform}, {http.MethodGet, base + "/records/:id/files/:file_id", "download", platform}, {http.MethodGet, base + "/by-key/:key", "operation", platform}, {http.MethodPost, base + "/commands", "command", platform}}...)
@@ -62,7 +63,7 @@ func Routes(service Service, files Files, bind func(context.Context, string) (co
 		if spec.action == "select" {
 			permission = supplymarket.PermissionSelect
 		}
-		if spec.action == "choice" {
+		if spec.action == "choice" || spec.action == "overview" {
 			permission = supplymarket.PermissionApply
 		}
 		if spec.action == "upload" || spec.action == "download" {
@@ -92,6 +93,12 @@ func Routes(service Service, files Files, bind func(context.Context, string) (co
 			}
 			var value any
 			switch spec.action {
+			case "overview":
+				if c.Request.URL.RawQuery != "" {
+					writeError(c, supplymarket.ErrInvalid)
+					return
+				}
+				value, err = service.ApplicationOverview(ctx)
 			case "market", "records", "events", "record-releases":
 				q, e := readQuery(c.Request.URL.RawQuery)
 				if e != nil {

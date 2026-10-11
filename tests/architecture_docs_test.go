@@ -1719,6 +1719,14 @@ func TestArchitectureReadmeCoversEveryArchitectureDocument(t *testing.T) {
 	}
 }
 
+func TestSelectedApplicationOverviewDocumentPreservesReadOnlyOwnerBoundaries(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "selected-application-overview-v1.md"), []string{
+		"IMPLEMENTATION_READY / FROZEN", "Service.Choice", "submit_selected",
+		"MemberID 属于当前", "不跨 owner 直接读", "2000", "并发最多4", "总请求10s",
+		"不返回局部计数或假0", "scope 必须完全一致", "无 mutation intent",
+	})
+}
+
 func TestArchitectureReadmeReferencesExistingDocuments(t *testing.T) {
 	readmePath := filepath.Join("..", "docs", "architecture", "README.md")
 	readmeContent, err := os.ReadFile(readmePath)

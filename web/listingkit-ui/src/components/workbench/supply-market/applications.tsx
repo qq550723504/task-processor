@@ -13,8 +13,9 @@ import {listOwnProducts} from "@/lib/api/product-collection";
 import {listMarketRecords,readMarketChoice,type MarketScope} from "@/lib/api/supply-market";
 import {MarketBoundary,MarketLinks,MarketReadError,CursorButtons,marketStages,useMarketCommands} from "./shared";
 import {Qualifications} from "./qualifications";
+import {SupplyApplicationOverview} from "./application-overview";
 type ApplicationView="progress"|"records";
-export function SupplyApplicationsPage({admin=false,expectedUserId,view}:{admin?:boolean;expectedUserId?:string;view?:ApplicationView}){return <MarketBoundary admin={admin} expectedUserId={expectedUserId}>{scope=><Applications key={view??"all"} scope={scope} admin={admin} view={view}/>}</MarketBoundary>}
+export function SupplyApplicationsPage({admin=false,expectedUserId,view}:{admin?:boolean;expectedUserId?:string;view?:ApplicationView}){return <MarketBoundary admin={admin} expectedUserId={expectedUserId}>{scope=>!admin&&!view?<SupplyApplicationOverview scope={scope}/>:<Applications key={view??"all"} scope={scope} admin={admin} view={view}/>}</MarketBoundary>}
 function Applications({scope,admin,view}:{scope:MarketScope;admin:boolean;view?:ApplicationView}){
  const [endedFilter,setEnded]=useState(false),[kindFilter,setKind]=useState<"selected"|"official"|"connection">("selected"),[after,setAfter]=useState<string>();
  const selectedView=!admin?view:undefined, ended=selectedView?selectedView==="records":endedFilter, kind=selectedView?"selected":kindFilter;
