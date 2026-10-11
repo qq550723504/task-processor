@@ -12,6 +12,7 @@ COPY cmd/store-center-schema-init ./cmd/store-center-schema-init
 COPY cmd/issue36-local-trial-init ./cmd/issue36-local-trial-init
 COPY cmd/knowledge-schema-init ./cmd/knowledge-schema-init
 COPY cmd/ecoservices-schema-init ./cmd/ecoservices-schema-init
+COPY cmd/ai-workbench-schema-init ./cmd/ai-workbench-schema-init
 COPY cmd/agent-configuration-schema-init ./cmd/agent-configuration-schema-init
 COPY cmd/agent-customization-schema-init ./cmd/agent-customization-schema-init
 COPY cmd/account-audit-ledger-schema-init ./cmd/account-audit-ledger-schema-init
@@ -34,6 +35,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/store-center-sche
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/issue36-local-trial-init ./cmd/issue36-local-trial-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/knowledge-schema-init ./cmd/knowledge-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/ecoservices-schema-init ./cmd/ecoservices-schema-init && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/ai-workbench-schema-init ./cmd/ai-workbench-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/agent-configuration-schema-init ./cmd/agent-configuration-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/agent-customization-schema-init ./cmd/agent-customization-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/account-audit-ledger-schema-init ./cmd/account-audit-ledger-schema-init && \
@@ -70,6 +72,7 @@ COPY --from=go-builder /out/issue36-local-trial-init /usr/local/bin/issue36-loca
 COPY internal/app/listingrecordstore/schema.sql /etc/issue36-listing-schema.sql
 COPY --from=go-builder /out/knowledge-schema-init /usr/local/bin/knowledge-schema-init
 COPY --from=go-builder /out/ecoservices-schema-init /usr/local/bin/ecoservices-schema-init
+COPY --from=go-builder /out/ai-workbench-schema-init /usr/local/bin/ai-workbench-schema-init
 COPY --from=go-builder /out/agent-configuration-schema-init /usr/local/bin/agent-configuration-schema-init
 COPY --from=go-builder /out/agent-customization-schema-init /usr/local/bin/agent-customization-schema-init
 COPY --from=go-builder /out/account-audit-ledger-schema-init /usr/local/bin/account-audit-ledger-schema-init
@@ -79,6 +82,7 @@ COPY --from=go-builder /out/report-center-schema-init /usr/local/bin/report-cent
 COPY internal/integration/persistence/toolmarket/schema.sql /etc/tool-market-schema.sql
 COPY --chmod=0755 deployments/docker/account-compose/native-modules-init.sh /usr/local/bin/native-modules-init
 COPY --chmod=0755 deployments/docker/account-compose/ecoservices-init.sh /usr/local/bin/ecoservices-init
+COPY --chmod=0755 deployments/docker/account-compose/chat-init.sh /usr/local/bin/chat-init
 COPY --from=go-builder /out/referral-schema-init /usr/local/bin/referral-schema-init
 COPY --from=go-builder /out/organization-membership-schema-init /usr/local/bin/organization-membership-schema-init
 COPY --from=go-builder /out/source-account-registry-schema-init /usr/local/bin/source-account-registry-schema-init

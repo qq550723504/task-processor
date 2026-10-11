@@ -89,7 +89,7 @@ func (a *projectSources) Resolve(ctx context.Context, s pc.Scope, r pc.Reference
 		v.Title = item.Name()
 		v.Href = "/workbench/stores/" + r.TargetID
 	case "CONVERSATION":
-		if a.chat == nil || !allowed(authz.PermissionWorkbenchChatRead) {
+		if a.chat == nil || !a.chat.admittedOrganization(s.OrganizationID) || !allowed(authz.PermissionWorkbenchChatRead) {
 			return pc.ReferenceView{}, pc.ErrNotFound
 		}
 		item, e := a.chat.store.Get(ctx, aiworkbench.Scope{OrganizationID: s.OrganizationID, ActorID: s.ActorID}, r.TargetID)
@@ -102,7 +102,7 @@ func (a *projectSources) Resolve(ctx context.Context, s pc.Scope, r pc.Reference
 		}
 		v.Href = "/workbench/ai/chat/" + r.TargetID
 	case "BUSINESS_TASK":
-		if a.chat == nil || !allowed(authz.PermissionWorkbenchTaskRead) {
+		if a.chat == nil || !a.chat.admittedOrganization(s.OrganizationID) || !allowed(authz.PermissionWorkbenchTaskRead) {
 			return pc.ReferenceView{}, pc.ErrNotFound
 		}
 		scope := aiworkbench.Scope{OrganizationID: s.OrganizationID, ActorID: s.ActorID}

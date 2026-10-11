@@ -122,6 +122,14 @@ their actual applicable authorization/evidence and are not proved by startup.
 
 ## Retain and restart
 
+For the authorized model-free Chat stage (#619), append `docker-compose.chat.yml`
+after the Ecoservices layer and set the private `CHAT_ALLOWED_ORGANIZATION_IDS`
+JSON list. Keep this layer on stop/start too. It installs only the existing
+Conversation schema and bounded role, admits real create/rename/favorite/archive
+operations, and keeps model/task execution closed. See
+[`ai-workbench-chat-trial.md`](../../../docs/operations/ai-workbench-chat-trial.md).
+Preserve the two Chat state/runtime volumes alongside every original volume.
+
 ```powershell
 docker compose --env-file .env -f docker-compose.yml -f docker-compose.knowledge.yml -f docker-compose.data-services.yml -f docker-compose.modules.yml stop
 docker compose --env-file .env -f docker-compose.yml -f docker-compose.knowledge.yml -f docker-compose.data-services.yml -f docker-compose.modules.yml up -d --no-build --wait

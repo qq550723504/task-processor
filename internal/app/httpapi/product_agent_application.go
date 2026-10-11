@@ -288,16 +288,26 @@ func (a *productAgentApplication) freshChatIdentity(ctx context.Context) (authid
 }
 
 func (a *productAgentApplication) freshWorkbenchIdentity(ctx context.Context, permission string) (authidentity.AuthenticatedIdentity, error) {
+	return freshWorkbenchIdentity(ctx, a.resolver, a.authorizer, a.config.AllowedOrganizationIDs, permission)
+}
+
+func (a *aiWorkbenchApplication) freshWorkbenchIdentity(ctx context.Context, permission string) (authidentity.AuthenticatedIdentity, error) {
+	if a.agent != nil {
+		return a.agent.freshWorkbenchIdentity(ctx, permission)
+	}
+	return freshWorkbenchIdentity(ctx, a.resolver, a.authorizer, a.allowedOrganizationIDs, permission)
+}
+func freshWorkbenchIdentity(ctx context.Context, resolver organizationIdentityResolver, authorizer *authz.ListingKitAuthorizer, allowedOrganizations []string, permission string) (authidentity.AuthenticatedIdentity, error) {
 	original, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
 	capability, bound := ctx.Value(productReviewCapabilityContextKey{}).(productReviewRequestCapability)
 	if !ok || !bound || capability.actorID != original.UserID || capability.effectiveOrganizationID != original.EffectiveOrganizationID ||
 		original.TenantID != original.EffectiveOrganizationID || !capability.tokenExpiresAt.After(time.Now()) {
 		return authidentity.AuthenticatedIdentity{}, review.ErrForbidden
 	}
-	if a.resolver == nil {
+	if resolver == nil {
 		return authidentity.AuthenticatedIdentity{}, review.ErrUnavailable
 	}
-	identity, err := a.resolver.Resolve(ctx, httproute.OrganizationAccessPolicyLiveWrite,
+	identity, err := resolver.Resolve(ctx, httproute.OrganizationAccessPolicyLiveWrite,
 		workbenchcontext.ResolveInput{Identity: authidentity.AuthenticatedIdentity{UserID: capability.actorID,
 			HomeOrganizationID: capability.homeOrganizationID, TokenExpiresAt: capability.tokenExpiresAt},
 			BearerToken: capability.bearerToken, RequestedOrganizationID: capability.effectiveOrganizationID})
@@ -311,7 +321,7 @@ func (a *productAgentApplication) freshWorkbenchIdentity(ctx context.Context, pe
 		identity.EffectiveOrganizationID != original.TenantID || !agent.ValidID(identity.EffectiveMemberID) {
 		return authidentity.AuthenticatedIdentity{}, review.ErrForbidden
 	}
-	permissionAllowed, err := authz.AuthorizeOrganization(ctx, a.authorizer, identity.UserID, identity.EffectiveOrganizationID, identity.Roles, permission)
+	permissionAllowed, err := authz.AuthorizeOrganization(ctx, authorizer, identity.UserID, identity.EffectiveOrganizationID, identity.Roles, permission)
 	if err != nil {
 		return authidentity.AuthenticatedIdentity{}, review.ErrUnavailable
 	}
@@ -319,7 +329,7 @@ func (a *productAgentApplication) freshWorkbenchIdentity(ctx context.Context, pe
 		return authidentity.AuthenticatedIdentity{}, review.ErrForbidden
 	}
 	allowed := false
-	for _, org := range a.config.AllowedOrganizationIDs {
+	for _, org := range allowedOrganizations {
 		allowed = allowed || org == identity.TenantID
 	}
 	if !allowed {

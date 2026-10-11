@@ -1,6 +1,7 @@
 # 硕米 Chat 会话管理独立运行接线
 
-> Status: DRAFT / REVIEW_PENDING
+> Status: IMPLEMENTATION_READY
+> Independent design review: /root/native_auth_review reviewed ced8aec4c4373657b878461517a0dda0e998ddee, no BLOCKER (2026-10-11). Current user scope and frozen full-mode requirements remain unchanged.
 > Design Basis: Independent Architecture (bounded runtime and authorization-consumer increment).
 > Execution: Issue #619 / PR #631, one existing Writer/worktree.
 > Baseline: 1994e8348e6b53b9e356b330b5ec123f89ecab29; origin/main 60d432aa8b9391491278912e4268950ba65b58f0.
@@ -47,4 +48,10 @@ TDD captures current startup rejection without ProductAgent/model policies and U
 Direct message/confirm/task mutations in conversation mode must produce unavailable without changing receipts/messages/proposals/tasks/invocations or calling execution. Original full-mode tests remain valid; only affected checks run locally. Verify task/proposal/Project absent-owner projections do not panic or imply success.
 
 Production build + ordinary Edge login/current OrgA: root AI now lands in Chat, create/reopen/rename/favorite/archive/restore a clearly named local trial conversation, empty/model-disabled state and direct no-model gate; normal stop/start retains it and all pre-existing volumes/session. Such fixture-free local trial data are authorized by this conversation-management task, not real customer data; do not delete them. Independent final increment review and exact-HEAD CI are distinct from user acceptance, which remains NOT_RUN.
+
+## Independent design findings: classified before implementation
+
+- Finding: shared identity helper and Project direct store reads must retain original live actor/org/token/current-member/permission/allowlist checks. Product requirement: no cross-enterprise or unauthorized Conversation disclosure. Classification: IMPLEMENTATION_TEST; no new authorization system is needed. Action: exact helper regressions and Chat admission guard on Project Conversation/BusinessTask references.
+- Finding: task/proposal/Project/notificationSources currently dereference Agent directly. Product requirement: missing execution owner must not panic, reveal protected details or imply completion. Classification: IMPLEMENTATION_TEST. Action: inspect these sibling consumers together; safe unavailable projection/all actions false, and reject model/task mutations before receipt/write.
+- Finding: retained installer must verify marker, input/output identity and original role secret. Product requirement: preserve durable facts and refuse accidental reinstallation. Classification: IMPLEMENTATION_TEST. Action: existing bounded installer contract plus actual fresh-install/restart/private-runtime checks, without new validation infrastructure.
 

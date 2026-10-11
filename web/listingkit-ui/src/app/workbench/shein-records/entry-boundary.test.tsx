@@ -5,6 +5,10 @@ import WorkbenchPage from "../page";
 import SheinRecordsPage from "./page";
 
 vi.mock("next/server", () => ({ connection: vi.fn() }));
+vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => ({
+  operationsCockpitAvailable: false, effectiveOrganization: { id: "org" }, permissions: [],
+  isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null,
+}) }));
 // Even a configured backend cannot approve a product entry (#328 / #331).
 vi.mock("@/lib/server/shein-records-availability", () => ({ isSheinRecordsAvailable: () => true }));
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NEXT_HTTP_ERROR_FALLBACK;404"); } }));

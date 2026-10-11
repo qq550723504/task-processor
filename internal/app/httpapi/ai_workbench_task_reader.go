@@ -18,8 +18,14 @@ func (a *aiWorkbenchApplication) taskProjectionReader() aiworkbench.AuthorizedTa
 		}
 		return nil
 	}, LookupRun: func(ctx context.Context, scope agent.Scope, binding agent.Binding, key string) (agent.Record, bool, error) {
+		if a.agent == nil {
+			return agent.Record{}, false, aiworkbench.ErrUnavailable
+		}
 		return a.agent.store.Lookup(ctx, scope, binding, key)
 	}, ReadReview: func(ctx context.Context, runID string) (aiworkbench.TaskReviewState, bool, error) {
+		if a.agent == nil {
+			return aiworkbench.TaskReviewState{}, false, aiworkbench.ErrUnavailable
+		}
 		r, found, e := a.agent.reviews.FindAgentReview(ctx, runID)
 		if errors.Is(e, review.ErrForbidden) {
 			m, f, e := a.agent.reviews.FindAgentTaskReviewMetadata(ctx, runID)

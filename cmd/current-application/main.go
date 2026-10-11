@@ -183,7 +183,7 @@ func execute() error {
 				options = append(options, httpapi.WithProductAgent(httpapi.ProductAgentDependencies{RunDB: features.ProductAgentDB, ReviewDB: features.ProductReviewDB, AssetDB: features.ProductAgentAssetDB, Ledger: ledger, TextPolicies: p.TextPolicies, Enabled: true, AllowedOrganizationIDs: p.AllowedOrganizationIDs, Limits: p.Limits()}))
 			}
 			if features.AIWorkbench != nil && features.AIWorkbench.Enabled {
-				options = append(options, httpapi.WithAIWorkbench(httpapi.AIWorkbenchDependencies{DB: features.AIWorkbenchDB, PlanningTextPolicies: features.AIWorkbench.PlanningTextPolicies}))
+				options = append(options, httpapi.WithAIWorkbench(httpapi.AIWorkbenchDependencies{DB: features.AIWorkbenchDB, PlanningTextPolicies: features.AIWorkbench.PlanningTextPolicies, ConversationOnly: features.AIWorkbench.ConversationOnly, AllowedOrganizationIDs: features.AIWorkbench.AllowedOrganizationIDs}))
 			}
 			if features.RuntimeContext != nil {
 				options = append(options, httpapi.WithRuntimeContext(features.RuntimeContext))

@@ -462,8 +462,11 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	if supplied.productAgent != nil && supplied.productAcquisitionDB == nil {
 		return nil, errors.New("product agent requires current acquisition owner")
 	}
-	if supplied.aiWorkbench != nil && (supplied.productAgent == nil || supplied.aiWorkbench.DB == nil || supplied.aiWorkbench.DB == supplied.productAgent.RunDB || supplied.aiWorkbench.DB == sourceAccountDB || supplied.aiWorkbench.DB == supplied.commercialOwnerDB) {
-		return nil, errors.New("AI Workbench requires distinct bounded pool and Product Agent")
+	if chat := supplied.aiWorkbench; chat != nil {
+		if chat.DB == nil || chat.DB == sourceAccountDB || chat.DB == supplied.commercialOwnerDB || chat.DB == supplied.productAcquisitionDB ||
+			chat.ConversationOnly && supplied.productAgent != nil || !chat.ConversationOnly && (supplied.productAgent == nil || chat.DB == supplied.productAgent.RunDB) {
+			return nil, errors.New("AI Workbench requires distinct bounded pool and explicit execution mode")
+		}
 	}
 	if supplied.productAcquisitionDB != nil && (supplied.productAcquisitionDB == sourceAccountDB) {
 		return nil, errors.New("product acquisition requires an independent pool")
@@ -841,7 +844,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	}
 	var projectChat *aiWorkbenchApplication
 	if supplied.aiWorkbench != nil {
-		module, e := buildAIWorkbenchModule(ctx, *supplied.aiWorkbench, productRuntime)
+		chatConfig := *supplied.aiWorkbench
+		chatConfig.resolver, chatConfig.authorizer = workbench.authDependencies.organizationResolver, authorizer
+		module, e := buildAIWorkbenchModule(ctx, chatConfig, productRuntime)
 		if e != nil {
 			return nil, fmt.Errorf("build AI Workbench: %w", e)
 		}

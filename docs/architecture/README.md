@@ -170,6 +170,9 @@ source of truth for long-lived rules.
   - APPROVED / IMPLEMENTATION_READY #576 Slice E: owner-scoped Conversation,
     no-tool Eino/eino-ext planning, immutable execution proposals and BusinessTask,
     exact model-profile/replay semantics and current AgentRun/Review projections.
+- [`ai-workbench-conversation-runtime.md`](./ai-workbench-conversation-runtime.md)
+  - IMPLEMENTATION_READY: existing scoped Conversation management without model
+    policies; explicit allowlist, live authorization and closed execution routes.
     Reuses #580 title policy/organization-only credentials; native protocols and
     run-profile binding are approved implementation contracts, not deployed capability.
     Reviewed contract HEAD `620495bf03b57099e4b934f89c04e0d989d543d7` received
