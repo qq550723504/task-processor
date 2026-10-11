@@ -4,6 +4,21 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 describe("Figma Console navigation contract", () => {
+  it("keeps the three selected-application entries and shared detail under their real parent", () => {
+    const parent = findConsoleRoute("/workbench/supply/applications")!;
+    expect(parent.node.children?.map(node => [node.label, node.href])).toEqual([
+      ["发起申请", "/workbench/supply/applications/new"],
+      ["申请进度", "/workbench/supply/applications/progress"],
+      ["申请记录", "/workbench/supply/applications/records"],
+    ]);
+    for (const child of parent.node.children ?? []) {
+      expect(findConsoleRoute(child.href)?.node).toBe(child);
+      expect(findConsoleRoute(child.href)?.trail.map(node => node.label)).toEqual(["供应市场", "优选申请", child.label]);
+      expect(existsSync(join(process.cwd(), "src/app", child.href.slice(1), "page.tsx"))).toBe(true);
+    }
+    expect(findConsoleRoute("/workbench/supply/applications/11111111-1111-4111-8111-111111111111")?.trail.map(node => node.label)).toEqual(["供应市场", "优选申请", "申请详情"]);
+    expect(findConsoleRoute("/workbench/supply/applications/extra")).toBeUndefined();
+  });
   it("keeps official and current-enterprise knowledge under the Figma Knowledge branch", () => {
     const knowledge = findConsoleRoute("/workbench/ai/knowledge")?.node;
     expect(knowledge?.children?.map(node => node.label)).toEqual(["官方知识库", "我的知识库"]);

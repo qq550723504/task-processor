@@ -10,7 +10,7 @@ export const consoleNavigation: readonly ConsoleNavNode[] = [
   ]),
   pending("供应市场", "supply", [
     { label: "1688采集", href: "/workbench/supply/acquisition", availability: "connected" },
-    pending("硕米自营", "supply/official"), pending("硕米优选", "supply/selected"), pending("货盘集成", "supply/catalogs"), pending("我的供应链", "supply/mine", [pending("待适配", "supply/mine/waiting"), pending("待补全", "supply/mine/missing"), pending("已适配", "supply/mine/ready"), pending("待审核", "supply/mine/review"), pending("已上传", "supply/mine/uploaded")]), pending("优选申请", "supply/applications"),
+    pending("硕米自营", "supply/official"), pending("硕米优选", "supply/selected"), pending("货盘集成", "supply/catalogs"), pending("我的供应链", "supply/mine", [pending("待适配", "supply/mine/waiting"), pending("待补全", "supply/mine/missing"), pending("已适配", "supply/mine/ready"), pending("待审核", "supply/mine/review"), pending("已上传", "supply/mine/uploaded")]), pending("优选申请", "supply/applications", [pending("发起申请", "supply/applications/new"), pending("申请进度", "supply/applications/progress"), pending("申请记录", "supply/applications/records")]),
   ]),
   pending("智能市场", "agents", [{label:"智能体市场",href:"/workbench/agents/market",availability:"connected"},{label:"我的智能体",href:"/workbench/agents/mine",availability:"connected"},{label:"智能体定制",href:"/workbench/agents/custom",availability:"connected",children:[{label:"提交定制需求",href:"/workbench/agents/custom/new",availability:"connected"},{label:"定制进度",href:"/workbench/agents/custom/progress",availability:"connected"}]}]),
   pending("工具市场", "tools", [pending("官方工具", "tools/official"), pending("我的工具", "tools/mine"), pending("工具定制", "tools/custom")]),
@@ -52,6 +52,11 @@ export function findConsoleRoute(pathname: string): ConsoleRoute | undefined {
   }
   const exact = visit(consoleNavigation, []);
   if (exact) return exact;
+  if (/^\/workbench\/supply\/applications\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(pathname)) {
+    const parent = findConsoleRoute("/workbench/supply/applications")!;
+    const node: ConsoleNavNode = {label:"申请详情", href:pathname, availability:parent.node.availability};
+    return {node, trail:[...parent.trail, node]};
+  }
   if (/^\/workbench\/ai\/knowledge\/[0-9a-f-]{36}$/.test(pathname)) {
     const parent = findConsoleRoute("/workbench/ai/knowledge/mine")!;
     const node: ConsoleNavNode = {label:"知识库资料", href:pathname, availability:parent.node.availability};

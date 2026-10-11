@@ -245,3 +245,21 @@ it("lets members collapse and reopen the customization children from its overvie
   view.rerender(<ConsoleNavigation pathname="/workbench/agents/custom/progress" ariaLabel="主导航" />);
   expect(screen.getByRole("link", {name:"定制进度"})).toHaveAttribute("aria-current", "page");
 });
+
+it.each([
+  ["new", "发起申请"], ["progress", "申请进度"], ["records", "申请记录"],
+])("connects the selected-application %s leaf only with its runtime", (path, label) => {
+  const pathname = `/workbench/supply/applications/${path}`;
+  const view = render(<ConsoleNavigation pathname={pathname} ariaLabel="主导航" supplyMarketAvailable />);
+  expect(screen.getByRole("button", {name:"收起优选申请"})).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getByRole("link", {name:label})).toHaveAttribute("href", pathname);
+  expect(screen.getByRole("link", {name:label})).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("link", {name:label}).closest("li")).toHaveClass("console-nav-level-3");
+  expect(screen.getByRole("link", {name:"优选申请"})).not.toHaveAttribute("aria-current");
+  for (const child of ["发起申请", "申请进度", "申请记录"]) {
+    expect(screen.getByRole("link", {name:child})).toHaveAttribute("title", child);
+    if(child !== label) expect(screen.getByRole("link", {name:child})).not.toHaveAttribute("aria-current");
+  }
+  view.rerender(<ConsoleNavigation pathname={pathname} ariaLabel="主导航" />);
+  expect(screen.getByRole("link", {name:label})).toHaveAttribute("title", `${label}：业务暂未启用`);
+});
