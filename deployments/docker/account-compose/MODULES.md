@@ -79,6 +79,7 @@ After normal login and enterprise selection, this combination provides:
 | 1688 acquisition and Product Collection | `/workbench/supply/acquisition`, `/workbench/data/mine` |
 | Supply Market | `/workbench/supply/official`, `/workbench/supply/selected`, `/workbench/supply/catalogs` |
 | Official/my/custom tools and capture plugin package | `/workbench/tools/official`, `/workbench/tools/mine`, `/workbench/tools/custom` |
+| Tool Market entry | `/workbench/tools` opens Official Tools when the current Tool Market module is mounted; unconfigured installations keep the unavailable page |
 | Agent configuration/templates and custom requests | `/workbench/agents/mine`, `/workbench/agents/custom` |
 | Notifications | `/workbench/notifications` |
 | Data Market and API Management | `/workbench/data/market`, `/workbench/data/api` |
