@@ -1,6 +1,6 @@
 # Official Knowledge V1 — Product Gate and design proposal
 
-> Status: **DRAFT / NOT_READY**. This document does not authorize production implementation.
+> Status: **PRODUCT_FROZEN / PENDING_ARCHITECTURE_REVIEW**. Production edits await independent admission.
 >
 > Execution: [Issue #632](https://github.com/qq550723504/task-processor/issues/632).
 >
@@ -35,30 +35,28 @@ Main has a concrete enterprise Knowledge owner. PR #631, still open at inspected
 HEAD `69122b6351d15bc579a9435e2f3439d19720fa55`, adds the navigation and an explicit
 unavailable official page. There is no current official API or content owner.
 
-## 2. Product Gate — required decisions
+## 2. Product Gate — approved 2026-10-11
 
-These are proposals, not accepted product rules:
+The user explicitly selected all three proposed first-release choices in this chat:
 
-| Decision | Smallest proposed choice | Alternative requiring additional design |
-| --- | --- | --- |
-| First real content | Curate an AI电商应用指南 using verified current repository behavior and approved product documents, with named provenance | User-supplied formal material, or specifically authorized external primary sources |
-| Maintenance/publication | Versioned repository content, PR review, release with the application | A publisher UI requires the exact publisher identity, permission and release lifecycle to be approved first |
-| First usable path | Read real material and its version/source; defer AI consumption until suitable content and consumer scope are agreed | Official opt-in selection in Chat/title execution is a separate explicit current Must, not implied by reading a guide |
+| Decision | Approved choice |
+| --- | --- |
+| First real content | AI电商应用指南, curated from verified repository facts and approved product documents, with named provenance |
+| Maintenance/publication | Repository versioning, PR review and publication with the application release |
+| First usable path | Read real documents, exact versions and sources; formal AI consumption waits for suitable material |
 
 Application instructions help a human operate the product. They are not automatically
 appropriate supplemental input for generating a product title. Treating every guide
 as title-generation context merely to make “选择使用” clickable would manufacture
 a product rule and provide little current value.
 
-Do not label the reading proposal a complete AI-reference delivery. If it is chosen,
-show “查看内容” for the actual action and state that execution reference is not open;
-record the user's phase decision in Issue #632 before changing the visible interaction.
+Show “查看内容” for the approved reading action and state that AI reference is not open.
+This explicit phase decision narrows Figma's “选择使用” action for this release.
 
-No production edits or real-content publication can proceed until these decisions
-are recorded. A new Product Gate may replace these proposals without preserving
-their unapproved scope as a requirement.
+The decisions are recorded in Issue #632 before architecture admission. No further
+content-source or publisher product decision is required for this approved reading path.
 
-## 3. Proposed scope and exclusions
+## 3. Scope and exclusions
 
 For a confirmed repository-published reading release: catalogue, real article text,
 exact version, update date, maintained-by information, provenance, unavailable/error
@@ -71,10 +69,10 @@ categories may be omitted or visibly unavailable according to the confirmed scop
 Excluded: personal Knowledge, automatic web scraping or refresh, generic RAG/search,
 new IAM/admin roles, a new workflow/recovery platform, paid model calls, legacy
 migration/fallback/dual writes, existing trial data operations, production deployment,
-merge, and Issue closure. AI consumption and online publishing remain pending scope
-decisions rather than secretly removed requirements.
+merge, and Issue closure. AI consumption and online publishing are explicitly Later
+under the user's current phase decision, not current acceptance requirements.
 
-## 4. Owner and implementation path proposal
+## 4. Owner and implementation path
 
 Use a separate platform-content owner under `internal/knowledge/official`. It must
 not depend on enterprise `knowledge.Service`, create a fake Organization, create
@@ -105,14 +103,13 @@ reader, Zod, scoped query cancellation and shared Console components. Do not int
 a CMS or knowledge platform to serve a bounded first collection. These existing
 capabilities and an embedded catalogue cover the proposed current user operation.
 
-If Markdown formatting is selected, reuse the already pinned `github.com/yuin/goldmark`
-v1.8.5 rather than writing a Markdown parser. Render without unsafe HTML; validate
-links and reject externally loaded images in authored content. Existing Knowledge
-plain-text preview is also reusable when formatting has no current value. The exact
-content format is an implementation detail only after the publication choice is
-confirmed; safe renderer behavior must be verified against the installed version.
+Reuse the existing Knowledge plain-text preview (`pre` with wrapped text) for the
+initial authored UTF-8 guide. React renders text inertly; no Markdown parser, HTML
+renderer or new dependency is needed. Provenance links are structured metadata,
+validated as HTTPS URLs under the repository's GitHub location; body text cannot
+add interactive links, remote images or executable markup.
 
-## 5. Catalogue identity, version and publication proposal
+## 5. Catalogue identity, version and publication
 
 Each published article has a stable library/article identity, exact revision,
 human title/description, bounded source metadata and content digest. Release
@@ -134,12 +131,12 @@ before adding a runtime withdrawal API or guaranteeing historical model access.
 In a reading-only release, absent/unpublished exact versions return unavailable;
 there is no alternate owner or fallback. Wrong identity/digest fails closed.
 
-## 6. Access, content safety and bounded reads proposal
+## 6. Access, content safety and bounded reads
 
-Prefer existing signed-in Workbench identity and fresh Effective Organization
-admission with `workbench.knowledge.read` for the reading release. This is a proposal
-to reuse an existing policy, not an approval to expand viewer access or make content
-anonymous. `knowledge.manage` must never authorize official publication.
+Reuse existing signed-in Workbench identity, fresh Effective Organization admission
+and `workbench.knowledge.read`. Operator/admin grants remain as currently defined;
+viewer/anonymous access is not expanded. `knowledge.manage` does not authorize
+official publication. No new publisher identity or online mutation endpoint exists.
 
 The public projection contains no enterprise documents, actor credentials, private
 config, object keys or customer references. Official and enterprise IDs/routes remain
@@ -150,7 +147,7 @@ Every request rechecks identity/access; browser role hints cannot authorize cont
 Context switches cancel old requests and clear selection/error state using current
 Workbench conventions. Cache keys include actor/organization and exact content version.
 
-Proposed initial bounds: catalogue at most 100 entries/128 KiB, article source text
+Initial bounds: catalogue at most 100 entries/128 KiB, article source text
 at most 64 KiB, projected article at most 256 KiB, provenance at most 10 bounded
 entries, GET timeout at most 10 seconds, strict IDs/query shape, and rejected unread
 GET bodies before reading. No arbitrary client-selected file paths/URLs or server
@@ -166,9 +163,44 @@ the same exact version GET; no UNKNOWN write protocol or reconciler is needed fo
 that reading path. Catalogue corruption or missing content fails construction/read,
 never synthesizes a document or substitutes an enterprise store.
 
-## 7. If formal AI consumption is a current Must
+## 7. Frozen read contract
 
-Freeze that scope after the Product Gate, before implementation. Existing code is
+Module `official-knowledge` registers exactly these GET routes, under the current
+identity/live-organization policies, existing knowledge.read and a 10-second deadline:
+
+- `/api/v1/workbench/official-knowledge` → `{items: ArticleSummary[]}`.
+- `/api/v1/workbench/official-knowledge/:article_id/revisions/:revision` → `Article`.
+
+Summary fields: `id`, `revision`, `title`, `summary`, `category`, `updatedAt`,
+`maintainedBy`, `digest`. Article adds `body` and `sources: [{title,url}]`.
+The stable ID is a lowercase ASCII slug (1–64 characters); revision is a canonical
+positive integer string (at most 9 digits); digest is lower-case SHA-256 of exact
+UTF-8 body bytes. Strict catalogue construction rejects duplicate `(id,revision)`,
+invalid metadata/digests, empty/oversized body, or invalid provenance. List shows
+the greatest published revision for each ID; detail always reads the requested
+exact revision. Missing ID/revision returns 404, invalid/query/body shape 400.
+
+Catalogue content is embedded at build time, validated during construction and
+cannot mutate at runtime. There is no draft catalogue API or dynamic withdrawal
+contract. A later release may omit a revision; direct access then returns 404
+without resolving latest. This release creates only one real guide/revision.
+
+The current-application assembles the built-in module whenever Workbench is enabled,
+independently of the enterprise Knowledge/Tika/database feature. Route admission
+validates the exact descriptor. The existing Knowledge BFF is extended only for
+these read shapes, preserving identity/cookie/token, strict response validation and
+no-store; official reads use 10-second/128–256 KiB limits and reject request bodies
+before reading. Unsupported mutation methods return 405 without forwarding.
+
+Console uses `/workbench/ai/knowledge/official` and exact version detail
+`/workbench/ai/knowledge/official/:articleId/revisions/:revision`. Identity/access
+failure removes content and requires explicit context confirmation; context switches
+and permission changes discard old query state. Detail validates returned identity
+and revision against its URL. No AI selection, local storage, creation or upload.
+
+## 7.1 AI consumption — Later, no implementation in this batch
+
+Future formal AI work requires its own approved scope/contract. Existing code is
 not directly extensible by placing official UUIDs in the enterprise selection field:
 
 - `productAgentRequestBody.knowledgeSelection` accepts only `knowledgeBaseId`.
@@ -195,10 +227,11 @@ reading-only proposal.
 ## 8. Menu/runtime dependency and isolation
 
 The official owner and API proposal are independent of PR #631's menu changes.
-Before UI implementation, recheck whether #631 merged. If merged, use actual main.
-If the approved scope truly needs its unmerged routes, document an exact stacked
-base and open the one official PR against that branch; do not repeat the entire
-unified batch in the official diff or merge #631 without authorization.
+The reading UI consumes PR #631's approved KnowledgeOverview/menu. On 2026-10-11
+it remains OPEN at `7aebfeb16582d6417073fab2e38c8bfdb9b546df`. The official branch
+merges that exact dependency and PR #633 targets `codex/data-services-runtime` as a
+stacked PR. Its review diff contains only official knowledge work. Recheck dependency
+state before the final candidate; do not merge #631 without authorization.
 
 No changes are allowed in #631's worktree. The existing
 `task-processor-unified-20261010` runtime, private configuration and all named volumes
@@ -230,11 +263,11 @@ normal login/use and user acceptance remain separate evidence.
 
 - [x] Current main, related Issues/PR, owners, Figma and applicable instructions inspected.
 - [x] One Writer, isolated branch/worktree, dedicated execution Issue.
-- [ ] User confirms first real content and legal/usage provenance.
-- [ ] User confirms maintenance/publication and initial use scope.
-- [ ] Scope-specific contracts above frozen; no unresolved current Must/Blocker.
+- [x] User confirms first real content and legal/usage provenance: repository-supported guide.
+- [x] User confirms maintenance/publication and initial use scope: PR/release, reading only.
+- [x] Scope-specific read contracts above frozen; AI/publisher UI explicitly Later.
 - [ ] Applicable independent architecture review completed and classified.
 - [ ] Explicit `IMPLEMENTATION_READY`; Issue Ready before production edits.
 
-Current result: **NOT_READY**. No formal implementation, content publication,
+Current result: **PENDING_ARCHITECTURE_REVIEW**. No formal implementation, content publication,
 schema change, provider call or user/product acceptance has been performed.
