@@ -24,6 +24,7 @@ export const readMarketRecord=(s:MarketScope,id:string,admin=false,signal?:Abort
 export const listMarketEvents=(s:MarketScope,id:string,after?:string,admin=false,signal?:AbortSignal)=>marketRequest(s,"records/"+c.marketID.parse(id)+"/events"+query({after}),c.marketEventsSchema,signal,admin);
 export const listRecordReleases=(s:MarketScope,id:string,after?:string,admin=false,signal?:AbortSignal)=>marketRequest(s,"records/"+c.marketID.parse(id)+"/releases"+query({after}),c.marketReleasesSchema,signal,admin);
 export const readMarketChoice=(s:MarketScope,id:string,signal?:AbortSignal)=>marketRequest(s,"choices/"+c.marketID.parse(id),c.marketChoiceSchema,signal);
+export const readApplicationOverview=(s:MarketScope,signal?:AbortSignal)=>marketRequest(s,"application-overview",c.applicationOverviewSchema,signal);
 export const writeMarket=(s:MarketScope,i:MarketIntent,signal?:AbortSignal)=>marketRequest(s,i.command.action==="select_release"?"select":"commands",c.marketReceiptSchema,signal,i.admin,{key:i.key,command:i.command});
 export const resolveMarket=(s:MarketScope,i:MarketIntent,signal?:AbortSignal)=>marketRequest(s,"by-key/"+c.marketID.parse(i.key),c.marketReceiptSchema,signal,i.admin);
 export const uploadQualification=(s:MarketScope,key:string,file:File,signal?:AbortSignal)=>marketRequest(s,"uploads",c.marketFileSchema,signal,false,{key,file});

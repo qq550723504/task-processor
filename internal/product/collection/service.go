@@ -158,6 +158,32 @@ func (s *Service) ListBatches(ctx context.Context, query Query) (Page[Batch], er
 	}
 	return s.store.ListBatches(ctx, scope, query)
 }
+
+// ReadBatch consumes the existing owner-scoped repository read; it does not
+// widen private Collection access for aggregate consumers.
+func (s *Service) ReadBatch(ctx context.Context, id string) (Batch, error) {
+	if ctx == nil || s == nil {
+		return Batch{}, ErrForbidden
+	}
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	defer cancel()
+	scope, err := s.authorize(ctx, PermissionRead)
+	if err != nil {
+		return Batch{}, err
+	}
+	if !ValidID(id) {
+		return Batch{}, ErrInvalid
+	}
+	batch, err := s.store.ReadBatch(ctx, scope, id)
+	if err != nil {
+		return Batch{}, err
+	}
+	current, err := s.authorize(ctx, PermissionRead)
+	if err != nil || current != scope {
+		return Batch{}, ErrForbidden
+	}
+	return batch, ctx.Err()
+}
 func (s *Service) ListItems(ctx context.Context, batchID string, query Query) (Page[Item], error) {
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()

@@ -381,6 +381,10 @@ func (h *Handler) mutate(kind string, platform bool) gin.HandlerFunc {
 	}
 }
 func (h *Handler) checkout(c *gin.Context) {
+	if h.payments == nil {
+		failure(c, e.ErrUnavailable)
+		return
+	}
 	s, ok := scope(c, false)
 	if !ok || !e.ValidID(c.Param("id")) {
 		failure(c, e.ErrInvalid)

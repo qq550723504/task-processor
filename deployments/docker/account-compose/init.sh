@@ -371,4 +371,5 @@ DO \$grant\$ BEGIN
 END \$grant\$;
 SQL
 
+if [ "${ACCOUNT_DATA_SERVICES_ENABLED:-}" = 1 ]; then data-services-init; fi
 mv "$state/.init-started" "$state/.init-complete"

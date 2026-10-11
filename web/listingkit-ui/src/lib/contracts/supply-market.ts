@@ -35,11 +35,13 @@ const page=<T extends z.ZodType>(schema:T)=>z.object({items:z.array(schema).max(
 export const marketReleasesSchema=page(marketReleaseSchema),marketRecordsSchema=page(marketRecordSchema),marketEventsSchema=page(marketEventSchema);
 export type MarketReceipt=z.infer<typeof marketReceiptSchema>;
 export const marketChoiceSchema=z.object({selection:marketSelectionSchema,product:marketProductSchema,optimized:z.boolean()}).strict();
+export const applicationOverviewSchema=z.object({eligibleProducts:count,reviewing:count,supplementRequired:count,approved:count,products:z.array(z.object({itemId:marketID,title:text(2000,1),thumbnailUrl:image,groupName:text(200,1),source:z.literal("own")}).strict()).max(3)}).strict().refine(v=>v.products.length<=v.eligibleProducts);
 export function marketEndpoint(url:URL,method:string){
  const m=/^\/api\/(workbench|admin)\/supply-market\/([a-z0-9/-]+)$/.exec(url.pathname);if(!m)return null;
  const admin=m[1]==="admin",path=m[2]!;let output:z.ZodType<unknown>|undefined,upload=false,download=false;
  if(method==="POST"&&!url.search&&["commands",...(!admin?["select","uploads"]:[])].includes(path)){upload=path==="uploads";output=upload?marketFileSchema:marketReceiptSchema}
  if(method==="GET"){
+  if(!admin&&path==="application-overview")output=applicationOverviewSchema;
   if(!admin&&path==="releases")output=marketReleasesSchema;
   if(!admin&&/^releases\/[a-f0-9-]{36}$/.test(path)&&marketID.safeParse(path.split("/")[1]).success)output=marketReleaseSchema;
   if(!admin&&/^choices\/[a-f0-9-]{36}$/.test(path)&&marketID.safeParse(path.split("/")[1]).success)output=marketChoiceSchema;

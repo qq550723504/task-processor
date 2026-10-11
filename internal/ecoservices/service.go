@@ -18,6 +18,13 @@ func Fingerprint(v any) string {
 	return hex.EncodeToString(sum[:])
 }
 func (s *Service) Mutate(ctx context.Context, c Command) (Result, error) {
+	if s.qualificationOnly {
+		switch c.Kind {
+		case "application_submit", "application_review", "application_reject", "agreement_accept":
+		default:
+			return Result{}, ErrUnavailable
+		}
+	}
 	// Internal owner evidence is never accepted from a caller.
 	c.RefundReviewProof = nil
 	c.FulfillmentProof = nil

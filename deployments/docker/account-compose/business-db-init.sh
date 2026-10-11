@@ -3,13 +3,7 @@
 # Cluster administration ends here; schema installers use their own non-superuser.
 set -eu
 
-commercial_database=${ACCOUNT_COMMERCIAL_DATABASE:-commercial}
-case "$commercial_database" in
-  ''|[!a-z]*|*[!a-z0-9_]*) echo 'invalid commercial database name' >&2; exit 1 ;;
-  postgres|template0|template1|source_accounts|referrals|membership|product_acquisition|image_agent|product_agent|store_center|knowledge)
-    echo 'commercial database must have its own name' >&2; exit 1 ;;
-esac
-test "${#commercial_database}" -le 63
+. /usr/local/lib/account-compose/commercial-database-name.sh
 case "${ACCOUNT_ISSUE36_LOCAL_TRIAL:-}" in
   ''|ISOLATED_TRIAL_ONLY) ;;
   *) echo 'invalid #36 local trial opt-in' >&2; exit 1 ;;
@@ -63,6 +57,9 @@ create_role referral_runtime /secrets/referral-runtime/referral-runtime-password
 create_role organization_membership_runtime /secrets/membership-runtime/membership-runtime-password
 create_role organization_role_policy_reader /secrets/role-policy-reader/password
 create_role source_acquisition_runtime /secrets/acquisition-runtime/acquisition-runtime-password
+if [ "${ACCOUNT_DATA_SERVICES_ENABLED:-}" = 1 ]; then
+ create_role data_services_runtime /secrets/data-services-runtime/password
+fi
 create_role image_agent_runtime /secrets/image-runtime/image-runtime-password
 create_role image_agent_worker_runtime /secrets/image-worker/image-worker-password
 if [ "${ACCOUNT_ISSUE36_LOCAL_TRIAL:-}" = ISOLATED_TRIAL_ONLY ]; then

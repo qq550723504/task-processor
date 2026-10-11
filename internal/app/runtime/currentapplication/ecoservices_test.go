@@ -29,6 +29,40 @@ func ecoservicesTestConfig() *Config {
 	return c
 }
 
+func TestEcoservicesNonPaymentModeIsExplicitAndRejectsFinancialConfiguration(t *testing.T) {
+	c := ecoservicesTestConfig()
+	c.Ecoservices.NonPaymentOnly = true
+	c.Ecoservices.Payments = EcoservicesPaymentsConfig{}
+	c.Ecoservices.PayloadKey = ""
+	c.CommercialOwnerDatabase, c.MoneyOwnerDatabase = nil, nil
+	if err := c.validateEcoservices(); err != nil {
+		t.Fatal("qualification requires a payment provider", err)
+	}
+	c.Ecoservices.NonPaymentOnly = false
+	if c.validateEcoservices() == nil {
+		t.Fatal("missing credentials silently downgraded full mode")
+	}
+	for name, change := range map[string]func(*EcoservicesConfig){
+		"original profile":        func(v *EcoservicesConfig) { v.Payments.Profile.Version = "original" },
+		"merchant opening":        func(v *EcoservicesConfig) { v.Payments.NewMerchantApplications = true },
+		"payment opening":         func(v *EcoservicesConfig) { v.Payments.NewPayments = true },
+		"retained key":            func(v *EcoservicesConfig) { v.PayloadKey = "original" },
+		"shared role":             func(v *EcoservicesConfig) { v.Database.User = "ecoservices_owner" },
+		"missing private objects": func(v *EcoservicesConfig) { v.Storage.SecretAccessKey = "" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			v := *c.Ecoservices
+			v.NonPaymentOnly = true
+			change(&v)
+			copy := *c
+			copy.Ecoservices = &v
+			if copy.validateEcoservices() == nil {
+				t.Fatal("unsafe qualification configuration accepted")
+			}
+		})
+	}
+}
+
 func TestEcoservicesAndNotificationRuntimePoolsStayIndependent(t *testing.T) {
 	for _, alias := range []bool{false, true} {
 		t.Run(map[bool]string{false: "both features", true: "shared injected pool"}[alias], func(t *testing.T) {

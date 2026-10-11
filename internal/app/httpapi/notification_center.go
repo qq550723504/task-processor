@@ -159,8 +159,9 @@ func notificationBusinessSources(modules []kernelmodule.Module, options currentA
 			for _, source := range workbench.application.notificationSources() {
 				add(source)
 			}
-			source := reviewNotificationSource(workbench.application.agent.reviews)
-			add(source)
+			if workbench.application.agent != nil && workbench.application.agent.reviews != nil {
+				add(reviewNotificationSource(workbench.application.agent.reviews))
+			}
 		}
 	}
 	// Owner modules append their authorized readers here; an absent installed

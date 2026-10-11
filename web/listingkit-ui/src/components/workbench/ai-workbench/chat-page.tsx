@@ -56,7 +56,7 @@ function ScopedChat({ scope, authorizationKey, canUse, canPlan, planningReadines
 }
 
 function planningStatus(readiness: "AVAILABLE" | "NEEDS_CONFIGURATION" | "UNAVAILABLE") {
-  return readiness === "NEEDS_CONFIGURATION" ? "当前企业的规划模型需要配置；已有会话仍可查看。" : "当前企业的标题规划尚未开放；已有会话仍可查看。";
+  return readiness === "NEEDS_CONFIGURATION" ? "当前企业的规划模型需要配置；可管理会话，模型发送待配置。" : "当前企业的标题规划尚未开放；可管理会话，模型发送待配置。";
 }
 
 function ChatCollection({ scope, authorizationKey, canUse, canPlan, planningReadiness, mode }: { scope: AIScope; authorizationKey: string; canUse: boolean; canPlan: boolean; planningReadiness: "AVAILABLE" | "NEEDS_CONFIGURATION" | "UNAVAILABLE"; mode: ChatMode }) {
@@ -105,11 +105,11 @@ function ChatCollection({ scope, authorizationKey, canUse, canPlan, planningRead
     {mode === "home" ? <>
       <Card className={styles.summary}>当前企业：{scope.organizationId} · 实际会话按当前账号读取。执行标题建议会消耗已配置的 AI 额度。</Card>
       <div className={styles.landingGrid}>
-        <Card className={`${styles.landingCard} ${styles.newCard}`}><span className={styles.accent} /><h2>新建会话</h2><h3>开始一项新需求</h3><p>选择已有商品采集结果，描述标题优化目标，再查看并确认方案。</p>{canPlan ? <Button onClick={create} disabled={creating}>{creating ? "正在创建…" : "进入新建会话 →"}</Button> : <p>{canUse ? "当前企业的规划模型尚未就绪。" : "当前企业仅可查看已有会话。"}</p>}</Card>
+        <Card className={`${styles.landingCard} ${styles.newCard}`}><span className={styles.accent} /><h2>新建会话</h2><h3>开始一项新需求</h3><p>选择已有商品采集结果，描述标题优化目标，再查看并确认方案。</p>{canUse ? <Button onClick={create} disabled={creating}>{creating ? "正在创建…" : "进入新建会话 →"}</Button> : <p>{canUse ? "当前企业的规划模型尚未就绪。" : "当前企业仅可查看已有会话。"}</p>}</Card>
         <Card className={`${styles.landingCard} ${styles.recentCard}`}><span className={styles.accent} /><h2>最近会话</h2><h3>继续之前的工作</h3><p>查看当前账号的对话与提案，从上次讨论的位置继续。</p><Button asChild variant="outline"><Link href="/workbench/ai/chat/recent" prefetch={false}>查看最近会话 →</Link></Button></Card>
         <Card className={`${styles.landingCard} ${styles.savedCard}`}><span className={styles.accent} /><h2>收藏会话</h2><h3>沉淀重要内容</h3><p>收藏仍在使用的会话，随时继续查看已保存的内容。</p><Button asChild variant="outline"><Link href="/workbench/ai/chat/saved" prefetch={false}>进入收藏会话 →</Link></Button></Card>
       </div>
-    </> : <div className={styles.toolbar}>{canPlan ? <Button onClick={create} disabled={creating}>{creating ? "正在创建…" : "新建会话"}</Button> : null}
+    </> : <div className={styles.toolbar}>{canUse ? <Button onClick={create} disabled={creating}>{creating ? "正在创建…" : "新建会话"}</Button> : null}
       {mode === "archived" ? <Button asChild variant="outline"><Link href="/workbench/ai/chat/recent" prefetch={false}>返回最近会话</Link></Button> :
         mode === "recent" ? <Button asChild variant="outline"><Link href="/workbench/ai/chat/archived" prefetch={false}>查看归档会话</Link></Button> : null}
       <Button variant="outline" onClick={() => void conversations.refetch()}>刷新</Button></div>}

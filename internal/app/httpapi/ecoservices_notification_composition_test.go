@@ -23,6 +23,7 @@ import (
 type combinationObjects struct{ e.PrivateObjectStore }
 type combinationProvider struct{ b.ServicePurchaseProvider }
 type combinationProtection struct{ b.ServicePayloadProtection }
+type combinationMerchantProtection struct{ e.MerchantProtection }
 type combinationSupplyStarter struct{ supplyapp.OperationStarter }
 
 func TestCurrentApplicationEcoservicesAndSupplyAssetOwnersCannotAlias(t *testing.T) {
@@ -55,7 +56,7 @@ func TestCurrentApplicationEcoservicesAndSupplyAssetOwnersCannotAlias(t *testing
 				WithCommercialOwnerDatabase(commercial), WithMoneyOwnerDatabase(money), WithProductAcquisition(product), WithProductCollections(),
 				WithStoreCenter(store), WithStoreOfficialApplications(&storeapp.OfficialApplicationRegistry{}),
 				WithSupplyChain(SupplyChainDependencies{AssetDB: assets, Starter: &combinationSupplyStarter{}, Worker: &worker, NewWorker: func(*supplyapp.OperationActivities) (supplyapp.OperationWorker, error) { return nil, stop }}),
-				WithEcoservices(EcoservicesDependencies{DB: eco, Objects: &combinationObjects{}, Channel: &combinationProvider{}, Protection: &combinationProtection{}}))
+				WithEcoservices(EcoservicesDependencies{DB: eco, Objects: &combinationObjects{}, Channel: &combinationProvider{}, Protection: &combinationProtection{}, MerchantProtection: &combinationMerchantProtection{}}))
 			if alias {
 				if err == nil || !strings.Contains(err.Error(), "ecoservices requires its independent owner pool") || built != 0 {
 					t.Fatalf("alias escaped admission: err=%v built=%d", err, built)
@@ -86,7 +87,7 @@ func TestCurrentApplicationEcoservicesAndNotificationOwnersCannotAlias(t *testin
 			}
 			_, err := buildCurrentApplication(context.Background(), source, currentApplicationTestConfig(), logrus.New(), factories,
 				WithCommercialOwnerDatabase(commercial), WithMoneyOwnerDatabase(money),
-				WithEcoservices(EcoservicesDependencies{DB: eco, Objects: &combinationObjects{}, Channel: &combinationProvider{}, Protection: &combinationProtection{}}),
+				WithEcoservices(EcoservicesDependencies{DB: eco, Objects: &combinationObjects{}, Channel: &combinationProvider{}, Protection: &combinationProtection{}, MerchantProtection: &combinationMerchantProtection{}}),
 				WithNotificationCenter(notice))
 			if alias {
 				if err == nil || !strings.Contains(err.Error(), "ecoservices requires its independent owner pool") || built != 0 {

@@ -1,7 +1,48 @@
 import { describe, expect, it } from "vitest";
 import { consoleNavigation, findConsoleRoute } from "./console-navigation";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 describe("Figma Console navigation contract", () => {
+  it("keeps the two catalog entries under their Figma parent and real pages", () => {
+    const parent = findConsoleRoute("/workbench/supply/catalogs")!;
+    expect(parent.node.children?.map(node => [node.label, node.href])).toEqual([
+      ["货盘选品", "/workbench/supply/catalogs/selection"],
+      ["申请对接", "/workbench/supply/catalogs/apply"],
+    ]);
+    for (const child of parent.node.children ?? []) {
+      expect(findConsoleRoute(child.href)?.node).toBe(child);
+      expect(findConsoleRoute(child.href)?.trail.map(node => node.label)).toEqual(["供应市场", "货盘集成", child.label]);
+      expect(existsSync(join(process.cwd(), "src/app", child.href.slice(1), "page.tsx"))).toBe(true);
+    }
+  });
+  it("keeps the three selected-application entries and shared detail under their real parent", () => {
+    const parent = findConsoleRoute("/workbench/supply/applications")!;
+    expect(parent.node.children?.map(node => [node.label, node.href])).toEqual([
+      ["发起申请", "/workbench/supply/applications/new"],
+      ["申请进度", "/workbench/supply/applications/progress"],
+      ["申请记录", "/workbench/supply/applications/records"],
+    ]);
+    for (const child of parent.node.children ?? []) {
+      expect(findConsoleRoute(child.href)?.node).toBe(child);
+      expect(findConsoleRoute(child.href)?.trail.map(node => node.label)).toEqual(["供应市场", "优选申请", child.label]);
+      expect(existsSync(join(process.cwd(), "src/app", child.href.slice(1), "page.tsx"))).toBe(true);
+    }
+    expect(findConsoleRoute("/workbench/supply/applications/11111111-1111-4111-8111-111111111111")?.trail.map(node => node.label)).toEqual(["供应市场", "优选申请", "申请详情"]);
+    expect(findConsoleRoute("/workbench/supply/applications/extra")).toBeUndefined();
+  });
+  it("keeps official and current-enterprise knowledge under the Figma Knowledge branch", () => {
+    const knowledge = findConsoleRoute("/workbench/ai/knowledge")?.node;
+    expect(knowledge?.children?.map(node => node.label)).toEqual(["官方知识库", "我的知识库"]);
+    expect(findConsoleRoute("/workbench/ai/knowledge/official")?.trail.map(node => node.label)).toEqual(["AI工作台", "知识库", "官方知识库"]);
+    expect(findConsoleRoute("/workbench/ai/knowledge/mine")?.trail.map(node => node.label)).toEqual(["AI工作台", "知识库", "我的知识库"]);
+    expect(findConsoleRoute("/workbench/ai/knowledge/4841d296-ef14-4c16-8d25-a7667e534feb")?.trail.map(node => node.label)).toEqual(["AI工作台", "知识库", "我的知识库", "知识库资料"]);
+  });
+  it("gives every primary menu a real page instead of falling through to the unavailable catchall", () => {
+    for (const node of consoleNavigation) {
+      expect(existsSync(join(process.cwd(), "src/app", node.href.slice(1), "page.tsx")), node.href).toBe(true);
+    }
+  });
   it("models every My Account entry as the Figma three-level hierarchy", () => {
     const account = consoleNavigation.find((item) => item.label === "我的账户");
     expect(account?.children?.map((item) => item.label)).toEqual(["账户资料", "企业空间", "推广与收益"]);

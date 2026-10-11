@@ -5,6 +5,13 @@ const request=(path:string,init:RequestInit={})=>new Request("https://console.ex
 describe("market BFF disclosure and uncertain writes",()=>{
  beforeEach(()=>{vi.stubEnv("LISTINGKIT_SERVICE_API_BASE","https://api.example/api/v1");vi.stubEnv("LISTINGKIT_SUPPLY_MARKET_ENABLED","true");vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL","https://console.example")});
  afterEach(()=>vi.unstubAllGlobals());
+ it("proxies the member overview with strict facts and rejects query/admin/private fields",async()=>{
+  const overview={eligibleProducts:54,reviewing:27,supplementRequired:4,approved:7,products:[]};const fetcher=vi.fn(async()=>Response.json(overview));vi.stubGlobal("fetch",fetcher);
+  const result=await proxySupplyMarket(request("application-overview"),"private-token","user-a");expect(result.status).toBe(200);expect(await result.json()).toEqual(overview);
+  expect((await proxySupplyMarket(request("application-overview?ended=true"),"private-token","user-a")).status).toBe(400);
+  const admin=request("application-overview");expect((await proxySupplyMarket(new Request(admin.url.replace("/workbench/","/admin/"),{headers:admin.headers}),"private-token","user-a")).status).toBe(400);
+  expect(fetcher).toHaveBeenCalledTimes(1);fetcher.mockResolvedValueOnce(Response.json({...overview,organizationId:"secret"}));expect((await proxySupplyMarket(request("application-overview"),"private-token","user-a")).status).toBe(502);
+ });
  it("rejects scope drift before reading any upstream data",async()=>{
   const fetcher=vi.fn();vi.stubGlobal("fetch",fetcher);
   const r=await proxySupplyMarket(request("releases",{headers:{"X-Expected-Organization-ID":"org-b"}}),"private-token","user-a");

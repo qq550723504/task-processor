@@ -9,6 +9,7 @@ vi.mock("@/components/providers/workbench-context-provider",()=>({useWorkbenchCo
 vi.mock("./shared",async original=>({...await original<typeof import("./shared")>(),EcoBoundary:({children}:{children:(v:unknown)=>React.ReactNode})=>children({userId:"actor",organizationId:"org"}),useEcoCommands:()=>({notice:null,locked:false,json:state.json}),ReadFailure:()=> <p>读取失败</p>,EcoPagination:()=>null,date:()=>"today"}));
 vi.mock("@/components/workbench/resources/resource-dialog",()=>({ResourceDialog:({children}:{children:React.ReactNode})=><div>{children}</div>}));
 vi.mock("./files",()=>({FileLinks:()=>null,FileUpload:()=>null}));
+vi.mock("./merchant",()=>({MerchantOnboarding:()=> <p>商户执行入口</p>}));
 vi.mock("@/components/workbench/console/console-page",()=>({ConsolePage:({children}:{children:React.ReactNode})=><div>{children}</div>,ConsoleState:()=>null}));
 afterEach(()=>{cleanup();vi.clearAllMocks();state.permissions=["workbench.ecoservices.join"]});
 it("allows original business rejection correction and marks the unopened channel re-review rejection unavailable",async()=>{
@@ -48,4 +49,15 @@ it("keeps management fail-closed when its query fails even if the join-only appl
  state.permissions=["workbench.ecoservices.join","workbench.ecoservices.manage"];vi.mocked(ecoRequest).mockImplementation(async(_scope,path)=>{if(path.startsWith("provider/listings?"))throw new Error("unavailable");return {applications:[{id,companyName:"原企业",registrationNumber:"original",categories:[],regions:[],fileIds:[],state:"ACTIVE",version:"1",agreementAccepted:true,onboardingState:"FINISH",updatedAt:"2026-10-08T00:00:00Z"}],total:"1"}});
  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><EcoservicesJoin/></QueryClientProvider>);await screen.findByText("读取失败");
  expect(screen.getByRole("button",{name:"新增服务"})).toBeDisabled();expect(screen.getByRole("button",{name:"发布专业服务 →"})).toBeDisabled();expect(state.json).not.toHaveBeenCalled();
+});
+
+it("qualification-only mode permits agreement but hides merchant execution and stale qualified listing controls",async()=>{
+ state.permissions=["workbench.ecoservices.join","workbench.ecoservices.manage"];
+ vi.mocked(ecoRequest).mockImplementation(async(_scope,path)=>path.startsWith("provider/listings?")?{providerQualified:true,listings:[listing],total:"1"}:{applications:[{id,companyName:"原企业",registrationNumber:"original",categories:[],regions:[],fileIds:[],state:"APPROVED",version:"1",agreementAccepted:false,onboardingState:"NOT_STARTED",updatedAt:"2026-10-08T00:00:00Z"}],total:"1"});
+ render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><EcoservicesJoin nonPaymentOnly/></QueryClientProvider>);
+ await screen.findByText("原入驻申请");
+ expect(screen.queryByText("商户执行入口")).not.toBeInTheDocument();
+ expect(screen.getByRole("button",{name:"确认当前协议"})).toBeInTheDocument();
+ for(const name of ["新增服务","编辑","发布","发布专业服务 →"])expect(screen.getByRole("button",{name})).toBeDisabled();
+ expect(screen.getByText(/当前开放资质申请、平台审核和协议确认/)).toBeInTheDocument();
 });

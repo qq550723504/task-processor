@@ -14,6 +14,7 @@ import (
 	"task-processor/internal/aicapability"
 	"task-processor/internal/aiworkbench"
 	"task-processor/internal/authidentity"
+	"task-processor/internal/authz"
 	governed "task-processor/internal/integration/aicapability/einomodel"
 	"task-processor/internal/integration/aiworkbench/einoplanner"
 	"task-processor/internal/integration/openai"
@@ -23,15 +24,23 @@ import (
 )
 
 type AIWorkbenchDependencies struct {
-	DB                   *gorm.DB
-	PlanningTextPolicies map[string]governed.RoutePolicy
+	DB                     *gorm.DB
+	ConversationOnly       bool
+	AllowedOrganizationIDs []string
+	resolver               organizationIdentityResolver
+	authorizer             *authz.ListingKitAuthorizer
+	PlanningTextPolicies   map[string]governed.RoutePolicy
 }
 
 type aiWorkbenchApplication struct {
-	store   *workstore.Store
-	service *aiworkbench.Service
-	agent   *productAgentApplication
-	plan    *workbenchPlanner
+	store                  *workstore.Store
+	service                *aiworkbench.Service
+	agent                  *productAgentApplication
+	plan                   *workbenchPlanner
+	conversationOnly       bool
+	allowedOrganizationIDs []string
+	resolver               organizationIdentityResolver
+	authorizer             *authz.ListingKitAuthorizer
 }
 
 type workbenchPlanner struct {
@@ -77,6 +86,26 @@ func (x workbenchExecution) AuthorizeReceipt(ctx context.Context, scope aiworkbe
 }
 
 func buildAIWorkbenchApplication(ctx context.Context, cfg AIWorkbenchDependencies, a *productAgentApplication) (*aiWorkbenchApplication, error) {
+	if cfg.ConversationOnly {
+		if cfg.DB == nil || a != nil || cfg.resolver == nil || cfg.authorizer == nil || len(cfg.PlanningTextPolicies) != 0 || len(cfg.AllowedOrganizationIDs) == 0 || len(cfg.AllowedOrganizationIDs) > 64 {
+			return nil, aiworkbench.ErrUnavailable
+		}
+		seen := map[string]bool{}
+		for _, id := range cfg.AllowedOrganizationIDs {
+			if !agent.ValidID(id) || seen[id] {
+				return nil, aiworkbench.ErrUnavailable
+			}
+			seen[id] = true
+		}
+		if err := workstore.VerifySchema(ctx, cfg.DB); err != nil {
+			return nil, err
+		}
+		store, err := workstore.New(cfg.DB)
+		if err != nil {
+			return nil, err
+		}
+		return &aiWorkbenchApplication{store: store, conversationOnly: true, allowedOrganizationIDs: append([]string(nil), cfg.AllowedOrganizationIDs...), resolver: cfg.resolver, authorizer: cfg.authorizer}, nil
+	}
 	if cfg.DB == nil || a == nil || a.config.RunDB == nil || a.config.Ledger == nil || a.textAdmission == nil || len(cfg.PlanningTextPolicies) == 0 {
 		return nil, aiworkbench.ErrUnavailable
 	}

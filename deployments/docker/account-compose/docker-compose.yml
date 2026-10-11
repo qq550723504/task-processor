@@ -11,6 +11,8 @@ services:
 
   bootstrap:
     build: { context: ../../.., dockerfile: deployments/docker/Dockerfile.account-compose, target: bootstrap }
+    environment:
+      ACCOUNT_COMMERCIAL_DATABASE: "${ACCOUNT_COMMERCIAL_DATABASE:-commercial}"
     volumes:
       - store-owner-secret:/store-owner-secret
       - store-runtime-secret:/store-runtime-secret
@@ -64,6 +66,7 @@ services:
       - business-db-admin-secret:/private:ro
       - business-db:/var/lib/postgresql/data
       - ./business-db-init.sh:/docker-entrypoint-initdb.d/10-business-databases.sh:ro
+      - ./commercial-database-name.sh:/usr/local/lib/account-compose/commercial-database-name.sh:ro
       - store-owner-secret:/secrets/store-owner:ro
       - store-runtime-secret:/secrets/store-runtime:ro
       - source-db-owner-secret:/secrets/source-owner:ro

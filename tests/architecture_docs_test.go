@@ -1719,6 +1719,14 @@ func TestArchitectureReadmeCoversEveryArchitectureDocument(t *testing.T) {
 	}
 }
 
+func TestSelectedApplicationOverviewDocumentPreservesReadOnlyOwnerBoundaries(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "selected-application-overview-v1.md"), []string{
+		"IMPLEMENTATION_READY / FROZEN", "Service.Choice", "submit_selected",
+		"MemberID 属于当前", "不跨 owner 直接读", "2000", "并发最多4", "总请求10s",
+		"不返回局部计数或假0", "scope 必须完全一致", "无 mutation intent",
+	})
+}
+
 func TestArchitectureReadmeReferencesExistingDocuments(t *testing.T) {
 	readmePath := filepath.Join("..", "docs", "architecture", "README.md")
 	readmeContent, err := os.ReadFile(readmePath)
@@ -2033,6 +2041,11 @@ func TestCurrentStoreDesignPreservesGreenfieldOwnersAndUnopenedServices(t *testi
 }
 
 func TestDataServicesDesignPreservesOriginalScopeFundsAndDelivery(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "data-services-native-authorization.md"), []string{
+		"PD-DATA-SERVICES-NATIVE-IAM-2026-10-10", "IMPLEMENTATION_READY",
+		"本轮不新增本地企业业务停用功能", "nil status port", "deadline checks",
+		"No schema, durable fact owner", "always-allow adapter", "actor-private",
+	})
 	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "data-services-v1.md"), []string{
 		"IMPLEMENTATION_READY", "PD-DATA-SERVICES-2026-10-09",
 		"成功保存一条消费一个 DATA_ROW，5 分/条", "创建者和企业", "撤权/离职后失效",
@@ -2071,5 +2084,14 @@ func TestEcoservicesDesignPreservesOriginalFundsAndPrivateDomainOwners(t *testin
 		"IMPLEMENTATION_READY", "internal/ecoservices", "internal/commercial/billing", "money",
 		"SERVICE_PURCHASE", "NON_COMMISSIONABLE", "CUSTOMER_ACCEPTED", "AR1", "UNKNOWN",
 		"CurrentIdentityWithVerifiedRoles", "LiveWrite", "全新", "原订单", "私有",
+	})
+}
+
+func TestEcoservicesQualificationDesignKeepsFinancialAdmissionSeparate(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "ecoservices-qualification-runtime.md"), []string{
+		"IMPLEMENTATION_READY", "ecoservices.nonPaymentOnly=true", "application_submit",
+		"application_review", "application_reject", "agreement_accept", "before repository Apply/replay",
+		"ACTIVE plus MerchantID", "No Commercial/Money purchase service", "incompatible retained facts fails startup",
+		"ecoservices_runtime", "NOT_RUN",
 	})
 }

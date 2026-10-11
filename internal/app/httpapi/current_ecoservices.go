@@ -22,11 +22,22 @@ import (
 )
 
 type EcoservicesDependencies struct {
+	NonPaymentOnly     bool
 	DB                 *gorm.DB
 	Objects            e.PrivateObjectStore
 	Channel            b.ServicePurchaseProvider
 	Protection         b.ServicePayloadProtection
 	MerchantProtection e.MerchantProtection
+}
+
+func (d *EcoservicesDependencies) available(commercialDB, moneyDB *gorm.DB) bool {
+	if d == nil || d.DB == nil || d.Objects == nil {
+		return false
+	}
+	if d.NonPaymentOnly {
+		return d.Channel == nil && d.Protection == nil && d.MerchantProtection == nil
+	}
+	return d.Channel != nil && d.Protection != nil && d.MerchantProtection != nil && commercialDB != nil && moneyDB != nil
 }
 
 // The application adapts its process config; the domain exposes only routes.
@@ -73,8 +84,27 @@ func (a ecoservicesCheckoutAuthorizer) AuthorizeServicePurchase(ctx context.Cont
 	return nil
 }
 func buildEcoservices(ctx context.Context, d EcoservicesDependencies, commercialDB, moneyDB *gorm.DB, a *authz.ListingKitAuthorizer, cfg *config.Config) (*ehttp.Handler, func(context.Context) error, error) {
-	if d.DB == nil || d.Objects == nil || d.Channel == nil || d.Protection == nil || d.MerchantProtection == nil || a == nil || cfg == nil || commercialDB == nil || moneyDB == nil {
+	if !d.available(commercialDB, moneyDB) || a == nil || cfg == nil {
 		return nil, nil, e.ErrUnavailable
+	}
+	if d.NonPaymentOnly {
+		repo, err := estore.NewRepository(ctx, d.DB)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := repo.VerifyQualificationRuntime(ctx); err != nil {
+			return nil, nil, err
+		}
+		service, err := e.NewQualificationService(repo)
+		if err != nil {
+			return nil, nil, err
+		}
+		files, err := e.NewFileService(repo, d.Objects)
+		if err != nil {
+			return nil, nil, err
+		}
+		handler, err := ehttp.NewQualificationHandler(service, files)
+		return handler, nil, err
 	}
 	if err := commercialstore.VerifyServicePurchasesRuntime(ctx, commercialDB); err != nil {
 		return nil, nil, err

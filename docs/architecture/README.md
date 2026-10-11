@@ -71,14 +71,20 @@ Use these as the main source of truth for structural work:
   - canonical money/wallet, commercial offer/quote/order, and purchased-resource ownership contract for #457
 - `ecosystem-services-v1.md`
   - #603 frozen IMPLEMENTATION_READY third-party onboarding, original service purchase, exact customer acceptance and channel settlement contract; real channel qualification and product acceptance remain separate gates
+- `ecoservices-qualification-runtime.md`
+  - #619 IMPLEMENTATION_READY qualification-only runtime supplement: application, review and agreement use the existing owner; merchant activation, service publication and payment remain unopened without the full channel configuration
 - `data-services-v1.md`
   - #621 frozen IMPLEMENTATION_READY Amazon data acquisition, creator-bound API credentials and specialist custom delivery; shared runtime wiring and real user acceptance remain separate gates
+- `data-services-native-authorization.md`
+  - #619 narrow native IAM phase decision and optional deny-only suspension contract; independent admission precedes production authorization changes
 - `self-service-subscription-purchase-contract.md`
   - tenant self-service subscription offer/quote/order, source-bound subscription activation, settlement and recovery contract for #478/#479
 - `store-center-current-application-v1.md`
   - #552 current Console Store record management, owner pools, quota, authorization and single-state hard-cut; service activation remains a separate unopened capability
 - `supply-market-v1.md`
   - #622 frozen IMPLEMENTATION_READY market disclosure, manual qualification and shared-account SDS design contract; current implementation and protocol evidence do not imply runtime or user acceptance
+- `selected-application-overview-v1.md`
+  - #619 frozen IMPLEMENTATION_READY member-only selected-application counts and bounded optimized own-product preview; original qualification, submit, authorization and fact owners remain unchanged
 - `store-center-platform-observations-v1.md`
   - #614 IMPLEMENTATION_READY readonly SHEIN products, consumer orders and logistics;
     scoped observations, original-member sync receipts and bounded recovery. Shared
@@ -166,6 +172,9 @@ source of truth for long-lived rules.
   - APPROVED / IMPLEMENTATION_READY #576 Slice E: owner-scoped Conversation,
     no-tool Eino/eino-ext planning, immutable execution proposals and BusinessTask,
     exact model-profile/replay semantics and current AgentRun/Review projections.
+- [`ai-workbench-conversation-runtime.md`](./ai-workbench-conversation-runtime.md)
+  - IMPLEMENTATION_READY: existing scoped Conversation management without model
+    policies; explicit allowlist, live authorization and closed execution routes.
     Reuses #580 title policy/organization-only credentials; native protocols and
     run-profile binding are approved implementation contracts, not deployed capability.
     Reviewed contract HEAD `620495bf03b57099e4b934f89c04e0d989d543d7` received

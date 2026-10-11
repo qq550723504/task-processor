@@ -19,6 +19,8 @@ it("refreshes an externally renamed and disabled base alongside its sources",asy
  if(url.endsWith("/preview"))return Response.json({revisionId:oldId,text:"已保存正文"});return Response.json(current);
  }));const unmount=mount(baseId);await act(async()=>{await vi.advanceTimersByTimeAsync(10);});
  expect(screen.getByRole("heading",{name:"品牌指南"})).toBeVisible();
+ expect(screen.getByRole("link",{name:"我的知识库"})).toHaveAttribute("href","/workbench/ai/knowledge/mine");
+ expect(screen.getByRole("navigation",{name:"面包屑"})).toHaveTextContent("AI工作台 / 知识库 / 我的知识库 / 品牌指南");
  current={...base,name:"更新后的指南",version:2};await act(async()=>{await vi.advanceTimersByTimeAsync(5010);});
  expect(screen.getByRole("heading",{name:"更新后的指南"})).toBeVisible();
  fireEvent.click(screen.getByRole("button",{name:"预览"}));await act(async()=>{await vi.advanceTimersByTimeAsync(10);});expect(screen.getByText("已保存正文")).toBeVisible();

@@ -45,10 +45,21 @@ func (m aiWorkbenchModule) Register(reg *kernelmodule.Registry) error {
 }
 
 func (m aiWorkbenchModule) AdmittedOrganization(organizationID string) bool {
-	if m.application == nil || m.application.agent == nil || organizationID == "" {
+	if m.application == nil {
 		return false
 	}
-	for _, admitted := range m.application.agent.config.AllowedOrganizationIDs {
+	return m.application.admittedOrganization(organizationID)
+}
+
+func (a *aiWorkbenchApplication) admittedOrganization(organizationID string) bool {
+	if a == nil || organizationID == "" {
+		return false
+	}
+	allowed := a.allowedOrganizationIDs
+	if a.agent != nil {
+		allowed = a.agent.config.AllowedOrganizationIDs
+	}
+	for _, admitted := range allowed {
 		if admitted == organizationID {
 			return true
 		}
@@ -150,7 +161,7 @@ func (a *aiWorkbenchApplication) bind(c *gin.Context, permission string) (contex
 	if err != nil {
 		return nil, aiworkbench.Scope{}, err
 	}
-	i, err := a.agent.freshWorkbenchIdentity(ctx, permission)
+	i, err := a.freshWorkbenchIdentity(ctx, permission)
 	if err != nil {
 		return nil, aiworkbench.Scope{}, err
 	}
@@ -235,7 +246,7 @@ func (a *aiWorkbenchApplication) proposalCard(ctx context.Context, p aiworkbench
 	card := workbenchProposalCard{ID: p.ID, Digest: p.Digest, SourceSequence: p.SourceSequence,
 		GoalSummary: p.GoalSummary, HumanReviewRequired: true}
 	i, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
-	if !ok {
+	if !ok || a.agent == nil {
 		return card
 	}
 	binding, err := a.agent.bindingForIdentity(ctx, i, p.OperationID, p.TargetPlatform)
@@ -293,6 +304,10 @@ func aiWorkbenchRoutes(a *aiWorkbenchApplication) []httproute.Descriptor {
 				ctx, scope, err := a.bind(c, spec.permission)
 				if err != nil {
 					writeAIWorkbenchError(c, err)
+					return
+				}
+				if a.conversationOnly && (spec.action == "message" || spec.action == "confirm" || strings.HasPrefix(spec.action, "task-")) {
+					writeAIWorkbenchError(c, aiworkbench.ErrUnavailable)
 					return
 				}
 				if c.Request.Method == http.MethodGet && workbenchEmptyBody(c) != nil {

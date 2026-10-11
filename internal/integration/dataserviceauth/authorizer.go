@@ -36,7 +36,7 @@ type Authorizer struct {
 }
 
 func NewAuthorizer(exact ExactReader, users ActiveUserReader, token func(context.Context) (string, error), project string, policy Policy, status workbenchcontext.OrganizationBusinessStatusChecker) (*Authorizer, error) {
-	if exact == nil || users == nil || token == nil || !authidentity.IsBoundedIdentifier(project) || policy == nil || status == nil {
+	if exact == nil || users == nil || token == nil || !authidentity.IsBoundedIdentifier(project) || policy == nil {
 		return nil, dataservice.ErrUnavailable
 	}
 	return &Authorizer{exact, users, token, project, policy, status}, nil
@@ -65,12 +65,19 @@ func (a *Authorizer) current(ctx context.Context, scope collection.Scope) ([]str
 	if !active {
 		return nil, dataservice.ErrForbidden
 	}
-	suspended, err := a.status.IsOrganizationSuspended(ctx, scope.OrganizationID)
-	if err != nil || ctx.Err() != nil {
-		return nil, dataservice.ErrUnavailable
+	// The formal Workbench port is optional: nil means no additional local
+	// business-suspension policy, never the absence of current IAM authority.
+	if a.status != nil {
+		suspended, err := a.status.IsOrganizationSuspended(ctx, scope.OrganizationID)
+		if err != nil {
+			return nil, dataservice.ErrUnavailable
+		}
+		if suspended {
+			return nil, dataservice.ErrForbidden
+		}
 	}
-	if suspended {
-		return nil, dataservice.ErrForbidden
+	if ctx.Err() != nil {
+		return nil, dataservice.ErrUnavailable
 	}
 	return grant.Roles, nil
 }

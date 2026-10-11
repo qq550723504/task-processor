@@ -1,0 +1,43 @@
+http:
+ routers:
+  identity-login:
+   entryPoints: [identity]
+   rule: Host(`localhost`) && PathPrefix(`/ui/v2/login`)
+   priority: 100
+   service: zitadel-login
+   tls: {}
+  identity-api:
+   entryPoints: [identity]
+   rule: Host(`localhost`)
+   priority: 1
+   service: zitadel-api
+   tls: {}
+  data-services-api:
+   entryPoints: [application]
+   rule: Host(`localhost`) && (Path(`/data-api/v1/amazon/jobs`) || PathPrefix(`/data-api/v1/amazon/jobs/`))
+   priority: 100
+   service: data-services-api
+   tls: {}
+  listingkit-ui:
+   entryPoints: [application]
+   rule: Host(`localhost`)
+   priority: 1
+   service: listingkit-ui
+   tls: {}
+ services:
+  zitadel-api:
+   loadBalancer:
+    servers: [{url: h2c://127.0.0.1:8080}]
+  zitadel-login:
+   loadBalancer:
+    servers: [{url: http://127.0.0.1:3000}]
+  listingkit-ui:
+   loadBalancer:
+    servers: [{url: http://127.0.0.1:3001}]
+  data-services-api:
+   loadBalancer:
+    servers: [{url: http://127.0.0.1:8085}]
+tls:
+ certificates:
+  - certFile: /private/tls/localhost.crt
+    keyFile: /private/tls/localhost.key

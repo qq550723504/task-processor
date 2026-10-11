@@ -21,6 +21,41 @@ type fixtureService struct {
 	input supplymarket.Mutation
 }
 
+func (s *fixtureService) ApplicationOverview(context.Context) (supplymarket.ApplicationOverview, error) {
+	s.calls++
+	return supplymarket.ApplicationOverview{EligibleProducts: 34, Products: []supplymarket.ApplicationProduct{}, ApplicationCounts: supplymarket.ApplicationCounts{Reviewing: 27, SupplementRequired: 4, Approved: 7}}, nil
+}
+func TestApplicationOverviewIsMemberOnlyBoundedBodylessRead(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &fixtureService{}
+	router := gin.New()
+	for _, route := range Routes(service, nil, func(ctx context.Context, _ string) (context.Context, error) { return ctx, nil }) {
+		router.Handle(route.Method, route.Path, route.Handler)
+		if route.Path == BasePath+"/application-overview" {
+			require.Equal(t, supplymarket.PermissionApply, route.Permission)
+			require.Equal(t, httproute.OrganizationAccessPolicyCachedRead, route.OrganizationAccessPolicy)
+			require.Equal(t, supplymarket.Timeout, route.RequestTimeout)
+		}
+	}
+	for _, test := range []struct {
+		path, body string
+		status     int
+	}{{BasePath + "/application-overview", "", 200}, {BasePath + "/application-overview?organizationId=foreign", "", 400}, {BasePath + "/application-overview", "{}", 400}, {AdminPath + "/application-overview", "", 404}} {
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, test.path, nil)
+		if test.body != "" {
+			request = httptest.NewRequest(http.MethodGet, test.path, strings.NewReader(test.body))
+		}
+		router.ServeHTTP(response, request)
+		require.Equal(t, test.status, response.Code)
+		if test.status == 200 {
+			require.Contains(t, response.Body.String(), `"eligibleProducts":34`)
+			require.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+		}
+	}
+	require.Equal(t, 1, service.calls)
+}
+
 func (s *fixtureService) ExecuteMember(_ context.Context, _ string, i supplymarket.Mutation) (supplymarket.Receipt, error) {
 	s.calls++
 	s.input = i

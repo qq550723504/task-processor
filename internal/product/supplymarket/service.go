@@ -123,6 +123,7 @@ type Command struct {
 // commits. It grants no Product reference and cannot replace source disclosure.
 type Guard func(context.Context) error
 type Repository interface {
+	CountApplications(context.Context, collection.Scope) (ApplicationCounts, error)
 	Execute(context.Context, Command, Guard) (Receipt, error)
 	ReadOperation(context.Context, collection.Scope, string, string) (Receipt, error)
 	ListRecords(context.Context, collection.Scope, string, Query) (Page[Record], error)
