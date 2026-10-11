@@ -1,6 +1,8 @@
 # Ecoservices qualification-only runtime
 
-Status: DESIGN_REVIEW_PENDING (2026-10-11). Execution: #619; primary PR: #631.
+Status: IMPLEMENTATION_READY (2026-10-11). Execution: #619; primary PR: #631.
+
+Independent Reviewer `/root/native_auth_review` reviewed design HEAD `5418c16687ebac871fac2481a2f48d549ef78ccc` before production edits: no BLOCKER. Command/consumer isolation and retained installation/credential/manifest checks are IMPLEMENTATION_TEST, required before merge/trial. Design review is not runtime or business acceptance.
 
 ## Product authority and outcome
 
