@@ -41,6 +41,11 @@ an approved contract. Follow the explicit responsibility/supersession above.
 
 ## Recommended Reading Order
 
+Official Knowledge's approved reading scope and admission record are tracked in
+[official-knowledge-v1.md](official-knowledge-v1.md) / execution Issue #632. Its
+reviewed status must be checked before implementation; it is separate from the
+enterprise Knowledge owner and has no AI-consumption or online-publisher scope.
+
 After identifying the applicable approved authorities above, review structural rules in this order:
 
 1. Start with `project-boundaries.md` for default package ownership,

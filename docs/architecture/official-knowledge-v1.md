@@ -1,6 +1,11 @@
 # Official Knowledge V1 — Product Gate and design proposal
 
-> Status: **PRODUCT_FROZEN / PENDING_ARCHITECTURE_REVIEW**. Production edits await independent admission.
+> Status: **APPROVED / IMPLEMENTATION_READY** — approved reading scope only.
+>
+> Independent read-only Architecture Review: `official_architecture_review`,
+> 2026-10-11, contract HEAD `6fcb27fbf740729b4f9172e60e7417f8005a0545`.
+> Result: IMPLEMENTATION_READY, no BLOCKER. One IMPLEMENTATION_TEST requires an
+> unread GET body rejection test in the BFF; it does not reopen architecture.
 >
 > Execution: [Issue #632](https://github.com/qq550723504/task-processor/issues/632).
 >
@@ -266,8 +271,8 @@ normal login/use and user acceptance remain separate evidence.
 - [x] User confirms first real content and legal/usage provenance: repository-supported guide.
 - [x] User confirms maintenance/publication and initial use scope: PR/release, reading only.
 - [x] Scope-specific read contracts above frozen; AI/publisher UI explicitly Later.
-- [ ] Applicable independent architecture review completed and classified.
-- [ ] Explicit `IMPLEMENTATION_READY`; Issue Ready before production edits.
+- [x] Applicable independent architecture review completed; no BLOCKER.
+- [x] Explicit `IMPLEMENTATION_READY`; Issue #632 records Ready before production edits.
 
-Current result: **PENDING_ARCHITECTURE_REVIEW**. No formal implementation, content publication,
-schema change, provider call or user/product acceptance has been performed.
+Current result: **IMPLEMENTATION_READY** for this read-only guide. Implementation,
+provider readiness and user/product acceptance remain separate evidence.
