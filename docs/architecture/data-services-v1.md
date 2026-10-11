@@ -5,6 +5,7 @@ Refs [执行 Issue #621](https://github.com/qq550723504/task-processor/issues/62
 - Product Decision：`PD-DATA-SERVICES-2026-10-09`，见 §1。
 - Design Basis：**Independent Architecture**。
 - Admission：**IMPLEMENTATION_READY**。本文先于生产实现；R1 于设计候选 `6921e70816dadb4f0f552cbd138e60fd94aeaec0` 完成，无 BLOCKER。共享窄合同 Writer 已由用户确认。
+- 2026-10-10 产品阶段更新：用户明确选择“沿用当前正式授权，本轮不新增本地企业业务停用功能”。该决定替代 §6 对必需本地 suspension owner 的假定；[原生授权窄补充](data-services-native-authorization.md) 记录正式 resolver 的 optional deny-only port，独立 R1 已达到 IMPLEMENTATION_READY。原冻结设计其余边界不重开，实施/运行证据不由设计准入代签。
 - Investigation baseline：`origin/main @ 2e40643f63a4314a33b0f59f21def10a0cd2ecc9`。
 - 唯一 Writer：会话 `01a11f6e-8e8c-7783-9131-fd88e18394c4`，`codex/data-services-v1`。
 - 公共 runtime / 启动组合 Writer：会话 `01a11f74-2565-78e0-9118-4fe1ff53e726` / #619；共享 owner 改动按 §13 协调。

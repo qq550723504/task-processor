@@ -261,7 +261,7 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 			}
 		}
 	}
-	for _, policy := range append(ToolMarketPolicies(), CockpitPolicies()...) {
+	for _, policy := range append(append(ToolMarketPolicies(), CockpitPolicies()...), DataServicesPolicies()...) {
 		if _, err := enforcer.AddPolicy(policy); err != nil {
 			return nil, err
 		}

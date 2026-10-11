@@ -219,9 +219,19 @@ type TradingPort interface {
 	ExecuteServiceCommand(context.Context, FinancialCommand) (FinancialResult, error)
 }
 type Service struct {
-	repo       Repository
-	trading    TradingPort
-	freezeDays int
+	repo              Repository
+	trading           TradingPort
+	freezeDays        int
+	qualificationOnly bool
+}
+
+// NewQualificationService admits application work without inventing a merchant
+// profile, financial provider or service eligibility.
+func NewQualificationService(repo Repository) (*Service, error) {
+	if repo == nil {
+		return nil, ErrUnavailable
+	}
+	return &Service{repo: repo, qualificationOnly: true}, nil
 }
 
 func NewService(repo Repository, trading TradingPort, freezeDays int) (*Service, error) {

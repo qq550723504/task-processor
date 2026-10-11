@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 # Keep this entrypoint materialized as LF on existing Windows worktrees.
+. /usr/local/lib/account-compose/commercial-database-name.sh
 
 state=/state
 trusted_ca=/trusted-ca
@@ -32,7 +33,12 @@ store_owner_secret=/store-owner-secret
 store_runtime_secret=/store-runtime-secret
 issue36_trial_runtime_secret=/issue36-trial-runtime-secret
 marker="$state/.bootstrap-complete"
+case "${ACCOUNT_DATA_SERVICES_ENABLED:-}" in ''|1) ;; *) echo 'invalid data services opt-in' >&2; exit 1 ;; esac
 case "${ACCOUNT_KNOWLEDGE_ENABLED:-}" in ''|1) ;; *) echo 'invalid knowledge opt-in' >&2; exit 1 ;; esac
+case "${ACCOUNT_NATIVE_MODULES_ENABLED:-}" in ''|1) ;; *) echo 'invalid native modules opt-in' >&2; exit 1 ;; esac
+if [ "${ACCOUNT_NATIVE_MODULES_ENABLED:-}" = 1 ]; then
+  test "${ACCOUNT_DATA_SERVICES_ENABLED:-}" = 1 && test "${ACCOUNT_KNOWLEDGE_ENABLED:-}" = 1 || { echo 'native modules require the data services and knowledge overlays' >&2; exit 1; }
+fi
 case "${ACCOUNT_IMAGE_AGENT_TRIAL:-}" in
   ''|ISOLATED_TRIAL_ONLY) ;;
   *) echo 'invalid image trial confirmation' >&2; exit 1 ;;
@@ -43,6 +49,16 @@ case "${ACCOUNT_ISSUE36_LOCAL_TRIAL:-}" in
 esac
 
 if [ -f "$marker" ]; then
+  if [ "${ACCOUNT_NATIVE_MODULES_ENABLED:-}" = 1 ]; then
+    test -f "$state/.native-modules-enabled" || { echo 'native modules require a new empty project' >&2; exit 1; }
+  else
+    test ! -f "$state/.native-modules-enabled" || { echo 'retained native modules require their original overlays' >&2; exit 1; }
+  fi
+  if [ "${ACCOUNT_DATA_SERVICES_ENABLED:-}" = 1 ]; then
+    test -f "$state/.data-services-enabled" && test -s /data-services-runtime-secret/password || { echo 'data services require a new empty project with their original overlay' >&2; exit 1; }
+  else
+    test ! -f "$state/.data-services-enabled" || { echo 'retained data services require their original overlay' >&2; exit 1; }
+  fi
   if [ "${ACCOUNT_ISSUE36_LOCAL_TRIAL:-}" = ISOLATED_TRIAL_ONLY ]; then
     test -f "$state/.issue36-trial-enabled" && test -s "$issue36_trial_runtime_secret/password" || { echo '#36 local trial requires a new empty project with its original overlay' >&2; exit 1; }
   else
@@ -124,6 +140,18 @@ mkdir -p "$role_policy_reader_secret"
 write_random 24 "$role_policy_reader_secret/password"
 chown 70:70 "$role_policy_reader_secret/password"
 write_random 32 "$frontend_secrets/auth-secret"
+if [ "${ACCOUNT_DATA_SERVICES_ENABLED:-}" = 1 ]; then
+  test -z "${ACCOUNT_IMAGE_AGENT_TRIAL:-}" && test -z "${ACCOUNT_ISSUE36_LOCAL_TRIAL:-}" || { echo 'data services profile excludes isolated legacy trial profiles' >&2; exit 1; }
+  mkdir -p /data-services-runtime-secret
+  write_random 24 /data-services-runtime-secret/password
+  chown 70:70 /data-services-runtime-secret/password
+  touch "$state/.data-services-enabled"
+  chmod 600 "$state/.data-services-enabled"
+fi
+if [ "${ACCOUNT_NATIVE_MODULES_ENABLED:-}" = 1 ]; then
+  touch "$state/.native-modules-enabled"
+  chmod 600 "$state/.native-modules-enabled"
+fi
 mkdir -p "$image_db_owner_secret" "$image_runtime_secret" "$image_worker_secret" "$acquisition_db_owner_secret" "$acquisition_runtime_secret" "$image_minio_secret"
 mkdir -p "$product_agent_db_owner_secret" "$image_audit_reader_secret" "$product_audit_reader_secret"
 write_random 24 "$image_db_owner_secret/image-db-password"

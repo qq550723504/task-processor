@@ -4,6 +4,29 @@ Refs #576、#588。入口为当前 Console 的 `/workbench/ai/chat` 和 `/workbe
 
 ## 准备当前应用
 
+### 本轮无模型的会话管理
+
+2026-10-11 用户确认暂无模型配置，并选择先开放真实会话管理。按
+[`ai-workbench-conversation-runtime.md`](../architecture/ai-workbench-conversation-runtime.md)
+使用显式 `aiWorkbench.conversationOnly: true` 和 `allowedOrganizationIds`，保留
+`productAgent.enabled: false`，不配置 planning policy。仍使用原 `product_agent`
+逻辑库中的 `ai_workbench` schema 和独立 `ai_workbench_runtime` 连接池。
+模型发送、方案确认和任务操作均返回不可用，且不创建执行收据或调用 provider。
+
+已接入统一 Compose 的内部试用实例，在原 base、knowledge、data-services、modules、
+ecoservices 五层之后加 `docker-compose.chat.yml`。私密 env 中显式提供
+`CHAT_ALLOWED_ORGANIZATION_IDS='["已授权试用企业ID"]'`，使用包含
+`ai-workbench-schema-init` 的 schema-init image。首次启动只安装原空 schema 和
+限定 runtime role；发现已有 schema/role 或中断 marker 时停止，不覆盖或重置。
+再次启动校验原输入/输出 manifest hash、组织列表与原 runtime password。
+Serving 不挂载 owner/admin secret。新增 chat-install-state、chat-runtime 两个 volume；
+原数据 volume 必须全部保留。更改组织或 base manifest 需显式重新组装，不能删除 marker 重跑。
+
+正常登录并选择获准企业，进入 `/workbench/ai/chat`：新建会话，修改名称、收藏、
+归档；在最近、收藏、归档列表中重新打开，归档详情可恢复。所有事实按当前企业和本人保存。
+正常 stop/start 后会话仍在；这轮模型状态显示待配置，不能发送消息。
+以下完整规划/执行步骤仍适用于明确取得模型配置及执行授权后的 full mode。
+
 复用 [`product-agent-trial.md`](product-agent-trial.md) 中的 Product Acquisition、Product Agent、Review、Asset、AI invocation、Commercial、正常登录和私有 manifest。`productAgent.enabled` 及对应企业 allowlist 必须已配置。`aiWorkbench.enabled: true` 额外要求：
 
 - `aiWorkbench.database` 指向与 `productAgent.database` 相同的 PostgreSQL host、port 和 database，用户固定为 `ai_workbench_runtime`，密码只放私有 manifest，连接池不超过 8。

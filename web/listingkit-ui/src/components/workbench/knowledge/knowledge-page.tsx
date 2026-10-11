@@ -13,6 +13,7 @@ import { baseSchema,basesSchema,sourcesSchema,previewSchema,resultSchema,knowled
 import "./knowledge.css";
 
 const root="/workbench/ai/knowledge";
+const mineBreadcrumbs=[{label:"AI工作台",href:"/workbench/ai"},{label:"知识库",href:root},{label:"我的知识库",href:root+"/mine"}];
 // Reserve 4 KiB for bounded source name, escaped filename, MIME and multipart
 // boundaries. The server retains the 10 MiB whole-request contract.
 const maxUploadFileBytes=10*1024*1024-4096;
@@ -104,8 +105,8 @@ function KnowledgeContent({scope,baseId}:{scope:KnowledgeScope;baseId?:string}) 
  const listError=!baseId && list.error, detailError=baseId && base.error;
  const notice=message?<Card className="knowledge-notice" role={mutation.isError?"alert":"status"}><p>{message}</p>{intent && !mutation.isPending && readable?<Button onClick={()=>mutation.mutate(intent)}>重试同一次操作</Button>:null}</Card>:null;
  const refreshAccess=async()=>{const next=await context.retry();if(next?.user.id===scope.userId && next.effectiveOrganizationId===scope.organizationId){setReadAttempt(value=>value+1);setAuthorityError(null);}};
- if(!readable)return <ConsolePage title="我的知识库（当前企业）" description={description}>{notice}<ConsoleState kind="unavailable" title={canRead?errorMessage(authorityError):"当前身份没有知识库读取权限"}><Button onClick={()=>void refreshAccess()}>重新确认</Button></ConsoleState></ConsolePage>;
- return <ConsolePage title={baseId?(base.data?.name??"知识库"):"我的知识库（当前企业）"} description={description} breadcrumbs={baseId?[{label:"知识库",href:root},{label:base.data?.name??"资料"}]:undefined}
+ if(!readable)return <ConsolePage title="我的知识库（当前企业）" description={description} breadcrumbs={mineBreadcrumbs}>{notice}<ConsoleState kind="unavailable" title={canRead?errorMessage(authorityError):"当前身份没有知识库读取权限"}><Button onClick={()=>void refreshAccess()}>重新确认</Button></ConsoleState></ConsolePage>;
+ return <ConsolePage title={baseId?(base.data?.name??"知识库"):"我的知识库（当前企业）"} description={description} breadcrumbs={baseId?[...mineBreadcrumbs,{label:base.data?.name??"资料"}]:mineBreadcrumbs}
  actions={canManage?(!baseId?<Button onClick={()=>setEditing(true)} disabled={busy}>创建知识库</Button>:active?<Button variant="outline" disabled={busy} onClick={()=>{setName(base.data!.name);setEditing(true);}}>编辑名称</Button>:undefined):undefined}>
  {notice}
  {editing && canManage?<Card className="knowledge-form"><form onSubmit={e=>{e.preventDefault();run(baseId?"knowledge-bases/"+baseId:"knowledge-bases",baseId?"PUT":"POST",JSON.stringify({name}),base.data?.version);}}>

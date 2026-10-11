@@ -14,11 +14,13 @@ import (
 
 	"gorm.io/gorm"
 	sigjson "sigs.k8s.io/json"
+	keystore "task-processor/internal/integration/persistence/dataservice"
 	preparationstore "task-processor/internal/integration/persistence/listing/preparation"
 	recordstore "task-processor/internal/integration/persistence/listing/record"
 	submissionstore "task-processor/internal/integration/persistence/listing/submission"
 	acquisitionstore "task-processor/internal/integration/persistence/product/acquisition"
 	collectionstore "task-processor/internal/integration/persistence/product/collection"
+	jobstore "task-processor/internal/integration/persistence/product/dataacquisition"
 	podstore "task-processor/internal/integration/persistence/product/pod"
 	reviewstore "task-processor/internal/integration/persistence/product/review"
 	marketstore "task-processor/internal/integration/persistence/product/supplymarket"
@@ -34,6 +36,7 @@ type acquisitionInitManifest struct {
 	ImageSets     bool `json:"imageSets,omitempty"`
 	SupplyMarket  bool `json:"supplyMarket,omitempty"`
 	POD           bool `json:"pod,omitempty"`
+	DataServices  bool `json:"dataServices,omitempty"`
 	Database      struct {
 		Host     string `json:"host"`
 		Port     int    `json:"port"`
@@ -65,7 +68,7 @@ func InitializeAcquisitionDatabase(ctx context.Context, manifest, confirmedDatab
 	var cfg acquisitionInitManifest
 	strict, err := sigjson.UnmarshalStrict(raw, &cfg, sigjson.DisallowUnknownFields, sigjson.DisallowDuplicateFields)
 	d := cfg.Database
-	if (cfg.SupplyChain || cfg.SupplyMarket || cfg.POD) && !cfg.Collections || cfg.POD && !cfg.SupplyMarket {
+	if (cfg.SupplyChain || cfg.SupplyMarket || cfg.POD || cfg.DataServices) && !cfg.Collections || cfg.POD && !cfg.SupplyMarket {
 		return unavailable
 	}
 	if err != nil || len(strict) > 0 || cfg.SchemaVersion != 1 || d.Host != "127.0.0.1" || d.Port < 1 || d.Port > 65535 || !acquisitionInitName.MatchString(d.User) || !acquisitionInitName.MatchString(d.Database) || confirmedDatabase != d.Database || d.User == acquisitionstore.RuntimeRole || d.Database == "postgres" || d.Database == "template0" || d.Database == "template1" || len(d.Password) < 1 || len(d.Password) > 1024 || strings.ContainsAny(d.Password, " ='\\\t\r\n\v\f\x00") {
@@ -117,6 +120,16 @@ func InitializeAcquisitionDatabase(ctx context.Context, manifest, confirmedDatab
 				return err
 			}
 			if err := podstore.InstallSchema(tx); err != nil {
+				return err
+			}
+		}
+		if cfg.DataServices {
+			for _, install := range []func(*gorm.DB) error{keystore.InstallSchema, jobstore.InstallSchema, keystore.InstallCustomSchema} {
+				if err := install(tx); err != nil {
+					return err
+				}
+			}
+			if err := acquisitionstore.GrantDataServicesRuntimePermissions(ctx, tx); err != nil {
 				return err
 			}
 		}

@@ -7,6 +7,32 @@ import { ConsoleNavigation } from "./console-navigation";
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 
 const query=vi.hoisted(()=>({value:""}));
+it.each(["productAcquisitionAvailable", "supplyMarketAvailable", "supplyChainAvailable"])("connects the Supply parent with %s", capability => {
+  const view = render(<ConsoleNavigation pathname="/workbench/supply" ariaLabel="主导航" />);
+  expect(screen.getByRole("link", {name: "供应市场"})).toHaveAttribute("title", "供应市场：业务暂未启用");
+  view.rerender(<ConsoleNavigation pathname="/workbench/supply" ariaLabel="主导航" {...{[capability]: true}} />);
+  expect(screen.getByRole("link", {name: "供应市场"})).toHaveAttribute("title", "供应市场");
+});
+it.each(["智能市场", "店铺中心"])("connects the %s parent to its existing child", label => {
+  render(<ConsoleNavigation pathname="/workbench" ariaLabel="主导航" />);
+  expect(screen.getByRole("link", {name: label})).toHaveAttribute("title", label);
+});
+it.each(["aiWorkbenchAvailable", "projectCenterAvailable", "knowledgeAvailable", "reportCenterAvailable", "productReviewAvailable", "sheinRecordsAvailable"])("marks the AI parent connected when %s is connected", (capability) => {
+  const view = render(<ConsoleNavigation pathname="/workbench" ariaLabel="主导航" />);
+  expect(screen.getByRole("link", {name: "AI工作台"})).toHaveAttribute("title", "AI工作台：业务暂未启用");
+  view.rerender(<ConsoleNavigation pathname="/workbench" ariaLabel="主导航" {...{[capability]: true}} />);
+  expect(screen.getByRole("link", {name: "AI工作台"})).toHaveAttribute("title", "AI工作台");
+});
+it("opens data market and API only with their runtime and keeps My Data separate", () => {
+ const view=render(<ConsoleNavigation pathname="/workbench/data/api" ariaLabel="主导航" productCollectionsAvailable />);
+ expect(screen.getByRole("link",{name:"数据市场"})).toHaveAttribute("title","数据市场：业务暂未启用");
+ expect(screen.getByRole("link",{name:"API管理"})).toHaveAttribute("title","API管理：业务暂未启用");
+ expect(screen.getByRole("link",{name:"我的数据"})).toHaveAttribute("title","我的数据");
+ view.rerender(<ConsoleNavigation pathname="/workbench/data/api" ariaLabel="主导航" dataServicesAvailable />);
+ expect(screen.getByRole("link",{name:"数据市场"})).toHaveAttribute("title","数据市场");
+ expect(screen.getByRole("link",{name:"API管理"})).toHaveAttribute("title","API管理");
+ expect(screen.getByRole("link",{name:"我的数据"})).toHaveAttribute("title","我的数据：业务暂未启用");
+});
 it("opens saved reports without an Agent only when the report runtime is configured", () => {
  const view=render(<ConsoleNavigation pathname="/workbench/ai/reports" ariaLabel="主导航" />);
  expect(screen.getByRole("link",{name:"我的报告"})).toHaveAttribute("title","我的报告：业务暂未启用");
@@ -176,4 +202,46 @@ it("retains only valid batch and store selection across supply stage links",()=>
  expect(screen.getByRole("link",{name:"待审核"})).toHaveAttribute("title","待审核");
  query.value="preparation=bad&store=bad";view.rerender(<ConsoleNavigation pathname="/workbench/supply/mine/waiting" ariaLabel="主导航" supplyChainAvailable/>);
  expect(screen.getByRole("link",{name:"待审核"})).toHaveAttribute("href","/workbench/supply/mine/review");
+});
+it("opens enterprise knowledge without advertising an unimplemented official catalog", () => {
+  const view = render(<ConsoleNavigation pathname="/workbench/ai/knowledge/mine" ariaLabel="主导航" knowledgeAvailable />);
+  expect(screen.getByRole("link", {name:"知识库"})).toHaveAttribute("title", "知识库");
+  expect(screen.getByRole("link", {name:"我的知识库"})).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("link", {name:"我的知识库"})).toHaveAttribute("title", "我的知识库");
+  expect(screen.getByRole("link", {name:"官方知识库"})).toHaveAttribute("title", "官方知识库：业务暂未启用");
+  view.rerender(<ConsoleNavigation pathname="/workbench/ai/knowledge/mine" ariaLabel="主导航" />);
+  expect(screen.getByRole("link", {name:"知识库"})).toHaveAttribute("title", "知识库：业务暂未启用");
+  expect(screen.getByRole("link", {name:"我的知识库"})).toHaveAttribute("title", "我的知识库：业务暂未启用");
+});
+
+it.each([
+  ["/workbench/agents/custom/new", "提交定制需求"],
+  ["/workbench/agents/custom/progress", "定制进度"],
+])("opens the customization hierarchy at %s and marks only its leaf current", (pathname, label) => {
+  render(<ConsoleNavigation pathname={pathname} ariaLabel="主导航" />);
+  expect(screen.getByRole("button", {name:"收起智能市场"})).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getByRole("button", {name:"收起智能体定制"})).toHaveAttribute("aria-expanded", "true");
+  const current = screen.getByRole("link", {name:label});
+  expect(current).toHaveAttribute("href", pathname);
+  expect(current).toHaveAttribute("aria-current", "page");
+  expect(current.closest("li")).toHaveClass("console-nav-level-3");
+  expect(screen.getByRole("link", {name:"智能体定制"})).not.toHaveAttribute("aria-current");
+  for (const child of ["提交定制需求", "定制进度"]) {
+    expect(screen.getByRole("link", {name:child})).toHaveAttribute("title", child);
+    if (child !== label) expect(screen.getByRole("link", {name:child})).not.toHaveAttribute("aria-current");
+  }
+});
+
+it("lets members collapse and reopen the customization children from its overview", async () => {
+  const user = userEvent.setup();
+  const view = render(<ConsoleNavigation pathname="/workbench/agents/custom" ariaLabel="主导航" />);
+  expect(screen.getByRole("link", {name:"智能体定制"})).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("link", {name:"提交定制需求"})).toHaveAttribute("href", "/workbench/agents/custom/new");
+  expect(screen.getByRole("link", {name:"定制进度"})).toHaveAttribute("href", "/workbench/agents/custom/progress");
+  await user.click(screen.getByRole("button", {name:"收起智能体定制"}));
+  expect(screen.queryByRole("link", {name:"提交定制需求"})).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", {name:"展开智能体定制"}));
+  expect(screen.getByRole("link", {name:"提交定制需求"})).toBeVisible();
+  view.rerender(<ConsoleNavigation pathname="/workbench/agents/custom/progress" ariaLabel="主导航" />);
+  expect(screen.getByRole("link", {name:"定制进度"})).toHaveAttribute("aria-current", "page");
 });

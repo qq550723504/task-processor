@@ -1,0 +1,22 @@
+# Optional final layer after base + knowledge + data-services + modules + E.
+services:
+ chat-init:
+  build: {context: ../../..,dockerfile: deployments/docker/Dockerfile.account-compose,target: schema-init}
+  network_mode: service:runtime-network
+  entrypoint: [/usr/local/bin/chat-init]
+  environment:
+   CHAT_ALLOWED_ORGANIZATION_IDS: "${CHAT_ALLOWED_ORGANIZATION_IDS:?explicit Chat trial organizations required}"
+  volumes:
+   - chat-install-state:/state
+   - chat-runtime:/runtime
+   - ecoservices-runtime:/base:ro
+   - business-db-admin-secret:/secrets/admin:ro
+   - product-agent-db-owner-secret:/secrets/product-agent-owner:ro
+  depends_on: {ecoservices-init: {condition: service_completed_successfully}}
+ current-application:
+  command: [-config,/private/chat/current-application.json]
+  volumes: [chat-runtime:/private/chat:ro]
+  depends_on: {chat-init: {condition: service_completed_successfully}}
+volumes:
+ chat-install-state: {name: "${COMPOSE_PROJECT_NAME}-chat-install-state"}
+ chat-runtime: {name: "${COMPOSE_PROJECT_NAME}-chat-runtime"}

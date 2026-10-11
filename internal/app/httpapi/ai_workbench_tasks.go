@@ -68,6 +68,9 @@ func (a *aiWorkbenchApplication) taskView(ctx context.Context, scope aiworkbench
 	if !ok || identity.TenantID != scope.OrganizationID || identity.UserID != scope.ActorID || task.Scope != scope {
 		return workbenchTaskView{}, aiworkbench.ErrNotFound
 	}
+	if a.agent == nil {
+		return view, nil
+	}
 	var request agent.Request
 	if json.Unmarshal(task.ExecutionRequest, &request) != nil || request.Key != task.ExecutionRequestKey {
 		return workbenchTaskView{}, aiworkbench.ErrUnavailable

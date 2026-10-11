@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"task-processor/internal/authz"
+	e "task-processor/internal/ecoservices"
 	"task-processor/internal/httproute"
 	"time"
 )
@@ -81,8 +82,27 @@ func Routes(h *Handler) []httproute.Descriptor {
 		if r.slow {
 			deadline = 30 * time.Second
 		}
+		if h.qualificationOnly && !qualificationRoute(r.method, r.path) {
+			r.handler = func(c *gin.Context) { failure(c, e.ErrUnavailable) }
+		}
 		result = append(result, httproute.Descriptor{Method: r.method, Path: r.path, Module: ModuleName, Permission: r.permission, AuthPolicy: policy, OrganizationAccessPolicy: org, RequestTimeout: deadline, RejectUnreadRequestBody: r.method == http.MethodGet, Handler: httproute.WithRequestBodyReadTimeout(deadline, r.handler)})
 	}
 	result = append(result, httproute.Descriptor{Method: http.MethodPost, Path: NotifyPath, Module: ModuleName, AuthPolicy: httproute.AuthPolicyPublic, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyNone, RequestTimeout: 10 * time.Second, Handler: httproute.WithRequestBodyReadTimeout(10*time.Second, h.notify)})
 	return result
+}
+
+func qualificationRoute(method, path string) bool {
+	if method == http.MethodGet {
+		switch path {
+		case Base + "/catalog", Base + "/catalog/:id", Base + "/applications", Base + "/provider/listings", Base + "/requests", Base + "/requests/:id", Base + "/applications/files/:id", AdminBase + "/applications", AdminBase + "/files/:id":
+			return true
+		}
+	}
+	if method == http.MethodPost {
+		switch path {
+		case Base + "/applications", Base + "/applications/:id/agreement", Base + "/applications/files", Base + "/applications/:id/files", AdminBase + "/applications/:id/approve", AdminBase + "/applications/:id/reject":
+			return true
+		}
+	}
+	return false
 }

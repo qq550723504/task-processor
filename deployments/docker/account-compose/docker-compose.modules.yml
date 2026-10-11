@@ -1,0 +1,66 @@
+# Combine base + knowledge + data-services + this overlay on a new empty project.
+services:
+ bootstrap:
+  environment: {ACCOUNT_NATIVE_MODULES_ENABLED: "1"}
+ schema-init:
+  environment: {ACCOUNT_NATIVE_MODULES_ENABLED: "1"}
+ native-modules-init:
+  build: {context: ../../..,dockerfile: deployments/docker/Dockerfile.account-compose,target: schema-init}
+  network_mode: service:runtime-network
+  entrypoint: [/usr/local/bin/native-modules-init]
+  environment:
+   ACCOUNT_NATIVE_MODULES_ENABLED: "1"
+   ACCOUNT_APPLICATION_PORT: "${ACCOUNT_APPLICATION_PORT:?ACCOUNT_APPLICATION_PORT must be unique}"
+  volumes:
+   - module-install-state:/state
+   - module-runtime:/runtime
+   - runtime-secrets:/base:ro
+   - business-db-admin-secret:/secrets/admin:ro
+   - store-owner-secret:/secrets/store-owner:ro
+   - qualification-storage-secret:/qualification-storage-secret
+  depends_on: {schema-init: {condition: service_completed_successfully}}
+ qualification-objects:
+  build: {context: .,dockerfile: Dockerfile.knowledge-storage,target: server}
+  network_mode: service:runtime-network
+  entrypoint: [/bin/sh,-ec]
+  command: ['export MINIO_ROOT_USER=qualification_local_root; export MINIO_ROOT_PASSWORD="$$(cat /qualification-private/root-password)"; exec minio server /data --address 127.0.0.1:9000']
+  volumes: [qualification-storage-secret:/qualification-private:ro,qualification-objects:/data]
+  depends_on: {native-modules-init: {condition: service_completed_successfully}}
+  healthcheck: {test: [CMD,wget,-q,-O,/dev/null,http://127.0.0.1:9000/minio/health/live],interval: 3s,timeout: 3s,retries: 40}
+ qualification-storage-init:
+  build: {context: .,dockerfile: Dockerfile.knowledge-storage,target: client}
+  network_mode: service:runtime-network
+  entrypoint: [/bin/sh,/init/qualification-storage-init.sh]
+  volumes:
+   - ./qualification-storage-init.sh:/init/qualification-storage-init.sh:ro
+   - ./qualification-storage-policy.json:/init/qualification-storage-policy.json:ro
+   - qualification-storage-secret:/qualification-private:ro
+   - module-runtime:/runtime:ro
+  depends_on: {qualification-objects: {condition: service_healthy}}
+ current-application:
+  command: [-config,/private/modules/current-application.json]
+  volumes:
+   - module-runtime:/private/modules:ro
+   - ${ACCOUNT_TOOL_RELEASE_DIRECTORY:?provide the current-origin plugin release directory}:/private/tool-release:ro
+  depends_on:
+   native-modules-init: {condition: service_completed_successfully}
+   qualification-storage-init: {condition: service_completed_successfully}
+ listingkit-ui:
+  environment:
+   LISTINGKIT_PRODUCT_ACQUISITION_ENABLED: "true"
+   LISTINGKIT_PRODUCT_COLLECTIONS_ENABLED: "true"
+   LISTINGKIT_DATA_SERVICES_ENABLED: "true"
+   LISTINGKIT_TOOL_MARKET_ENABLED: "true"
+   LISTINGKIT_SUPPLY_MARKET_ENABLED: "true"
+   LISTINGKIT_REPORT_CENTER_ENABLED: "true"
+   LISTINGKIT_NOTIFICATION_CENTER_ENABLED: "true"
+   LISTINGKIT_KNOWLEDGE_ENABLED: "true"
+   LISTINGKIT_SUPPLY_CHAIN_ENABLED: "false"
+   LISTINGKIT_ECOSERVICES_ENABLED: "false"
+   PRODUCT_REVIEW_API_ORIGIN: ""
+   SHEIN_RECORDS_API_ORIGIN: ""
+volumes:
+ module-install-state: {name: "${COMPOSE_PROJECT_NAME}-module-install-state"}
+ module-runtime: {name: "${COMPOSE_PROJECT_NAME}-module-runtime"}
+ qualification-objects: {name: "${COMPOSE_PROJECT_NAME}-qualification-objects"}
+ qualification-storage-secret: {name: "${COMPOSE_PROJECT_NAME}-qualification-storage-secret"}

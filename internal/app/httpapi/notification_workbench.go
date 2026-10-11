@@ -24,7 +24,7 @@ func notificationItem(source, id, kind, title, summary, org, revision string, at
 }
 func (a *aiWorkbenchApplication) notificationSources() []n.Source {
 	tasks := n.NewReaderSource("workbench-task", false, func(ctx context.Context, scope n.Scope, after string, limit int) (n.SourcePage, error) {
-		i, e := a.agent.freshWorkbenchIdentity(ctx, authz.PermissionWorkbenchTaskRead)
+		i, e := a.freshWorkbenchIdentity(ctx, authz.PermissionWorkbenchTaskRead)
 		if e != nil {
 			return n.SourcePage{}, sourceError(e)
 		}
@@ -61,7 +61,7 @@ func (a *aiWorkbenchApplication) notificationSources() []n.Source {
 		return page, nil
 	})
 	plans := n.NewReaderSource("workbench-plan", false, func(ctx context.Context, scope n.Scope, after string, limit int) (n.SourcePage, error) {
-		i, e := a.agent.freshWorkbenchIdentity(ctx, authz.PermissionWorkbenchChatRead)
+		i, e := a.freshWorkbenchIdentity(ctx, authz.PermissionWorkbenchChatRead)
 		if e != nil {
 			return n.SourcePage{}, sourceError(e)
 		}

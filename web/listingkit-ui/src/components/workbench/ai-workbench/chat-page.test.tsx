@@ -44,11 +44,11 @@ it("shows the unavailable state without sending Chat requests when the module is
   expect(fixture.request).not.toHaveBeenCalled();
 });
 
-it("keeps history readable but does not offer new planning while this organization's route needs configuration", async () => {
+it("allows conversation creation but does not offer planning while the model needs configuration", async () => {
   fixture.context.aiWorkbenchPlanningReadiness = "NEEDS_CONFIGURATION";
   const view = render(<QueryClientProvider client={client}><ChatPage mode="home" /></QueryClientProvider>);
   await screen.findByText("开始一项新需求");
-  expect(screen.queryByRole("button", { name: "进入新建会话 →" })).toBeNull();
+  expect(screen.getByRole("button", { name: "进入新建会话 →" })).toBeEnabled();
   expect(screen.getByText(/当前企业的规划模型需要配置/)).toBeVisible();
   view.rerender(tree());
   await screen.findByText("开始讨论");
@@ -57,7 +57,8 @@ it("keeps history readable but does not offer new planning while this organizati
   expect(fixture.request.mock.calls.every(call => call[0].route === "conversation-list" || call[0].route === "conversation-read")).toBe(true);
 });
 
-it("carries the selected saved product into the newly created conversation", async () => {
+it.each(["AVAILABLE", "UNAVAILABLE"])("creates a real conversation with planning readiness %s", async readiness => {
+  fixture.context.aiWorkbenchPlanningReadiness = readiness;
   fixture.search = new URLSearchParams(`operationId=${operationId}`);
   fixture.request.mockImplementation(async ({ route }) => {
     if (route === "conversation-list") return { conversations: [], next: "" };

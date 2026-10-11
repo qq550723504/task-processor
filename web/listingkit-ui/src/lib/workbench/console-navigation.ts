@@ -6,13 +6,13 @@ export const consoleNavigation: readonly ConsoleNavNode[] = [
   pending("AI工作台", "ai", [
     { label: "硕米Chat", href: "/workbench/ai/chat", availability: "connected", children: [{ label: "新建会话", href: "/workbench/ai/chat/new", availability: "connected" }, { label: "最近会话", href: "/workbench/ai/chat/recent", availability: "connected" }, { label: "收藏会话", href: "/workbench/ai/chat/saved", availability: "connected" }] },
     { label: "任务中心", href: "/workbench/ai/tasks", availability: "connected", children: [{ label: "进行中", href: "/workbench/ai/tasks/running", availability: "connected" }, { label: "待确认", href: "/workbench/ai/tasks/pending", availability: "connected" }, { label: "已完成", href: "/workbench/ai/tasks/completed", availability: "connected" }, { label: "异常任务", href: "/workbench/ai/tasks/errors", availability: "connected" }] },
-    {label:"项目中心",href:"/workbench/ai/projects",availability:"connected",children:[{label:"进行中项目",href:"/workbench/ai/projects/active",availability:"connected"},{label:"最近访问",href:"/workbench/ai/projects/recent",availability:"connected"},{label:"已归档项目",href:"/workbench/ai/projects/archived",availability:"connected"},{label:"项目模板",href:"/workbench/ai/projects/templates",availability:"connected"}]}, pending("知识库", "ai/knowledge"), pending("我的报告", "ai/reports", [pending("最近报告", "ai/reports/recent"), pending("收藏报告", "ai/reports/favorites"), pending("全部报告", "ai/reports/all")]),
+    {label:"项目中心",href:"/workbench/ai/projects",availability:"connected",children:[{label:"进行中项目",href:"/workbench/ai/projects/active",availability:"connected"},{label:"最近访问",href:"/workbench/ai/projects/recent",availability:"connected"},{label:"已归档项目",href:"/workbench/ai/projects/archived",availability:"connected"},{label:"项目模板",href:"/workbench/ai/projects/templates",availability:"connected"}]}, pending("知识库", "ai/knowledge", [pending("官方知识库", "ai/knowledge/official"), pending("我的知识库", "ai/knowledge/mine")]), pending("我的报告", "ai/reports", [pending("最近报告", "ai/reports/recent"), pending("收藏报告", "ai/reports/favorites"), pending("全部报告", "ai/reports/all")]),
   ]),
   pending("供应市场", "supply", [
     { label: "1688采集", href: "/workbench/supply/acquisition", availability: "connected" },
     pending("硕米自营", "supply/official"), pending("硕米优选", "supply/selected"), pending("货盘集成", "supply/catalogs"), pending("我的供应链", "supply/mine", [pending("待适配", "supply/mine/waiting"), pending("待补全", "supply/mine/missing"), pending("已适配", "supply/mine/ready"), pending("待审核", "supply/mine/review"), pending("已上传", "supply/mine/uploaded")]), pending("优选申请", "supply/applications"),
   ]),
-  pending("智能市场", "agents", [{label:"智能体市场",href:"/workbench/agents/market",availability:"connected"},{label:"我的智能体",href:"/workbench/agents/mine",availability:"connected"},{label:"智能体定制",href:"/workbench/agents/custom",availability:"connected"}]),
+  pending("智能市场", "agents", [{label:"智能体市场",href:"/workbench/agents/market",availability:"connected"},{label:"我的智能体",href:"/workbench/agents/mine",availability:"connected"},{label:"智能体定制",href:"/workbench/agents/custom",availability:"connected",children:[{label:"提交定制需求",href:"/workbench/agents/custom/new",availability:"connected"},{label:"定制进度",href:"/workbench/agents/custom/progress",availability:"connected"}]}]),
   pending("工具市场", "tools", [pending("官方工具", "tools/official"), pending("我的工具", "tools/mine"), pending("工具定制", "tools/custom")]),
   pending("生态服务", "services", [pending("服务市场", "services/market"), pending("我的服务", "services/mine"), pending("申请加入", "services/join")]),
   pending("数据服务", "data", [pending("数据市场", "data/market"), pending("API管理", "data/api"), pending("我的数据", "data/mine")]),
@@ -52,6 +52,11 @@ export function findConsoleRoute(pathname: string): ConsoleRoute | undefined {
   }
   const exact = visit(consoleNavigation, []);
   if (exact) return exact;
+  if (/^\/workbench\/ai\/knowledge\/[0-9a-f-]{36}$/.test(pathname)) {
+    const parent = findConsoleRoute("/workbench/ai/knowledge/mine")!;
+    const node: ConsoleNavNode = {label:"知识库资料", href:pathname, availability:parent.node.availability};
+    return {node, trail:[...parent.trail, node]};
+  }
   if (pathname === "/workbench/overview/goals/settings") {
     const parent = findConsoleRoute("/workbench/overview/goals")!;
     const node: ConsoleNavNode = { label: "设置经营目标", href: pathname, availability: parent.node.availability };
@@ -65,11 +70,6 @@ export function findConsoleRoute(pathname: string): ConsoleRoute | undefined {
   if (pathname === "/workbench/agents/mine/product.title.agent") {
     const parent=findConsoleRoute("/workbench/agents/mine")!;
     const node:ConsoleNavNode={label:"智能体配置",href:pathname,availability:"connected"};
-    return {node,trail:[...parent.trail,node]};
-  }
-  if (pathname === "/workbench/agents/custom/new" || pathname === "/workbench/agents/custom/progress") {
-    const parent=findConsoleRoute("/workbench/agents/custom")!;
-    const node:ConsoleNavNode={label:pathname.endsWith("/new")?"提交需求":"定制进度",href:pathname,availability:"connected"};
     return {node,trail:[...parent.trail,node]};
   }
   if (pathname === "/workbench/ai/chat/archived") {

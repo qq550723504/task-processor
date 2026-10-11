@@ -24,6 +24,9 @@ func prepareEcoservices(ctx context.Context, db *gorm.DB, cfg *currentapplicatio
 	if err != nil {
 		return nil, err
 	}
+	if cfg.NonPaymentOnly {
+		return &currentapplication.EcoservicesRuntime{NonPaymentOnly: true, DB: db, Objects: objects}, nil
+	}
 	channel, err := servicepayments.NewWeChat(cfg.Payments.ChannelConfig())
 	if err != nil {
 		return nil, err

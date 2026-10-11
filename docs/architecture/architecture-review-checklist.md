@@ -400,7 +400,9 @@ Supporting context documents must not be listed as review references unless prom
 - `docs/architecture/product-agent-runtime-contract.md`
 - `docs/architecture/commercial-wallet-billing-contract.md`
 - `docs/architecture/ecosystem-services-v1.md`
+- `docs/architecture/ecoservices-qualification-runtime.md`
 - `docs/architecture/data-services-v1.md`
+- `docs/architecture/data-services-native-authorization.md`
 - `docs/architecture/self-service-subscription-purchase-contract.md`
 - `docs/architecture/store-center-current-application-v1.md`
 - `docs/architecture/supply-market-v1.md`

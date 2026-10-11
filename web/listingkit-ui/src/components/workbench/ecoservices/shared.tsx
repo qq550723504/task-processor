@@ -11,6 +11,8 @@ import {Card} from "@/components/ui/card";
 import {ecoRequest,ecoFileSchema,ecoCheckoutSchema,ecoResultSchema,ecoMerchantSchema,ecoFinancialSchema,EcoservicesError,type EcoScope} from "@/lib/api/ecoservices";
 import "./ecoservices.css";
 
+export function NonPaymentNotice(){return <Card role="status" style={{padding:20,marginBottom:20}}>当前开放资质申请、平台审核和协议确认。商户进件、服务草稿与发布及支付交易暂未开放；平台审核通过不会代替商户签约。</Card>}
+
 export const categories=[{id:"COMPANY_REGISTRATION",name:"公司注册",group:"enterprise"},{id:"TRADEMARK_REGISTRATION",name:"商标注册",group:"enterprise"},{id:"STORE_OPENING",name:"店铺开通",group:"shop"},{id:"STORE_OPERATION",name:"店铺代运营",group:"shop"}] as const;
 export const serviceStates:Record<string,string>={REQUESTED:"待服务商确认",QUOTED:"待确认报价",ORDER_PENDING:"待付款",PAID_READY:"待开始",SERVICING:"服务中",AWAITING_ACCEPTANCE:"待验收",ACCEPTED:"已验收",CANCEL_REQUESTED:"取消处理中",CANCELLED:"已取消"};
 export const financialStates:Record<string,string>={AWAITING_PAYMENT:"等待付款",CREATED:"等待付款",PAID:"已收款",SETTLEMENT_PENDING:"分账处理中",SETTLED:"渠道结算已确认",REFUND_PENDING:"退款处理中",REFUNDED:"原路退款已确认",CANCELLATION_PENDING:"取消处理中",CLOSED_UNPAID:"未付款订单已关闭",WAITING_FUNDS:"等待原商户资金",RECONCILIATION_REQUIRED:"资金待核实",SOURCE_DENIED:"争议暂停资金操作",CHANNEL_OPERATION_FAILED:"原渠道操作失败",AUTOMATICALLY_RELEASED:"渠道自动解冻"};

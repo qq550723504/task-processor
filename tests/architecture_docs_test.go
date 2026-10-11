@@ -2033,6 +2033,11 @@ func TestCurrentStoreDesignPreservesGreenfieldOwnersAndUnopenedServices(t *testi
 }
 
 func TestDataServicesDesignPreservesOriginalScopeFundsAndDelivery(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "data-services-native-authorization.md"), []string{
+		"PD-DATA-SERVICES-NATIVE-IAM-2026-10-10", "IMPLEMENTATION_READY",
+		"本轮不新增本地企业业务停用功能", "nil status port", "deadline checks",
+		"No schema, durable fact owner", "always-allow adapter", "actor-private",
+	})
 	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "data-services-v1.md"), []string{
 		"IMPLEMENTATION_READY", "PD-DATA-SERVICES-2026-10-09",
 		"成功保存一条消费一个 DATA_ROW，5 分/条", "创建者和企业", "撤权/离职后失效",
@@ -2071,5 +2076,14 @@ func TestEcoservicesDesignPreservesOriginalFundsAndPrivateDomainOwners(t *testin
 		"IMPLEMENTATION_READY", "internal/ecoservices", "internal/commercial/billing", "money",
 		"SERVICE_PURCHASE", "NON_COMMISSIONABLE", "CUSTOMER_ACCEPTED", "AR1", "UNKNOWN",
 		"CurrentIdentityWithVerifiedRoles", "LiveWrite", "全新", "原订单", "私有",
+	})
+}
+
+func TestEcoservicesQualificationDesignKeepsFinancialAdmissionSeparate(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "ecoservices-qualification-runtime.md"), []string{
+		"IMPLEMENTATION_READY", "ecoservices.nonPaymentOnly=true", "application_submit",
+		"application_review", "application_reject", "agreement_accept", "before repository Apply/replay",
+		"ACTIVE plus MerchantID", "No Commercial/Money purchase service", "incompatible retained facts fails startup",
+		"ecoservices_runtime", "NOT_RUN",
 	})
 }
