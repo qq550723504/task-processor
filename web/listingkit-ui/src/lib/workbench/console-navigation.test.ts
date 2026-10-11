@@ -4,6 +4,13 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 describe("Figma Console navigation contract", () => {
+  it("keeps official and current-enterprise knowledge under the Figma Knowledge branch", () => {
+    const knowledge = findConsoleRoute("/workbench/ai/knowledge")?.node;
+    expect(knowledge?.children?.map(node => node.label)).toEqual(["官方知识库", "我的知识库"]);
+    expect(findConsoleRoute("/workbench/ai/knowledge/official")?.trail.map(node => node.label)).toEqual(["AI工作台", "知识库", "官方知识库"]);
+    expect(findConsoleRoute("/workbench/ai/knowledge/mine")?.trail.map(node => node.label)).toEqual(["AI工作台", "知识库", "我的知识库"]);
+    expect(findConsoleRoute("/workbench/ai/knowledge/4841d296-ef14-4c16-8d25-a7667e534feb")?.trail.map(node => node.label)).toEqual(["AI工作台", "知识库", "我的知识库", "知识库资料"]);
+  });
   it("gives every primary menu a real page instead of falling through to the unavailable catchall", () => {
     for (const node of consoleNavigation) {
       expect(existsSync(join(process.cwd(), "src/app", node.href.slice(1), "page.tsx")), node.href).toBe(true);

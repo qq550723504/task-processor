@@ -75,7 +75,9 @@ After normal login and enterprise selection, this combination provides:
 | Cockpit goals, store matrix, manual financial facts, alerts/advice | `/workbench/overview/goals`, `/workbench/overview/stores`, `/workbench/overview/alerts`, `/workbench/overview/advice` |
 | Cockpit entry | `/workbench` opens the first existing Cockpit page granted to the current user when its native capability is mounted; absence of read permissions is shown separately |
 | Accounts, members, roles, resources, audit and store management | `/workbench/account`, `/workbench/stores` |
-| Knowledge, personal projects and reports | `/workbench/ai/knowledge`, `/workbench/ai/projects`, `/workbench/ai/reports` |
+| Knowledge overview and current-enterprise documents | `/workbench/ai/knowledge` shows the Figma two-entry overview; `/workbench/ai/knowledge/mine` uses the existing enterprise Knowledge owner |
+| Official Knowledge entry | `/workbench/ai/knowledge/official` explicitly shows that official content is not yet available; no sample catalog or counts are presented |
+| Personal projects and reports | `/workbench/ai/projects`, `/workbench/ai/reports` |
 | AI Workbench entry | `/workbench/ai` opens the first connected AI child; this profile opens Project Center while Chat and business-task execution remain unconfigured |
 | 1688 acquisition and Product Collection | `/workbench/supply/acquisition`, `/workbench/data/mine` |
 | Supply Market | `/workbench/supply/official`, `/workbench/supply/selected`, `/workbench/supply/catalogs` |

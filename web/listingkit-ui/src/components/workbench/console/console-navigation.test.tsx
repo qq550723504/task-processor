@@ -203,3 +203,13 @@ it("retains only valid batch and store selection across supply stage links",()=>
  query.value="preparation=bad&store=bad";view.rerender(<ConsoleNavigation pathname="/workbench/supply/mine/waiting" ariaLabel="主导航" supplyChainAvailable/>);
  expect(screen.getByRole("link",{name:"待审核"})).toHaveAttribute("href","/workbench/supply/mine/review");
 });
+it("opens enterprise knowledge without advertising an unimplemented official catalog", () => {
+  const view = render(<ConsoleNavigation pathname="/workbench/ai/knowledge/mine" ariaLabel="主导航" knowledgeAvailable />);
+  expect(screen.getByRole("link", {name:"知识库"})).toHaveAttribute("title", "知识库");
+  expect(screen.getByRole("link", {name:"我的知识库"})).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("link", {name:"我的知识库"})).toHaveAttribute("title", "我的知识库");
+  expect(screen.getByRole("link", {name:"官方知识库"})).toHaveAttribute("title", "官方知识库：业务暂未启用");
+  view.rerender(<ConsoleNavigation pathname="/workbench/ai/knowledge/mine" ariaLabel="主导航" />);
+  expect(screen.getByRole("link", {name:"知识库"})).toHaveAttribute("title", "知识库：业务暂未启用");
+  expect(screen.getByRole("link", {name:"我的知识库"})).toHaveAttribute("title", "我的知识库：业务暂未启用");
+});
