@@ -1,0 +1,10 @@
+import { handleOfficialKnowledge, rejectKnowledge } from "@/lib/server/knowledge-route";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const GET = handleOfficialKnowledge;
+export const POST = rejectKnowledge;
+export const PUT = rejectKnowledge;
+export const PATCH = rejectKnowledge;
+export const DELETE = rejectKnowledge;
+export const HEAD = rejectKnowledge;
+export const OPTIONS = rejectKnowledge;

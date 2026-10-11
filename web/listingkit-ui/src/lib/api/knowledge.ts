@@ -21,12 +21,12 @@ export const resultSchema = z.object({ knowledgeBase: baseSchema.optional(), sou
 export type KnowledgeSource = z.infer<typeof sourceSchema>;
 export type KnowledgeScope = {userId:string;organizationId:string};
 export class KnowledgeError extends Error { constructor(public code:string, public status=500) {super(code)} }
-export async function knowledgeRequest<T>(scope:KnowledgeScope, path:string, schema:z.ZodType<T>, init:RequestInit = {}):Promise<T> {
+export async function knowledgeRequest<T>(scope:KnowledgeScope, path:string, schema:z.ZodType<T>, init:RequestInit = {}, maxResponseBytes=13*1024*1024):Promise<T> {
  const headers = new Headers(init.headers); headers.set("X-Expected-User-ID",scope.userId); headers.set("X-Expected-Organization-ID",scope.organizationId); headers.set("Accept","application/json");
  let response: Response;
  try { response = await fetch("/api/workbench/"+path,{...init,headers,cache:"no-store",credentials:"same-origin"}); }
  catch { if(init.signal?.aborted) throw new KnowledgeError("REQUEST_CANCELLED"); throw new KnowledgeError(init.method && init.method !== "GET" ? "OUTCOME_UNKNOWN" : "KNOWLEDGE_UNAVAILABLE"); }
- const payload = await readBoundedStrictJSON(response,13*1024*1024,init.signal ?? undefined).catch(() => {throw new KnowledgeError(init.method && init.method !== "GET" ? "OUTCOME_UNKNOWN" : "INVALID_UPSTREAM_RESPONSE",502)});
+ const payload = await readBoundedStrictJSON(response,maxResponseBytes,init.signal ?? undefined).catch(() => {throw new KnowledgeError(init.method && init.method !== "GET" ? "OUTCOME_UNKNOWN" : "INVALID_UPSTREAM_RESPONSE",502)});
  if(!response.ok) { const code = z.object({code:z.string().regex(/^[A-Z_]{1,80}$/)}).passthrough().safeParse(payload); throw new KnowledgeError(code.success ? code.data.code : "KNOWLEDGE_UNAVAILABLE",response.status); }
  const result = schema.safeParse(payload); if(!result.success) throw new KnowledgeError(init.method && init.method !== "GET" ? "OUTCOME_UNKNOWN" : "INVALID_UPSTREAM_RESPONSE",502);
  return result.data;

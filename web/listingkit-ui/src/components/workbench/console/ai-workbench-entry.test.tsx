@@ -45,10 +45,9 @@ it("keeps the original Chat entry when its actual runtime is available", () => {
   expect(fixture.redirect).toHaveBeenCalledWith("/workbench/ai/chat");
 });
 
-it("keeps an unconfigured deployment unavailable", () => {
+it("opens built-in official reading without optional AI or enterprise knowledge services", () => {
   render(<Page />);
-  expect(fixture.redirect).not.toHaveBeenCalled();
-  expect(screen.getByText("暂未启用")).toBeVisible();
+  expect(fixture.redirect).toHaveBeenCalledWith("/workbench/ai/knowledge/official");
 });
 
 it.each(["isLoading", "isSwitching", "selectionRequired"] as const)("does not route before %s clears", (flag) => {

@@ -15,5 +15,6 @@ export function firstConnectedAIEntry(capabilities: AIWorkbenchEntryCapabilities
   if (capabilities.reportCenterAvailable) return "/workbench/ai/reports";
   if (capabilities.productReviewAvailable) return "/workbench/ai/tasks/pending/other";
   if (capabilities.sheinRecordsAvailable) return "/workbench/ai/tasks/completed/history";
-  return null;
+  // Packaged read-only guides require no optional provider/storage service.
+  return "/workbench/ai/knowledge/official";
 }

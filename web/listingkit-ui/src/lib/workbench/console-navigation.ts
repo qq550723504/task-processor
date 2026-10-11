@@ -52,6 +52,11 @@ export function findConsoleRoute(pathname: string): ConsoleRoute | undefined {
   }
   const exact = visit(consoleNavigation, []);
   if (exact) return exact;
+  if (/^\/workbench\/ai\/knowledge\/official\/[a-z][a-z0-9-]{0,63}\/revisions\/[1-9][0-9]{0,8}$/.test(pathname)) {
+    const parent = findConsoleRoute("/workbench/ai/knowledge/official")!;
+    const node: ConsoleNavNode = {label: "资料版本", href: pathname, availability: "connected"};
+    return {node, trail: [...parent.trail, node]};
+  }
   if (/^\/workbench\/supply\/applications\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(pathname)) {
     const parent = findConsoleRoute("/workbench/supply/applications")!;
     const node: ConsoleNavNode = {label:"申请详情", href:pathname, availability:parent.node.availability};
