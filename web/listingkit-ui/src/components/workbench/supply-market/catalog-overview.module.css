@@ -32,10 +32,6 @@
   --catalog-number: #057a6e;
   --catalog-number-fill: rgba(5,122,110,.08);
   --catalog-number-line: rgba(5,122,110,.34);
-  --catalog-teal: #057a6e;
-  --catalog-teal-button: #e0faf5;
-  --catalog-blue: #315f9d;
-  --catalog-blue-button: #eaf1ff;
 }
 .overview :global(.console-breadcrumb) {line-height:20px;margin-bottom:8px;color:var(--catalog-copy)}
 .overview :global(.console-page-header) {margin-bottom:18px}
