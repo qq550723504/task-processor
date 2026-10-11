@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 import { ConsoleUnavailable } from "@/components/workbench/console/console-overview";
 import { firstConnectedConsoleEntry } from "@/lib/workbench/console-primary-entry";
+import { consolePrimaryDeploymentCapabilities } from "@/lib/server/console-primary-availability";
 
 export default function Page() {
-  const destination = firstConnectedConsoleEntry("/workbench/tools", { toolMarketAvailable: process.env.LISTINGKIT_TOOL_MARKET_ENABLED === "true" });
+  const destination = firstConnectedConsoleEntry("/workbench/supply", consolePrimaryDeploymentCapabilities());
   if (destination) redirect(destination);
-  return <ConsoleUnavailable pathname="/workbench/tools" />;
+  return <ConsoleUnavailable pathname="/workbench/supply" />;
 }

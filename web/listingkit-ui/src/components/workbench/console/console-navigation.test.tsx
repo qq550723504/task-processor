@@ -7,6 +7,16 @@ import { ConsoleNavigation } from "./console-navigation";
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 
 const query=vi.hoisted(()=>({value:""}));
+it.each(["productAcquisitionAvailable", "supplyMarketAvailable", "supplyChainAvailable"])("connects the Supply parent with %s", capability => {
+  const view = render(<ConsoleNavigation pathname="/workbench/supply" ariaLabel="主导航" />);
+  expect(screen.getByRole("link", {name: "供应市场"})).toHaveAttribute("title", "供应市场：业务暂未启用");
+  view.rerender(<ConsoleNavigation pathname="/workbench/supply" ariaLabel="主导航" {...{[capability]: true}} />);
+  expect(screen.getByRole("link", {name: "供应市场"})).toHaveAttribute("title", "供应市场");
+});
+it.each(["智能市场", "店铺中心"])("connects the %s parent to its existing child", label => {
+  render(<ConsoleNavigation pathname="/workbench" ariaLabel="主导航" />);
+  expect(screen.getByRole("link", {name: label})).toHaveAttribute("title", label);
+});
 it.each(["aiWorkbenchAvailable", "projectCenterAvailable", "knowledgeAvailable", "reportCenterAvailable", "productReviewAvailable", "sheinRecordsAvailable"])("marks the AI parent connected when %s is connected", (capability) => {
   const view = render(<ConsoleNavigation pathname="/workbench" ariaLabel="主导航" />);
   expect(screen.getByRole("link", {name: "AI工作台"})).toHaveAttribute("title", "AI工作台：业务暂未启用");

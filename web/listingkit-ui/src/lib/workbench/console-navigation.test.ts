@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { consoleNavigation, findConsoleRoute } from "./console-navigation";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 describe("Figma Console navigation contract", () => {
+  it("gives every primary menu a real page instead of falling through to the unavailable catchall", () => {
+    for (const node of consoleNavigation) {
+      expect(existsSync(join(process.cwd(), "src/app", node.href.slice(1), "page.tsx")), node.href).toBe(true);
+    }
+  });
   it("models every My Account entry as the Figma three-level hierarchy", () => {
     const account = consoleNavigation.find((item) => item.label === "我的账户");
     expect(account?.children?.map((item) => item.label)).toEqual(["账户资料", "企业空间", "推广与收益"]);

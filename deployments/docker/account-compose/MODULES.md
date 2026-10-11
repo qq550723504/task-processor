@@ -73,23 +73,28 @@ After normal login and enterprise selection, this combination provides:
 | Completed capability | Entry |
 | --- | --- |
 | Cockpit goals, store matrix, manual financial facts, alerts/advice | `/workbench/overview/goals`, `/workbench/overview/stores`, `/workbench/overview/alerts`, `/workbench/overview/advice` |
+| Cockpit entry | `/workbench` opens the first existing Cockpit page granted to the current user when its native capability is mounted; absence of read permissions is shown separately |
 | Accounts, members, roles, resources, audit and store management | `/workbench/account`, `/workbench/stores` |
 | Knowledge, personal projects and reports | `/workbench/ai/knowledge`, `/workbench/ai/projects`, `/workbench/ai/reports` |
 | AI Workbench entry | `/workbench/ai` opens the first connected AI child; this profile opens Project Center while Chat and business-task execution remain unconfigured |
 | 1688 acquisition and Product Collection | `/workbench/supply/acquisition`, `/workbench/data/mine` |
 | Supply Market | `/workbench/supply/official`, `/workbench/supply/selected`, `/workbench/supply/catalogs` |
+| Supply entry | `/workbench/supply` opens the first mounted child in the current navigation: acquisition, market, then Supply Chain |
 | Official/my/custom tools and capture plugin package | `/workbench/tools/official`, `/workbench/tools/mine`, `/workbench/tools/custom` |
 | Tool Market entry | `/workbench/tools` opens Official Tools when the current Tool Market module is mounted; unconfigured installations keep the unavailable page |
 | Agent configuration/templates and custom requests | `/workbench/agents/mine`, `/workbench/agents/custom` |
+| Agent and Store entries | `/workbench/agents` opens the existing Agent catalog; `/workbench/store-center` opens My Stores |
 | Notifications | `/workbench/notifications` |
 | Data Market and API Management | `/workbench/data/market`, `/workbench/data/api` |
+| Data entry | `/workbench/data` opens Data Market when mounted, otherwise My Data when Collections is mounted |
 
 API/private/platform permissions still apply. Configuration and empty lists are
 real owner reads; the installer creates no sample requests, products, orders,
 profits, successful jobs or balances.
 
-The `/workbench` aggregate dashboard remains the existing unimplemented overview;
-its GMV/trend/AI summary cards do not consume the completed Cockpit subpages yet.
+The aggregate GMV/trend/AI dashboard is still unimplemented. The `/workbench`
+entry opens an existing authorized Cockpit child when mounted; an unmounted
+installation retains the honest unavailable overview. No aggregate facts are added.
 Report reads are mounted, but saving a title report still requires the current
 Product Review source below. Project/report linking and automated AI advice are
 not completed capabilities and are not introduced by this composition.

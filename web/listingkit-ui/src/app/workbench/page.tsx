@@ -1,3 +1,3 @@
-import { ConsoleOverview } from "@/components/workbench/console/console-overview";
+import { CockpitEntry } from "@/components/workbench/console/cockpit-entry";
 
-export default function WorkbenchPage() { return <ConsoleOverview />; }
+export default function WorkbenchPage() { return <CockpitEntry />; }
