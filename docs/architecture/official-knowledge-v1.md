@@ -93,7 +93,8 @@ Proposed call chain:
 ```text
 official catalogue/read contract
   -> bounded embedded catalogue + exact version content
-  -> owning official/httpapi module
+  -> official adapter under internal/knowledge/httpapi/official
+  -> configuration/module registration in existing internal/app/httpapi assembly
   -> current-application assembly injection
   -> authenticated, bounded Workbench BFF
   -> existing ConsolePage/Card/Button and official catalogue/article page

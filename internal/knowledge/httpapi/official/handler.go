@@ -6,9 +6,7 @@ import (
 	"net/http"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
-	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
-	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/knowledge/official"
 	"time"
 )
@@ -72,19 +70,6 @@ func Routes(h *Handler) []httproute.Descriptor {
 	}
 }
 
-type routeModule struct{ handler *Handler }
-
-func NewModule(h *Handler) kernelmodule.Module { return routeModule{h} }
-func (routeModule) Name() string               { return "official-knowledge" }
-func (m routeModule) Enabled(c *config.Config) bool {
-	return m.handler != nil && c != nil && c.Workbench.Enabled
-}
-func (m routeModule) Register(r *kernelmodule.Registry) error {
-	for _, d := range Routes(m.handler) {
-		r.AddRoutes(d)
-	}
-	return nil
-}
 func ValidateDescriptor(d httproute.Descriptor) error {
 	for _, expected := range Routes(&Handler{}) {
 		if d.Method == expected.Method && d.Path == expected.Path && d.Module == expected.Module && d.Permission == expected.Permission && d.AuthPolicy == expected.AuthPolicy && d.OrganizationAccessPolicy == expected.OrganizationAccessPolicy && d.OrganizationTargetResolver == nil && d.RequestTimeout == expected.RequestTimeout && d.RejectUnreadRequestBody && d.Handler != nil {

@@ -10,8 +10,8 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
+	officialhttp "task-processor/internal/knowledge/httpapi/official"
 	"task-processor/internal/knowledge/official"
-	officialhttp "task-processor/internal/knowledge/official/httpapi"
 	"testing"
 )
 

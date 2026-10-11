@@ -38,7 +38,7 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/knowledge"
 	knowledgehttp "task-processor/internal/knowledge/httpapi"
-	officialhttp "task-processor/internal/knowledge/official/httpapi"
+	officialhttp "task-processor/internal/knowledge/httpapi/official"
 	"task-processor/internal/ledger/orgresource"
 	o "task-processor/internal/marketplace/shein/observations"
 	notificationhttp "task-processor/internal/notificationcenter/httpapi"
