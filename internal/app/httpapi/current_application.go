@@ -423,7 +423,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB *gorm.DB, cfg 
 	if supplied.knowledgeServices > 1 || supplied.knowledgeServices > 0 && supplied.knowledge == nil {
 		return nil, errors.New("knowledge service unavailable or supplied more than once")
 	}
-	if supplied.ecoservicesConfigs > 1 || supplied.ecoservicesConfigs > 0 && (supplied.ecoservices == nil || supplied.ecoservices.DB == nil || supplied.ecoservices.Channel == nil || supplied.ecoservices.Objects == nil || supplied.ecoservices.Protection == nil || supplied.commercialOwnerDB == nil || supplied.moneyOwnerDB == nil) {
+	if supplied.ecoservicesConfigs > 1 || supplied.ecoservicesConfigs > 0 && !supplied.ecoservices.available(supplied.commercialOwnerDB, supplied.moneyOwnerDB) {
 		return nil, errors.New("ecoservices dependencies unavailable or supplied more than once")
 	}
 	if supplied.toolMarketConfigs > 1 || supplied.toolMarketConfigs > 0 && (supplied.toolMarket == nil || supplied.toolMarket.DB == nil) {

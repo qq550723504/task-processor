@@ -18,13 +18,22 @@ type PaymentPort interface {
 	Checkout(context.Context, string, string, string) (string, error)
 }
 type Handler struct {
-	service       ServicePort
-	files         FilePort
-	payments      PaymentPort
-	notifications NotificationPort
-	merchants     MerchantPort
-	financial     FinancialPort
+	qualificationOnly bool
+	service           ServicePort
+	files             FilePort
+	payments          PaymentPort
+	notifications     NotificationPort
+	merchants         MerchantPort
+	financial         FinancialPort
 }
+
+func NewQualificationHandler(service ServicePort, files FilePort) (*Handler, error) {
+	if service == nil || files == nil {
+		return nil, e.ErrUnavailable
+	}
+	return &Handler{service: service, files: files, qualificationOnly: true}, nil
+}
+
 type MerchantPort interface {
 	Resume(context.Context, e.Scope, string, int64) (e.MerchantView, error)
 	Submit(context.Context, e.Scope, string, string, int64, e.MerchantDetails) (e.MerchantView, error)

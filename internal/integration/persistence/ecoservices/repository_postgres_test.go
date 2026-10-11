@@ -66,6 +66,11 @@ func postgresFixture(t *testing.T) (context.Context, *gorm.DB, *Repository, *e.S
 	}
 	return ctx, db, repo, service
 }
+
+func TestQualificationOnlyPostgresRuntimeUsesExistingRestrictedOwner(t *testing.T) {
+	_, _, repo, _ := postgresFixture(t)
+	assertQualificationWorkflow(t, repo)
+}
 func TestEcoservicesPostgresLatePaymentReopensOriginalCancellation(t *testing.T) {
 	for _, closedBeforePayment := range []bool{true, false} {
 		t.Run(map[bool]string{true: "closed-in-E", false: "closure-projection-delayed"}[closedBeforePayment], func(t *testing.T) {

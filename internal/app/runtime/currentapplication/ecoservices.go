@@ -31,13 +31,15 @@ func (p EcoservicesPaymentsConfig) ChannelConfig() servicepayments.WeChatConfig 
 }
 
 type EcoservicesConfig struct {
-	Enabled    bool                      `json:"enabled"`
-	Database   DatabaseConfig            `json:"database"`
-	Storage    KnowledgeStorageConfig    `json:"storage"`
-	Payments   EcoservicesPaymentsConfig `json:"payments"`
-	PayloadKey string                    `json:"payloadKey"`
+	Enabled        bool                      `json:"enabled"`
+	NonPaymentOnly bool                      `json:"nonPaymentOnly"`
+	Database       DatabaseConfig            `json:"database"`
+	Storage        KnowledgeStorageConfig    `json:"storage"`
+	Payments       EcoservicesPaymentsConfig `json:"payments"`
+	PayloadKey     string                    `json:"payloadKey"`
 }
 type EcoservicesRuntime struct {
+	NonPaymentOnly     bool
 	DB                 *gorm.DB
 	Objects            e.PrivateObjectStore
 	Channel            b.ServicePurchaseProvider
@@ -53,26 +55,35 @@ func (c *Config) validateEcoservices() error {
 	if err := v.Database.validate("ecoservices.database"); err != nil {
 		return err
 	}
-	if v.Database.Database != "ecoservices" || v.Database.User != "ecoservices_runtime" || v.Database.MaxConnections > 4 || v.Database.Host != c.SourceAccountDatabase.Host || v.Database.Port != c.SourceAccountDatabase.Port || c.CommercialOwnerDatabase == nil || c.MoneyOwnerDatabase == nil {
+	if v.Database.Database != "ecoservices" || v.Database.User != "ecoservices_runtime" || v.Database.MaxConnections > 4 || v.Database.Host != c.SourceAccountDatabase.Host || v.Database.Port != c.SourceAccountDatabase.Port {
 		return errors.New("ecoservices requires a dedicated owner database and canonical financial owners")
 	}
 	p := v.Payments
-	if p.Profile.Validate() != nil || p.Profile.Environment != "PRODUCTION" || len(p.APIv3Key) != 32 || p.PrivateKey == "" || p.PublicKey == "" || p.SerialNumber == "" || !strings.HasPrefix(p.PublicKeyID, "PUB_KEY_ID_") {
-		return errors.New("ecoservices requires its original explicit WeChat merchant profile")
-	}
-	notify, err := url.Parse(p.NotifyURL)
-	if err != nil || notify.Scheme != "https" || notify.Host == "" || notify.User != nil || notify.RawQuery != "" || notify.Fragment != "" || notify.Path != "/api/v1/payments/ecoservices/wechat/notify" {
-		return errors.New("ecoservices requires its fixed HTTPS payment notification ingress")
-	}
-	if p.NewPayments && (!p.ProductQualified || !p.PlatformPaysFees || c.Identity.TenantDirectoryToken == "") {
-		return errors.New("ecoservices new payments require qualified platform fee product and live purchase authorization")
-	}
-	if p.NewMerchantApplications && (!p.ProductQualified || c.Identity.TenantDirectoryToken == "") {
-		return errors.New("ecoservices merchant applications require qualified product and live application authorization")
-	}
-	key, err := base64.StdEncoding.DecodeString(v.PayloadKey)
-	if err != nil || len(key) != 32 {
-		return errors.New("ecoservices private payload encryption key is required")
+	if v.NonPaymentOnly {
+		if p != (EcoservicesPaymentsConfig{}) || v.PayloadKey != "" {
+			return errors.New("ecoservices qualification mode cannot consume retained financial configuration")
+		}
+	} else {
+		if c.CommercialOwnerDatabase == nil || c.MoneyOwnerDatabase == nil {
+			return errors.New("ecoservices requires canonical financial owners")
+		}
+		if p.Profile.Validate() != nil || p.Profile.Environment != "PRODUCTION" || len(p.APIv3Key) != 32 || p.PrivateKey == "" || p.PublicKey == "" || p.SerialNumber == "" || !strings.HasPrefix(p.PublicKeyID, "PUB_KEY_ID_") {
+			return errors.New("ecoservices requires its original explicit WeChat merchant profile")
+		}
+		notify, err := url.Parse(p.NotifyURL)
+		if err != nil || notify.Scheme != "https" || notify.Host == "" || notify.User != nil || notify.RawQuery != "" || notify.Fragment != "" || notify.Path != "/api/v1/payments/ecoservices/wechat/notify" {
+			return errors.New("ecoservices requires its fixed HTTPS payment notification ingress")
+		}
+		if p.NewPayments && (!p.ProductQualified || !p.PlatformPaysFees || c.Identity.TenantDirectoryToken == "") {
+			return errors.New("ecoservices new payments require qualified platform fee product and live purchase authorization")
+		}
+		if p.NewMerchantApplications && (!p.ProductQualified || c.Identity.TenantDirectoryToken == "") {
+			return errors.New("ecoservices merchant applications require qualified product and live application authorization")
+		}
+		key, err := base64.StdEncoding.DecodeString(v.PayloadKey)
+		if err != nil || len(key) != 32 {
+			return errors.New("ecoservices private payload encryption key is required")
+		}
 	}
 	s := v.Storage
 	if s.Region == "" || s.Bucket == "" || s.AccessKeyID == "" || s.SecretAccessKey == "" || s.Mode != "aws" && s.Mode != "cos" || s.Mode == "cos" && !s.COSImmutableNonVersionedBucketPolicy {

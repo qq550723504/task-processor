@@ -78,6 +78,7 @@ COPY --from=go-builder /out/project-center-schema-init /usr/local/bin/project-ce
 COPY --from=go-builder /out/report-center-schema-init /usr/local/bin/report-center-schema-init
 COPY internal/integration/persistence/toolmarket/schema.sql /etc/tool-market-schema.sql
 COPY --chmod=0755 deployments/docker/account-compose/native-modules-init.sh /usr/local/bin/native-modules-init
+COPY --chmod=0755 deployments/docker/account-compose/ecoservices-init.sh /usr/local/bin/ecoservices-init
 COPY --from=go-builder /out/referral-schema-init /usr/local/bin/referral-schema-init
 COPY --from=go-builder /out/organization-membership-schema-init /usr/local/bin/organization-membership-schema-init
 COPY --from=go-builder /out/source-account-registry-schema-init /usr/local/bin/source-account-registry-schema-init

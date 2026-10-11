@@ -166,7 +166,7 @@ func execute() error {
 			}
 			if features.Ecoservices != nil {
 				e := features.Ecoservices
-				options = append(options, httpapi.WithEcoservices(httpapi.EcoservicesDependencies{DB: e.DB, Objects: e.Objects, Channel: e.Channel, Protection: e.Protection, MerchantProtection: e.MerchantProtection}))
+				options = append(options, httpapi.WithEcoservices(httpapi.EcoservicesDependencies{NonPaymentOnly: e.NonPaymentOnly, DB: e.DB, Objects: e.Objects, Channel: e.Channel, Protection: e.Protection, MerchantProtection: e.MerchantProtection}))
 			}
 			if features.NotificationCenterDB != nil {
 				options = append(options, httpapi.WithNotificationCenter(features.NotificationCenterDB))

@@ -2,6 +2,8 @@
 
 适用 #603 / PR #604，[冻结设计](../architecture/ecosystem-services-v1.md)。这是全新安装的运行说明，开发检查不代表用户验收或真实渠道开放。
 
+2026-10-11 用户决定先接入非支付业务。该显式资质模式见[准入补充](../architecture/ecoservices-qualification-runtime.md)和[统一 Compose 接入说明](../../deployments/docker/account-compose/ECOSERVICES.md)：只开放原资质申请、平台审核、协议及查询，不构造渠道或金融恢复。下文的商户、草稿/发布、交易与支付配置要求继续适用于完整模式，不能用假配置替代，也不因本阶段撤销。
+
 ## 用户入口与正常操作
 
 在现有 Console 域名下使用正常登录与企业选择：

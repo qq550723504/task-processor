@@ -1,0 +1,47 @@
+# Optional qualification-only E owner, after base + knowledge + data + modules.
+services:
+ ecoservices-init:
+  build: {context: ../../..,dockerfile: deployments/docker/Dockerfile.account-compose,target: schema-init}
+  network_mode: service:runtime-network
+  entrypoint: [/usr/local/bin/ecoservices-init]
+  volumes:
+   - ecoservices-install-state:/state
+   - ecoservices-runtime:/runtime
+   - module-runtime:/base:ro
+   - business-db-admin-secret:/secrets/admin:ro
+   - ecoservices-storage-secret:/object-root
+   - ecoservices-storage-runtime-secret:/object-runtime
+  depends_on: {native-modules-init: {condition: service_completed_successfully}}
+ ecoservices-objects:
+  build: {context: .,dockerfile: Dockerfile.knowledge-storage,target: server}
+  network_mode: service:runtime-network
+  entrypoint: [/bin/sh,-ec]
+  command: ['export MINIO_ROOT_USER=ecoservices_local_root; export MINIO_ROOT_PASSWORD="$$(cat /ecoservices-private/root-password)"; exec minio server /data --address 127.0.0.1:9101 --console-address 127.0.0.1:9102']
+  volumes: [ecoservices-storage-secret:/ecoservices-private:ro,ecoservices-objects:/data]
+  depends_on: {ecoservices-init: {condition: service_completed_successfully}}
+  healthcheck: {test: [CMD,wget,-q,-O,/dev/null,http://127.0.0.1:9101/minio/health/live],interval: 3s,timeout: 3s,retries: 40}
+ ecoservices-storage-init:
+  build: {context: .,dockerfile: Dockerfile.knowledge-storage,target: client}
+  network_mode: service:runtime-network
+  entrypoint: [/bin/sh,/init/ecoservices-storage-init.sh]
+  volumes:
+   - ./ecoservices-storage-init.sh:/init/ecoservices-storage-init.sh:ro
+   - ./ecoservices-storage-policy.json:/init/ecoservices-storage-policy.json:ro
+   - ecoservices-storage-secret:/ecoservices-private:ro
+   - ecoservices-storage-runtime-secret:/object-runtime:ro
+  depends_on: {ecoservices-objects: {condition: service_healthy}}
+ current-application:
+  command: [-config,/private/ecoservices/current-application.json]
+  volumes: [ecoservices-runtime:/private/ecoservices:ro]
+  depends_on:
+   ecoservices-storage-init: {condition: service_completed_successfully}
+ listingkit-ui:
+  environment:
+   LISTINGKIT_ECOSERVICES_ENABLED: "true"
+   LISTINGKIT_ECOSERVICES_NON_PAYMENT_ONLY: "true"
+volumes:
+ ecoservices-install-state: {name: "${COMPOSE_PROJECT_NAME}-ecoservices-install-state"}
+ ecoservices-runtime: {name: "${COMPOSE_PROJECT_NAME}-ecoservices-runtime"}
+ ecoservices-storage-secret: {name: "${COMPOSE_PROJECT_NAME}-ecoservices-storage-secret"}
+ ecoservices-storage-runtime-secret: {name: "${COMPOSE_PROJECT_NAME}-ecoservices-storage-runtime-secret"}
+ ecoservices-objects: {name: "${COMPOSE_PROJECT_NAME}-ecoservices-objects"}

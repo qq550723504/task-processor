@@ -18,7 +18,7 @@ func TestAccountComposeCommercialDatabaseRejectsCollisionsBeforeProvisioning(t *
 		t.Fatal(err)
 	}
 	for _, installer := range []string{"bootstrap.sh", "business-db-init.sh"} {
-		for _, name := range []string{"notification_center", "agent_customization", "ai_projects", "reports", "tool_market", "postgres", "product_acquisition", "knowledge"} {
+		for _, name := range []string{"notification_center", "agent_customization", "ai_projects", "reports", "tool_market", "ecoservices", "postgres", "product_acquisition", "knowledge"} {
 			t.Run(installer+"/rejects/"+name, func(t *testing.T) {
 				output, err, provisioned := runAccountComposeDatabaseNameValidation(t, sh, installer, name)
 				if err == nil || !strings.Contains(output, "commercial database must have its own name") {
