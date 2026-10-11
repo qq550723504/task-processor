@@ -23,7 +23,9 @@ go build -o .local/current-application.exe ./cmd/current-application
 
 官方模块随 `Workbench.Enabled` 的正常应用组合注册；没有新增 feature flag、schema、数据库权限、Tika、对象存储或模型依赖。企业知识库的 `LISTINGKIT_KNOWLEDGE_ENABLED` 与后端 Knowledge 配置仍独立控制“我的知识库”，不影响官方阅读。
 
-当前 PR 消费 #631 的既有正常菜单与运行接线；本次没有更新或接管保留实例 `task-processor-unified-20261010`。该实例在运行 owner 更新本候选前仍是原版本，不能把它的旧入口当成本 PR 已部署。
+当前 PR 消费 #631 的既有正常菜单与运行接线。用户已授权将本候选接入保留实例 `task-processor-unified-20261010`，由该实例原运行 owner 串行构建、更新后端与前端镜像。沿用原私密配置、六层 Compose 和镜像固定文件，保留全部现有命名卷和业务资料；不重新初始化、迁移或授予权限。
+
+该实例的正常试读入口为 [官方知识库](https://localhost:35444/workbench/ai/knowledge/official)。实际运行源码、镜像与正常登录读取证据以 #632 / PR #633 的当前交付记录为准；更新完成前的旧页面不代表本候选已安装。正常停启由原运行 owner 的私密启动脚本负责，并同时包含 Knowledge、Data Services、Modules、Ecoservices 和 Chat 层。
 
 ## 内容维护与限制
 
