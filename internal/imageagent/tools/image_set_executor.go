@@ -54,7 +54,11 @@ func (e *ProductImageSlotExecutor) generateSourceSet(ctx context.Context, input 
 	if err := imageagent.ValidateImageSourceBytes(input.slot.Recipe, input.references, productimage.MaxInlineArtifactBytes); err != nil {
 		return nil, imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderRejectedBeforeEffect, err)
 	}
-	candidate, err := e.dependencies.SourceEditor.EditSources(ctx, productimage.SourceEditRequest{Sources: input.sources, ReferenceBytes: input.references, Product: input.product, Prompt: input.slot.Recipe.Prompt, PromptVersion: input.slot.Recipe.PromptVersion, Authorization: capabilityAuthorization(quoted, productimage.SourceEditOperation)})
+	prompt := input.slot.Recipe.Prompt
+	if input.providerPrompt != "" {
+		prompt = input.providerPrompt
+	}
+	candidate, err := e.dependencies.SourceEditor.EditSources(ctx, productimage.SourceEditRequest{Sources: input.sources, ReferenceBytes: input.references, Product: input.product, Prompt: prompt, PromptVersion: input.slot.Recipe.PromptVersion, Authorization: capabilityAuthorization(quoted, productimage.SourceEditOperation)})
 	if err != nil {
 		return nil, imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderDispatchedUnknown, err)
 	}

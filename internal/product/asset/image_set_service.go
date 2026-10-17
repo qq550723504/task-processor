@@ -55,6 +55,12 @@ type ImageCandidateSelectionReader interface {
 	ReadImageSetCandidate(context.Context, SourceSelection, ImageSetResultBinding, ImageSetChoice) (ImageSetCandidate, error)
 }
 
+// Implemented by the current generated-candidate adapter. The caller retains
+// the availability fence until the original Asset transaction returns.
+type ImageSelectionUseGuard interface {
+	AcquireImageSetSelection(context.Context, SourceSelection, ImageSetCommand) (func(), error)
+}
+
 type ImageSetTargetResolution struct {
 	Target            *ImageSetTarget
 	RequirementDigest string
@@ -94,7 +100,7 @@ func (s *ImageSetService) WithManualImages(reader ManualImageReader) *ImageSetSe
 }
 
 func (s *ImageSetService) Preview(ctx context.Context, input ImageSetCommand) (ImageSetPreview, error) {
-	commit, err := s.prepare(ctx, input, false)
+	commit, err := s.prepare(ctx, input, false, nil)
 	if err != nil {
 		return ImageSetPreview{}, err
 	}
@@ -102,10 +108,14 @@ func (s *ImageSetService) Preview(ctx context.Context, input ImageSetCommand) (I
 }
 
 func (s *ImageSetService) Select(ctx context.Context, input ImageSetCommand) (ApprovalReceipt, error) {
-	if !imageSetDigest(input.SelectionDigest) {
+	if ctx == nil || !imageSetDigest(input.SelectionDigest) {
 		return ApprovalReceipt{}, ErrInvalidApproval
 	}
-	commit, err := s.prepare(ctx, input, true)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	release := func() {}
+	defer func() { release() }()
+	commit, err := s.prepare(ctx, input, true, func(held func()) { release = held })
 	if err != nil {
 		return ApprovalReceipt{}, err
 	}
@@ -122,12 +132,13 @@ func ImageSetRequestDigest(input ImageSetCommand) string {
 	return approvalDigest(input)
 }
 
-func (s *ImageSetService) prepare(ctx context.Context, input ImageSetCommand, mutate bool) (ApprovalCommit, error) {
+func (s *ImageSetService) prepare(ctx context.Context, input ImageSetCommand, mutate bool, keepFence func(func())) (ApprovalCommit, error) {
 	if ctx == nil || !validIdentityPart(input.ActionID) || len(input.Choices) < 1 || len(input.Choices) > 40 || !input.ExpectedHead.Valid() {
 		return ApprovalCommit{}, ErrInvalidApproval
 	}
 	// Leave the bounded material reader its window within the request budget.
 	// A shorter caller deadline still takes precedence.
+	fenceContext := ctx
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	source, err := s.sources.ReadSourceSelection(ctx, input.Source)
@@ -157,6 +168,20 @@ func (s *ImageSetService) prepare(ctx context.Context, input ImageSetCommand, mu
 	if mutate && s.executionPolicy != nil {
 		if err := s.executionPolicy(ctx, source, input); err != nil {
 			return ApprovalCommit{}, err
+		}
+	}
+	if guard, ok := s.candidates.(ImageSelectionUseGuard); ok {
+		release, err := guard.AcquireImageSetSelection(fenceContext, source, input)
+		if err != nil {
+			return ApprovalCommit{}, err
+		}
+		if release == nil {
+			return ApprovalCommit{}, ErrRepositoryUnavailable
+		}
+		if keepFence == nil {
+			defer release()
+		} else {
+			keepFence(release)
 		}
 	}
 	inventory, err := s.inventories.ReadImageSetInventory(ctx, InventoryScope{TenantID: source.TenantID, ProductKey: source.ProductKey, TargetPlatform: source.TargetPlatform, SourceSnapshotVersion: source.EffectiveCatalogVersion})

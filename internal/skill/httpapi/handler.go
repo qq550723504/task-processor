@@ -38,6 +38,7 @@ func specs() []routeSpec {
 			out = append(out, item)
 		}
 	}
+	out = append(out, routeSpec{"POST", Base + "/official/install", "official", "install-official"})
 	return append(out, routeSpec{"GET", Base + "/personal/shares", "personal", "shares"}, routeSpec{"POST", Base + "/personal/shares/:share_id/withdraw", "personal", "withdraw"}, routeSpec{"GET", Base + "/organization/shares", "organization", "shares"}, routeSpec{"POST", Base + "/organization/shares", "organization", "share"}, routeSpec{"GET", Base + "/organization/shares/:share_id", "organization", "read-shared"}, routeSpec{"POST", Base + "/organization/shares/:share_id/:action", "organization", "decide-share"}, routeSpec{"GET", Base + "/organization/candidates", "organization", "candidates"}, routeSpec{"GET", Base + "/organization/admission", "organization", "read-admission"}, routeSpec{"PUT", Base + "/organization/admission", "organization", "set-admission"})
 }
 func Routes(h *Handler) []httproute.Descriptor {
@@ -158,7 +159,7 @@ func project(v d.Version, p d.Principal) gin.H {
 }
 func (h *Handler) serve(c *gin.Context, s routeSpec) {
 	if s.operation == "info" && h.Service == nil {
-		reply(c, gin.H{"available": false, "canCreate": false, "reason": d.ErrUnavailable.Error()}, 0)
+		reply(c, gin.H{"available": false, "canCreate": false, "canInstallOfficial": false, "reason": d.ErrUnavailable.Error()}, 0)
 		return
 	}
 	if h.Service == nil {
@@ -179,7 +180,7 @@ func (h *Handler) serve(c *gin.Context, s routeSpec) {
 		Failure(c, d.ErrInvalid)
 		return
 	}
-	if s.operation != "list" && c.Request.URL.RawQuery != "" {
+	if s.operation != "list" && s.operation != "candidates" && c.Request.URL.RawQuery != "" {
 		Failure(c, d.ErrInvalid)
 		return
 	}
@@ -195,7 +196,23 @@ func (h *Handler) serve(c *gin.Context, s routeSpec) {
 			return
 		}
 		canCreate := s.scope == "personal" || s.scope == "organization" && (p.UseOrganization || p.ConfigureOrganization) || s.scope == "official" && p.PlatformMaintainer
-		reply(c, gin.H{"available": true, "canCreate": canCreate, "reason": ""}, 0)
+		reply(c, gin.H{"available": true, "canCreate": canCreate, "canInstallOfficial": s.scope == "official" && p.PlatformMaintainer, "reason": ""}, 0)
+	case "install-official":
+		var input struct{}
+		if err := body(c, &input); err != nil {
+			Failure(c, err)
+			return
+		}
+		if _, err := key(c); err != nil {
+			Failure(c, err)
+			return
+		}
+		result, err := h.Service.InstallOfficial(ctx)
+		if err != nil {
+			Failure(c, err)
+			return
+		}
+		reply(c, result, 0)
 	case "list":
 		size := 20
 		q := c.Request.URL.Query()
@@ -262,7 +279,18 @@ func (h *Handler) serve(c *gin.Context, s routeSpec) {
 	case "shares", "share", "read-shared", "decide-share", "withdraw":
 		h.share(c, s)
 	case "candidates":
-		items, e := h.Service.Candidates(ctx)
+		query := c.Request.URL.Query()
+		for name, values := range query {
+			if name != "target" || len(values) != 1 {
+				Failure(c, d.ErrInvalid)
+				return
+			}
+		}
+		target := d.TitleTarget
+		if values, ok := query["target"]; ok {
+			target = values[0]
+		}
+		items, e := h.Service.CandidatesForTarget(ctx, target)
 		if e != nil {
 			Failure(c, e)
 			return

@@ -3,6 +3,8 @@ package assetpublication
 import (
 	"context"
 	"reflect"
+	"sync"
+	"task-processor/internal/agent"
 	"task-processor/internal/agentconfig"
 	"task-processor/internal/imageagent"
 	productasset "task-processor/internal/product/asset"
@@ -16,11 +18,53 @@ type ImageMaterializationReader interface {
 }
 
 type ImageSetCandidateReader struct {
+	methods          imageagent.ImageMethodContext
 	projections      ProjectionSource
 	generations      ImageGenerationFactReader
 	materializations ImageMaterializationReader
 	publicURLs       imageagent.DurableAssetPublicURLResolver
 	trialURLs        *imageagent.IsolatedTrialGeneratedURLPolicy
+}
+
+func (r *ImageSetCandidateReader) WithImageMethods(methods imageagent.ImageMethodContext) *ImageSetCandidateReader {
+	r.methods = methods
+	return r
+}
+
+func (r *ImageSetCandidateReader) AcquireImageSetSelection(ctx context.Context, source productasset.SourceSelection, input productasset.ImageSetCommand) (func(), error) {
+	var releases []func()
+	var once sync.Once
+	release := func() {
+		once.Do(func() {
+			for i := len(releases) - 1; i >= 0; i-- {
+				releases[i]()
+			}
+		})
+	}
+	seen := map[agent.SkillVersionRef]bool{}
+	for _, choice := range input.Choices {
+		if choice.Kind != "generated" {
+			continue
+		}
+		p, err := r.readApprovingLineage(ctx, source, input.ApprovingResult, choice)
+		if err != nil {
+			release()
+			return nil, err
+		}
+		method := p.Plan.Set.Method
+		if method == nil || seen[method.Skill] {
+			continue
+		}
+		identity := imageagent.ExecutionIdentity{ScopeProtocol: imageagent.OrganizationScopeProtocol, RunID: p.Run.ID, TenantID: source.TenantID, UserID: source.ActorID, MemberID: source.MemberID, BusinessTaskID: source.ItemID}
+		_, held, err := imageagent.AcquireImageMethod(ctx, r.methods, identity, method)
+		if err != nil {
+			release()
+			return nil, err
+		}
+		seen[method.Skill] = true
+		releases = append(releases, held)
+	}
+	return release, nil
 }
 
 func NewImageSetCandidateReader(projections ProjectionSource, generations ImageGenerationFactReader, materializations ImageMaterializationReader, publicURLs imageagent.DurableAssetPublicURLResolver, trial ...*imageagent.IsolatedTrialGeneratedURLPolicy) (*ImageSetCandidateReader, error) {

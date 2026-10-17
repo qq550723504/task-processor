@@ -57,6 +57,7 @@ func NewFrozenV2ProductImageSlotExecutor(dependencies Dependencies) *ProductImag
 }
 
 type resolvedSlotInput struct {
+	providerPrompt  string
 	slot            imageagent.Slot
 	source          productimage.Asset
 	styles          []productimage.Asset
@@ -184,6 +185,12 @@ func (e *ProductImageSlotExecutor) generateSlot(ctx context.Context, input image
 	var candidates []productimage.Candidate
 	var receipt imageagent.SlotUsageReceipt
 	if resolved.slot.Recipe != nil {
+		if input.ImageSet != nil && input.ImageSet.Method != nil {
+			resolved.providerPrompt, err = imageagent.ComposeImageMethodPrompt(resolved.slot.Recipe.Prompt, input.ImageMethodText)
+			if err != nil {
+				return imageagent.SlotGeneratedOutput{}, providerError(imageagent.ProviderRejectedBeforeEffect, err)
+			}
+		}
 		candidates, receipt, err = e.generateSourceSet(ctx, resolved, quoted)
 	} else {
 		switch resolved.slot.Role {

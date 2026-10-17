@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/google/uuid"
 	"task-processor/internal/agent"
 	d "task-processor/internal/skill"
 )
@@ -117,6 +118,10 @@ func (s *Store) Versions(ctx context.Context, p d.Principal, o d.Owner, id strin
 
 // ResolveSelection derives the publisher/owner from storage, never a browser field.
 func (s *Store) ResolveSelection(ctx context.Context, p d.Principal, id string, version uint64, digest string) (agent.SkillVersionRef, error) {
+	return s.ResolveSelectionForTarget(ctx, p, id, version, digest, d.TitleTarget)
+}
+
+func (s *Store) ResolveSelectionForTarget(ctx context.Context, p d.Principal, id string, version uint64, digest, target string) (agent.SkillVersionRef, error) {
 	if !idOK(id) || version == 0 || version >= 1<<63 {
 		return agent.SkillVersionRef{}, d.ErrInvalid
 	}
@@ -128,41 +133,67 @@ func (s *Store) ResolveSelection(ctx context.Context, p d.Principal, id string, 
 		return agent.SkillVersionRef{}, d.ErrConflict
 	}
 	ref := v.Ref()
-	if _, e = s.ReadForUse(ctx, p, ref); e != nil {
+	_, release, e := s.AcquireUseForTarget(ctx, p, ref, target)
+	if e != nil {
 		return agent.SkillVersionRef{}, e
 	}
+	release()
 	return ref, nil
 }
 
 // Candidates contains only metadata and already-enabled exact versions usable
 // in this organization. It is never supplied as a model/tool authority catalog.
 func (s *Store) Candidates(ctx context.Context, p d.Principal) ([]d.Version, error) {
+	return s.CandidatesForTarget(ctx, p, d.TitleTarget)
+}
+
+func (s *Store) CandidatesForTarget(ctx context.Context, p d.Principal, target string) ([]d.Version, error) {
+	if target != d.TitleTarget && target != d.ImageTarget {
+		return nil, d.ErrInvalid
+	}
 	if !agent.ValidID(p.OrganizationID) || !agent.ValidID(p.MemberID) || !p.UseOrganization {
 		return nil, d.ErrForbidden
 	}
 	var allow bool
-	if e := s.db.WithContext(ctx).Raw("SELECT allow_personal FROM agent_configuration.skill_admissions WHERE organization_id=? AND agent_id='product.content.agent'", p.OrganizationID).Scan(&allow).Error; e != nil {
-		return nil, d.ErrUnavailable
+	if target == d.TitleTarget {
+		if e := s.db.WithContext(ctx).Raw("SELECT allow_personal FROM agent_configuration.skill_admissions WHERE organization_id=? AND agent_id='product.content.agent'", p.OrganizationID).Scan(&allow).Error; e != nil {
+			return nil, d.ErrUnavailable
+		}
 	}
 	var rows []struct {
 		ID      string
 		Version uint64
 	}
-	e := s.db.WithContext(ctx).Raw(`SELECT s.id,v.version FROM skill_capability.skills s JOIN skill_capability.versions v ON v.skill_id=s.id WHERE v.state='ENABLED' AND ((s.owner_kind='USER' AND s.owner_id=? AND ?) OR (s.owner_kind='ORGANIZATION' AND s.owner_id=? AND v.visibility='SHARED') OR (s.owner_kind='PLATFORM' AND s.owner_id='official' AND v.visibility='SHARED')) ORDER BY s.id,v.version DESC LIMIT 50`, p.UserID, allow, p.OrganizationID).Scan(&rows).Error
-	if e != nil {
-		return nil, e
-	}
+	// Scan metadata in bounded pages until fifty compatible versions are found;
+	// a page of title-only rows must not hide the installed image methods.
 	out := []d.Version{}
-	for _, row := range rows {
-		v, e := readVersion(s.db.WithContext(ctx), row.ID, row.Version, false)
+	afterID := uuid.Nil.String()
+	var afterVersion uint64
+	for {
+		rows = nil
+		e := s.db.WithContext(ctx).Raw(`SELECT s.id,v.version FROM skill_capability.skills s JOIN skill_capability.versions v ON v.skill_id=s.id WHERE v.state='ENABLED' AND ((s.owner_kind='USER' AND s.owner_id=? AND ?) OR (s.owner_kind='ORGANIZATION' AND s.owner_id=? AND v.visibility='SHARED') OR (s.owner_kind='PLATFORM' AND s.owner_id='official' AND v.visibility='SHARED')) AND (s.id>? OR (s.id=? AND v.version<?)) ORDER BY s.id,v.version DESC LIMIT 50`, p.UserID, allow, p.OrganizationID, afterID, afterID, afterVersion).Scan(&rows).Error
 		if e != nil {
 			return nil, e
 		}
-		if !d.Authorized(p, v, d.Use) {
-			continue
+		for _, row := range rows {
+			v, e := readVersion(s.db.WithContext(ctx), row.ID, row.Version, false)
+			if e != nil {
+				return nil, e
+			}
+			if !d.Authorized(p, v, d.Use) || !v.Package.Supports(target) {
+				continue
+			}
+			v.Package.Files = nil
+			out = append(out, v)
+			if len(out) == 50 {
+				return out, nil
+			}
 		}
-		v.Package.Files = nil
-		out = append(out, v)
+		if len(rows) < 50 {
+			break
+		}
+		last := rows[len(rows)-1]
+		afterID, afterVersion = last.ID, last.Version
 	}
 	return out, nil
 }

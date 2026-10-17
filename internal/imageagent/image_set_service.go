@@ -18,6 +18,7 @@ import (
 // The transport supplies identities only. URLs, dimensions, prompt, quote and
 // requirement claims are resolved by the existing source/config/rule owners.
 type PrepareImageSetInput struct {
+	Method                                                    *agent.SkillVersionRef `json:",omitempty"`
 	ExpectedModeRevision                                      string
 	ContextKind                                               ImageSourceContextKind `json:"-"`
 	RequestID, ContextID                                      string
@@ -112,6 +113,9 @@ func (s *Service) GetPreparedImageSet(ctx context.Context, kind ImageSourceConte
 }
 
 func validPrepareImageSetInput(input PrepareImageSetInput) bool {
+	if input.Method != nil && !(ImageMethodBinding{Skill: *input.Method, PolicyVersion: ImageMethodPolicyVersion}).Valid() {
+		return false
+	}
 	if _, err := agentconfig.ParseModeRevision(input.ExpectedModeRevision); err != nil {
 		return false
 	}
@@ -186,6 +190,12 @@ func (s *Service) PrepareImageSet(ctx context.Context, input PrepareImageSetInpu
 	runID := imageSetRunID(identity, input)
 	scope := RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: runID}
 	inputDigest := generationHash(input)
+	if input.Method != nil {
+		inputDigest = generationHash(struct {
+			Input        PrepareImageSetInput
+			MethodPolicy string
+		}{input, ImageMethodPolicyVersion})
+	}
 	if current, readErr := s.repository.GetProjection(ctx, scope); readErr == nil {
 		if current.Plan.Set == nil || current.Plan.Set.InputDigest != inputDigest || current.Run.IdempotencyKey != input.RequestID {
 			return PreparedImageSet{}, ErrRevisionConflict
@@ -206,6 +216,17 @@ func (s *Service) PrepareImageSet(ctx context.Context, input PrepareImageSetInpu
 	resolved, err := s.imageSets.Contexts.ResolveImageSet(ctx, identity, input)
 	if err != nil {
 		return PreparedImageSet{}, err
+	}
+	var method *ImageMethodBinding
+	var methodText string
+	if input.Method != nil {
+		method = &ImageMethodBinding{Skill: *input.Method, PolicyVersion: ImageMethodPolicyVersion}
+		text, release, err := AcquireImageMethod(ctx, s.imageMethods, identity, method)
+		if err != nil {
+			return PreparedImageSet{}, err
+		}
+		defer release()
+		methodText = text
 	}
 	resolved.Catalog, err = NormalizeAssetCatalog(resolved.Catalog)
 	if err != nil {
@@ -259,6 +280,14 @@ func (s *Service) PrepareImageSet(ctx context.Context, input PrepareImageSetInpu
 		return PreparedImageSet{}, err
 	}
 	plan.Set.Regeneration = regeneration
+	plan.Set.Method = method
+	if method != nil {
+		for _, slot := range plan.Slots {
+			if _, err = ComposeImageMethodPrompt(slot.Recipe.Prompt, methodText); err != nil {
+				return PreparedImageSet{}, err
+			}
+		}
+	}
 	plan.Set.ModeSnapshotRef = snapshot.ModeSnapshotRef
 	if !plan.Set.ModeSnapshotRef.Valid() {
 		return PreparedImageSet{}, ErrCommandBlocked
@@ -501,6 +530,13 @@ func (s *Service) ConfirmImagePlan(ctx context.Context, input ConfirmImagePlanIn
 		if !s.tenantStartAllowed(ctx, identity.TenantID) {
 			return RunProjection{}, ErrCommandBlocked
 		}
+		// Only a new admission is gated. An exact original receipt above
+		// restores its original CAS/workflow even after method revocation.
+		_, release, methodErr := AcquireImageMethod(ctx, s.imageMethods, identity, current.Plan.Set.Method)
+		if methodErr != nil {
+			return RunProjection{}, methodErr
+		}
+		defer release()
 		// Only a new admission consumes the current quote. A durable original
 		// receipt remains authoritative after ImageDB persistence/ACK loss.
 		quote, err := s.imageSets.Quotes.ReadImageGenerationQuote(ctx, identity)

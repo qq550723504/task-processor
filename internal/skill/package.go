@@ -40,6 +40,8 @@ type File struct {
 type Package struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Target      string `json:"target,omitempty"`
+	DisplayName string `json:"displayName,omitempty"`
 	Digest      string `json:"digest"`
 	Files       []File `json:"files"`
 }
@@ -212,6 +214,12 @@ func ValidatePackage(files []File) (Package, error) {
 				return Package{}, e
 			}
 			p.Name, p.Description = m.Name, m.Description
+			// Metadata remains opaque unless an exact supported method marker
+			// opts in. Never invalidate an existing package's arbitrary metadata.
+			if target := m.Metadata["listingkit-method-v1"]; target == TitleTarget || target == ImageTarget {
+				p.Target = target
+				p.DisplayName = m.Metadata["listingkit-display-name"]
+			}
 		}
 		if path.Ext(file.Path) == ".md" {
 			if e := validateLinks(file, names); e != nil {
@@ -226,4 +234,13 @@ func ValidatePackage(files []File) (Package, error) {
 	sum := sha256.Sum256(raw)
 	p.Digest = hex.EncodeToString(sum[:])
 	return p, nil
+}
+
+const TitleTarget = "product-title"
+const ImageTarget = "product-image"
+
+// Supports describes content compatibility, never execution authority. Current
+// unmarked methods keep their existing title consumer; images require opt-in.
+func (p Package) Supports(target string) bool {
+	return target == TitleTarget && (p.Target == "" || p.Target == TitleTarget) || target == ImageTarget && p.Target == ImageTarget
 }

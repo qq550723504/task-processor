@@ -150,6 +150,21 @@ type CandidateLister interface {
 	Candidates(context.Context, Principal) ([]Version, error)
 }
 
+func (s *Service) InstallOfficial(ctx context.Context) (OfficialInstallResult, error) {
+	p, err := s.Principal(ctx)
+	if err != nil {
+		return OfficialInstallResult{}, err
+	}
+	if !p.PlatformMaintainer {
+		return OfficialInstallResult{}, ErrForbidden
+	}
+	repo, ok := s.repo.(OfficialInstaller)
+	if !ok {
+		return OfficialInstallResult{}, ErrUnavailable
+	}
+	return repo.InstallOfficial(ctx, p, s.resolve)
+}
+
 func (s *Service) Candidates(ctx context.Context) ([]Version, error) {
 	p, e := s.Principal(ctx)
 	if e != nil {
@@ -160,4 +175,23 @@ func (s *Service) Candidates(ctx context.Context) ([]Version, error) {
 		return nil, ErrUnavailable
 	}
 	return repo.Candidates(ctx, p)
+}
+
+type TargetCandidateLister interface {
+	CandidatesForTarget(context.Context, Principal, string) ([]Version, error)
+}
+
+func (s *Service) CandidatesForTarget(ctx context.Context, target string) ([]Version, error) {
+	if target != TitleTarget && target != ImageTarget {
+		return nil, ErrInvalid
+	}
+	p, err := s.Principal(ctx)
+	if err != nil {
+		return nil, err
+	}
+	repo, ok := s.repo.(TargetCandidateLister)
+	if !ok {
+		return nil, ErrUnavailable
+	}
+	return repo.CandidatesForTarget(ctx, p, target)
 }

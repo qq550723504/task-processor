@@ -115,7 +115,7 @@ func (s *Store) Execute(ctx context.Context, c d.Command, resolve d.ResolvePrinc
 	}
 	if c.Operation == "create" || c.Operation == "save-version" {
 		p, e := d.ValidatePackage(c.Package.Files)
-		if e != nil || p.Digest != c.Package.Digest || p.Name != c.Package.Name || p.Description != c.Package.Description {
+		if e != nil || p.Digest != c.Package.Digest || p.Name != c.Package.Name || p.Description != c.Package.Description || p.Target != c.Package.Target || p.DisplayName != c.Package.DisplayName {
 			return out, d.ErrInvalid
 		}
 	}

@@ -26,6 +26,7 @@ type PreparedGenerationProvider struct {
 	Executor BudgetedStagedSlotExecutor
 }
 type GenerationExecutionDependencies struct {
+	Methods            ImageMethodContext
 	StorageCapacity    storagecapacity.Writer
 	MaxStorageBytes    int64
 	Facts              GenerationFactRepository
@@ -51,6 +52,12 @@ func (e *GenerationExecution) QuoteSlot(ctx context.Context, input SlotExecution
 	if err := e.authorize(ctx, input); err != nil {
 		return SlotUsageQuote{}, err
 	}
+	preparedInput, release, methodErr := e.prepareImageMethod(ctx, input)
+	if methodErr != nil {
+		return SlotUsageQuote{}, methodErr
+	}
+	defer release()
+	input = preparedInput
 	provider, err := e.dependencies.PrepareProvider(ctx, func(context.Context, GenerationSuccess) error { return ErrProviderContractViolation })
 	if err != nil {
 		return SlotUsageQuote{}, err
@@ -73,6 +80,12 @@ func (e *GenerationExecution) GenerateQuotedSlot(ctx context.Context, input Slot
 	} else if !errors.Is(err, ErrRunNotFound) {
 		return generationUnknown(err)
 	}
+	preparedInput, release, methodErr := e.prepareImageMethod(ctx, input)
+	if methodErr != nil {
+		return reject(methodErr)
+	}
+	defer release()
+	input = preparedInput
 	var intent GenerationIntent
 	provider, err := e.dependencies.PrepareProvider(ctx, func(observeCtx context.Context, success GenerationSuccess) error {
 		finalCtx, cancel := generationFinalizationContext(observeCtx)
@@ -303,8 +316,30 @@ func quoteGenerationProvider(ctx context.Context, p PreparedGenerationProvider, 
 	quote.Fingerprint = generationHash(struct {
 		Quote    SlotUsageQuote
 		Metadata GenerationProviderMetadata
-	}{base, m})
+		Method   *ImageMethodBinding `json:",omitempty"`
+	}{Quote: base, Metadata: m, Method: func() *ImageMethodBinding {
+		if input.ImageSet != nil {
+			return input.ImageSet.Method
+		}
+		return nil
+	}()})
 	return base, quote, nil
+}
+
+func (e *GenerationExecution) prepareImageMethod(ctx context.Context, input SlotExecutionInput) (SlotExecutionInput, func(), error) {
+	if input.ImageSet == nil || input.ImageSet.Method == nil {
+		return input, func() {}, nil
+	}
+	text, release, err := AcquireImageMethod(ctx, e.dependencies.Methods, input.OrganizationIdentity, input.ImageSet.Method)
+	if err != nil {
+		return input, nil, err
+	}
+	if _, err = ComposeImageMethodPrompt(input.Slot.Recipe.Prompt, text); err != nil {
+		release()
+		return input, nil, err
+	}
+	input.ImageMethodText = text
+	return input, release, nil
 }
 func (e *GenerationExecution) finalize(ctx context.Context, intent GenerationIntent) error {
 	receipt, err := e.dependencies.Resources.FinalizeImageGeneration(ctx, intent.Identity)

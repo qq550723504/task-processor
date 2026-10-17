@@ -117,6 +117,7 @@ type SlotExecutionInput struct {
 	// Populated only in-process after the organization generation intent binds
 	// these exact bytes. Never transport source bytes in workflow history.
 	SourceBytes          []byte            `json:"-"`
+	ImageMethodText      string            `json:"-"`
 	SourceDigest         string            `json:"-"`
 	SourceReferences     [][]byte          `json:"-"`
 	OrganizationIdentity ExecutionIdentity `json:"-"`

@@ -148,10 +148,10 @@ func TestKnownClosedSubsetRegenerationCreatesANewAwaitingConfirmationRun(t *test
 	require.Equal(t, parent.ResultDigest, stored.ResultDigest, "original effects and receipts remain untouched")
 }
 
-func imageSetServiceFixture(t *testing.T) (*imageagent.Service, imageagent.Repository, *recordingWorkflowClient, *setConfigurationFixture, *setContextFixture, *setQuoteFixture, context.Context, imageagent.PrepareImageSetInput) {
-	return imageSetServiceFixtureWithRepository(t, nil)
+func imageSetServiceFixture(t *testing.T, options ...imageagent.ServiceOption) (*imageagent.Service, imageagent.Repository, *recordingWorkflowClient, *setConfigurationFixture, *setContextFixture, *setQuoteFixture, context.Context, imageagent.PrepareImageSetInput) {
+	return imageSetServiceFixtureWithRepository(t, nil, options...)
 }
-func imageSetServiceFixtureWithRepository(t *testing.T, wrap func(imageagent.Repository) imageagent.Repository) (*imageagent.Service, imageagent.Repository, *recordingWorkflowClient, *setConfigurationFixture, *setContextFixture, *setQuoteFixture, context.Context, imageagent.PrepareImageSetInput) {
+func imageSetServiceFixtureWithRepository(t *testing.T, wrap func(imageagent.Repository) imageagent.Repository, options ...imageagent.ServiceOption) (*imageagent.Service, imageagent.Repository, *recordingWorkflowClient, *setConfigurationFixture, *setContextFixture, *setQuoteFixture, context.Context, imageagent.PrepareImageSetInput) {
 	t.Helper()
 	config := &setConfigurationFixture{enabled: true, template: agentconfig.SetTemplate{Schema: agentconfig.ImageConfigurationSchema, Mode: "standard", ShareOriginals: true, Background: "white", Language: "zh", Carousel: []agentconfig.ContentTask{{ID: "identity", Purpose: "product_identity"}}, Detail: []agentconfig.ContentTask{{ID: "overview", Purpose: "product_overview"}}}}
 	catalog, err := imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{ProductContext: imageagent.ProductContextRef{ProductID: "product", Title: "Test product", SourceSnapshotVersion: 1}, Assets: []imageagent.AuthorizedAsset{{ID: "source-1", Type: imageagent.AuthorizedAssetSource, URL: "https://images.example.org/source.png", Width: 1024, Height: 1024}}})
@@ -163,7 +163,8 @@ func imageSetServiceFixtureWithRepository(t *testing.T, wrap func(imageagent.Rep
 		repository = wrap(repository)
 	}
 	workflows := &recordingWorkflowClient{}
-	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: catalog}, imageagent.WithOrganizationScope(), imageagent.WithImageSetDependencies(imageagent.ImageSetDependencies{Configuration: config, Contexts: contexts, Quotes: quotes, HardLimits: agentconfig.ImageRunLimits{Images: 32, Points: 10000, ElapsedSeconds: 3600}}))
+	options = append([]imageagent.ServiceOption{imageagent.WithOrganizationScope(), imageagent.WithImageSetDependencies(imageagent.ImageSetDependencies{Configuration: config, Contexts: contexts, Quotes: quotes, HardLimits: agentconfig.ImageRunLimits{Images: 32, Points: 10000, ElapsedSeconds: 3600}})}, options...)
+	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: catalog}, options...)
 	require.NoError(t, err)
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "org", EffectiveOrganizationID: "org", UserID: "actor", EffectiveMemberID: "member"})
 	input := imageagent.PrepareImageSetInput{ExpectedModeRevision: "0", ContextKind: imageagent.ImageSourceAcquisition, RequestID: "c5fd7c43-138c-43dc-8dfb-6f9be74a5e9e", ContextID: "operation", Target: imageagent.ImageTargetSelection{Platform: "product"}, SharedOriginalIDs: []string{"source-1"}}

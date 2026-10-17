@@ -15,6 +15,7 @@ import (
 )
 
 type Service struct {
+	imageMethods      ImageMethodContext
 	imageSets         *ImageSetDependencies
 	artworks          *ArtworkDependencies
 	organizationScope bool

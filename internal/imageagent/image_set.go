@@ -41,6 +41,7 @@ type ImageTarget struct {
 }
 
 type ImageSetPlan struct {
+	Method                                                         *ImageMethodBinding   `json:",omitempty"`
 	ModeSnapshotRef                                                agent.ModeSnapshotRef `json:",omitzero"`
 	Schema                                                         string
 	Source                                                         ImageSourceBinding
@@ -138,6 +139,9 @@ func SlotRoleForImagePurpose(purpose string) SlotRole {
 }
 
 func ValidateImageSetPlan(plan Plan) error {
+	if plan.Set != nil && plan.Set.Method != nil && !plan.Set.Method.Valid() {
+		return ErrValidation
+	}
 	s := plan.Set
 	if s == nil || s.Schema != ImageSetSchema || len(plan.Slots) > MaxPlanSlots || len(plan.StyleReferenceIDs) > 0 {
 		return fmt.Errorf("%w: incomplete image set binding", ErrValidation)
@@ -247,6 +251,12 @@ func ImageSetQuoteDigest(plan Plan) (string, error) {
 		}
 		quotes = append(quotes, quotedSlot{slot.ID, slot.Recipe.Quote})
 	}
+	if plan.Set != nil && plan.Set.Method != nil {
+		return resultDigestSHA256(struct {
+			Quotes []quotedSlot
+			Method *ImageMethodBinding
+		}{quotes, plan.Set.Method})
+	}
 	return resultDigestSHA256(quotes)
 }
 
@@ -275,6 +285,10 @@ func CloneImageSetPlan(set *ImageSetPlan) *ImageSetPlan {
 		return nil
 	}
 	clone := *set
+	if set.Method != nil {
+		method := *set.Method
+		clone.Method = &method
+	}
 	if set.Regeneration != nil {
 		value := *set.Regeneration
 		clone.Regeneration = &value

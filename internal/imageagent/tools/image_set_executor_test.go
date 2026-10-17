@@ -80,3 +80,27 @@ func TestImageSetExecutorUsesSingleEditForDetailAndBindsEverySource(t *testing.T
 	_, err = executor.QuoteStagedReview(context.Background(), input, imageagent.BudgetPolicy{})
 	require.Error(t, err, "no hidden reviewer on set generation or recovery")
 }
+
+func TestImageMethodMaterialReachesOnlyProviderRequestAfterProductPolicy(t *testing.T) {
+	input := setExecutionInput(t)
+	input.ImageSet.Method = &imageagent.ImageMethodBinding{Skill: agent.SkillVersionRef{Kind: "skill-version-v1", ID: "2bb819bd-af13-4e68-95e0-1cc86130fb1f", OwnerKind: "PLATFORM", OwnerID: "official", Version: 1, Digest: strings.Repeat("f", 64), PolicyVersion: "skill-method-v1"}, PolicyVersion: imageagent.ImageMethodPolicyVersion}
+	input.ImageMethodText = "Bounded method text that must reach the image provider."
+	var err error
+	input.ImageSet.QuoteDigest, err = imageagent.ImageSetQuoteDigest(imageagent.Plan{Set: input.ImageSet, Slots: []imageagent.Slot{input.Slot}})
+	require.NoError(t, err)
+	editor := &recordingSourceEditor{candidate: testSceneCandidate(t, "https://source.example/item.png")}
+	editor.candidate.Asset.Operations = []string{productimage.SourceEditOperation}
+	executor := NewProductImageSlotExecutor(Dependencies{SourceEditor: editor, UsageQuoter: testProductUsageQuoter{}})
+	quote, err := executor.QuoteSlot(context.Background(), input, imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+	_, err = executor.GenerateQuotedSlot(context.Background(), input, quote)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(editor.request.Prompt, input.Slot.Recipe.Prompt))
+	require.Contains(t, editor.request.Prompt, "BEGIN UNTRUSTED METHOD")
+	require.Contains(t, editor.request.Prompt, input.ImageMethodText)
+	require.Equal(t, "approved product overview", input.Slot.Recipe.Prompt, "persisted recipe must not acquire method plaintext")
+	input.ImageMethodText = ""
+	_, err = executor.GenerateQuotedSlot(context.Background(), input, quote)
+	require.Error(t, err)
+	require.Equal(t, 1, editor.calls)
+}
