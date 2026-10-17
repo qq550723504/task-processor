@@ -493,6 +493,10 @@ documents unless they say so explicitly:
 
 ## Plans, runbooks, and evaluations
 
+- [`store-observations-empty-retirement.md`](store-observations-empty-retirement.md):
+  the explicitly authorized retirement of the original verified empty Store
+  schema, with atomic native installation and preservation of unrelated facts.
+
 Documents with names such as `*-plan.md`, `*-runbook.md`, `*-evaluation.md`,
 `*-checklist.md`, `*-status.md`, `*-playbook.md`, `*-validation.md`,
 `*-split.md`, or `*-management.md` are normally time-bounded. Names are discovery hints, not retirement decisions. They may explain
