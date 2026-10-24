@@ -210,43 +210,15 @@ func Open(cfg *Config) (*gorm.DB, error) {
 	)
 }
 
-func openExistingReadOnly(cfg *Config, open databaseOpener) (*gorm.DB, error) {
-	return openDatabase(
-		cfg,
-		databaseOpenOptions{readOnly: true},
-		open,
-		nil,
-	)
-}
-
-// OpenExistingReadOnly opens an existing target database with a
-// read-only PostgreSQL session and never attempts to create a missing database.
-func OpenExistingReadOnly(cfg *Config) (*gorm.DB, error) {
-	return openExistingReadOnly(cfg, openPostgresDatabase)
-}
-
-// OpenExistingReadOnlyContext is the bounded-startup form of
-// OpenExistingReadOnly. It disables GORM's implicit background ping and makes
-// the one connectivity check honor the caller's deadline.
+// OpenExistingReadOnlyContext opens an existing target with a read-only
+// PostgreSQL session without creating a missing database. It disables GORM's
+// implicit background ping and bounds the connectivity check by the caller's context.
 func OpenExistingReadOnlyContext(ctx context.Context, cfg *Config) (*gorm.DB, error) {
 	return openDatabaseContext(ctx, cfg, databaseOpenOptions{readOnly: true}, openPostgresDatabaseWithoutPing, nil)
 }
 
-// OpenExistingWritable opens an existing target database
-// without creating it and without forcing the session read-only. It is reserved
-// for explicitly confirmed maintenance operations; normal readers must use
-// OpenExistingReadOnly.
-func OpenExistingWritable(cfg *Config) (*gorm.DB, error) {
-	return openDatabase(
-		cfg,
-		databaseOpenOptions{createIfMissing: false},
-		openPostgresDatabase,
-		nil,
-	)
-}
-
-// OpenExistingWritableContext is the bounded-startup form of
-// OpenExistingWritable and never creates a missing database.
+// OpenExistingWritableContext opens an existing writable target without creating
+// a missing database or forcing read-only, honoring the caller's context.
 func OpenExistingWritableContext(ctx context.Context, cfg *Config) (*gorm.DB, error) {
 	return openDatabaseContext(ctx, cfg, databaseOpenOptions{createIfMissing: false}, openPostgresDatabaseWithoutPing, nil)
 }

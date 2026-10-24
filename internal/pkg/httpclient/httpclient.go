@@ -90,11 +90,6 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 	return nil, fmt.Errorf("HTTP请求失败，已重试 %d 次: %w", c.config.MaxRetries, lastErr)
 }
 
-// NewSimple 创建简单的 http.Client（30s 超时）
-func NewSimple() *http.Client {
-	return &http.Client{Timeout: 30 * time.Second}
-}
-
 // NewSimpleWithTimeout 创建指定超时的 http.Client
 func NewSimpleWithTimeout(timeout time.Duration) *http.Client {
 	return &http.Client{Timeout: timeout}

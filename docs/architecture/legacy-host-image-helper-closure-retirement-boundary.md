@@ -1,3 +1,5 @@
+> #301 / #937 **USER_CONFIRMED**：[五组闲置支持门面完整退休闭包](legacy-idle-support-facade-closure-retirement-boundary.md) §1–§7（含§6.1）已获用户确认，Reuse Existing Architecture / Ready与Issue/PR读回6386195192/6386203704先于源码修改。仅替代闲置httpclient.ClientConfig/Build/buildTLSConfig、builder两文件及NewSimple的KEEP。旧平台消费者已退出；当前Client/Config/New/Do/NewSimpleWithTimeout、TLS/retry实际consumer、JPEG/PNG/WebP生产解码及其它当前能力保持。只替代准确旧KEEP；以下完整原Git正文/既有顶注/数字/勾选/批准/历史证据逐字保留。workflow/完整inventory/依赖/保护与既有实例/数据/凭据/进程零改，不增试用前置，保留独立SHEIN登录与Store同步，#301 OPEN。
+
 # #301 旧宿主、HTTP 与图像辅助完整退休闭包设计
 
 Refs [#301](https://github.com/qq550723504/shuomi-ai-commerce/issues/301)。#301 保持 OPEN，#29 不重开。

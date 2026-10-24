@@ -47,11 +47,11 @@ func TestOpenExistingReadOnlyDoesNotCreateOrRetryMissingDatabase(t *testing.T) {
 	openCalls := 0
 	var openedDSN string
 
-	_, err := openExistingReadOnly(cfg, func(dsn string) (*gorm.DB, error) {
+	_, err := openDatabaseContext(t.Context(), cfg, databaseOpenOptions{readOnly: true}, func(dsn string) (*gorm.DB, error) {
 		openCalls++
 		openedDSN = dsn
 		return nil, errors.New(`database "missing_listingkit" does not exist`)
-	})
+	}, nil)
 	if err == nil {
 		t.Fatal("strict database open error = nil, want missing database failure")
 	}
@@ -118,7 +118,7 @@ func TestOpenExistingWritableDoesNotCreateOrForceReadOnly(t *testing.T) {
 	cfg := &Config{Database: "missing_listingkit"}
 	openCalls := 0
 	var openedDSN string
-	_, err := openDatabase(cfg, databaseOpenOptions{createIfMissing: false}, func(dsn string) (*gorm.DB, error) {
+	_, err := openDatabaseContext(t.Context(), cfg, databaseOpenOptions{createIfMissing: false}, func(dsn string) (*gorm.DB, error) {
 		openCalls++
 		openedDSN = dsn
 		return nil, errors.New(`database "missing_listingkit" does not exist`)

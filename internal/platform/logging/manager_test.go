@@ -414,17 +414,6 @@ func TestDefaultLogConfig(t *testing.T) {
 	assert.True(t, config.Console)
 }
 
-func TestSetGlobalLogLevel(t *testing.T) {
-	InitGlobalLogger(nil)
-
-	err := SetGlobalLogLevel("debug")
-	assert.NoError(t, err)
-
-	// 验证级别已更改
-	logger := GetGlobalLogger("test")
-	assert.Equal(t, logrus.DebugLevel, logger.Logger.Level)
-}
-
 func BenchmarkGetGlobalLogger(b *testing.B) {
 	InitGlobalLogger(nil)
 

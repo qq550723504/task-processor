@@ -336,8 +336,3 @@ func GetGlobalLogManager() *LogManager {
 func GetGlobalLogger(component string) *logrus.Entry {
 	return GetGlobalLogManager().GetLogger(component)
 }
-
-// SetGlobalLogLevel 设置全局日志级别
-func SetGlobalLogLevel(level string) error {
-	return GetGlobalLogManager().SetLevel(level)
-}
